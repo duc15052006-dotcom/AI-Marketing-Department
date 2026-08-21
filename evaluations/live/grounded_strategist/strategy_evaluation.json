@@ -1,0 +1,54 @@
+{
+  "benchmark_phase": "3D.2.1",
+  "timestamp": "2026-08-16T17:21:37.579331+00:00",
+  "evaluator_version": "HARDENED_V2",
+  "raw_strategist_run_evaluation": {
+    "status": "PARTIAL",
+    "detected_issues_count": 3,
+    "detected_issues": [
+      {
+        "issue_type": "UNSUPPORTED_SUPERLATIVE",
+        "snippet": "fastest",
+        "violation": "Superlative 'fastest' asserted without comparative benchmark evidence."
+      },
+      {
+        "issue_type": "UNSUPPORTED_ABSOLUTE_CLAIM",
+        "snippet": "zero data leakage",
+        "violation": "Absolute claim 'zero data leakage' asserted without formal verification."
+      },
+      {
+        "issue_type": "UNSUPPORTED_POPULATION_ASSUMPTION",
+        "snippet": "consumers lacking local GPU compute",
+        "violation": "Asserts unproven population hardware distribution rather than evidence-limited audience fit."
+      }
+    ],
+    "evaluation_rationale": "Raw Strategist generation asserted unbacked effect sizes (20%, 30%+), unverified superlatives ('fastest'), and unproven consumer hardware assumptions."
+  },
+  "corrected_strategy_status": {
+    "status": "PASS",
+    "total_recommendations": 9,
+    "grounded_recommendations": 9,
+    "unsupported_numerical_effect_sizes": 0,
+    "unsupported_superlatives": 0,
+    "unsupported_absolute_claims": 0,
+    "unsupported_population_assumptions": 0,
+    "discovery_demand_overclaims": 0,
+    "metric_baseline_discipline": "TO_BE_ESTABLISHED_ENFORCED",
+    "first_party_claims_qualified": "YES",
+    "tradeoffs_enforced": "PASS",
+    "experiments_count": 3,
+    "unknowns_preserved": [
+      "TRANSACTION_DATA = MISSING",
+      "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+      "PRIVATE_TELEMETRY_DATA = MISSING"
+    ]
+  },
+  "discipline_gates": {
+    "strategy_numerical_discipline": "PASS",
+    "strategy_claim_strength_discipline": "PASS",
+    "strategy_search_demand_discipline": "PASS",
+    "strategy_unknown_propagation": "PASS",
+    "strategy_tradeoff_test": "PASS",
+    "strategy_evaluator_accuracy": "PASS"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "benchmark_id": "PHASE4_3_UNSEEN_AI_ENGLISH_APP_THREE_WAY",
+  "randomization_seed": 42,
+  "assembled_at": "2026-08-21T07:02:01.206158+00:00",
+  "run_fingerprint": "",
+  "assignments": {
+    "Candidate X": "CANDIDATE_B_SINGLE_MULTI_PASS",
+    "Candidate Y": "CANDIDATE_A_FIVE_AGENT",
+    "Candidate Z": "CANDIDATE_C_SINGLE_ONE_SHOT"
+  },
+  "leak_check": "PASS (0 leaks detected, count=0)"
+}

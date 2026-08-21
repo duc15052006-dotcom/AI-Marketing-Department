@@ -1,0 +1,16 @@
+{
+  "single_model_calls": 1,
+  "five_agent_calls": 6,
+  "single_prompt_tokens": 2076,
+  "single_completion_tokens": 2341,
+  "single_total_tokens": 4417,
+  "five_agent_total_tokens": 0,
+  "token_comparison_status": "INCOMPLETE",
+  "single_latency_ms": 9090.485900000203,
+  "five_agent_latency_ms": 58872.96319985762,
+  "call_multiplier": 6.0,
+  "latency_multiplier": 6.48,
+  "token_multiplier": "N/A (Telemetry Token Data Incomplete for 5-Agent Run)",
+  "pareto_classification": "INCONCLUSIVE",
+  "rationale": "Baseline was executed on gemini-flash-lite-latest while five-agent was recorded on gemini-flash-latest. Because underlying model endpoints differ in capacity, direct architectural advantage is inconclusive."
+}

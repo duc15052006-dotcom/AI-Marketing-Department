@@ -1,0 +1,29 @@
+{
+  "case_id": "CASE_03_CONSUMER_HARDWARE_D2C",
+  "market_evidence": [
+    {
+      "id": "EVID-001",
+      "source": "Specialty Coffee Association (SCA) 2025 Market Report",
+      "finding": "Cold brew accounts for 28% of total away-from-home coffee consumption in US/CA, with 62% of Gen Z / Millennial consumers drinking cold coffee daily even during winter months.",
+      "type": "VERIFIED_INDUSTRY_DATA"
+    },
+    {
+      "id": "EVID-002",
+      "source": "D2C Coffee Appliance Review Mining (Amazon & Reddit r/Coffee, 1,450 verified purchase reviews)",
+      "finding": "Top customer complaint with existing home cold brewers is 24-hour waiting friction (42% of negative reviews) followed by sludge/sediment in the final cup (31%).",
+      "type": "QUALITATIVE_REVIEW_MINING"
+    },
+    {
+      "id": "EVID-003",
+      "source": "Meta Ads & TikTok D2C Benchmark Q3 2025",
+      "finding": "Kitchen hardware products priced $150-$250 face median customer acquisition cost (CAC) of $55-$75 on paid social, requiring multi-touch video demonstration of speed/clarity to achieve profitable 1st-order payback.",
+      "type": "EMPIRICAL_BENCHMARK"
+    },
+    {
+      "id": "EVID-004",
+      "source": "Retail Distribution Channel Interviews",
+      "finding": "Specialty retailers (Williams Sonoma, Sur La Table) require minimum 45% wholesale discount and proven D2C brand search volume before committing to endcap placement.",
+      "type": "CHANNEL_OBSERVATION"
+    }
+  ]
+}

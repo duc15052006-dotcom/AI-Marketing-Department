@@ -1,0 +1,23 @@
+{
+  "diagnostic_workflow": [
+    "1. WHAT HAPPENED? -> Record observed metric changes (Current state: NOT_YET_OBSERVED in planning mode).",
+    "2. HOW RELIABLE IS THE DATA? -> Check DataQualityChecklist (SRM, tracking outages, duplicate events).",
+    "3. WHERE IS THE BOTTLENECK? -> Map drop-off along the 6-stage funnel model.",
+    "4. WHAT ARE POSSIBLE EXPLANATIONS? -> Generate multi-cause hypotheses across 10 diagnostic categories.",
+    "5. WHAT ARE ALTERNATIVE EXPLANATIONS? -> Evaluate confounding variables (seasonality, ad fatigue, competitor releases).",
+    "6. WHAT TEST SHOULD RUN NEXT? -> Formulate bounded follow-up experiment.",
+    "7. WHAT DID WE LEARN? -> Document candidate learning in CandidateLearnings log."
+  ],
+  "multi_cause_categories": [
+    "Distribution: Placement saturation or ad-blocker filtering.",
+    "Audience: Non-technical audience mismatch or lack of host GPU hardware.",
+    "Creative/Hook: Opening 3s friction hook failure or fatigue.",
+    "Message/Framing: Value proposition disconnect between terminal flow and REST API.",
+    "Landing Experience: High bounce rate from slow load or missing OS download buttons.",
+    "Technical Friction: CUDA/VRAM memory overflow causing low-spec CPU fallback.",
+    "Tracking Error: Tag dropping or UTM corruption.",
+    "Channel Context: Developer platform algorithmic shifts.",
+    "Seasonality: Holiday or weekend developer activity cycles.",
+    "Sample Variance: Small sample noise or outlier sessions."
+  ]
+}

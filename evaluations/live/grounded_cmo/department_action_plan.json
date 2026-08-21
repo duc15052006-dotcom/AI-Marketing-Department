@@ -1,0 +1,58 @@
+{
+  "action_cadence": "SEQUENCE_BASED (No arbitrary calendar deadlines)",
+  "now": [
+    {
+      "action_id": "ACT-NOW-01",
+      "action": "Complete technical instrumentation of required tracking events (creative_click, landing_page_view, download_click, vram_tool_use).",
+      "owner_agent": "PERFORMANCE",
+      "prerequisite": "DataQualityChecklist validation",
+      "approval_state": "DESIGN_APPROVED"
+    },
+    {
+      "action_id": "ACT-NOW-02",
+      "action": "Prepare creative assets (COPY-SF-01..03, SCRIPT-SF-01) and submit for human executive distribution sign-off.",
+      "owner_agent": "CREATIVE",
+      "prerequisite": "GroundedCreativeBrief sign-off",
+      "approval_state": "READY_FOR_HUMAN_APPROVAL"
+    },
+    {
+      "action_id": "ACT-NOW-03",
+      "action": "Submit budget authorization request and stop-loss policy to human executive.",
+      "owner_agent": "CMO",
+      "prerequisite": "MediaAllocationLogic review",
+      "approval_state": "READY_FOR_HUMAN_APPROVAL"
+    }
+  ],
+  "next": [
+    {
+      "action_id": "ACT-NEXT-01",
+      "action": "Prepare PEXP-001 (Hook Mechanism) and PEXP-002 (Hardware CTA) for external execution; launch only after required public-distribution approval.",
+      "owner_agent": "PERFORMANCE",
+      "prerequisite": "ACT-NOW-01 completion + Human distribution authorization",
+      "approval_state": "READY_FOR_HUMAN_APPROVAL"
+    },
+    {
+      "action_id": "ACT-NEXT-02",
+      "action": "Prepare PEXP-003 Technical Search intent validation test; launch only upon receipt of human budget and media authorization.",
+      "owner_agent": "PERFORMANCE",
+      "prerequisite": "Human budget authorization (ACT-NOW-03)",
+      "approval_state": "READY_FOR_HUMAN_APPROVAL"
+    }
+  ],
+  "later": [
+    {
+      "action_id": "ACT-LATER-01",
+      "action": "Evaluate PEXP-001..003 results; apply decision rules (CONTINUE / ITERATE / PAUSE / INCONCLUSIVE).",
+      "owner_agent": "PERFORMANCE",
+      "prerequisite": "Completion of required experimental sample/duration thresholds",
+      "approval_state": "DESIGN_APPROVED"
+    },
+    {
+      "action_id": "ACT-LATER-02",
+      "action": "Synthesize candidate learnings (LEARN-CAND-001) for CMO governance review.",
+      "owner_agent": "CMO",
+      "prerequisite": "Validated experimental outcomes",
+      "approval_state": "DESIGN_APPROVED"
+    }
+  ]
+}

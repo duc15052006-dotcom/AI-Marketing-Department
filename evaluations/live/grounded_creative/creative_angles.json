@@ -1,0 +1,61 @@
+[
+  {
+    "angle_id": "ANGLE-01",
+    "angle": "Terminal-First Simplicity: From Zero to Local LLM in One Command",
+    "audience_insight": "Developers dislike multi-step C++ toolchain compilation for simple prototyping.",
+    "claim_type": "STRATEGIC_INFERENCE",
+    "supported_by": [
+      "EVID-WEB-893338BD",
+      "EVID-FORUM-F119C750"
+    ],
+    "risk": "Ensure users understand model download bandwidth requirements.",
+    "cta_direction": "Copy install command to terminal."
+  },
+  {
+    "angle_id": "ANGLE-02",
+    "angle": "Localhost Port 11434: Drop-in REST API for Your Code",
+    "audience_insight": "Engineers want programmable HTTP endpoints for local script and workflow automation.",
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7"
+    ],
+    "risk": "Endpoint concurrency boundaries must be noted.",
+    "cta_direction": "View API documentation and curl examples."
+  },
+  {
+    "angle_id": "ANGLE-03",
+    "angle": "Predictable Zero-Token Cost for Local Prompt Iteration without Per-Request Hosted API Charges",
+    "audience_insight": "Experimenting with multi-step prompt chains on cloud APIs creates unpredictable token invoices.",
+    "claim_type": "STRATEGIC_INFERENCE",
+    "supported_by": [
+      "EVID-WEB-893338BD",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "risk": "Electricity and hardware depreciation exist, but per-token marginal billing is eliminated.",
+    "cta_direction": "Download CLI for macOS, Linux, or Windows."
+  },
+  {
+    "angle_id": "ANGLE-04",
+    "angle": "Honest VRAM Sizing: Choosing the Right Parameter Count for Your GPU",
+    "audience_insight": "Engineers appreciate technical transparency over hype; 7B on 4-5GB vs 14B on 8-10GB.",
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ],
+    "risk": "Sets realistic throughput boundaries.",
+    "cta_direction": "Check the model hardware compatibility chart."
+  },
+  {
+    "angle_id": "ANGLE-05",
+    "angle": "Local Model Switching Workflow in Local Development",
+    "audience_insight": "Builders want to test different open-weight models (Llama, Mistral) without reconfiguring environments.",
+    "claim_type": "STRATEGIC_INFERENCE",
+    "supported_by": [
+      "EVID-WEB-893338BD",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "risk": "Disk storage management for large weights.",
+    "cta_direction": "Browse available open-weight model library."
+  }
+]

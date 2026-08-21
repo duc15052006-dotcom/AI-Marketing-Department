@@ -1,0 +1,21 @@
+{
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "product_category": "65W GaN USB-C Charger",
+  "target_market": "Vietnam",
+  "business_model": "Ecommerce",
+  "guaranteed_specifications": [
+    "65W maximum power output",
+    "GaN (Gallium Nitride) semiconductor technology",
+    "USB-C interface / connectivity",
+    "Compact portable form factor"
+  ],
+  "unspecified_specifications_to_preserve_as_unknown": [
+    "Exact number of ports (single vs multi-port is UNKNOWN/TO_BE_DETERMINED)",
+    "Supported protocols (PD3.0/PPS/QC is UNKNOWN/TO_BE_DETERMINED)",
+    "Cable inclusion (UNKNOWN/TO_BE_DETERMINED)",
+    "Retail price and margins (UNKNOWN/TO_BE_DETERMINED)",
+    "Exact physical dimensions and weight (UNKNOWN/TO_BE_DETERMINED)"
+  ],
+  "business_goal": "Determine whether and how the 65W GaN charger should be brought to market in Vietnam, identify target developer/office/mobile customer segments and positioning, produce launch creative test package, design performance tracking and experiment plan, and deliver governed CMO recommendations."
+}

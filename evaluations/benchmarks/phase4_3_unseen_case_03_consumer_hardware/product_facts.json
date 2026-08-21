@@ -1,0 +1,29 @@
+{
+  "product_id": "PROD_AROMA_BREW_PRO",
+  "brand_id": "BRAND_AROMA_TECH",
+  "product_name": "AromaBrew Pro \u2014 Precision Acoustic Smart Cold Brew Maker",
+  "category": "Consumer Kitchen Hardware / Direct-to-Consumer Physical Goods",
+  "price_usd": 189.0,
+  "unit_cost_usd": 68.0,
+  "target_geo": "United States & Canada (D2C E-commerce + Specialty Retail)",
+  "verified_product_facts": [
+    "Uses low-frequency ultrasonic acoustic extraction to brew concentrate in 12 minutes (vs standard 16-24 hour passive immersion).",
+    "Includes integrated Bluetooth companion mobile app (iOS/Android) for extraction curve customization and bean origin profiles.",
+    "Vacuum-insulated borosilicate glass carafe maintains cold brew temperature below 40\u00b0F for up to 24 hours without ice dilution.",
+    "Precision stainless steel micro-mesh filter (40-micron rating) eliminates coffee sediment without single-use paper filters.",
+    "UL / FDA food contact certified; dishwasher-safe modular parts.",
+    "MSRP is $189.00 with standard 30-day money-back guarantee and 2-year manufacturer warranty.",
+    "Gross margin per unit at MSRP is 64.0% ($121.00 gross margin per unit sold via direct website)."
+  ],
+  "unverified_or_unknown_aspects": [
+    "Actual repeat purchase rate of companion organic whole-bean subscription bags.",
+    "Exact influencer CPA across YouTube coffee channels vs Meta D2C video ads.",
+    "Long-term battery degradation curve of companion digital base unit over 3+ years."
+  ],
+  "prohibited_and_disallowed_claims": [
+    "Guaranteed 100% elimination of all stomach acid or caffeine jitter effects.",
+    "Instant medical claims regarding heart disease or metabolic cure.",
+    "Claiming proprietary acoustic patent ownership if patent is currently 'Patent Pending'.",
+    "Fabricated celebrity barista endorsements without signed commercial release."
+  ]
+}

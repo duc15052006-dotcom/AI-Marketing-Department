@@ -1,0 +1,50 @@
+{
+  "observation_id": "OBS-0510584948ce",
+  "capability": "read_page",
+  "source_platform": "web",
+  "source_type": "article",
+  "source_url_or_id": "https://example.com",
+  "collected_at": "2026-08-16T15:36:13.894421+00:00",
+  "observed_at": null,
+  "backend_used": "http_static",
+  "collection_method": "DIRECT_HTTP",
+  "raw_reference": null,
+  "normalized_data": {
+    "url": "https://example.com",
+    "title": "Example Domain",
+    "canonical_url": null,
+    "meta_description": "",
+    "opengraph": {},
+    "twitter_card": {},
+    "json_ld": [],
+    "headings": [
+      {
+        "level": "h1",
+        "text": "Example Domain"
+      }
+    ],
+    "main_text": "This domain is for use in documentation examples without needing permission. Avoid use in operations.\nLearn more",
+    "text_length_chars": 112,
+    "raw_byte_count": 559,
+    "http_status": 200,
+    "telemetry": {
+      "validation_latency_ms": 1.1,
+      "network_latency_ms": 4501.2,
+      "parse_latency_ms": 1.58,
+      "total_latency_ms": 4503.88
+    }
+  },
+  "evidence_class": "OBSERVATION",
+  "freshness_days": null,
+  "extraction_confidence": "HIGH",
+  "source_credibility": "UNKNOWN",
+  "content_truth_status": "UNVERIFIED",
+  "confidence": "HIGH",
+  "limitations": [
+    "Static HTML observation; client-side JavaScript execution not evaluated",
+    "Source credibility is UNKNOWN; external text asserts claims that remain UNVERIFIED"
+  ],
+  "product_id": "PROD_TEST_OBS_01",
+  "brand_id": "BRAND_TEST",
+  "content_trust": "UNTRUSTED_EXTERNAL"
+}

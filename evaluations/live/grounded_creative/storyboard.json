@@ -1,0 +1,73 @@
+[
+  {
+    "scene_id": "SCENE-01",
+    "time_range": "0:00 - 0:04",
+    "purpose": "HOOK",
+    "visual": "Macro shot of dark mode code editor with C++ makefile error, transitioning into a clean empty terminal window.",
+    "on_screen_text": "Skip manual C++ toolchains.",
+    "voiceover": "Tired of configuring CUDA drivers just to test an open-weight model locally?",
+    "product_behavior": "Terminal prompt cleared and ready.",
+    "transition": "Quick whip pan to terminal center.",
+    "evidence_dependency": [
+      "EVID-FORUM-F119C750"
+    ],
+    "claim_type": "STRATEGIC_INFERENCE"
+  },
+  {
+    "scene_id": "SCENE-02",
+    "time_range": "0:04 - 0:12",
+    "purpose": "SETUP",
+    "visual": "Terminal cursor types 'ollama run llama3'. Smooth loading progress bar completes, followed by immediate prompt ready state.",
+    "on_screen_text": "$ ollama run llama3",
+    "voiceover": "With Ollama, running open models across macOS, Linux, or Windows takes a single command.",
+    "product_behavior": "Real CLI command execution and model initialization.",
+    "transition": "Smooth split-screen reveal.",
+    "evidence_dependency": [
+      "EVID-WEB-893338BD"
+    ],
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION"
+  },
+  {
+    "scene_id": "SCENE-03",
+    "time_range": "0:12 - 0:22",
+    "purpose": "DEMONSTRATION & REST API",
+    "visual": "VS Code editor alongside terminal. Python script executes a POST request to localhost:11434/api/generate. JSON stream populates instantly.",
+    "on_screen_text": "http://localhost:11434/api/generate\nZero per-request hosted token fees.",
+    "voiceover": "It runs a background service on localhost port 11434, giving you a full REST API for your local scripts with zero per-token costs.",
+    "product_behavior": "Local background daemon responding on port 11434.",
+    "transition": "Dissolve to hardware specification overlay.",
+    "evidence_dependency": [
+      "EVID-WEB-2BAE59D7"
+    ],
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION"
+  },
+  {
+    "scene_id": "SCENE-04",
+    "time_range": "0:22 - 0:30",
+    "purpose": "HARDWARE BOUNDARY QUALIFIER",
+    "visual": "Clean technical motion graphic displaying GPU memory tiers: 7B Q4 (~4-5GB VRAM) and 14B (~8-10GB VRAM) with memory allocation bar.",
+    "on_screen_text": "7B Q4: ~4-5GB VRAM | 14B: ~8-10GB VRAM\nEnsure VRAM headroom to avoid CPU fallback.",
+    "voiceover": "Just make sure your hardware fits: 7B models need about 4 to 5 gigabytes of VRAM to keep streaming fast and avoid CPU fallback.",
+    "product_behavior": "Verified parameter-to-VRAM documentation values.",
+    "transition": "Fade to official quickstart screen.",
+    "evidence_dependency": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ],
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION"
+  },
+  {
+    "scene_id": "SCENE-05",
+    "time_range": "0:30 - 0:38",
+    "purpose": "CALL TO ACTION",
+    "visual": "Clean terminal showing multi-OS compatibility icons (macOS, Linux, Windows) with download link and docs command.",
+    "on_screen_text": "ollama.com\nmacOS \u2022 Linux \u2022 Windows",
+    "voiceover": "Get up and running with open models locally today.",
+    "product_behavior": "Download URL and OS platform availability.",
+    "transition": "Hold on clean minimalist endcard.",
+    "evidence_dependency": [
+      "EVID-WEB-893338BD"
+    ],
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION"
+  }
+]

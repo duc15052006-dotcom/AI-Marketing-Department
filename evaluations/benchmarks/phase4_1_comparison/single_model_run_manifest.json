@@ -1,0 +1,13 @@
+{
+  "run_id": "SINGLE_MODEL_RUN_001",
+  "timestamp": "2026-08-17T05:42:59.019464+00:00",
+  "provider": "gemini",
+  "model": "gemini-flash-latest",
+  "free_only_mode": true,
+  "model_calls": 1,
+  "prompt_tokens": 2076,
+  "completion_tokens": 2341,
+  "total_tokens": 4417,
+  "latency_ms": 9090.485900000203,
+  "status": "SUCCESS"
+}

@@ -1,0 +1,7 @@
+
+```
+Wait, the prompt says "Keep rationales concise (1 sentence per dimension)."
+Let's refine the rationales to be exactly 1 sentence and very concise.
+
+Let's review the scores and rationales:
+- research_quality: 3.0. Rationale: The core Research Findings section is entirely missing, though some consumer friction analysis is

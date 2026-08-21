@@ -1,0 +1,9 @@
+{
+  "condition": "FIVE_AGENT_ARCHITECTURE",
+  "timestamp": "2026-08-17T12:53:13.915898+00:00",
+  "model": "gemini-flash-latest",
+  "status": "SUCCESS",
+  "calls": 6,
+  "total_tokens": 89095,
+  "latency_ms": 285265.9952000249
+}

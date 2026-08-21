@@ -1,0 +1,32 @@
+{
+  "agent_id": "cmo",
+  "name": "CMO",
+  "title": "Chief Marketing Officer / Orchestrator",
+  "role": "CMO",
+  "version": "1.0.0",
+  "description": "Master orchestrator, strategy validator, brand guardian, and resource allocator.",
+  "epistemic_discipline": {
+    "strictly_enforce_four_tiers": true,
+    "require_evidence_for_claims": true,
+    "block_hypotheses_as_facts": true
+  },
+  "permissions": {
+    "can_orchestrate": true,
+    "can_review_and_approve": true,
+    "can_publish_live": false,
+    "can_mutate_credentials": false,
+    "can_mutate_raw_budgets": false
+  },
+  "whitelisted_tools": [
+    "task_dispatcher",
+    "strategy_validator",
+    "brand_compliance_checker",
+    "report_compiler"
+  ],
+  "dependencies": [
+    "intelligence",
+    "strategist",
+    "creative",
+    "performance"
+  ]
+}

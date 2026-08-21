@@ -1,0 +1,95 @@
+{
+  "brief_id": "BRIEF-PERF-7AD3D4E2",
+  "task_id": "TASK_GROUNDED_PERF_001",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "created_at": "2026-08-17T04:20:51.726688+00:00",
+  "business_objective": "Design a rigorous, grounded measurement framework, event tracking plan, experiment portfolio (PEXP-001..003), media allocation logic, and diagnostic decision rules for local developer acquisition, strictly preserving unknown baselines without fabricating campaign telemetry.",
+  "target_segments": {
+    "observed_segments": [
+      "Software developers, engineers, and AI builders on macOS, Linux, and Windows seeking local inference without cloud per-token costs or manual C++ compilation friction."
+    ],
+    "hypothesized_segments": [
+      "Enterprise compliance teams and privacy-sensitive engineering leads evaluating offline AI architectures."
+    ]
+  },
+  "creative_asset_ids": [
+    "COPY-SF-01",
+    "COPY-SF-02",
+    "COPY-SF-03",
+    "COPY-LF-01",
+    "COPY-HERO-01",
+    "SCRIPT-SF-01"
+  ],
+  "variant_ids": [
+    "VAR-A",
+    "VAR-B",
+    "VAR-C"
+  ],
+  "creative_hypotheses": [
+    "Friction-focused terminal setup hook (VAR-A) outperforms generic AI feature announcements in developer CTR.",
+    "Localhost REST API specificity hook (VAR-B) drives higher technical documentation page depth.",
+    "Upfront VRAM compatibility CTA (VAR-C) pre-qualifies traffic and increases downstream CLI installation completion."
+  ],
+  "message_variables": [
+    "Hook Framing: Friction Reduction vs API Specificity vs Zero-Token Cost",
+    "CTA Framing: Direct Download vs Hardware Compatibility Guide"
+  ],
+  "hook_variables": [
+    "Hook 1: Setup friction recognition vs Hook 2: Localhost REST API specificity"
+  ],
+  "cta_variables": [
+    "Download for macOS / Linux / Windows",
+    "View localhost:11434 API Documentation",
+    "Check Model Hardware Sizing Chart"
+  ],
+  "channel_hypotheses": [
+    "Technical developer communities & organic GitHub forums (EVID-FORUM-F119C750)",
+    "Technical search discovery on 'run models locally' / 'offline llm runner' (EVID-SRCH-132D6868, HYPOTHESIZED_CHANNEL)"
+  ],
+  "known_unknowns": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ],
+  "unknown_baselines": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ],
+  "evidence_lineage": {
+    "VAR-A": [
+      "EVID-WEB-893338BD",
+      "EVID-FORUM-F119C750"
+    ],
+    "VAR-B": [
+      "EVID-WEB-2BAE59D7"
+    ],
+    "VAR-C": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ]
+  },
+  "strategy_lineage": {
+    "STRAT-001": "Local setup positioning wedge",
+    "STRAT-003": "Localhost REST API integration",
+    "STRAT-004": "Upfront model-to-VRAM hardware guidance"
+  },
+  "measurement_requirements": [
+    "3-Second Hook Retention Rate",
+    "Click-Through Rate (CTR) to Documentation / Download",
+    "CLI Download-to-Execution Activation Rate (TO_BE_ESTABLISHED)"
+  ],
+  "creative_constraints": [
+    "Platform mode is strictly PLANNING_ONLY.",
+    "All current campaign metrics are UNKNOWN or TO_BE_ESTABLISHED.",
+    "Do NOT fabricate CTR, CVR, CPA, CAC, CPC, CPM, ROAS, LTV, revenue, sales, retention, or install counts.",
+    "Do NOT fabricate monetary budgets; provide allocation logic.",
+    "Stop-loss thresholds remain NOT_CONFIGURED until business constraints are supplied.",
+    "Platform-reported attribution must not be treated as causal incrementality."
+  ],
+  "claim_constraints": [
+    "No universal benchmarks without business context.",
+    "INCONCLUSIVE must be a supported statistical decision outcome."
+  ]
+}

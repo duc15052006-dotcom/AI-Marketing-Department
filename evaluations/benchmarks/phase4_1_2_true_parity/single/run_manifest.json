@@ -1,0 +1,9 @@
+{
+  "condition": "SINGLE_MODEL_BASELINE",
+  "timestamp": "2026-08-17T06:25:06.841033+00:00",
+  "model": "gemini-flash-latest",
+  "status": "SUCCESS",
+  "calls": 1,
+  "total_tokens": 6026,
+  "latency_ms": 20475.470899953507
+}

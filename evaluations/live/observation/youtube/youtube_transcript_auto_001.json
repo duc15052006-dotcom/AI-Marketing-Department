@@ -1,0 +1,377 @@
+{
+  "observation_id": "OBS-02d922cc7e40",
+  "capability": "read_transcript",
+  "source_platform": "youtube",
+  "source_type": "transcript",
+  "source_url_or_id": "https://www.youtube.com/watch?v=9bZkp7q19f0",
+  "collected_at": "2026-08-16T15:59:17.237877+00:00",
+  "observed_at": null,
+  "backend_used": "youtube_ytdlp",
+  "collection_method": "YTDLP_PUBLIC_EXTRACTION",
+  "raw_reference": null,
+  "normalized_data": {
+    "video_id": "9bZkp7q19f0",
+    "title": "PSY - GANGNAM STYLE(\uac15\ub0a8\uc2a4\ud0c0\uc77c) M/V",
+    "language": "ko",
+    "language_code": "ko",
+    "transcript_type": "AUTOMATIC_CAPTIONS",
+    "segment_count": 67,
+    "segments": [
+      {
+        "start_seconds": 9.96,
+        "duration_seconds": 3.92,
+        "text": "\uc624\ubc18 \uac15\ub0a8 \uc2a4\ud0c0\uc77c"
+      },
+      {
+        "start_seconds": 14.04,
+        "duration_seconds": 3.479,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0\uc77c"
+      },
+      {
+        "start_seconds": 18.68,
+        "duration_seconds": 7.04,
+        "text": "\ub0ae\uc5d0\ub294 \ub530\ub85c\uc628 \uc778\uac04\uc801\uc778 \uc5ec\uc790 \ucee4\ud53c \ud55c"
+      },
+      {
+        "start_seconds": 22.68,
+        "duration_seconds": 6.439,
+        "text": "\uc794\uc5d0 \uc5ec\uc720\ub97c \uc544\ub294 \ud488\uaca9 \uc788\ub294 \uc5ec\uc790"
+      },
+      {
+        "start_seconds": 25.72,
+        "duration_seconds": 6.999,
+        "text": "\ubc24\uc774 \uc5b4\uba70 \uc2ec\uc7a5\uc774 \ub728\uac70\uc6cc\uc9c0\ub294 \uc5ec\uc790"
+      },
+      {
+        "start_seconds": 29.119,
+        "duration_seconds": 7.44,
+        "text": "\uadf8\ub7f0 \uc804 \uc788\ub294 \uc5ec\uc790"
+      },
+      {
+        "start_seconds": 32.719,
+        "duration_seconds": 7.241,
+        "text": "\ub098\ub294 \uc11c\ub108\uc5d0 \ub0ae\uc5d0\ub294 \ub108\ub9cc\ud07c \ub530\ub85c\uc6b4"
+      },
+      {
+        "start_seconds": 36.559,
+        "duration_seconds": 6.641,
+        "text": "\uadf8\ub7f0 \uc11c\ub108\uc5d0 \uac70\ud53c\uc2dc\uae30\ub3c4 \uc804\uc5d0 \uc6d0\uc0f7"
+      },
+      {
+        "start_seconds": 39.96,
+        "duration_seconds": 7.4,
+        "text": "\ub54c\ub9ac\ub294 \uc11c\ub108\uc5d0 \ubc94\uc774 \uc624\uba70 \uc2ec\uc7a5\uc774"
+      },
+      {
+        "start_seconds": 43.2,
+        "duration_seconds": 5.679,
+        "text": "\ud130\uc838\ubc84\ub9ac\ub294 \uc11c\ub108\uc5d0 \uadf8\ub7f0"
+      },
+      {
+        "start_seconds": 47.36,
+        "duration_seconds": 3.64,
+        "text": "\uc544\ub984\ub2e4\uc6cc"
+      },
+      {
+        "start_seconds": 48.879,
+        "duration_seconds": 3.561,
+        "text": "\uc0ac\ub791\uc2a4\ub7ec\uc6cc"
+      },
+      {
+        "start_seconds": 51.0,
+        "duration_seconds": 3.6,
+        "text": "\uadf8\ub798 \ub108"
+      },
+      {
+        "start_seconds": 52.44,
+        "duration_seconds": 3.68,
+        "text": "\uadf8\ub798 \ubc14\ub85c \ub108 \ud5e4"
+      },
+      {
+        "start_seconds": 54.6,
+        "duration_seconds": 3.68,
+        "text": "\uc544\ub984\ub2e4\uc6cc"
+      },
+      {
+        "start_seconds": 56.12,
+        "duration_seconds": 3.64,
+        "text": "\uc0ac\ub791\uc2a4\ub7ec\uc6cc"
+      },
+      {
+        "start_seconds": 58.28,
+        "duration_seconds": 3.599,
+        "text": "\uadf8\ub7ac"
+      },
+      {
+        "start_seconds": 59.76,
+        "duration_seconds": 6.84,
+        "text": "\uadf8\ub798 \ubc14\ub85c \ub178"
+      },
+      {
+        "start_seconds": 61.879,
+        "duration_seconds": 4.721,
+        "text": "\uc9c0\uae08\ubd80\ud130 \uac08 \ub54c\uae4c\uc9c0 \uac00\ubcfc\uae4c?"
+      },
+      {
+        "start_seconds": 69.96,
+        "duration_seconds": 3.88,
+        "text": "\uc624\ube75 \uac15\ub0a8 \uc2a4\ud0c0\uc77c"
+      },
+      {
+        "start_seconds": 74.04,
+        "duration_seconds": 7.079,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0 \uc624"
+      },
+      {
+        "start_seconds": 77.68,
+        "duration_seconds": 3.439,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0"
+      },
+      {
+        "start_seconds": 81.32,
+        "duration_seconds": 7.119,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0 \uc624\ube75"
+      },
+      {
+        "start_seconds": 84.96,
+        "duration_seconds": 3.479,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0\ub808\uc774"
+      },
+      {
+        "start_seconds": 89.56,
+        "duration_seconds": 5.79,
+        "text": "\uc624 \uc624 \uc624"
+      },
+      {
+        "start_seconds": 91.799,
+        "duration_seconds": 5.68,
+        "text": "\uc624 \uc624\ube75 \uac15\ub0a8 \uc2a4\ud0c0\ub808\uc774"
+      },
+      {
+        "start_seconds": 95.35,
+        "duration_seconds": 5.129,
+        "text": "[\uc74c\uc545]"
+      },
+      {
+        "start_seconds": 97.479,
+        "duration_seconds": 6.401,
+        "text": "\uc624"
+      },
+      {
+        "start_seconds": 100.479,
+        "duration_seconds": 7.041,
+        "text": "\uc815\uc219\ud574 \ubcf4\uc774\uc9c0\ub9cc \ubcfc \ub54c \ub178\ub294 \uc5ec\uc790"
+      },
+      {
+        "start_seconds": 103.88,
+        "duration_seconds": 7.08,
+        "text": "\uc774\ub300\ub2e4 \uc2f6\uc73c\uba74 \ubb36\uc5b4\ub358 \uba38\ub9ac \ud478\ub294 \uc5ec\uc790"
+      },
+      {
+        "start_seconds": 107.52,
+        "duration_seconds": 7.04,
+        "text": "\uac00\ub838\uc9c0\ub9cc \uc6ec\ub9cc\ud55c \ub178\ucd9c\ubcf4\ub2e4 \uc57c\ud55c \uc5ec\uc790"
+      },
+      {
+        "start_seconds": 110.96,
+        "duration_seconds": 7.199,
+        "text": "\uadf8\ub7f0 \uac10\uac01\uc801\uc778 \uc5ec\uc790"
+      },
+      {
+        "start_seconds": 114.56,
+        "duration_seconds": 6.559,
+        "text": "\ub098\ub294 \uc120\ub108\uc5d0 \uc810\uc790\ub098 \ubcf4\uc774\uc9c0\ub9cc \ub180 \ub54c"
+      },
+      {
+        "start_seconds": 118.159,
+        "duration_seconds": 5.96,
+        "text": "\ub178\ub294 \uc120\ub108\uc5d0 \ub0b4\uac00 \ub418\uba74 \uc644\uc804"
+      },
+      {
+        "start_seconds": 121.119,
+        "duration_seconds": 8.0,
+        "text": "\ubbf8\uccd0\ubc84\ub9ac\ub294 \uc120\ub108\uc5d0\ubcf4\ub2e4"
+      },
+      {
+        "start_seconds": 124.119,
+        "duration_seconds": 6.601,
+        "text": "\uc0ac\uc0c1\uc774 \uc6b8\ud1b5\ubc8c\ud1b5 \ub3d9\uc544\uc5d0 \uadf8\ub7f0"
+      },
+      {
+        "start_seconds": 129.119,
+        "duration_seconds": 4.041,
+        "text": "\ub098\ub984\ub300\uc6cc"
+      },
+      {
+        "start_seconds": 130.72,
+        "duration_seconds": 3.56,
+        "text": "\uc0ac\ub791\uc2a4\ub7ec\uc6cc"
+      },
+      {
+        "start_seconds": 133.16,
+        "duration_seconds": 3.24,
+        "text": "\ub108"
+      },
+      {
+        "start_seconds": 134.28,
+        "duration_seconds": 3.679,
+        "text": "\uadf8\ub798 \ubc14\ub85c \ub108 \ud5e4"
+      },
+      {
+        "start_seconds": 136.4,
+        "duration_seconds": 3.68,
+        "text": "\uc544\ub984\ub2e4\uc6cc"
+      },
+      {
+        "start_seconds": 137.959,
+        "duration_seconds": 5.721,
+        "text": "\uc0ac\ub791\uc2a4\ub7ec\uc6cc"
+      },
+      {
+        "start_seconds": 140.08,
+        "duration_seconds": 8.32,
+        "text": "\uadf8\ub798 \ub108 \uadf8\ub798 \ubc14\ub85c \ub108"
+      },
+      {
+        "start_seconds": 143.68,
+        "duration_seconds": 4.72,
+        "text": "\uc9c0\uae08\ubd80\ud130 \uac08 \ub54c\uae4c\uc9c0 \uac00\ubcfc\uae4c"
+      },
+      {
+        "start_seconds": 151.8,
+        "duration_seconds": 2.96,
+        "text": "\uc624\ubc18 \uac15\ub0a8\uc2a4\ud0c0"
+      },
+      {
+        "start_seconds": 155.92,
+        "duration_seconds": 6.599,
+        "text": "\uac15\ub0a8\uc2a4 \uc624\ube75"
+      },
+      {
+        "start_seconds": 159.519,
+        "duration_seconds": 3.0,
+        "text": "\uac15\ub0a8\uc2a4\ud0c0"
+      },
+      {
+        "start_seconds": 163.159,
+        "duration_seconds": 6.761,
+        "text": "\uac15\ub0a8\uc2a4 \uc624 \uc624 \uc624\ube75"
+      },
+      {
+        "start_seconds": 166.8,
+        "duration_seconds": 5.2,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0\uc5d0"
+      },
+      {
+        "start_seconds": 169.92,
+        "duration_seconds": 4.12,
+        "text": "\uc139\uc2dc"
+      },
+      {
+        "start_seconds": 172.0,
+        "duration_seconds": 5.17,
+        "text": "\uc624\ube75"
+      },
+      {
+        "start_seconds": 174.04,
+        "duration_seconds": 5.24,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0\ub808\uc774"
+      },
+      {
+        "start_seconds": 177.17,
+        "duration_seconds": 5.11,
+        "text": "[\uc74c\uc545]"
+      },
+      {
+        "start_seconds": 179.28,
+        "duration_seconds": 3.0,
+        "text": "\uc624\ub294"
+      },
+      {
+        "start_seconds": 182.519,
+        "duration_seconds": 10.201,
+        "text": "\ub294 \ub188 \uadf8 \uc704\uc5d0 \ub098\ub294 \ub188 \ubca0\ub294 \ubb58 \uc880"
+      },
+      {
+        "start_seconds": 187.72,
+        "duration_seconds": 9.519,
+        "text": "\uc544\ub294 \ub188 \ub6f0\ub294 \ub188 \uadf8 \uc704\uc5d0 \ub098\ub294 \ub188"
+      },
+      {
+        "start_seconds": 192.72,
+        "duration_seconds": 8.439,
+        "text": "\ubca0\ub294 \ubb58 \uc880 \uc544\ub294 \uc5ec\uc138"
+      },
+      {
+        "start_seconds": 197.239,
+        "duration_seconds": 3.92,
+        "text": "\uc624 \uac15\ub0a8 \uc2a4\ud0c0\uc77c"
+      },
+      {
+        "start_seconds": 202.68,
+        "duration_seconds": 4.08,
+        "text": "\uc139\uc2dc"
+      },
+      {
+        "start_seconds": 204.76,
+        "duration_seconds": 5.199,
+        "text": "\uc624\ube75"
+      },
+      {
+        "start_seconds": 206.76,
+        "duration_seconds": 5.72,
+        "text": "\uac15\ub0a8 \uc2a4\ud0c0\uc5d0"
+      },
+      {
+        "start_seconds": 209.959,
+        "duration_seconds": 5.521,
+        "text": "\uc139\uc2dc"
+      },
+      {
+        "start_seconds": 212.48,
+        "duration_seconds": 3.0,
+        "text": "\uc624\ube60"
+      },
+      {
+        "start_seconds": 215.879,
+        "duration_seconds": 3.601,
+        "text": "\uac15\ub0a8\uc2a4 \u0414\u0430."
+      },
+      {
+        "start_seconds": 219.52,
+        "duration_seconds": 3.699,
+        "text": "[\uc74c\uc545]"
+      },
+      {
+        "start_seconds": 245.84,
+        "duration_seconds": 8.189,
+        "text": "\uc624\ube60 \uac15\ub0a8\uc2a4\ud0c0 Ah"
+      },
+      {
+        "start_seconds": 249.93,
+        "duration_seconds": 4.099,
+        "text": "[\uc74c\uc545]"
+      }
+    ],
+    "telemetry": {
+      "backend_version": "2026.07.04",
+      "validation_latency_ms": 0.05,
+      "backend_extraction_latency_ms": 1304.63,
+      "transcript_parse_latency_ms": 240.14,
+      "total_latency_ms": 1544.82
+    }
+  },
+  "evidence_class": "OBSERVATION",
+  "freshness_days": null,
+  "extraction_confidence": "MEDIUM",
+  "source_credibility": "UNKNOWN",
+  "content_truth_status": "UNVERIFIED",
+  "confidence": "MEDIUM",
+  "limitations": [
+    "Transcript track type: AUTOMATIC_CAPTIONS (ko)",
+    "Spoken assertions in transcript reflect external untrusted speaker claims, not verified objective truth"
+  ],
+  "product_id": "PROD_TEST_YT_01",
+  "brand_id": "BRAND_TEST",
+  "content_trust": "UNTRUSTED_EXTERNAL"
+}

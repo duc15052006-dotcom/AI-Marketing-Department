@@ -1,0 +1,93 @@
+[
+  {
+    "event_name": "creative_impression",
+    "trigger": "Ad unit or sponsored post loaded in developer viewport",
+    "properties": [
+      "campaign_id",
+      "creative_asset_id",
+      "variant_id",
+      "channel_id",
+      "placement_id"
+    ],
+    "source": "Channel Platform API",
+    "identifier_requirements": "Pseudonymous Placement ID / Session ID",
+    "privacy_notes": "Privacy-conscious instrumentation design with pseudonymous IDs and no PII collection. (LEGAL_COMPLIANCE_STATUS = NOT_EVALUATED pending formal legal review).",
+    "validation_method": "Platform delivery log checksum and server-side impression reconciliation.",
+    "instrumentation_status": "REQUIRED_INSTRUMENTATION"
+  },
+  {
+    "event_name": "creative_click",
+    "trigger": "Developer clicks outbound link on creative asset",
+    "properties": [
+      "creative_asset_id",
+      "variant_id",
+      "utm_source",
+      "utm_medium",
+      "utm_campaign"
+    ],
+    "source": "Channel Platform API + Inbound UTM redirect",
+    "identifier_requirements": "UTM parameters + sanitized referral header",
+    "privacy_notes": "URL query parameters stripped of user identifiers.",
+    "validation_method": "UTM parameter parser validation test.",
+    "instrumentation_status": "REQUIRED_INSTRUMENTATION"
+  },
+  {
+    "event_name": "landing_page_view",
+    "trigger": "Landing page DOM loaded and first contentful paint complete",
+    "properties": [
+      "page_url",
+      "referrer",
+      "utm_source",
+      "device_os",
+      "screen_resolution"
+    ],
+    "source": "First-Party Analytics Script",
+    "identifier_requirements": "First-party anonymous session cookie",
+    "privacy_notes": "IP address anonymized; do-not-track header honored.",
+    "validation_method": "Synthetic probe page loads verifying event firing.",
+    "instrumentation_status": "REQUIRED_INSTRUMENTATION"
+  },
+  {
+    "event_name": "vram_sizing_interaction",
+    "trigger": "Developer changes model parameter slider or GPU VRAM selector",
+    "properties": [
+      "selected_parameter_count",
+      "selected_vram_gb",
+      "hardware_compatibility_status"
+    ],
+    "source": "First-Party Web Analytics",
+    "identifier_requirements": "Session ID",
+    "privacy_notes": "Hardware inputs stored in session storage only.",
+    "validation_method": "Automated frontend UI component test.",
+    "instrumentation_status": "REQUIRED_INSTRUMENTATION"
+  },
+  {
+    "event_name": "download_click",
+    "trigger": "Developer clicks 'Download for macOS / Linux / Windows'",
+    "properties": [
+      "target_os",
+      "binary_version",
+      "source_variant_id",
+      "referral_source"
+    ],
+    "source": "First-Party Web Analytics Event Log",
+    "identifier_requirements": "Session ID",
+    "privacy_notes": "No personal data collected.",
+    "validation_method": "Link click listener automated testing.",
+    "instrumentation_status": "REQUIRED_INSTRUMENTATION"
+  },
+  {
+    "event_name": "docs_code_copy",
+    "trigger": "Developer clicks copy icon on '$ ollama run <model>' CLI command",
+    "properties": [
+      "code_snippet_id",
+      "model_tag",
+      "docs_section"
+    ],
+    "source": "First-Party Web Analytics",
+    "identifier_requirements": "Session ID",
+    "privacy_notes": "Snippet identifier logged only.",
+    "validation_method": "Clipboard event listener unit test.",
+    "instrumentation_status": "REQUIRED_INSTRUMENTATION"
+  }
+]

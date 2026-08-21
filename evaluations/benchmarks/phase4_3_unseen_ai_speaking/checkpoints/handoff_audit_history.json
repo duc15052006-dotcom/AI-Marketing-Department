@@ -1,0 +1,87 @@
+[
+  {
+    "from_agent": "CMO_INITIAL",
+    "to_agent": "INTELLIGENCE",
+    "timestamp": "2026-08-18T12:08:42.424926+00:00",
+    "is_valid": true,
+    "validation_failures": [],
+    "claims_modified_or_downgraded": [],
+    "allowed_claims_for_receiver": [
+      "CLM-FACT-001",
+      "CLM-FACT-002",
+      "CLM-FACT-003",
+      "CLM-FACT-004",
+      "CLM-FACT-005",
+      "CLM-FACT-006",
+      "CLM-FACT-007"
+    ]
+  },
+  {
+    "from_agent": "INTELLIGENCE",
+    "to_agent": "STRATEGIST",
+    "timestamp": "2026-08-18T12:09:12.362467+00:00",
+    "is_valid": true,
+    "validation_failures": [],
+    "claims_modified_or_downgraded": [],
+    "allowed_claims_for_receiver": [
+      "CLM-FACT-001",
+      "CLM-FACT-002",
+      "CLM-FACT-003",
+      "CLM-FACT-004",
+      "CLM-FACT-005",
+      "CLM-FACT-006",
+      "CLM-FACT-007"
+    ]
+  },
+  {
+    "from_agent": "STRATEGIST",
+    "to_agent": "CREATIVE",
+    "timestamp": "2026-08-18T12:09:48.993036+00:00",
+    "is_valid": true,
+    "validation_failures": [],
+    "claims_modified_or_downgraded": [],
+    "allowed_claims_for_receiver": [
+      "CLM-FACT-001",
+      "CLM-FACT-002",
+      "CLM-FACT-003",
+      "CLM-FACT-004",
+      "CLM-FACT-005",
+      "CLM-FACT-006",
+      "CLM-FACT-007"
+    ]
+  },
+  {
+    "from_agent": "CREATIVE",
+    "to_agent": "PERFORMANCE",
+    "timestamp": "2026-08-18T12:10:22.749389+00:00",
+    "is_valid": true,
+    "validation_failures": [],
+    "claims_modified_or_downgraded": [],
+    "allowed_claims_for_receiver": [
+      "CLM-FACT-001",
+      "CLM-FACT-002",
+      "CLM-FACT-003",
+      "CLM-FACT-004",
+      "CLM-FACT-005",
+      "CLM-FACT-006",
+      "CLM-FACT-007"
+    ]
+  },
+  {
+    "from_agent": "PERFORMANCE",
+    "to_agent": "CMO_FINAL",
+    "timestamp": "2026-08-18T12:10:56.776589+00:00",
+    "is_valid": true,
+    "validation_failures": [],
+    "claims_modified_or_downgraded": [],
+    "allowed_claims_for_receiver": [
+      "CLM-FACT-001",
+      "CLM-FACT-002",
+      "CLM-FACT-003",
+      "CLM-FACT-004",
+      "CLM-FACT-005",
+      "CLM-FACT-006",
+      "CLM-FACT-007"
+    ]
+  }
+]

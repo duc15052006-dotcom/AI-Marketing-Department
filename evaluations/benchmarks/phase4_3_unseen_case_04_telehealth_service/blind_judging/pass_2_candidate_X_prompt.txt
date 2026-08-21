@@ -1,0 +1,328 @@
+You are an Expert Independent GTM Strategy & Healthcare Marketing Quality Auditor performing a Double-Blind Evaluation of Candidate X on Case 04 (CardioVital 360 Preventive Telehealth).
+
+[GROUND TRUTH SPECIFICATIONS]
+VERIFIED PRODUCT & CLINICAL FACTS:
+{
+  "product_id": "PROD_CARDIOVITAL_CARE",
+  "brand_id": "BRAND_CARDIOVITAL_HEALTH",
+  "product_name": "CardioVital 360 \u2014 Regulated Preventive Cardiology & Metabolic Telehealth Platform",
+  "category": "Regulated Healthcare Telehealth / Clinical Preventive Subscription",
+  "price_usd": 149.0,
+  "service_delivery_cost_usd": 48.0,
+  "target_geo": "United States (Active clinical licensure across 38 states)",
+  "verified_product_facts": [
+    "Provides asynchronous clinical review by US board-certified cardiologists and lipidologists within 24 hours of biomarker upload.",
+    "Includes at-home advanced lipid & ApoB / Lp(a) blood biomarker test kit processed by CLIA-certified / CAP-accredited partner laboratories.",
+    "Integrates continuous biometrics from FDA-cleared wearable medical sensors (ECG, photoplethysmography, continuous glucose monitors).",
+    "HIPAA-compliant, SOC 2 Type II certified platform with end-to-end encrypted medical record storage.",
+    "Monthly direct subscription is $149.00/month (eligible for HSA/FSA reimbursement; insurance super-bills provided for out-of-network claims).",
+    "Customer lifetime retention benchmark in pilot cohort is 11.2 months with 68% gross margin after clinical delivery costs.",
+    "Physician consultation is required before any prescription lipid-lowering therapy or clinical protocol modification."
+  ],
+  "unverified_or_unknown_aspects": [
+    "Exact commercial conversion rate of direct B2C paid Meta traffic vs employer wellness channel partnerships.",
+    "Long-term CAC payback variance across HSA/FSA debit card checkout vs standard credit card payments.",
+    "State-by-state regulatory variability for nurse practitioner autonomous prescribing in remaining 12 expansion states."
+  ],
+  "prohibited_and_disallowed_claims": [
+    "Guaranteed 100% cure, reversal, or immunity from heart attacks, strokes, or coronary artery disease.",
+    "Direct-to-consumer promises to discontinue existing prescription statins or blood pressure medications without physician order.",
+    "Claiming FDA-cleared status for general platform algorithms where only physical partner sensors are FDA-cleared.",
+    "Using fabricated patient clinical outcome testimonials without signed HIPAA authorization and medical record verification."
+  ],
+  "human_approval_requirements": [
+    "Chief Medical Officer / Clinical Director sign-off on all public diagnostic claims and biomarker interpretation copy.",
+    "Legal & Regulatory compliance approval on state telemedicine disclaimers and HSA/FSA marketing language.",
+    "Head of Growth approval on paid acquisition budget allocations above $25,000."
+  ]
+}
+
+QUALITATIVE MARKET EVIDENCE:
+{
+  "case_id": "CASE_04_TELEHEALTH_REGULATED_SERVICE",
+  "market_evidence": [
+    {
+      "id": "EVID-CARE-001",
+      "source": "American Heart Association (AHA) 2025 Cardiovascular Health Report",
+      "finding": "Cardiovascular disease remains the leading cause of mortality in North America, but standard annual physicals omit advanced atherogenic particle metrics (ApoB, Lp(a)) in 78% of asymptomatic adults aged 35-55.",
+      "type": "VERIFIED_CLINICAL_DATA"
+    },
+    {
+      "id": "EVID-CARE-002",
+      "source": "Digital Health Consumer Sentiment & Reddit r/Cholesterol Review Mining (2,200 verified patient discussions)",
+      "finding": "Primary patient frustration with traditional cardiology is 3-6 month appointment wait times and dismissive primary care responses to borderline lipid panels (58% of negative comments).",
+      "type": "QUALITATIVE_PATIENT_MINING"
+    },
+    {
+      "id": "EVID-CARE-003",
+      "source": "Healthcare D2C Telehealth Paid Acquisition Benchmark Q4 2025",
+      "finding": "Regulated health subscription customer acquisition costs (CAC) range between $110-$165 on paid search and compliant paid social, requiring trust-first medical authority framing and transparent pricing to convert high-intent cohorts.",
+      "type": "EMPIRICAL_BENCHMARK"
+    },
+    {
+      "id": "EVID-CARE-004",
+      "source": "Employer Health Plan & Benefits Broker Survey 2025",
+      "finding": "Mid-sized self-insured employers (250-2,500 employees) seek preventive cardiology benefits to reduce high-cost catastrophic cardiovascular claims, offering potential CAC-neutral distribution.",
+      "type": "CHANNEL_OBSERVATION"
+    }
+  ]
+}
+
+BUSINESS OBJECTIVE & CONSTRAINTS:
+{
+  "campaign_id": "CAMP-2026-CARDIOVITAL-GTM",
+  "commercial_goal": "Acquire 3,500 active paying telehealth members within 120 days at blended CAC <= $135.00, achieving member onboarding completion rate >= 85% and maintaining 6-month retention >= 75%.",
+  "primary_kpi": "Active Paying Memberships Activated (Target: 3,500 members)",
+  "secondary_kpis": [
+    "Blended Customer Acquisition Cost (Target: <= $135.00)",
+    "At-Home Biomarker Kit Return & Processing Rate (Target: >= 90% within 14 days)",
+    "Member Clinical Consultation Completion Rate (Target: >= 85%)",
+    "HSA/FSA Payment Utilization Rate (Target: >= 40%)"
+  ],
+  "guardrails": [
+    "Paid CAC ceiling of $160.00 across all paid acquisition channels",
+    "100% adherence to FDA, FTC, and HIPAA healthcare marketing compliance rules (zero cure promises)",
+    "Clinical capacity ceiling of 40 new patient intakes per cardiologist per week"
+  ],
+  "budget_allocation_total_usd": 450000.0
+}
+
+PROHIBITED CLAIMS:
+- 100% cure, reversal, or immunity guarantees for cardiovascular disease
+- Advising patients to stop existing prescription statins without physician order
+- Claiming FDA-cleared status for general software/platform algorithms
+- Fabricated patient testimonials without HIPAA authorization
+
+[FROZEN 14-DIMENSION RUBRIC]
+- **1. Research Quality** (Weight: 0.08): Depth of technical problem framing, consumer friction analysis, and market reality synthesis.
+- **2. Evidence Discipline** (Weight: 0.08): Strict distinction between verified facts vs unverified claims; zero hallucinated statistics.
+- **3. Segmentation Quality** (Weight: 0.08): Actionability, consumer demographic/behavioral clarity, and prioritization of beachhead persona.
+- **4. Positioning Quality** (Weight: 0.08): Technical differentiation and value proposition sharpness.
+- **5. Channel Strategy** (Weight: 0.07): Realism of acquisition channel mix and clear deferred channels.
+- **6. Creative Quality** (Weight: 0.07): Originality and resonance of concept territories.
+- **7. Copy / Script Executability** (Weight: 0.07): Production readiness of short-form ad copy and video scripts.
+- **8. Performance Funnel & Metrics** (Weight: 0.07): Clarity of full-funnel conversion benchmarks, CAC payback, and KPIs.
+- **9. Experimentation Rigor** (Weight: 0.07): Scientific structure of hypotheses, sample sizing, and testable A/B designs.
+- **10. Attribution / Tracking** (Weight: 0.07): Multi-touch attribution, event taxonomy, and product telemetry tracking.
+- **11. Claim Safety / Compliance** (Weight: 0.08): Absolute zero prohibited claims (no medical cures, no ungrounded guarantees).
+- **12. Governance / Human Approval** (Weight: 0.07): Clarity of Go/Test/Hold/Defer decisions, risk mitigation, and human approval gates.
+- **13. Internal Consistency / Lineage** (Weight: 0.07): End-to-end coherence between research, creative copy, and measurement KPIs.
+- **14. Completeness** (Weight: 0.04): Coverage of the 28-deliverable GTM proposal without ungrounded filler.
+
+[ANONYMOUS CANDIDATE X PROPOSAL]
+## EXECUTIVE SUMMARY
+CardioVital 360 (PROD_CARDIOVITAL_CARE), operating under the brand CardioVital Health (BRAND_CARDIOVITAL_HEALTH), is a disruptive, subscription-based ($149.00/month) preventive cardiology and metabolic telehealth platform. By integrating advanced at-home biomarker testing (ApoB, Lp(a)), continuous FDA-cleared biometric monitoring, and rapid asynchronous clinical reviews by US board-certified specialists within 24 hours, CardioVital 360 bypasses traditional 3-to-6 month clinical bottlenecks. Supported by robust unit economicsâincluding a 68% gross margin and an 11.2-month pilot cohort retention benchmark (yielding a $1,668.80 Gross LTV)âthis Go-To-Market strategy establishes a highly scalable, HIPAA-compliant, and SOC 2 Type II certified acquisition engine designed to maintain an LTV-to-CAC ratio greater than 3:1.
+
+## RESEARCH FINDINGS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## KNOWN FACTS
+["Provides asynchronous clinical review by US board-certified cardiologists and lipidologists within 24 hours of biomarker upload.", "Includes at-home advanced lipid & ApoB / Lp(a) blood biomarker test kit processed by CLIA-certified / CAP-accredited partner laboratories.", "Integrates continuous biometrics from FDA-cleared wearable medical sensors (ECG, photoplethysmography, continuous glucose monitors).", "HIPAA-compliant, SOC 2 Type II certified platform with end-to-end encrypted medical record storage.", "Monthly direct subscription is $149.00/month (eligible for HSA/FSA reimbursement; insurance super-bills provided for out-of-network claims).", "Customer lifetime retention benchmark in pilot cohort is 11.2 months with 68% gross margin after clinical delivery costs.", "Physician consultation is required before any prescription lipid-lowering therapy or clinical protocol modification....[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## OBSERVATIONS
+Based on the verified product facts and the provided evidence bundle, the following market and operational realities have been established:
+
+*   **Diagnostic Gaps in Standard Care:** Cardiovascular disease is the leading cause of mortality in North America. However, standard annual physicals omit advanced atherogenic particle metrics (ApoB, Lp(a)) in 78% of asymptomatic adults aged 35–55 [EVID-CARE-001].
+*   **Traditional Healthcare Bottlenecks:** Patients face primary frustrations with traditional cardiology, specifically 3–6 month appointment wait times and dismissive primary care responses to borderline lipid panels (accounting for 58% of negative patient discussions analyzed) [EVID-CARE-002].
+*   **High Paid Acquisition Costs:** The benchmark customer acquisition cost (CAC) for regulated direct-to-consumer (D2C) health subscriptions ranges between $110 and $165 on paid search and com...[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## INFERENCES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HYPOTHESES
+The following hypotheses represent strategic opportunities or risks that require further empirical testing and validation:
+
+*   **Hypothesis 1 (B2B Distribution Efficiency):** Partnering with mid-sized self-insured employers (250–2,500 employees) as a preventive cardiology benefit will result in a lower blended CAC (approaching $0) and higher average customer lifetime retention compared to direct-to-consumer paid acquisition channels [Based on EVID-CARE-004 & Product Facts].
+*   **Hypothesis 2 (Trust-First Ad Creative Impact):** Utilizing "trust-first medical authority framing" (emphasizing US board-certified cardiologists, CLIA/CAP labs, and SOC 2 Type II certification) in paid search and social campaigns will compress CAC to the lower bound ($110) of the Q4 2025 benchmark [Based on EVID-CARE-003 & Product Facts].
+*   **Hypothesis 3 (Wearable Integration & Retention):** Active integrati...[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## UNKNOWNS
+The following hypotheses represent strategic opportunities or risks that require further empirical testing and validation:
+
+*   **Hypothesis 1 (B2B Distribution Efficiency):** Partnering with mid-sized self-insured employers (250–2,500 employees) as a preventive cardiology benefit will result in a lower blended CAC (approaching $0) and higher average customer lifetime retention compared to direct-to-consumer paid acquisition channels [Based on EVID-CARE-004 & Product Facts].
+*   **Hypothesis 2 (Trust-First Ad Creative Impact):** Utilizing "trust-first medical authority framing" (emphasizing US board-certified cardiologists, CLIA/CAP labs, and SOC 2 Type II certification) in paid search and social campaigns will compress CAC to the lower bound ($110) of the Q4 2025 benchmark [Based on EVID-CARE-003 & Product Facts].
+*   **Hypothesis 3 (Wearable Integration & Retention):** Active integrati...[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## CUSTOMER SEGMENTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## TOP PRIORITY SEGMENT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## POSITIONING
+### Brand Positioning Statement
+> **For proactive health optimizers and individuals with a family history of cardiovascular disease who are underserved by standard annual physicals and frustrated by months-long specialist wait times, CardioVital 360 is the asynchronous preventive cardiology platform that delivers rapid, expert clinical insights. Unlike traditional reactive medicine, we combine advanced at-home biomarker testing, continuous FDA-cleared biometric tracking, and 24-hour clinical reviews by US board-certified cardiologists and lipidologists to stop cardiovascular disease before it starts.**
+
+## VALUE PROPOSITION
+---
+
+## CHANNEL PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## DEFERRED CHANNELS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## WHAT NOT TO DO
+*   **Mandatory On-Screen Text (Super):** The disclaimer *"Physician consultation is required before any prescription lipid-lowering therapy or clinical protocol modification"* must remain visible on screen for at least 5 seconds during any video asset, or be clearly displayed in the final frame.
+*   **Lab Claims:** Always specify that the at-home kits are processed by *"CLIA-certified / CAP-accredited partner laboratories."* Do not claim CardioVital owns the laboratories.
+*   **Wearable Claims:** Always use the phrase *"integrates continuous biometrics from FDA-cleared wearable medical sensors."* Do not claim that CardioVital manufactures the sensors or that the platform itself is an FDA-cleared medical device.
+
+## CREATIVE TERRITORIES
+### Territory 1: "The Precision Gap" (Data-Driven / Proactive)
+*   **Core Concept:** Standard lipid panels (total cholesterol, LDL-C) often miss critical cardiovascular risks. This territory focuses on the invisible metrics—specifically ApoB and Lp(a)—and bridges the gap between basic tracking and clinical-grade, proactive cardiovascular optimization.
+*   **Visual Style:** Clean, high-tech, data-rich. Split screens showing standard medical charts vs. advanced biomarker dashboards. Sleek UI mockups of the CardioVital platform.
+*   **Tone:** Authoritative, objective, empowering, and scientific.
+
+## SELECTED CREATIVE TERRITORY
+### Lead Territory: **Territory 1 & 2 Hybrid ("The Advanced Precision Gap")**
+*   **Justification:** The primary barrier for proactive health optimizers is twofold: they suspect their standard annual physical isn't deep enough, and they face massive friction trying to get advanced testing or specialist attention on their own. By leading with the **Advanced Precision Gap**, we immediately agitate the limitation of standard medicine (missing ApoB and Lp(a)) and instantly solve it with **The Specialist Shortcut** (at-home testing + 24-hour asynchronous cardiologist review). 
+*   **Financial Alignment:** Highlighting the $149/month subscription alongside HSA/FSA eligibility directly addresses the premium value proposition, justifying the cost by comparing it to the out-of-pocket expense of independent specialist visits and advanced lab panels.
+
+---
+
+## ANGLES
+### Angle A: "Control Over the Unseen" (Peace of Mind)
+*   **Emotional Hook:** Eliminating the quiet anxiety of hereditary heart risks. Many proactive adults have a family history of cardiovascular issues but are told "your numbers look fine" by general practitioners using outdated panels. This angle taps into the relief of finally seeing the complete picture and having a board-certified specialist validate and guide your strategy.
+
+## HOOKS
+1.  *“Your standard cholesterol test is missing half the picture. Here’s what cardiologists actually look at.”*
+2.  *“Why wait 6 months for a cardiologist when you can get a clinical review in 24 hours?”*
+3.  *“If you're tracking your steps but not your ApoB, you're optimizing the wrong metrics.”*
+4.  *“The two heart health markers your doctor probably forgot to order at your last physical.”*
+5.  *“Is your wearable data just sitting there? Here’s how to turn it into a clinical-grade heart plan.”*
+
+---
+
+## SHORT FORM COPY
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## VIDEO SCRIPT
+*   **Format:** 9:16 Vertical Video (TikTok, Instagram Reels, YouTube Shorts)
+*   **Style:** High-energy, educational, split-screen UGC and product UI b-roll.
+*   **Compliance Note:** All claims are strictly grounded in verified product facts. Required medical disclaimers are hardcoded on-screen.
+
+| Time | Visual Cues | Audio Cues (Voiceover / SFX) | Text Overlay / Captions |
+| :--- | :--- | :--- | :--- |
+| **0:00 - 0:08** | **Visual:** Creator (30s-40s, health-conscious) looking directly at the camera, holding a standard doctor's paper lab report, then tossing it aside. Transition to unboxing the sleek CardioVital 360 box. | **Voiceover (VO):** "If you’re still relying on a basic cholesterol test to check your heart, you’re missing the most important metrics." | *Your standard cholesterol test is missing the big picture.* |
+| **0:08 - 0:18** | **Visual:** Close-up of the creator opening...[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## MEASUREMENT FRAMEWORK
+The following framework maps the customer journey for CardioVital 360 (`PROD_CARDIOVITAL_CARE`), establishing clear performance boundaries and aligning marketing activities with the core unit economics ($149.00/month subscription, 11.2-month retention benchmark, and 68% gross margin).
+
+| Funnel Stage | Primary KPI | Leading Diagnostic Indicators | Guardrail Ceiling Metrics | Business Outcome |
+| :--- | :--- | :--- | :--- | :--- |
+| **Top of Funnel (Awareness & Traffic)** | **Outbound CTR** (Target: >1.8%) | • Hook Rate (3s video view / impression)<br>• Cost per Click (CPC)<br>• Ad Relevance Score | **CPM Ceiling:** $45.00<br>*(To prevent over-bidding on broad audiences)* | Brand Share of Voice & Qualified Traffic Acquisition |
+| **Middle of Funnel (Consideration & Intent)** | **Lead Capture Rate** (Target: >12% from Quiz/LP) | • Quiz Completion Rate<br>• HSA/FSA Eligibility Checker Usage...[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## EXPERIMENTS
+To systematically optimize the CardioVital 360 (`PROD_CARDIOVITAL_CARE`) acquisition funnel while maintaining strict adherence to unit economics and clinical boundaries, the following experimentation backlog has been established. Each experiment is designed to run independently with rigorous statistical controls.
+
+---
+
+## ATTRIBUTION APPROACH
+#### 2.1 Event Taxonomy & Schema
+
+To maintain strict compliance with HIPAA and SOC 2 Type II standards, no Protected Health Information (PHI) or specific biomarker values (e.g., actual ApoB/Lp(a) levels) are passed to third-party marketing pixels. Only operational and transactional events are tracked.
+
+| Event Name | Triggering Action | Payload Parameters (JSON Schema) | Target Platform |
+| :--- | :--- | :--- | :--- |
+| `lead_quiz_completed` | User completes the online cardiovascular risk assessment quiz. | `{ "quiz_version": "precision_gap_v1", "hsa_fsa_eligible": true }` | Meta CAPI, Google Analytics 4, Segment |
+| `checkout_initiated` | User enters the checkout flow for the $149.00/month subscription. | `{ "product_id": "PROD_CARDIOVITAL_CARE", "value": 149.00, "currency": "USD" }` | Meta CAPI, Google Analytics 4, Pinterest Tag |
+| `subscription_purchased` | Payment processed successf...[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## RISKS
+*   **Target Audience:** US Adults aged 35–65 with self-declared interests in longevity, preventive medicine, biohacking, or a family history of cardiovascular disease (Meta Ads, broad-interest targeting).
+*   **Control/Comparison:** 
+    *   *Control (Standard Tracking):* Clean, lifestyle-oriented video ad showing a user wearing a smartwatch and receiving a general heart health report. Copy: *"Track your heart health from home with CardioVital 360. Get clinical insights and cardiologist reviews."*
+*   **Primary Metric:** Outbound Click-Through Rate (CTR) (Target: >1.8%).
+*   **Guardrail Metric:** CPM Ceiling ($45.00) and Hook Rate (3s video view / impression >30%).
+*   **Minimum Evidence Requirement:** Minimum sample size of 18,000 impressions per variant to achieve 90% statistical power at a 95% confidence level (p < 0.05) to detect a 15% relative lift in CTR.
+*   **Explicit Stopping C...[TRUNCATED FOR COMPACT JUDGE PACKET]
+
+## TOP 3 PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## GO TEST HOLD DEFER DECISIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HUMAN APPROVAL REQUIREMENTS
+2.  **Legal & Regulatory Sign-off:** Legal counsel must approve all state telemedicine disclaimers and HSA/FSA-related marketing language.
+3.  **Growth Sign-off:** The **Head of Growth** must personally approve any paid acquisition budget allocations exceeding **$25,000**.
+
+## NEXT ACTIONS
+*   *WIN (CTR >1.8% & p < 0.05):* Allocate 70% of the ToF ad budget to "The Precision Gap" creative territory. Roll out matching ApoB/Lp(a) educational copy to the primary landing page hero section.
+    *   *LOSS (CTR <= Control or p >= 0.05 with negative trend):* Pause Variant A. Analyze the 3-second hook rate vs. hold rate. If the hook rate was high but CTR was low, redesign the call-to-action (CTA) copy; if the hook rate was low, redesign the first 3 seconds of the visual asset.
+    *   *INCONCLUSIVE (p >= 0.05 after reaching minimum sample size):* Run for an additional 5 days to accumulate more data. If still inconclusive, deprecate Variant A and test a new visual execution of "The Precision Gap" concept.
+
+---
+
+## BENCHMARK ID
+BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING
+
+## RUN ID
+DEFAULT
+
+## RUN FINGERPRINT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CONDITION ID
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SOURCE RAW HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CANONICAL HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXECUTION GENERATION
+phase4_3_v2
+
+## CANDIDATE SCHEMA VERSION
+v2
+
+## CONTENT PATCH COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SEMANTIC REWRITE COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATED AT
+2026-08-19T15:48:33.627167+00:00
+
+
+[INSTRUCTIONS]
+Score Candidate X independently on each of the 14 dimensions on a 0.0 to 10.0 scale.
+Keep rationales concise (1 sentence per dimension).
+Respond ONLY with a valid JSON object:
+```json
+{
+  "candidate_scores": {
+    "research_quality": {"score": 8.0, "rationale": "..."},
+    "evidence_discipline": {"score": 8.0, "rationale": "..."},
+    "segmentation_quality": {"score": 8.0, "rationale": "..."},
+    "positioning_quality": {"score": 8.0, "rationale": "..."},
+    "channel_strategy": {"score": 8.0, "rationale": "..."},
+    "creative_quality": {"score": 8.0, "rationale": "..."},
+    "copy_script_executability": {"score": 8.0, "rationale": "..."},
+    "performance_funnel_metrics": {"score": 8.0, "rationale": "..."},
+    "experimentation_rigor": {"score": 8.0, "rationale": "..."},
+    "attribution_tracking": {"score": 8.0, "rationale": "..."},
+    "claim_safety_compliance": {"score": 8.0, "rationale": "..."},
+    "governance_human_approval": {"score": 8.0, "rationale": "..."},
+    "internal_consistency_lineage": {"score": 8.0, "rationale": "..."},
+    "completeness": {"score": 8.0, "rationale": "..."}
+  }
+}
+```

@@ -1,0 +1,36 @@
+{
+  "manifest_id": "SHARED_EVIDENCE_MANIFEST_GAN65_001",
+  "evidence_bundle_source": "evaluations/live/five_agent_e2e_gan65/research/evidence_bundle.json",
+  "evidence_items": [
+    {
+      "evidence_id": "EVID-GAN65-01",
+      "source_family": "TECHNICAL_DOCUMENTATION",
+      "url": "https://www.ti.com/power-management/gan/overview.html",
+      "core_fact": "GaN power semiconductors enable higher power efficiency, higher switching frequencies, and significantly smaller form factors compared to legacy silicon MOSFETs."
+    },
+    {
+      "evidence_id": "EVID-GAN65-02",
+      "source_family": "TECHNICAL_DOCUMENTATION",
+      "url": "https://www.usb.org/usb-charger-pd",
+      "core_fact": "65W USB-C Power Delivery can charge typical 13-inch and 14-inch ultrabooks and fast-charging smartphones through universal Type-C negotiation."
+    },
+    {
+      "evidence_id": "EVID-GAN65-03",
+      "source_family": "PUBLIC_DISCUSSION",
+      "url": "https://tinhte.vn/thread/trai-nghiem-sac-gan-65w-cho-laptop-va-dien-thoai.3748291/",
+      "core_fact": "Vietnamese office workers and tech commuters express frustration carrying heavy OEM brick chargers and worry about thermal heat dissipation and wall socket plug stability."
+    },
+    {
+      "evidence_id": "EVID-GAN65-04",
+      "source_family": "SEARCH_DISCOVERY",
+      "url": "https://shopee.vn/search?keyword=cu%20sac%20gan%2065w",
+      "core_fact": "Shopee Vietnam search discovery reveals competitor brands (Baseus, Ugreen, Anker) priced between 300,000 VND and 700,000 VND, with customers valuing port versatility, fast laptop handshake, and compact travel size."
+    },
+    {
+      "evidence_id": "EVID-GAN65-05",
+      "source_family": "PUBLIC_DISCUSSION",
+      "url": "https://voz.vn/t/hoi-anh-em-dung-sac-gan-65w-hang-3rd-party-co-bi-nong-khong.892341/",
+      "core_fact": "Vietnamese tech forum users voice strong fear of cheap knockoffs causing voltage surges or frying expensive laptop motherboards, demanding clear safety and warranty."
+    }
+  ]
+}

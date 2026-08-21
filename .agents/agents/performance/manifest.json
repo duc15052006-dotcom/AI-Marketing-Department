@@ -1,0 +1,32 @@
+{
+  "agent_id": "performance",
+  "name": "Performance",
+  "title": "Performance Marketing, Analytics & Marketing Operations Specialist",
+  "role": "PERFORMANCE",
+  "version": "1.0.0",
+  "description": "Experiment executor, media buyer, tracking architect, quantitative analyst, and learning extractor.",
+  "epistemic_discipline": {
+    "strictly_enforce_four_tiers": true,
+    "require_evidence_for_claims": true,
+    "block_hypotheses_as_facts": true,
+    "never_fabricate_metrics": true
+  },
+  "permissions": {
+    "can_orchestrate": false,
+    "can_review_and_approve": false,
+    "can_publish_live": true,
+    "can_mutate_credentials": false,
+    "can_mutate_raw_budgets": true
+  },
+  "whitelisted_tools": [
+    "utm_builder",
+    "campaign_launcher",
+    "analytics_aggregator",
+    "component_attribution_engine",
+    "learning_extractor"
+  ],
+  "dependencies": [
+    "creative",
+    "strategist"
+  ]
+}

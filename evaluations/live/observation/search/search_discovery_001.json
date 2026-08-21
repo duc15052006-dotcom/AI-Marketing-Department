@@ -1,0 +1,80 @@
+{
+  "observation_id": "OBS-a284bb788559",
+  "capability": "search_web",
+  "source_platform": "search_engine",
+  "source_type": "search_discovery",
+  "source_url_or_id": "search://search_wikipedia_opensearch?q=Marketing%20strategy",
+  "collected_at": "2026-08-16T16:09:29.948430+00:00",
+  "observed_at": null,
+  "backend_used": "search_wikipedia_opensearch",
+  "collection_method": "SEARCH_ENGINE_DISCOVERY",
+  "raw_reference": null,
+  "normalized_data": {
+    "search_results": {
+      "query": "Marketing strategy",
+      "executed_query": "Marketing strategy",
+      "backend": "search_wikipedia_opensearch",
+      "backend_provenance": "FIRST_PARTY_OFFICIAL_API",
+      "result_count": 2,
+      "results": [
+        {
+          "rank": 1,
+          "title": "Marketing strategy",
+          "url": "https://en.wikipedia.org/wiki/Marketing_strategy",
+          "display_url": "en.wikipedia.org/wiki/Marketing_strategy",
+          "snippet": "",
+          "published_at": null,
+          "source_domain": "en.wikipedia.org",
+          "result_type": "encyclopedic_article"
+        },
+        {
+          "rank": 2,
+          "title": "Marketing strategies for product software",
+          "url": "https://en.wikipedia.org/wiki/Marketing_strategies_for_product_software",
+          "display_url": "en.wikipedia.org/wiki/Marketing_strategies_for_product_software",
+          "snippet": "",
+          "published_at": null,
+          "source_domain": "en.wikipedia.org",
+          "result_type": "encyclopedic_article"
+        }
+      ],
+      "pagination_state": null,
+      "collection_limit": 5,
+      "has_more": false,
+      "collected_at": "2026-08-16T16:09:29.948262+00:00"
+    },
+    "sampling_context": {
+      "original_query": "Marketing strategy",
+      "executed_query": "Marketing strategy",
+      "language": "en",
+      "region": null,
+      "time_range": null,
+      "safe_search": true,
+      "collection_limit": 5,
+      "result_count": 2,
+      "backend_used": "search_wikipedia_opensearch",
+      "backend_provenance": "FIRST_PARTY_OFFICIAL_API",
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "collected_at": "2026-08-16T16:09:29.948360+00:00"
+    },
+    "telemetry": {
+      "total_latency_ms": 589.74
+    }
+  },
+  "evidence_class": "OBSERVATION",
+  "freshness_days": null,
+  "extraction_confidence": "HIGH",
+  "source_credibility": "UNKNOWN",
+  "content_truth_status": "UNVERIFIED",
+  "confidence": "HIGH",
+  "limitations": [
+    "Web discovery via search_wikipedia_opensearch (Provenance: FIRST_PARTY_OFFICIAL_API)",
+    "Search rankings do not indicate source credibility, truth, or real-world consumer demand",
+    "Search snippets may be truncated, stale, or contextually incomplete; substantive evidence requires separate read_page()",
+    "Discovered URLs are not automatically fetched by search_web"
+  ],
+  "product_id": "PROD_TEST_SEARCH_01",
+  "brand_id": "BRAND_TEST",
+  "content_trust": "UNTRUSTED_EXTERNAL"
+}

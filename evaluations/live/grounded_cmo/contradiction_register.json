@@ -1,0 +1,12 @@
+[
+  {
+    "contradiction_id": "CONTRA-001",
+    "topic": "Search Channel Demand Viability",
+    "perspective_a": "Search discovery identified developer queries, indicating strong commercial demand (EVID-SRCH-132D6868).",
+    "perspective_b": "Search query presence alone does not establish demand volume or install conversion rates.",
+    "resolution": "LIMITED_TEST (PEXP-003)",
+    "resolution_rationale": "Authorize controlled 21-day technical keyword intent validation test without committing ongoing channel budget.",
+    "status": "RESOLVED_AS_EXPERIMENT",
+    "owner": "PERFORMANCE"
+  }
+]

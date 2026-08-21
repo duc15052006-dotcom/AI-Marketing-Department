@@ -1,0 +1,28 @@
+{
+  "budget_status": "UNKNOWN (NOT_CONFIGURED)",
+  "monetary_budget_usd": "NOT_CONFIGURED",
+  "allocation_principles": [
+    "Do NOT allocate arbitrary monetary dollar amounts when total budget is UNKNOWN.",
+    "Percentages represent ILLUSTRATIVE_TEST_ALLOCATION for planning structure, NOT empirical optima.",
+    "Prioritize priority tiers (Core Developer > Demonstration > Search Hypothesis) over fixed dollar splits."
+  ],
+  "illustrative_experimental_allocation": {
+    "tier_1_core_developer_channels": "50% of allocated test resources (Developer Communities & Docs)",
+    "tier_2_demonstration_channels": "30% of allocated test resources (Video demonstrations & technical social)",
+    "tier_3_search_hypothesis_test": "20% of allocated test resources (Controlled keyword intent testing)",
+    "deferred_channels": "0% (Strictly blocked from spend)"
+  },
+  "stop_loss_policy": {
+    "stop_loss_value": "NOT_CONFIGURED",
+    "recommendation": "CMO and business stakeholders must define maximum allowable test cost per experimental cohort before paid execution."
+  },
+  "allocation_classification": "ILLUSTRATIVE_TEST_ALLOCATION",
+  "empirical_optimality": "UNKNOWN",
+  "requires_business_budget_configuration": true,
+  "priority_tiers": {
+    "tier_1_core_developer_channels": "Core focus: Developer Communities & Technical Docs",
+    "tier_2_demonstration_channels": "Secondary focus: Video Demonstrations & Technical Social",
+    "tier_3_search_hypothesis_test": "Controlled experiment: Technical Search Keyword Intent Validation",
+    "deferred_channels": "Blocked from spend: Broad Consumer Paid & Enterprise Outbound"
+  }
+}

@@ -1,0 +1,101 @@
+[
+  {
+    "metric_id": "METRIC-DIST-01",
+    "category": "DISTRIBUTION",
+    "name": "Impressions",
+    "formula": "Count of ad or content exposures loaded",
+    "numerator": "Total content exposures",
+    "denominator": "N/A (Count)",
+    "source": "Platform Delivery API",
+    "decision_use": "Verify delivery scale and pacing across placements.",
+    "limitations": "Does not measure active viewability or developer attention."
+  },
+  {
+    "metric_id": "METRIC-ATTN-01",
+    "category": "ATTENTION",
+    "name": "3-Second Hook Retention Rate",
+    "formula": "3-second video views / Total video impressions",
+    "numerator": "Video views >= 3.0 seconds",
+    "denominator": "Total video impressions",
+    "source": "Video Player Telemetry",
+    "decision_use": "Evaluate hook resonance between friction-focused (VAR-A) and API-focused (VAR-B) hooks.",
+    "limitations": "Subject to autoplay mechanics on certain developer platforms."
+  },
+  {
+    "metric_id": "METRIC-ENG-01",
+    "category": "ENGAGEMENT",
+    "name": "Content Engagement Rate",
+    "formula": "(Comments + Shares + Bookmarks) / Total Impressions",
+    "numerator": "Total active social interactions",
+    "denominator": "Total Impressions",
+    "source": "Community/Platform API",
+    "decision_use": "Assess peer conversation depth in technical forums.",
+    "limitations": "Lurker behavior in technical communities is common; does not capture silent readers."
+  },
+  {
+    "metric_id": "METRIC-TRAF-01",
+    "category": "TRAFFIC",
+    "name": "Click-Through Rate (CTR)",
+    "formula": "Clicks / Impressions",
+    "numerator": "Total outbound link clicks",
+    "denominator": "Total Impressions (NOT Reach)",
+    "source": "Ad/Channel Delivery API",
+    "decision_use": "Diagnose creative message resonance and initial developer curiosity.",
+    "limitations": "High CTR can occur with clickbait; must be validated against downstream documentation depth."
+  },
+  {
+    "metric_id": "METRIC-INT-01",
+    "category": "INTENT",
+    "name": "Documentation Engagement Depth",
+    "formula": "Visits reading >= 2 docs sections / Total Landing Visits",
+    "numerator": "Sessions reading >= 2 technical docs sections",
+    "denominator": "Total Landing Page Sessions",
+    "source": "First-Party Web Analytics",
+    "decision_use": "Validate technical intent and qualification of arriving traffic.",
+    "limitations": "Depends on local cookie/session tracking accuracy."
+  },
+  {
+    "metric_id": "METRIC-CONV-01",
+    "category": "CONVERSION",
+    "name": "CLI Download Initiation Rate",
+    "formula": "OS binary download clicks / Total Unique Landing Visitors",
+    "numerator": "Clicks on macOS, Linux, or Windows download buttons",
+    "denominator": "Unique Landing Page Visitors",
+    "source": "First-Party Web Analytics Event Log",
+    "decision_use": "Primary indicator of developer intent to install runtime.",
+    "limitations": "Clicking download does not guarantee binary execution on local machine."
+  },
+  {
+    "metric_id": "METRIC-ECON-01",
+    "category": "ECONOMICS",
+    "name": "Cost Per Initiated Download (CPID)",
+    "formula": "Attributable Channel Media Spend / Total Download Clicks",
+    "numerator": "Total Media Spend ($)",
+    "denominator": "Total Download Clicks",
+    "source": "Channel Spend Logs + First-Party Event Logs",
+    "decision_use": "Assess acquisition efficiency across experimental test channels.",
+    "limitations": "Current value is TO_BE_ESTABLISHED; meaningless without host budget and install baseline."
+  },
+  {
+    "metric_id": "METRIC-RET-01",
+    "category": "RETENTION",
+    "name": "Local API Session Frequency",
+    "formula": "Active days with localhost:11434 calls / 30-day cohort window",
+    "numerator": "Days with local API execution",
+    "denominator": "30 days",
+    "source": "Opt-in Developer Telemetry (CURRENTLY_MISSING)",
+    "decision_use": "Assess long-term runtime stickiness for script automation.",
+    "limitations": "Requires opt-in instrumentation; PRIVATE_TELEMETRY_DATA is currently MISSING."
+  },
+  {
+    "metric_id": "METRIC-DEM-01",
+    "category": "DEMAND_CREATION",
+    "name": "Organic Technical Search Volume Index",
+    "formula": "Weekly impressions for 'ollama run' and 'localhost 11434' queries",
+    "numerator": "Search query impressions",
+    "denominator": "Baseline search query index",
+    "source": "Search Console / Third-Party Index",
+    "decision_use": "Measure brand/runtime awareness expansion in developer ecosystem.",
+    "limitations": "Search engine algorithmic updates and noisy third-party sampling."
+  }
+]

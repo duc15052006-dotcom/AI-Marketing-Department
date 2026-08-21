@@ -1,0 +1,26 @@
+{
+  "benchmark_phase": "3D.1.6",
+  "timestamp": "2026-08-16T17:11:40.356494+00:00",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "provider": "gemini",
+  "model_used": "gemini-flash-latest",
+  "model_call_count": 1,
+  "grounding_context_id": "GCTX-072AFEA5",
+  "admitted_sources_count": 5,
+  "latency_ms": 8454.155599989463,
+  "usage": {
+    "prompt_tokens": 17514,
+    "completion_tokens": 1549,
+    "total_tokens": 19485
+  },
+  "grounded_benchmark_decision": "PASS",
+  "source_family_coverage": "PASS",
+  "video_substantive_coverage": "PARTIAL",
+  "research_dimension_coverage": "PASS",
+  "market_positioning_coverage": "SUPPORTED",
+  "developer_reception_coverage": "PARTIAL",
+  "operational_friction_coverage": "SUPPORTED",
+  "semantic_coherence": "PASS",
+  "grounded_benchmark_ready": "YES"
+}

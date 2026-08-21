@@ -1,0 +1,74 @@
+{
+  "benchmark_phase": "3D.4.1",
+  "timestamp": "2026-08-17T04:27:25.307929+00:00",
+  "performance_mode": "PLANNING_ONLY",
+  "raw_eval_decision": "PARTIAL",
+  "corrected_eval_decision": "PASS",
+  "performance_planning_assumption_discipline": "PASS",
+  "performance_population_discipline": "PASS",
+  "performance_allocation_discipline": "PASS",
+  "performance_duration_discipline": "PASS",
+  "performance_holdout_discipline": "PASS",
+  "performance_compliance_claim_discipline": "PASS",
+  "performance_to_cmo_handoff_ready": "YES",
+  "rules_enforced": [
+    "UNSUPPORTED_POPULATION_ASSUMPTION",
+    "UNSUPPORTED_ALLOCATION_OPTIMALITY",
+    "UNSUPPORTED_FIXED_TEST_DURATION",
+    "UNSUPPORTED_HOLDOUT_ALLOCATION",
+    "UNVERIFIED_COMPLIANCE_CLAIM"
+  ],
+  "raw_issues_caught_count": 6,
+  "raw_issues_details": [
+    {
+      "file": "channel_priority_plan.json",
+      "rule": "UNSUPPORTED_POPULATION_ASSUMPTION",
+      "matched_pattern": "lack gpu hardware fit",
+      "description": "Asserts unproven population hardware distribution rather than evidence-limited audience fit."
+    },
+    {
+      "file": "experiment_plan.json",
+      "rule": "UNSUPPORTED_FIXED_TEST_DURATION",
+      "matched_pattern": "fixed calendar days",
+      "description": "Asserts fixed calendar duration without required traffic volume/MDE statistical derivation."
+    },
+    {
+      "file": "incrementality_plan.json",
+      "rule": "UNSUPPORTED_HOLDOUT_ALLOCATION",
+      "matched_pattern": "10-20% holdout",
+      "description": "Asserts fixed holdout range as required without sample/contamination derivation."
+    },
+    {
+      "file": "tracking_plan.json",
+      "rule": "UNVERIFIED_COMPLIANCE_CLAIM",
+      "matched_pattern": "gdpr/ccpa compliant",
+      "description": "Infers formal legal compliance from session/anonymization design without legal review."
+    },
+    {
+      "file": "cmo_handoff_candidate.json",
+      "rule": "UNSUPPORTED_POPULATION_ASSUMPTION",
+      "matched_pattern": "lack gpu hardware fit",
+      "description": "Asserts unproven population hardware distribution rather than evidence-limited audience fit."
+    },
+    {
+      "file": "cmo_handoff_candidate.json",
+      "rule": "UNSUPPORTED_FIXED_TEST_DURATION",
+      "matched_pattern": "fixed calendar days",
+      "description": "Asserts fixed calendar duration without required traffic volume/MDE statistical derivation."
+    }
+  ],
+  "post_patch_issues_count": 0,
+  "preserved_unknown_baselines": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ],
+  "preserved_unknown_economics": [
+    "CAC = UNKNOWN",
+    "LTV = UNKNOWN",
+    "ROAS = UNKNOWN",
+    "PAYBACK = UNKNOWN",
+    "BUDGET = NOT_CONFIGURED",
+    "STOP_LOSS_VALUE = NOT_CONFIGURED"
+  ]
+}

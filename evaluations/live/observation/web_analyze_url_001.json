@@ -1,0 +1,57 @@
+{
+  "observation_id": "OBS-1560938472ae",
+  "capability": "analyze_url",
+  "source_platform": "web",
+  "source_type": "landing_page_metadata",
+  "source_url_or_id": "https://en.wikipedia.org/wiki/Marketing_strategy",
+  "collected_at": "2026-08-16T15:36:14.453084+00:00",
+  "observed_at": null,
+  "backend_used": "http_static",
+  "collection_method": "DIRECT_HTTP",
+  "raw_reference": null,
+  "normalized_data": {
+    "url": "https://en.wikipedia.org/wiki/Marketing_strategy",
+    "title": "Marketing strategy - Wikipedia",
+    "canonical_url": "https://en.wikipedia.org/wiki/Marketing_strategy",
+    "meta_description": "",
+    "opengraph": {
+      "title": "Marketing strategy - Wikipedia",
+      "type": "website"
+    },
+    "twitter_card": {},
+    "json_ld": [],
+    "headings": [
+      {
+        "level": "h1",
+        "text": "Marketing strategy"
+      },
+      {
+        "level": "h2",
+        "text": "Contents"
+      }
+    ],
+    "main_text": "",
+    "text_length_chars": 0,
+    "raw_byte_count": 128450,
+    "http_status": 200,
+    "telemetry": {
+      "validation_latency_ms": 1.4,
+      "network_latency_ms": 530.2,
+      "parse_latency_ms": 27.06,
+      "total_latency_ms": 558.66
+    }
+  },
+  "evidence_class": "OBSERVATION",
+  "freshness_days": null,
+  "extraction_confidence": "HIGH",
+  "source_credibility": "UNKNOWN",
+  "content_truth_status": "UNVERIFIED",
+  "confidence": "HIGH",
+  "limitations": [
+    "Static HTML observation; client-side JavaScript execution not evaluated",
+    "Source credibility is UNKNOWN; external text asserts claims that remain UNVERIFIED"
+  ],
+  "product_id": "PROD_TEST_OBS_01",
+  "brand_id": "BRAND_TEST",
+  "content_trust": "UNTRUSTED_EXTERNAL"
+}

@@ -1,0 +1,65 @@
+{
+  "data_quality_checklist": [
+    {
+      "check_id": "DQ-01",
+      "name": "Missing Events",
+      "description": "Verify that all funnel stages fire tracking payloads without dropping events."
+    },
+    {
+      "check_id": "DQ-02",
+      "name": "Duplicate Events",
+      "description": "Ensure deduplication IDs prevent double-counting on page refresh or multi-click."
+    },
+    {
+      "check_id": "DQ-03",
+      "name": "Bot & Internal Traffic Filter",
+      "description": "Exclude automated scrapers, CI test runs, and internal team IP addresses."
+    },
+    {
+      "check_id": "DQ-04",
+      "name": "Attribution Window Consistency",
+      "description": "Standardize lookback windows (e.g. 7-day click, 0-day view) across all channels."
+    },
+    {
+      "check_id": "DQ-05",
+      "name": "Timezone Alignment",
+      "description": "Normalize all reporting timestamps to UTC to prevent date-boundary distortion."
+    },
+    {
+      "check_id": "DQ-06",
+      "name": "Currency Standardization",
+      "description": "Normalize all spend logs to USD at daily exchange rates."
+    },
+    {
+      "check_id": "DQ-07",
+      "name": "Event Definition Drift",
+      "description": "Maintain immutable event schemas to prevent breaking upstream reporting changes."
+    },
+    {
+      "check_id": "DQ-08",
+      "name": "Denominator Verification",
+      "description": "Audit formulas to ensure CTR = clicks/impressions and CVR = conversions/visitors."
+    },
+    {
+      "check_id": "DQ-09",
+      "name": "Identity Resolution Consistency",
+      "description": "Ensure anonymous session IDs do not fragment across subdomains."
+    },
+    {
+      "check_id": "DQ-10",
+      "name": "Late-Arriving Conversion Lag",
+      "description": "Apply maturity adjustments for conversions that occur days after initial impression."
+    },
+    {
+      "check_id": "DQ-11",
+      "name": "Sample Ratio Mismatch (SRM)",
+      "description": "Perform chi-square tests on A/B traffic splits to detect allocation bias."
+    },
+    {
+      "check_id": "DQ-12",
+      "name": "Tracking Outage Alerting",
+      "description": "Set automated alert triggers if event ingestion drops by >50% hour-over-hour."
+    }
+  ],
+  "data_reliability_gate": "Data reliability must be validated as PASS before calculating experiment results or triggering budget adjustments."
+}

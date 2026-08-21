@@ -1,0 +1,55 @@
+{
+  "registry_id": "INHERITED-CLAIM-CONSTRAINTS-V1",
+  "description": "Formal registry of claims and phrases rejected or qualified by upstream Intelligence, Strategy, Creative, and Performance stages. Downstream agents may NOT resurrect or strengthen these claims without new empirical evidence.",
+  "enforcement_rule": "DOWNSTREAM_CLAIM_RESURRECTION_STRICTLY_PROHIBITED",
+  "constraints": [
+    {
+      "term": "fastest / best",
+      "status": "REJECTED_UNSUPPORTED_SUPERLATIVE",
+      "allowed_alternative": "streamlined local runtime / single-command execution",
+      "evidence_reason": "No comparative benchmark data exists in EvidenceBundle."
+    },
+    {
+      "term": "friction-free",
+      "status": "REJECTED_UNSUPPORTED_ABSOLUTE",
+      "allowed_alternative": "streamlined local developer setup without manual CMake/CUDA toolchains",
+      "evidence_reason": "Hardware VRAM constraints introduce physical setup requirements."
+    },
+    {
+      "term": "zero data leakage / complete privacy",
+      "status": "QUALIFIED_AS_FIRST_PARTY_CLAIM",
+      "allowed_alternative": "designed for local offline execution with first-party privacy claims",
+      "evidence_reason": "First-party claim requires qualification; absolute impermeability is unverified."
+    },
+    {
+      "term": "air-gapped",
+      "status": "REJECTED_UNSUPPORTED_ISOLATION_CLAIM",
+      "allowed_alternative": "local/offline model execution",
+      "evidence_reason": "Local inference does not automatically prove physical air-gap certification."
+    },
+    {
+      "term": "infinite iteration",
+      "status": "REJECTED_UNSUPPORTED_ECONOMIC_ABSOLUTE",
+      "allowed_alternative": "local prompt iteration without per-request hosted API token charges",
+      "evidence_reason": "Electricity and hardware depreciation exist; only per-request hosted token fees are zero."
+    },
+    {
+      "term": "seamless / seamlessly",
+      "status": "REJECTED_UNPROVEN_QUALITY_ADJECTIVE",
+      "allowed_alternative": "local model switching workflow",
+      "evidence_reason": "Subjective quality adjective unsupported by empirical benchmark."
+    },
+    {
+      "term": "immediate conversion velocity",
+      "status": "REJECTED_UNSUPPORTED_CONVERSION_ASSERTION",
+      "allowed_alternative": "supports a testable developer onboarding/acquisition hypothesis",
+      "evidence_reason": "Conversion telemetry is UNKNOWN (TRANSACTION_DATA = MISSING)."
+    },
+    {
+      "term": "drop-in compatibility / drop-in integration / one-line SDK redirection",
+      "status": "REJECTED_UNSUPPORTED_PRODUCT_FEATURE",
+      "allowed_alternative": "localhost:11434 REST API integration",
+      "evidence_reason": "Specific drop-in 1-line SDK compatibility is not in current Evidence IDs."
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+[
+  {
+    "creative_claim_id": "CREATIVE-CLAIM-001",
+    "asset_id": "COPY-SF-01",
+    "claim_text": "Ollama runs open-weight models locally via CLI and background REST API service across macOS, Linux, and Windows.",
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+    "supported_by": [
+      "EVID-WEB-893338BD",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "grounding_status": "SUPPORTED",
+    "strategy_alignment": "Aligns with STRAT-001 and STRAT-003"
+  },
+  {
+    "creative_claim_id": "CREATIVE-CLAIM-002",
+    "asset_id": "COPY-SF-02",
+    "claim_text": "Ollama exposes a background REST API service running on localhost port 11434.",
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7"
+    ],
+    "grounding_status": "SUPPORTED",
+    "strategy_alignment": "Aligns with STRAT-003"
+  },
+  {
+    "creative_claim_id": "CREATIVE-CLAIM-003",
+    "asset_id": "COPY-SF-03",
+    "claim_text": "Quantized 7B models typically require ~4-5GB VRAM, while 14B models require ~8-10GB to prevent CPU fallback.",
+    "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ],
+    "grounding_status": "SUPPORTED",
+    "strategy_alignment": "Aligns with STRAT-004"
+  },
+  {
+    "creative_claim_id": "CREATIVE-CLAIM-004",
+    "asset_id": "COPY-HERO-01",
+    "claim_text": "First-party copy emphasizes running models offline on your machine with zero per-token cost.",
+    "claim_type": "FIRST_PARTY_CLAIM",
+    "supported_by": [
+      "EVID-WEB-893338BD"
+    ],
+    "grounding_status": "QUALIFIED",
+    "strategy_alignment": "Aligns with STRAT-005"
+  },
+  {
+    "creative_claim_id": "CREATIVE-CLAIM-005",
+    "asset_id": "SCRIPT-SF-01",
+    "claim_text": "Single command execution '$ ollama run llama3' initializes open-weight models locally.",
+    "claim_type": "STRATEGIC_INFERENCE",
+    "supported_by": [
+      "EVID-WEB-893338BD",
+      "EVID-FORUM-F119C750"
+    ],
+    "grounding_status": "SUPPORTED",
+    "strategy_alignment": "Aligns with STRAT-002"
+  }
+]

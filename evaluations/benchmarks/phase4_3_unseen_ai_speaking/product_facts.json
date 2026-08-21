@@ -1,0 +1,46 @@
+{
+  "product_id": "PROD_UNSEEN_AI_SPEAK_VN",
+  "market": "Vietnam",
+  "business_model": "Digital subscription application",
+  "distribution": "Digital app stores and web application",
+  "verified_product_facts": [
+    "The product provides AI-powered English conversation role-play.",
+    "Users can practice speaking through simulated everyday scenarios.",
+    "A transcript is generated after a completed speaking session.",
+    "The product provides a 15-minute daily practice mode.",
+    "The product is designed for individual self-directed practice.",
+    "Target launch market is Vietnam.",
+    "Distribution is digital."
+  ],
+  "unestablished_facts": [
+    "IELTS score improvement",
+    "Pronunciation accuracy percentage",
+    "CEFR advancement",
+    "Guaranteed fluency",
+    "Native-like accent improvement",
+    "Employment outcomes",
+    "Specific learning speed",
+    "Speech-recognition accuracy",
+    "Human teacher access",
+    "Certified curriculum",
+    "Free trial availability",
+    "Subscription price point",
+    "Refund policy",
+    "Customer retention baseline",
+    "Customer Acquisition Cost (CAC)",
+    "Customer Lifetime Value (LTV)",
+    "Target ROAS",
+    "Target CPA",
+    "Conversion rate baseline",
+    "Privacy certification",
+    "Institutional accreditation"
+  ],
+  "claim_boundary_rules": [
+    "CATEGORY_TECHNOLOGY_PROPERTY != OUR_PRODUCT_VERIFIED_PROPERTY",
+    "COMPETITOR_CAPABILITY != OUR_PRODUCT_CAPABILITY",
+    "CUSTOMER_REQUIREMENT != OUR_PRODUCT_FEATURE",
+    "CUSTOMER_PAIN_POINT != OUR_PRODUCT_SOLVED_OUTCOME",
+    "DESIRED_BENEFIT != VERIFIED_PRODUCT_OUTCOME",
+    "GENERIC_TECHNOLOGY_ADVANTAGE != OUR_PRODUCT_MEASURED_PERFORMANCE"
+  ]
+}

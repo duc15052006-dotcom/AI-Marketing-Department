@@ -1,0 +1,95 @@
+{
+  "summary": "CMO Executive Authorization & Go-To-Market Master Directive for the 65W GaN USB-C Charger launch across Vietnamese ecommerce platforms (Shopee, Lazada, TikTok Shop). Consolidates and validates specialist outputs across Intelligence, Strategy, Creative, and Performance into an integrated, evidence-grounded launch roadmap under SUPERVISED autonomy mode. Authorizes Phase 1 pilot testing budget of 20,000,000 VND, enforces strict laptop compatibility disclaimers to prevent return spikes, and establishes unambiguous stop-loss guardrails (Max Blended CPA 120,000 VND; Return Rate <= 3.5%; Min ROAS 3.5x).",
+  "details": {
+    "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+    "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+    "commercial_objective": "Establish a top-3 contender position in the Vietnam marketplace 65W GaN category within 90 days, maintaining positive first-order contribution margin (target 75,000 VND/unit) while securing >4.8-star review velocity.",
+    "autonomy_and_governance_tier": {
+      "current_mode": "SUPERVISED",
+      "governance_rule": "Internal strategy, creative asset rendering, and tracking taxonomies are fully approved; live ad spend deployment and marketplace store mutations require explicit Human Operator sign-off via ApprovalRequestCard."
+    },
+    "epistemic_audit_and_claim_validation": {
+      "verified_facts": [
+        "GaN semiconductor architecture delivering 65W maximum output via USB-C Power Delivery standard.",
+        "Compact form factor significantly smaller than standard 350g OEM silicon charging bricks.",
+        "Vietnam marketplace benchmark corridor for 65W GaN chargers is 300,000 to 700,000 VND."
+      ],
+      "strictly_enforced_claim_guardrails": [
+        "Laptop compatibility must strictly be qualified as 'D\u00e0nh cho c\u00e1c d\u00f2ng laptop v\u00e0 thi\u1ebft b\u1ecb h\u1ed7 tr\u1ee3 chu\u1ea9n Type-C Power Delivery (13-14 inch MacBook Air/Pro, Dell XPS, ThinkPad)'.",
+        "Universal compatibility claims for gaming laptops (>100W) or proprietary non-PD connectors are strictly prohibited across all ad copy and PDP descriptions.",
+        "Thermal safety claims must reference verified GaN semiconductor efficiency rather than unverified internal laboratory temperature readings pending engineering test reports."
+      ]
+    },
+    "commercial_positioning_and_offer_architecture": {
+      "positioning_theme": "'M\u1ed9t C\u1ee7 S\u1ea1c Cho T\u1ea5t C\u1ea3' \u2014 Everyday Carry (EDC) Tech & Desk Decluttering Tool replacing bulky factory chargers.",
+      "target_audience": "Urban office workers and remote professionals (Ages 22\u201335, Hanoi & HCMC) commuting with USB-C PD ultrabooks.",
+      "pricing_structure": {
+        "standard_retail_price_vnd": 429000,
+        "launch_promotional_corridor_vnd": "369,000 - 399,000 VND",
+        "estimated_cogs_vnd": 175000,
+        "target_net_contribution_margin_vnd": 75000
+      },
+      "value_proposition_anchors": [
+        "Size & Weight Reduction: ~100g compact GaN charger vs. 350g+ legacy power brick.",
+        "Hardware Safety Assurance: 12-Month 1-to-1 direct replacement warranty policy disarming local tech forum anxieties regarding voltage surges.",
+        "Stability: Balanced center-of-gravity engineered for snug fit in standard Vietnamese 2-pin round wall sockets."
+      ]
+    },
+    "orchestrated_campaign_roadmap": {
+      "phase_1_calibration_days_1_to_14": {
+        "objective": "Execute A/B creative hypothesis validation (EXP-GAN65-VN-001) and calibrate channel CPA baselines.",
+        "budget_allocated_vnd": 20000000,
+        "channel_split": {
+          "shopee_search_and_discovery_ads_percent": 50,
+          "tiktok_shop_video_shopping_ads_percent": 30,
+          "lazada_sponsored_solutions_percent": 20
+        },
+        "primary_deliverable": "Validate Angle 01 (Kitchen Scale Weight Contrast) against Generic GaN Speed hook."
+      },
+      "phase_2_scale_days_15_to_30": {
+        "objective": "Scale winning creative assets to 80% ad budget allocation, activate creator affiliate seeding, and expand high-intent keyword capture.",
+        "scaling_prerequisites": "Phase 1 blended CPA <= 120,000 VND, ROAS >= 4.0x, and 14-day trailing return rate <= 3.0%."
+      }
+    },
+    "experimentation_and_measurement_governance": {
+      "experiment_id": "EXP-GAN65-VN-001",
+      "experiment_title": "Everyday Carry Dual Replacement Hook vs Generic GaN Speed Hook",
+      "primary_metric": "Direct SKU Purchase CVR (%) on Shopee Search Ads",
+      "guardrail_metric": "Search ACOS <= 18% (ROAS >= 5.5x) and CPA <= 120,000 VND",
+      "decision_rule": "Scale Variant B if CVR lift >= 15% with 90% confidence bounds; declare inconclusive if delta < 8% after 1,200 clicks per arm and rotate to Angle 02 (Socket Stability).",
+      "early_termination_trigger": "Halt variant immediately if ROAS drops below 3.5x over a 48-hour trailing window with >= 200 clicks."
+    },
+    "risk_management_and_contingency_matrix": [
+      {
+        "risk_scenario": "Blended CPA exceeds 120,000 VND cap during initial 7-day launch.",
+        "root_cause_hypothesis": "Shopee keyword bidding competition against Baseus/Ugreen inflating CPC.",
+        "mandatory_mitigation": "Immediately pause high-bid broad keywords; shift 40% of demand capture budget into TikTok Shop creator affiliate video ads and optimize PDP carousel trust badges."
+      },
+      {
+        "risk_scenario": "Return/Refund rate exceeds 3.5% citing 'Incompatible with laptop'.",
+        "root_cause_hypothesis": "Consumers purchasing charger for non-PD or high-wattage gaming rigs.",
+        "mandatory_mitigation": "Update PDP Hero Slide 2 with explicit red/green compatibility chart; add pre-dispatch customer service auto-confirmation message verifying laptop model."
+      },
+      {
+        "risk_scenario": "Loose socket wobble reported in customer reviews.",
+        "root_cause_hypothesis": "Worn wall sockets in older coffee shops.",
+        "mandatory_mitigation": "Deploy Angle 02 creative assets showcasing horizontal multi-plug adapter recommendations and pin stability guarantees."
+      }
+    ],
+    "human_approval_gate_requests": [
+      {
+        "approval_id": "APP-CMO-2026-GAN65-001",
+        "action_type": "FINANCIAL_AD_BUDGET_DISBURSEMENT",
+        "amount_vnd": 20000000,
+        "description": "Authorize initial Phase 1 ad spend disbursement across Shopee Ads, Lazada Sponsored Solutions, and TikTok Shop.",
+        "status": "PENDING_OPERATOR_SIGN_OFF"
+      },
+      {
+        "approval_id": "APP-CMO-2026-GAN65-002",
+        "action_type": "LIVE_STORE_PDP_PUBLISHING",
+        "description": "Approve publishing of 4-slide Shopee/Lazada PDP carousel, Vietnamese product descriptions, and 12-month replacement warranty badges.",
+        "status": "PENDING_OPERATOR_SIGN_OFF"
+      }
+    ]
+  }
+}

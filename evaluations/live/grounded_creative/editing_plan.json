@@ -1,0 +1,29 @@
+{
+  "timeline_seconds": 38.0,
+  "scene_order": [
+    "SCENE-01",
+    "SCENE-02",
+    "SCENE-03",
+    "SCENE-04",
+    "SCENE-05"
+  ],
+  "cut_rhythm": "Fast, crisp cuts on visual action (3-4s per scene) matching high-cadence developer tutorials.",
+  "text_overlays": [
+    "0:00 - 'Skip manual C++ toolchains.'",
+    "0:06 - '$ ollama run llama3'",
+    "0:14 - 'http://localhost:11434/api/generate'",
+    "0:24 - '7B Q4 ~ 4-5GB VRAM | 14B ~ 8-10GB VRAM'",
+    "0:32 - 'ollama.com \u2014 macOS \u2022 Linux \u2022 Windows'"
+  ],
+  "screen_recordings": "Real 4K 60fps terminal and IDE recordings with crisp 1:1 pixel scaling.",
+  "b_roll": "Minimalist over-the-shoulder workstation footage with soft depth of field.",
+  "transitions": "Clean hard cuts and subtle whip pans; no flashy corporate wipes.",
+  "audio": {
+    "voiceover": "Natural, knowledgeable technical engineer voiceover with calm cadence.",
+    "music_intent": "Low-volume minimal electronic/synth ambient track creating focused momentum.",
+    "sound_effects": "Subtle mechanical keyboard keystroke clicks and soft UI confirmation chimes."
+  },
+  "subtitle_rules": "High-contrast sans-serif subtitles centered in lower third with highlighted active words.",
+  "cta_timing": "Appears at 0:32 and remains on screen through 0:38 endcard.",
+  "thumbnail_concept": "High-contrast dark terminal screenshot with code snippet '$ ollama run llama3' and bold text 'Local AI in 1 Command'."
+}

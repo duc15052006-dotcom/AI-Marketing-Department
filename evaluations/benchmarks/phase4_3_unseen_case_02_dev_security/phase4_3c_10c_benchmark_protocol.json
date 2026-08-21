@@ -1,0 +1,73 @@
+{
+  "benchmark_generation": "phase4_3_v3",
+  "case_id": "CASE_02_DEV_SECURITY_SEA",
+  "case_name": "SecureCode AI SEA - B2B Developer Security SaaS",
+  "status": "FROZEN",
+  "historical_predecessor_fingerprints": [
+    "462086a31dd80c257ecbabfba12d6249772c3207e86ce379d8d76ea2248ceb0f",
+    "8ec377c0d13d4ce673b093a1abf32a4db0db70a8605fa2e9c3e8a0c0e591ced2"
+  ],
+  "historical_predecessor_status": "SUPERSEDED_BEFORE_V3_LIVE_EXECUTION",
+  "execution_order": [
+    "STEP 1: Run A3 fresh on Case 02",
+    "STEP 2: Seal A3 and extract ACTUAL_FRESH_A3_PROVIDER_TOTAL_TOKENS through firewall",
+    "STEP 3: Compute B3 target range deterministically (A3_TOTAL +/- 10%)",
+    "STEP 4: Run B3 using frozen 3-pass cumulative bounded-memory prompts",
+    "STEP 5: Run C3 one-shot",
+    "STEP 6: Seal all candidates under PARTIAL_IMMUTABLE_SALVAGE",
+    "STEP 7: Execute double-blind evaluation"
+  ],
+  "model_config": {
+    "provider": "gemini",
+    "requested_model": "gemini-flash-latest",
+    "resolved_model": "gemini-3.5-flash",
+    "strict_model_pin": true,
+    "temperature": 0.2,
+    "top_p": 0.95,
+    "top_k": 40,
+    "max_output_tokens": 8192,
+    "timeout_seconds": 180.0,
+    "retry_policy": "MAX_1_TRANSIENT_RETRY_503_OR_TIMEOUT_ONLY"
+  },
+  "benchmark_input_hash": "86266ab3a4a4eb73dea410df9f3679f5d78cda505e9fc5672c7468c107f37fea",
+  "prompt_hash_a3": "7a273412e6991d2f9e59c91360e4c0e534deeeadeb4c76761bfbdd5b9c13f0f0",
+  "prompt_hash_b3": "245481e8953b042c08824e58567308670b1430868277c2d2e2dd4ec6e606d450",
+  "prompt_hash_b3_passes": {
+    "pass_1": "dcf5035835b7914261080bf8aea86141e5db43f58518b86664c19c60d312501d",
+    "pass_2": "e7ac78a853d27f58a97f8b383e12efadc734928031f92469290eabb4e48bd5d8",
+    "pass_3": "953194ef4bb8493941488628f776219d6969f65a3b647ad5dbb1523bd6b86f9e"
+  },
+  "prompt_hash_c3": "05c9e7bed0bfd2403bb54ef41458bea16cc0e9bb0c053a6ab4d24bc320e60e33",
+  "deliverable_schema_hash": "286f73a7e80bcbb28391f84a1d35934c8c4aa0f53dc672c02cdfc5fceee75682",
+  "evaluation_rubric_hash": "a5f893ee65d12bf2b8c7ebe35d60940f7bbd2301a8ef132216a45cc62101c8df",
+  "assembler_policy_hash": "def075648480691da3c1e425cef1c1e00360a7486ae35659462066b973b272ac",
+  "failure_policy_hash": "39b59a98d6794deba25ac8c41531d7d22b531ad6c2df4aff424545f1f0b003bb",
+  "b3_governor": {
+    "b3_logical_agent_count": 1,
+    "b3_pass_count": 3,
+    "b3_working_state_mode": "CUMULATIVE_BOUNDED",
+    "b3_source_grounding_method": "METHOD_A_SOURCE_BUNDLE_IN_ALL_PASSES",
+    "b3_raw_history_recursion": "DISABLED",
+    "b3_max_working_state_tokens": 1500,
+    "b3_resource_target_formula": "ACTUAL_FRESH_A3_PROVIDER_TOTAL_TOKENS",
+    "b3_resource_tolerance": 0.1,
+    "historical_case01_reference_total": 29516,
+    "historical_total_used_as_live_target": false,
+    "deterministic_retention_priority": [
+      "1. Prohibited claims / safety constraints",
+      "2. Verified evidence IDs & essential facts",
+      "3. Business objective KPIs",
+      "4. Core strategic decisions (lead segment, positioning)",
+      "5. Unresolved contradictions & risks",
+      "6. Selected creative territory & key hooks",
+      "7. Measurement priorities & governance rules",
+      "8. Completed deliverable keys"
+    ]
+  },
+  "multi_case_suite_support": [
+    "CASE_01_AI_SPEAKING_VN",
+    "CASE_02_DEV_SECURITY_SEA",
+    "CASE_03_ENTERPRISE_FINTECH_VN"
+  ],
+  "protocol_fingerprint": "4585defccbe3870ddd6d1f4d6821043e4828e4e33ea3d5dcc38cbe3bf6324273"
+}

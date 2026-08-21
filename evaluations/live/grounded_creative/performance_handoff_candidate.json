@@ -1,0 +1,65 @@
+{
+  "handoff_id": "HNDF-CREATIVE-PERF-BD31F3E7",
+  "task_id": "TASK_GROUNDED_PERF_PREP_001",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "created_at": "2026-08-16T17:29:43.392416+00:00",
+  "creative_asset_ids": [
+    "COPY-SF-01",
+    "COPY-SF-02",
+    "COPY-SF-03",
+    "COPY-LF-01",
+    "COPY-HERO-01",
+    "SCRIPT-SF-01"
+  ],
+  "variant_ids": [
+    "VAR-A",
+    "VAR-B",
+    "VAR-C"
+  ],
+  "creative_hypotheses": [
+    "Friction-focused terminal setup hook (VAR-A) outperforms generic AI feature announcements in developer CTR.",
+    "Localhost REST API specificity hook (VAR-B) drives higher technical documentation page depth.",
+    "Upfront VRAM compatibility CTA (VAR-C) pre-qualifies traffic and increases downstream CLI installation completion."
+  ],
+  "target_segments": [
+    "Software developers on macOS, Linux, and Windows actively building or experimenting with open-weight models."
+  ],
+  "message_variables": [
+    "Hook Framing: Friction Reduction vs API Specificity vs Zero-Token Cost",
+    "CTA Framing: Direct Download vs Hardware Compatibility Guide"
+  ],
+  "cta_variables": [
+    "Download for macOS / Linux / Windows",
+    "View localhost:11434 API Documentation",
+    "Check Model Hardware Sizing Chart"
+  ],
+  "measurement_requirements": [
+    "3-Second Hook Retention Rate",
+    "Click-Through Rate (CTR) to Documentation / Download",
+    "CLI Download-to-Execution Activation Rate (TO_BE_ESTABLISHED)"
+  ],
+  "unknown_baselines": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ],
+  "recommended_metrics": [
+    "Qualified Developer Click-Through Rate",
+    "Documentation Time-on-Page",
+    "CLI Installation Initiation Count"
+  ],
+  "evidence_lineage": {
+    "VAR-A": [
+      "EVID-WEB-893338BD",
+      "EVID-FORUM-F119C750"
+    ],
+    "VAR-B": [
+      "EVID-WEB-2BAE59D7"
+    ],
+    "VAR-C": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ]
+  }
+}

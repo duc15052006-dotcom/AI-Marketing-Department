@@ -1,0 +1,11 @@
+{
+  "stage": "PERFORMANCE",
+  "eval_decision": "PASS",
+  "performance_mode": "PLANNING_ONLY",
+  "fabricated_metrics": 0,
+  "fabricated_budgets": 0,
+  "unsupported_durations": 0,
+  "unsupported_holdouts": 0,
+  "ctr_denominator_verified": true,
+  "unknowns_preserved": true
+}

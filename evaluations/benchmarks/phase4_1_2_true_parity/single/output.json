@@ -1,0 +1,194 @@
+{
+  "EXECUTIVE_SUMMARY": "This Go-To-Market plan defines the commercialization strategy for the PROD_FRESH_GAN65_BENCHMARK 65W GaN USB-C charger in Vietnam's ecommerce market. Leveraging GaN semiconductor architecture to deliver a compact portable form factor capable of up to 65W output, the launch targets Vietnamese tech commuters and office professionals seeking portable charging for compatible USB-C devices. Because critical parameters\u2014such as exact port configuration, safety certifications, thermal metrics, pricing, and unit economics\u2014remain UNKNOWN / TO_BE_ESTABLISHED, the plan operates under a SUPERVISED protocol requiring explicit human approval prior to public release, paired with strict claim discipline.",
+  "RESEARCH_FINDINGS": [
+    "EVID-GAN65-01: GaN semiconductors enable higher power efficiency, higher switching frequencies, and smaller form factors compared to legacy silicon MOSFETs (Source: TI Technical Documentation).",
+    "EVID-GAN65-02: 65W USB-C Power Delivery can charge typical 13-inch and 14-inch ultrabooks and fast-charging smartphones through universal Type-C negotiation (Source: USB-IF Technical Documentation).",
+    "EVID-GAN65-03: Vietnamese office workers and commuters report fatigue carrying heavy OEM brick chargers and express concerns regarding thermal heat and wall socket stability (Source: Tinhte.vn discussion).",
+    "EVID-GAN65-04: Ecommerce landscape on Shopee Vietnam shows 65W GaN chargers priced between 300,000 VND and 700,000 VND, with demand centered on compact size, fast handshake, and port versatility (Source: Shopee VN search discovery).",
+    "EVID-GAN65-05: Vietnamese tech forum communities (Voz.vn) express strong concern regarding uncertified knockoffs causing voltage surges/hardware damage and demand verified safety and warranty support."
+  ],
+  "KNOWN_FACTS": [
+    "Product delivers up to 65W maximum power output.",
+    "Product utilizes Gallium Nitride (GaN) semiconductor architecture.",
+    "Product features USB-C connectivity.",
+    "Product is engineered in a compact, portable form factor.",
+    "Target geographic market is Vietnam via an ecommerce model.",
+    "Shopee competitor pricing for 65W GaN ranges from 300,000 VND to 700,000 VND (EVID-GAN65-04)."
+  ],
+  "OBSERVATIONS": [
+    "Vietnamese digital consumers actively engage on tech forums (Tinhte.vn, Voz.vn) to discuss thermal behavior and hardware safety before purchasing 3rd-party chargers.",
+    "The 65W GaN market in Vietnam features established third-party brands including Baseus, Ugreen, and Anker on Shopee."
+  ],
+  "INFERENCES": [
+    "Consumers who carry OEM power bricks daily are likely receptive to a compact 65W GaN alternative for compatible USB-C devices.",
+    "Clear communication addressing reliability and device safety may mitigate consumer hesitation regarding third-party power adapters on Vietnamese marketplaces."
+  ],
+  "HYPOTHESES": [
+    "Positioning the product around compact mobility for compatible USB-C devices will generate higher CTR on Vietnamese ecommerce platforms compared to generic GaN spec messaging.",
+    "Displaying transparent technical specifications and warranty terms will reduce customer drop-off driven by knockoff/surge concerns."
+  ],
+  "UNKNOWNS": [
+    "Exact port count and configuration (e.g., 1C, 2C1A).",
+    "Specific charging protocols supported (PPS, PD3.0, QC4+).",
+    "Measured internal operating temperatures and cooling performance.",
+    "Universal laptop model compatibility list.",
+    "Specific safety/surge protection certifications obtained.",
+    "Retail pricing, margin targets, and advertising budget (TO_BE_ESTABLISHED).",
+    "Baseline CAC, LTV, and ROAS benchmarks (TO_BE_ESTABLISHED)."
+  ],
+  "CUSTOMER_SEGMENTS": [
+    {
+      "segment_name": "Mobile Tech Professionals & Commuters",
+      "profile": "Vietnamese office workers and hybrid commuters carrying laptops and mobile devices daily between home, cafes, and offices.",
+      "pain_point": "Carrying heavy OEM power bricks; socket sag; desire for compact everyday carry."
+    },
+    {
+      "segment_name": "Tech Enthusiasts & Forum Users",
+      "profile": "Users active on Tinhte.vn and Voz.vn researching power delivery specs, safety, and build quality.",
+      "pain_point": "Fear of unverified third-party chargers damaging laptop motherboards or overheating."
+    }
+  ],
+  "TOP_PRIORITY_SEGMENT": "Mobile Tech Professionals & Commuters. Rationale: Validated by EVID-GAN65-03 as having an immediate daily friction (carrying bulky OEM power supplies) that directly aligns with our verified compact GaN form factor and 65W USB-C output for compatible USB-C devices.",
+  "POSITIONING": "For Vietnamese professionals and commuters seeking lightweight mobility, the PROD_FRESH_GAN65_BENCHMARK is a compact 65W GaN USB-C charger designed to power compatible laptops and USB-C devices efficiently on the go.",
+  "VALUE_PROPOSITION": "Compact 65W GaN power delivery engineered for portable charging of compatible USB-C devices.",
+  "CHANNEL_PRIORITIES": [
+    "Shopee Vietnam (Search Ads, Product Detail Page optimization, Brand Mall discovery)",
+    "TikTok Shop / Facebook Marketplace (Short-form video and targeted social commerce in Vietnam)",
+    "Tech Community Engagement (Organic presence/sponsorship on Tinhte.vn and Voz.vn)"
+  ],
+  "DEFERRED_CHANNELS": [
+    "Offline Retail Chains (Deferred: Focus initial phase strictly on ecommerce model as mandated).",
+    "Broad-reach Brand TV / OOH Advertising (Deferred: Unit economics and marketing budgets are TO_BE_ESTABLISHED; high upfront capital efficiency required)."
+  ],
+  "WHAT_NOT_TO_DO": [
+    "DO NOT claim universal laptop compatibility; always specify 'for compatible USB-C devices'.",
+    "DO NOT state specific operating temperatures, cooling benchmarks, or efficiency percentages until internally verified.",
+    "DO NOT claim multi-device simultaneous charging capabilities without verified port configurations.",
+    "DO NOT state specific protocol compliance (e.g., PPS, PD3.0, QC4+) until engineering confirms specs.",
+    "DO NOT publish unapproved pricing or launch unmonitored paid ad spend without human sign-off."
+  ],
+  "CREATIVE_TERRITORIES": [
+    {
+      "territory_id": "TERRITORY_1",
+      "name": "Lighten the Daily Commute",
+      "concept": "Focus on the physical transition from bulky OEM power bricks to a compact 65W GaN charger for daily Vietnamese tech commuters."
+    },
+    {
+      "territory_id": "TERRITORY_2",
+      "name": "Everyday Tech Reliability",
+      "concept": "Highlight GaN architecture and USB-C charging delivery for compatible laptops and smartphones."
+    }
+  ],
+  "SELECTED_CREATIVE_TERRITORY": "Lighten the Daily Commute. Rationale: Directly tackles the verified daily pain point (Tinhte.vn EVID-GAN65-03) of carrying heavy OEM chargers, directly matching our verified compact form factor and 65W USB-C specification.",
+  "ANGLES": [
+    "Angle 1: Replace bulky OEM charging bricks with a compact 65W GaN adapter for compatible USB-C laptops.",
+    "Angle 2: Streamlined everyday carry for coffee shop and office work across Vietnam."
+  ],
+  "HOOKS": [
+    "Still carrying your heavy laptop power brick everywhere you go?",
+    "Upgrade your everyday carry: 65W GaN power in a compact USB-C design.",
+    "Compact power for compatible USB-C laptops and devices on the move."
+  ],
+  "SHORT_FORM_COPY": [
+    "Streamline your work bag. The 65W GaN USB-C Charger delivers high-efficiency portable power for your compatible USB-C devices. Available on Shopee Vietnam.",
+    "Tired of bulky OEM chargers? Discover compact 65W GaN technology designed for modern commuters with compatible USB-C laptops and phones."
+  ],
+  "VIDEO_SCRIPT": {
+    "scene_1": {
+      "visual": "A Vietnamese commuter struggles to fit a bulky OEM power brick into an overstuffed backpack at a cafe.",
+      "audio_voiceover": "Still lugging around heavy OEM power bricks every single day?"
+    },
+    "scene_2": {
+      "visual": "Close-up comparison showing the bulky brick replaced by the compact 65W GaN USB-C charger sliding easily into a pocket.",
+      "audio_voiceover": "Switch to compact GaN semiconductor technology. Up to 65W power output designed for portability."
+    },
+    "scene_3": {
+      "visual": "The charger plugs into a wall socket, connecting via USB-C to power a compatible ultrabook.",
+      "audio_voiceover": "Reliable 65W USB-C charging for compatible laptops and devices wherever you work."
+    },
+    "scene_4": {
+      "visual": "End card showing ecommerce marketplace availability and call-to-action.",
+      "audio_voiceover": "Explore the 65W GaN USB-C Charger on Shopee Vietnam today."
+    }
+  },
+  "MEASUREMENT_FRAMEWORK": {
+    "top_of_funnel": {
+      "metrics": [
+        "Impressions",
+        "Video View Completion Rate",
+        "Click-Through Rate (CTR)"
+      ],
+      "objective": "Measure awareness and creative resonance among Vietnamese commuters."
+    },
+    "middle_of_funnel": {
+      "metrics": [
+        "Product Detail Page (PDP) Visits",
+        "Add-to-Cart (ATC) Rate",
+        "Bounce Rate"
+      ],
+      "objective": "Measure purchase intent and clarity of product specifications."
+    },
+    "bottom_of_funnel": {
+      "metrics": [
+        "Conversion Rate (CVR)",
+        "Customer Acquisition Cost (CAC - TO_BE_ESTABLISHED)",
+        "Return on Ad Spend (ROAS - TO_BE_ESTABLISHED)"
+      ],
+      "objective": "Measure final commercial performance against established ecommerce benchmarks."
+    }
+  },
+  "EXPERIMENTS": [
+    {
+      "experiment_id": "EXP-001",
+      "hypothesis": "Visualizing size reduction versus an OEM brick will yield higher CTR than displaying standalone GaN semiconductor specs.",
+      "independent_variable": "Creative Angle (OEM Brick Comparison vs. GaN Architecture Feature)",
+      "dependent_metrics": [
+        "Click-Through Rate (CTR)",
+        "Cost Per Click (CPC)"
+      ],
+      "falsification_condition": "If spec-focused creative achieves equal or higher CTR with statistical significance (p < 0.05), falsify hypothesis."
+    },
+    {
+      "experiment_id": "EXP-002",
+      "hypothesis": "Listing explicit USB-C device compatibility guidelines on the PDP reduces drop-off and increases ATC rate.",
+      "independent_variable": "PDP Layout (Explicit Compatibility Section vs. Generic Spec Table)",
+      "dependent_metrics": [
+        "Add-to-Cart Rate",
+        "PDP Bounce Rate"
+      ],
+      "falsification_condition": "If ATC rate does not improve by >= 10% on the explicit layout, reject hypothesis."
+    }
+  ],
+  "ATTRIBUTION_APPROACH": "Multi-touch ecommerce attribution combining Shopee In-App Ad analytics with UTM parameter tagging across social channels to track conversion paths from discovery to final transaction.",
+  "RISKS": [
+    {
+      "risk": "Consumer skepticism regarding overheating or motherboard damage (Voz.vn EVID-GAN65-05).",
+      "mitigation": "Provide transparent verified technical documentation, clear warranty policies, and avoid exaggerated thermal claims."
+    },
+    {
+      "risk": "Competitor saturation in 300k-700k VND price band (Shopee EVID-GAN65-04).",
+      "mitigation": "Establish pricing once unit economics are finalized and focus messaging on verified portable GaN form factor."
+    },
+    {
+      "risk": "Device incompatibility complaints from unverified laptop models.",
+      "mitigation": "Strictly use qualifying language: 'for compatible USB-C devices' across all marketing touchpoints."
+    }
+  ],
+  "TOP_3_PRIORITIES": [
+    "Finalize and verify remaining technical specifications (port configuration, supported protocols, safety certifications).",
+    "Establish retail pricing, gross margin targets, and unit economics baselines (CAC/ROAS targets).",
+    "Submit PDP assets and creative copy through human approval governance before publishing campaigns."
+  ],
+  "GO_TEST_HOLD_DEFER_DECISIONS": {
+    "GO": "Creative asset preparation and PDP drafting focused on compact 65W GaN benefits for compatible USB-C devices.",
+    "TEST": "A/B testing creative hooks (commuter pain points vs. tech specs) on social traffic driving to Shopee landing pages.",
+    "HOLD": "Public campaign deployment and paid ad spend until pricing, unit economics, and safety specs are confirmed.",
+    "DEFER": "Offline channel distribution and non-ecommerce retail partnerships."
+  },
+  "HUMAN_APPROVAL_REQUIREMENTS": "DEFAULT_AUTONOMY = SUPERVISED. All public-facing creative copy, marketplace PDP listings, ad spend allocations, pricing schedules, and promotional claims require explicit review and sign-off by human product and marketing managers prior to distribution.",
+  "NEXT_ACTIONS": [
+    "Request final technical spec sheet from engineering (port count, protocols, certifications, thermal data).",
+    "Collaborate with finance/commercial teams to define retail price point within the 300,000 - 700,000 VND competitive window and set ROAS/CAC targets.",
+    "Develop initial creative assets under the 'Lighten the Daily Commute' territory and submit to executive review."
+  ]
+}

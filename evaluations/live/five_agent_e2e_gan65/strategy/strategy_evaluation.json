@@ -1,0 +1,9 @@
+{
+  "stage": "STRATEGIST",
+  "eval_decision": "PASS",
+  "unsupported_percentage_effects": 0,
+  "unsupported_superlatives": 0,
+  "unsupported_population_assumptions": 0,
+  "fake_economics": 0,
+  "tradeoffs_explicit": true
+}

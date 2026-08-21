@@ -1,0 +1,107 @@
+{
+  "benchmark_id": "FIVE_AGENT_GAN65_FROZEN_SNAPSHOT",
+  "benchmark_phase": "4.0 / 4.0.1",
+  "frozen_timestamp": "2026-08-17T05:42:49.925266+00:00",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "model": "gemini-flash-latest",
+  "free_only_mode": true,
+  "total_core_model_calls": 6,
+  "total_tokens": 0,
+  "total_latency_ms": 58872.96319985762,
+  "test_suite_baseline": "296 passing",
+  "artifact_checksums": {
+    "initial_user_objective.json": {
+      "sha256": "1cbe48acd1286394c5c6c02a64d2ff15e9a130b5993b2911cc771ee36423e524",
+      "size_bytes": 1123
+    },
+    "initial_cmo_plan.json": {
+      "sha256": "4b1fe8dc793159cf3e1294987a1ecb1473fa35c09f08e6e7b0c682dd704c1cd0",
+      "size_bytes": 1731
+    },
+    "research/evidence_bundle.json": {
+      "sha256": "b9a19d594ea0993b21732968dc26da5314a55dbeffb35e0eb30e0e9e29ca613b",
+      "size_bytes": 3701
+    },
+    "research/grounding_context.json": {
+      "sha256": "531aa7a4b732298757e6424f0d95fa9545e1427117774124a3f3fa96e7757d14",
+      "size_bytes": 3985
+    },
+    "research/intelligence_output.json": {
+      "sha256": "d20dc7f3f334dd3729cc3052a210091a1f13ac394e03f0e919b08e3c6480d9d6",
+      "size_bytes": 3026
+    },
+    "research/intelligence_evaluation.json": {
+      "sha256": "fc86701740bbbb605332c0c3ab4570840baa025f11074cc56e065915d85b9373",
+      "size_bytes": 266
+    },
+    "strategy/strategist_output.json": {
+      "sha256": "9949019934c41acb445f7f040a815a377141b5b74df7ff86dec1f5cf440e407a",
+      "size_bytes": 5137
+    },
+    "strategy/strategy_evaluation.json": {
+      "sha256": "5087bd8cbb4cd329126bd4a97cb5e4d97c85175c40a56d982decb76d0d4d4b26",
+      "size_bytes": 230
+    },
+    "creative/creative_output.json": {
+      "sha256": "c4961f72401c816bea9d0f6ea7cb07c68feaa7a347288567468a848bfd9b3241",
+      "size_bytes": 3995
+    },
+    "creative/creative_evaluation.json": {
+      "sha256": "3d5bbc3b73b08d10d22c0ce5fa3a68713444815c6e25202585f8eeae196a007a",
+      "size_bytes": 238
+    },
+    "performance/performance_output.json": {
+      "sha256": "64d50fa736b7b2595e610b4fc0136c7b773949bac5c568e56403e9bc220aff34",
+      "size_bytes": 5549
+    },
+    "performance/performance_evaluation.json": {
+      "sha256": "0263f6583819db6ec127cedd8dba2c2b1fc95fe4b9b94354ce189d7d490d730a",
+      "size_bytes": 283
+    },
+    "cmo/final_cmo_output.json": {
+      "sha256": "be5ffc80b03adf342d482582fbc8949329761c13a5f430bc7c1d079e0bcf0e47",
+      "size_bytes": 2448
+    },
+    "cmo/decision_register.json": {
+      "sha256": "8e361466b51749b200d8c2a05912de1351d2c31a4064fdf596c1904475f3f3ad",
+      "size_bytes": 3697
+    },
+    "cmo/risk_register.json": {
+      "sha256": "685ce154f11ef9e6f1f19ad38ed769b96f3d75f13b442516bd2b70a2ff8b95f3",
+      "size_bytes": 1415
+    },
+    "cmo/approval_register.json": {
+      "sha256": "daac9c6ee6448c8db4ae6b3fa7ecaf012714adfb16a5f4dfa96a2fe227a5cabf",
+      "size_bytes": 1219
+    },
+    "cmo/department_status.json": {
+      "sha256": "d62bf5ffa11d6cd24e12c60f88b0afa7cfe7bbb121a4064bede437bffba85d7c",
+      "size_bytes": 869
+    },
+    "cmo/cmo_evaluation.json": {
+      "sha256": "6b5ea0138f388ab2843eb2bf79baf1f64e5f26d8d802c5e052e983d6dbbe2a6d",
+      "size_bytes": 318
+    },
+    "handoff_trace.json": {
+      "sha256": "6ae9a73a8fa01793c048fa2fce8cd8ed7a15bb1b5fd81ec164685b90859dd1fe",
+      "size_bytes": 1003
+    },
+    "lineage_graph.json": {
+      "sha256": "3080dfba3a4ebac1b1e94f46ebfe70d25c6f4c1d060de5ca73ac32d7c2d832ae",
+      "size_bytes": 947
+    },
+    "benchmark_manifest.json": {
+      "sha256": "624d29e7e19fa990fb6f97b52f2c614a023551f781efeecf16f51b28d58204d1",
+      "size_bytes": 1766
+    },
+    "benchmark_summary.json": {
+      "sha256": "ec2efa81bfe08a59ad4f32164ed2b2f2d2a9ca878a19641677a6bc6ec8ccded3",
+      "size_bytes": 454
+    },
+    "product_claim_semantic_audit.json": {
+      "sha256": "abe1147cc2d1ac9c8bfb9624bb6f30b9526675c764a14baaf92b119dd41800b0",
+      "size_bytes": 1063
+    }
+  }
+}

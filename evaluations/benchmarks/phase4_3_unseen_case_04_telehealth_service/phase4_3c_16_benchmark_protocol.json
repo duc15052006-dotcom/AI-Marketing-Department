@@ -1,0 +1,29 @@
+{
+  "benchmark_id": "BENCHMARK-PHASE4-3-CASE04-TELEHEALTH-SERVICE",
+  "case_id": "CASE_04_TELEHEALTH_REGULATED_SERVICE",
+  "protocol_version": "v4_rc3",
+  "brain_version": "FIVE_AGENT_BRAIN_V1_RC3",
+  "brain_rc3_fingerprint": "b13f2f6c28007dd7a6f9e2a00175b9e87f59908ece647fb53ceba5186496354a",
+  "benchmark_input_hash": "e8bd72e193bc1dd980ff0e667df3eff0f5e329248a2c9bf8cf19d78bb900b811",
+  "prompt_hash_a5": "45f64bebbc107829e679c666344b7280cc8701c8f28b73f81b21aa79b8916e0b",
+  "prompt_hash_b5": "c553856b00c51a3bcb741988640cd70d171d50ad026c8bc9b6049c7e6fce2787",
+  "prompt_hash_b5_passes": {
+    "pass_1": "2c1b1ab9cbd688b324e20a624e8bdfddb72fef95ff76ffd86dd28dcc45888aef",
+    "pass_2": "dd4f98459010f9310c099deefbcbcbda34695ad10bf4b1118f7708a9d9b557e8",
+    "pass_3": "a3c493ab5fc7fa9752bfa01d5c80df6adb5162bf5d3c990531718547819ee530",
+    "pass_4": "dbc212c43dcdf2f4e55fe6a8ed7c18dbedecbae2f460efdd45b982236880b2e4"
+  },
+  "prompt_hash_c5": "3325218a6b8780cf275de0e7b05d0e4285738cae9e90e40b762a36d3efb6ee5c",
+  "model_config": {
+    "provider": "gemini",
+    "requested_model": "gemini-flash-latest",
+    "resolved_model": "gemini-3.5-flash",
+    "strict_model_pin": true,
+    "max_output_tokens": 8192,
+    "temperature": 0.2,
+    "top_p": 0.95,
+    "top_k": 40,
+    "timeout_seconds": 180.0
+  },
+  "protocol_fingerprint": "1b2e3f3131edab1eba75cc9c303989886dcc3b4e0649c41dce3f56eb15e36a71"
+}

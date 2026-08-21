@@ -1,0 +1,38 @@
+{
+  "model_parity": "PASS",
+  "exact_model": "gemini-flash-latest",
+  "single_model": {
+    "model_calls": 1,
+    "prompt_tokens": 1577,
+    "completion_tokens": 3197,
+    "thoughts_tokens": 1252,
+    "total_tokens": 6026,
+    "model_latency_ms": 20475.470899953507,
+    "wall_clock_ms": 20475.470899953507,
+    "usage_source": "PROVIDER_REPORTED"
+  },
+  "five_agent": {
+    "model_calls": 6,
+    "stage_tokens": {
+      "cmo_initial": 6913,
+      "intelligence": 11764,
+      "strategist": 13341,
+      "creative": 14441,
+      "performance": 20776,
+      "cmo_final": 21860
+    },
+    "prompt_tokens": 69723,
+    "completion_tokens": 16661,
+    "thoughts_tokens": 0,
+    "total_tokens": 89095,
+    "model_latency_total_ms": 248980.8011999121,
+    "orchestration_overhead_ms": 36285.194000112824,
+    "wall_clock_ms": 285265.9952000249,
+    "usage_source": "PROVIDER_REPORTED"
+  },
+  "call_multiplier": 6.0,
+  "token_multiplier": 14.79,
+  "latency_multiplier": 13.93,
+  "value_per_complexity": "MULTI_AGENT_BETTER_BUT_COSTLIER",
+  "rationale": "Under identical gemini-flash-latest model parity, the five-agent architecture produced greater structural completeness, multi-territory creative diversity, and typed experiment falsifiability relative to the single-model baseline, at the cost of 6.0x model calls, 14.79x tokens, and 13.93x wall-clock latency."
+}

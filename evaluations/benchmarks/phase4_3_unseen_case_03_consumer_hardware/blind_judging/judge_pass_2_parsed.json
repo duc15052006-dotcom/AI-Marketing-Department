@@ -1,0 +1,136 @@
+{
+  "candidate_scores": {
+    "X": {
+      "research_quality": {
+        "score": 5.0
+      },
+      "evidence_discipline": {
+        "score": 5.0
+      },
+      "segmentation_quality": {
+        "score": 5.0
+      },
+      "positioning_quality": {
+        "score": 5.0
+      },
+      "channel_strategy": {
+        "score": 5.0
+      },
+      "creative_quality": {
+        "score": 5.0
+      },
+      "copy_script_executability": {
+        "score": 5.0
+      },
+      "performance_funnel_metrics": {
+        "score": 5.0
+      },
+      "experimentation_rigor": {
+        "score": 5.0
+      },
+      "attribution_tracking": {
+        "score": 5.0
+      },
+      "claim_safety_compliance": {
+        "score": 5.0
+      },
+      "governance_human_approval": {
+        "score": 5.0
+      },
+      "internal_consistency_lineage": {
+        "score": 5.0
+      },
+      "completeness": {
+        "score": 5.0
+      }
+    },
+    "Y": {
+      "research_quality": {
+        "score": 5.0
+      },
+      "evidence_discipline": {
+        "score": 5.0
+      },
+      "segmentation_quality": {
+        "score": 5.0
+      },
+      "positioning_quality": {
+        "score": 5.0
+      },
+      "channel_strategy": {
+        "score": 5.0
+      },
+      "creative_quality": {
+        "score": 5.0
+      },
+      "copy_script_executability": {
+        "score": 5.0
+      },
+      "performance_funnel_metrics": {
+        "score": 5.0
+      },
+      "experimentation_rigor": {
+        "score": 5.0
+      },
+      "attribution_tracking": {
+        "score": 5.0
+      },
+      "claim_safety_compliance": {
+        "score": 5.0
+      },
+      "governance_human_approval": {
+        "score": 5.0
+      },
+      "internal_consistency_lineage": {
+        "score": 5.0
+      },
+      "completeness": {
+        "score": 5.0
+      }
+    },
+    "Z": {
+      "research_quality": {
+        "score": 5.0
+      },
+      "evidence_discipline": {
+        "score": 5.0
+      },
+      "segmentation_quality": {
+        "score": 5.0
+      },
+      "positioning_quality": {
+        "score": 5.0
+      },
+      "channel_strategy": {
+        "score": 5.0
+      },
+      "creative_quality": {
+        "score": 5.0
+      },
+      "copy_script_executability": {
+        "score": 5.0
+      },
+      "performance_funnel_metrics": {
+        "score": 5.0
+      },
+      "experimentation_rigor": {
+        "score": 5.0
+      },
+      "attribution_tracking": {
+        "score": 5.0
+      },
+      "claim_safety_compliance": {
+        "score": 5.0
+      },
+      "governance_human_approval": {
+        "score": 5.0
+      },
+      "internal_consistency_lineage": {
+        "score": 5.0
+      },
+      "completeness": {
+        "score": 5.0
+      }
+    }
+  }
+}

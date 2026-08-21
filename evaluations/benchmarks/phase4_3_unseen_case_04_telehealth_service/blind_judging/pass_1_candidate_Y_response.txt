@@ -1,0 +1,50 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 3.0,
+      "rationale": "The candidate provides a brief executive summary and basic inferences but completely omits the dedicated research findings section."
+    },
+    "evidence_discipline": {
+      "score": 4.0,
+      "rationale": "While the few provided sentences correctly reference the qualitative evidence keys, the vast majority of the evidence-based sections are missing."
+    },
+    "segmentation_quality": {
+      "score": 2.5,
+      "rationale": "The customer segmentation matrix is highly truncated and incomplete, leaving the target personas unelaborated."
+    },
+    "positioning_quality": {
+      "score": 0.0,
+      "rationale": "The positioning and value proposition sections are entirely missing from the candidate's output."
+    },
+    "channel_strategy": {
+      "score": 0.0,
+      "rationale": "No channel priorities or deferred channels are provided in the submission."
+    },
+    "creative_quality": {
+      "score": 0.0,
+      "rationale": "Creative territories, angles, and hooks are completely omitted."
+    },
+    "copy_script_executability": {
+      "score": 0.0,
+      "rationale": "Short-form copy and video scripts are entirely missing from the proposal."
+    },
+    "performance_funnel_metrics": {
+      "score": 0.0,
+      "rationale": "The measurement framework and performance funnel metrics are completely absent."
+    },
+    "experimentation_rigor": {
+      "score": 0.0,
+      "rationale": "No experimentation framework or A/B testing designs are provided."
+    },
+    "attribution_tracking": {
+      "score": 0.0,
+      "rationale": "The attribution approach and event tracking taxonomy sections are completely missing."
+    },
+    "claim_safety_compliance": {
+      "score": 5.0,
+      "rationale": "No prohibited claims are made in the limited text provided, but there is insufficient content to fully evaluate compliance."
+    },
+    "governance_human_approval": {
+      "score": 2.0,
+      "rationale": "Only a couple of brief milestones are mentioned,

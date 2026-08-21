@@ -1,0 +1,72 @@
+﻿# ==============================
+# Python
+# ==============================
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==============================
+# Node / Frontend
+# ==============================
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+
+# ==============================
+# Rust / Tauri
+# ==============================
+target/
+src-tauri/target/
+
+# ==============================
+# Secrets / Local configuration
+# ==============================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# ==============================
+# Runtime data
+# ==============================
+*.log
+logs/*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# ==============================
+# Benchmark generated runs
+# ==============================
+evaluations/benchmarks/**/runs/
+evaluations/benchmarks/**/blind_threads/
+evaluations/benchmarks/**/artifacts/
+
+# ==============================
+# Temporary / scratch
+# ==============================
+scratch/
+*.tmp
+*.temp
+
+# ==============================
+# IDE / OS
+# ==============================
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# ==============================
+# Backups
+# ==============================
+*-BACKUP-*/

@@ -1,0 +1,36 @@
+{
+  "autonomy_mode": "SUPERVISED",
+  "governance_rule": "NO_PAID_SPEND_REQUIRED != NO_APPROVAL_REQUIRED. All public publishing and financial spend require explicit human authorization.",
+  "approvals": [
+    {
+      "item": "Grounded Positioning & Strategy (STRAT-GAN65-001)",
+      "status": "DESIGN_APPROVED",
+      "authority": "CMO",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Creative Asset Public Distribution (COPY-SF-01..02, SCRIPT-SF-01)",
+      "status": "READY_FOR_HUMAN_APPROVAL",
+      "authority": "Human Business Owner",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Tracking Plan Instrumentation",
+      "status": "DESIGN_APPROVED (INTERNAL_ONLY)",
+      "authority": "CMO",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Public Experiment Execution (PEXP-001, PEXP-002)",
+      "status": "READY_FOR_HUMAN_APPROVAL",
+      "authority": "Human Business Owner",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Paid Search Ad Spend (PEXP-003)",
+      "status": "READY_FOR_HUMAN_APPROVAL",
+      "authority": "Human Business Owner",
+      "live_execution_permitted": false
+    }
+  ]
+}

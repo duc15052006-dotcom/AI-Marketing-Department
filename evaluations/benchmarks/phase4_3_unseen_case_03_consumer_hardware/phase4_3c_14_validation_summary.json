@@ -1,0 +1,111 @@
+{
+  "benchmark_id": "BENCHMARK-PHASE4-3-CASE03-CONSUMER-HARDWARE",
+  "case_id": "CASE_03_CONSUMER_HARDWARE_D2C",
+  "brain_version": "FIVE_AGENT_BRAIN_V1_RC2",
+  "brain_rc2_fingerprint": "35987acba993572515a0e8daaab9f6910448ba7fc6cb1121b371b6a755f99900",
+  "evaluated_at": "2026-08-19T08:36:02.047628+00:00",
+  "candidates": {
+    "A4": {
+      "run_id": "RUN-PHASE4-3-RC2-CASE03-A4-001",
+      "calls": 6,
+      "provider_total_tokens": 31257,
+      "artifact_hash": "2a7d3e6c9c18a90858a4c5a2335cf252eea95ba60773359038af8e1d97508707",
+      "deliverables": 19,
+      "weighted_score": 5.0,
+      "dimension_scores": {
+        "research_quality": 5.0,
+        "evidence_discipline": 5.0,
+        "segmentation_quality": 5.0,
+        "positioning_quality": 5.0,
+        "channel_strategy": 5.0,
+        "creative_quality": 5.0,
+        "copy_script_executability": 5.0,
+        "performance_funnel_metrics": 5.0,
+        "experimentation_rigor": 5.0,
+        "attribution_tracking": 5.0,
+        "claim_safety_compliance": 5.0,
+        "governance_human_approval": 5.0,
+        "internal_consistency_lineage": 5.0,
+        "completeness": 5.0
+      }
+    },
+    "B4": {
+      "run_id": "RUN-PHASE4-3-RC2-CASE03-B4-001",
+      "calls": 3,
+      "provider_total_tokens": 25378,
+      "artifact_hash": "226ff76de89ae3de1eee8ac5780352eb0625e99ccf19d77673015ef72714e2b3",
+      "deliverables": 21,
+      "resource_parity": "UNDER_BUDGET",
+      "weighted_score": 5.0,
+      "dimension_scores": {
+        "research_quality": 5.0,
+        "evidence_discipline": 5.0,
+        "segmentation_quality": 5.0,
+        "positioning_quality": 5.0,
+        "channel_strategy": 5.0,
+        "creative_quality": 5.0,
+        "copy_script_executability": 5.0,
+        "performance_funnel_metrics": 5.0,
+        "experimentation_rigor": 5.0,
+        "attribution_tracking": 5.0,
+        "claim_safety_compliance": 5.0,
+        "governance_human_approval": 5.0,
+        "internal_consistency_lineage": 5.0,
+        "completeness": 5.0
+      }
+    },
+    "C4": {
+      "run_id": "RUN-PHASE4-3-RC2-CASE03-C4-001",
+      "calls": 1,
+      "provider_total_tokens": 9663,
+      "artifact_hash": "ce1486227d807520874c08ffbfc23db8f6941beb8686ddb3f872bb64471b7f04",
+      "deliverables": 9,
+      "weighted_score": 5.0,
+      "dimension_scores": {
+        "research_quality": 5.0,
+        "evidence_discipline": 5.0,
+        "segmentation_quality": 5.0,
+        "positioning_quality": 5.0,
+        "channel_strategy": 5.0,
+        "creative_quality": 5.0,
+        "copy_script_executability": 5.0,
+        "performance_funnel_metrics": 5.0,
+        "experimentation_rigor": 5.0,
+        "attribution_tracking": 5.0,
+        "claim_safety_compliance": 5.0,
+        "governance_human_approval": 5.0,
+        "internal_consistency_lineage": 5.0,
+        "completeness": 5.0
+      }
+    }
+  },
+  "efficiency_summary": {
+    "A4": {
+      "quality_per_10k_tokens": 1.6,
+      "quality_per_call": 0.833,
+      "deliverables_per_10k_tokens": 6.079
+    },
+    "B4": {
+      "quality_per_10k_tokens": 1.97,
+      "quality_per_call": 1.667,
+      "deliverables_per_10k_tokens": 8.275
+    },
+    "C4": {
+      "quality_per_10k_tokens": 5.174,
+      "quality_per_call": 5.0,
+      "deliverables_per_10k_tokens": 9.314
+    }
+  },
+  "primary_comparison": {
+    "a4_score": 5.0,
+    "b4_score": 5.0,
+    "delta": 0.0,
+    "quality_gate": "TARGETED_OPTIMIZATION_REQUIRED"
+  },
+  "blind_mapping": {
+    "X": "B4",
+    "Y": "C4",
+    "Z": "A4"
+  },
+  "blind_commitment_hash": "6d2d73365c5c28ec365334081e06e54cc16fd08a85c1ef713a3050acac2b609b"
+}

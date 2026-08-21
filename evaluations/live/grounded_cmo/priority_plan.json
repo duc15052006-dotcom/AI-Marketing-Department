@@ -1,0 +1,22 @@
+{
+  "top_3_priorities": [
+    "1. Core Developer Wedge: Prepare Terminal Flow creative (TERRITORY-01, COPY-SF-01..03, SCRIPT-SF-01) for human approval and organic technical community distribution.",
+    "2. Hardware Transparency: Implement upfront Model-to-VRAM hardware qualification (STRAT-004) to pre-empt low-spec CPU fallback churn.",
+    "3. Measurement Foundation: Complete first-party event tracking instrumentation (REQUIRED_INSTRUMENTATION) and prepare PEXP-001 / PEXP-002 test protocols for human approval."
+  ],
+  "secondary_priorities": [
+    "Execute controlled PEXP-003 search intent validation test upon human budget authorization.",
+    "Refine REST API documentation integration on localhost:11434."
+  ],
+  "deferred_work": [
+    "Broad non-technical consumer paid ad spend (CHAN-CONSUMER-PAID deferred).",
+    "Direct enterprise outbound sales (CHAN-ENTERPRISE-OUTBOUND deferred).",
+    "Marketing Mix Modeling (MMM) (deferred pending multi-channel spend maturity)."
+  ],
+  "what_not_to_do": [
+    "Will NOT market Ollama as a production cluster replacement without clarifying host VRAM prerequisites.",
+    "Will NOT assert unverified superlatives ('fastest', 'best') or absolute privacy claims ('impossible to leak').",
+    "Will NOT invent monetary budgets, CAC targets, or live spend allocations without human approval.",
+    "Will NOT promote candidate learnings to permanent DNA without formal empirical evaluation."
+  ]
+}

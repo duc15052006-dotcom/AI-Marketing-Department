@@ -1,0 +1,18 @@
+{
+  "condition": "SINGLE_MODEL_BASELINE",
+  "model_requested": "mistralai/mistral-large-2512",
+  "status": "ERROR",
+  "error": "MISSING_API_KEY: XKIRO_API_KEY is not configured in the environment.",
+  "raw_text": "",
+  "parsed_output": {},
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "thoughts_tokens": null,
+    "cached_tokens": null,
+    "tool_use_prompt_tokens": null,
+    "total_tokens": 0,
+    "usage_source": "PROVIDER_REPORTED"
+  },
+  "latency_ms": 0.13685226440429688
+}

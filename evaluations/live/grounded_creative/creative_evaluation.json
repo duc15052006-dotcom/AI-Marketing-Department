@@ -1,0 +1,44 @@
+{
+  "benchmark_phase": "3D.3.1",
+  "timestamp": "2026-08-17T04:03:23.650158+00:00",
+  "raw_eval_decision": "PARTIAL",
+  "corrected_eval_decision": "PASS",
+  "creative_claim_evaluator_accuracy": "PASS",
+  "rules_enforced": [
+    "UNSUPPORTED_AIRGAP_CLAIM",
+    "UNSUPPORTED_CONVERSION_LANGUAGE",
+    "UNSUPPORTED_ECONOMIC_ABSOLUTE",
+    "UNSUPPORTED_QUALITY_ADJECTIVE",
+    "UNSUPPORTED_COMPATIBILITY_FEATURE"
+  ],
+  "raw_issues_caught_count": 1,
+  "raw_issues_details": [
+    {
+      "file": "creative_hooks.json",
+      "rule": "UNSUPPORTED_QUALITY_ADJECTIVE",
+      "matched_pattern": "seamless",
+      "description": "Asserts unproven quality adjective 'seamless' without empirical benchmark evidence."
+    }
+  ],
+  "post_patch_issues_count": 0,
+  "product_fidelity_classification": {
+    "verified_product_facts": [
+      "CLI workflow ('ollama run <model>')",
+      "Background REST API on localhost port 11434",
+      "macOS, Linux, and Windows availability",
+      "Model-to-VRAM memory sizing constraints (7B Q4 ~4-5GB, 14B ~8-10GB)"
+    ],
+    "prohibited_details": [
+      "No 'air-gapped' inferences without evidence",
+      "No 'conversion velocity' assertions when conversion data is UNKNOWN",
+      "No 'infinite' iteration claims implying zero total compute cost",
+      "No unproven 'seamless' quality adjectives",
+      "No OpenAI SDK 1-line compatibility assertions without direct evidence"
+    ]
+  },
+  "preserved_unknown_baselines": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ]
+}

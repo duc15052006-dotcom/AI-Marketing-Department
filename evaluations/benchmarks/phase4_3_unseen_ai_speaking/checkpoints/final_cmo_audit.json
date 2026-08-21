@@ -1,0 +1,19 @@
+{
+  "total_claims": 7,
+  "supported_claims": 7,
+  "unknown_claims": 0,
+  "hypotheses_count": 0,
+  "blocked_claims": 0,
+  "human_input_required_count": 0,
+  "authorization_status": "APPROVED",
+  "blocking_reasons": [],
+  "claim_actions": {
+    "CLM-FACT-001": "AUTHORIZE",
+    "CLM-FACT-002": "AUTHORIZE",
+    "CLM-FACT-003": "AUTHORIZE",
+    "CLM-FACT-004": "AUTHORIZE",
+    "CLM-FACT-005": "AUTHORIZE",
+    "CLM-FACT-006": "AUTHORIZE",
+    "CLM-FACT-007": "AUTHORIZE"
+  }
+}

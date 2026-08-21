@@ -1,0 +1,55 @@
+{
+  "territories": [
+    {
+      "territory_id": "TERRITORY-01",
+      "title": "Local Development Simplicity & Terminal Flow",
+      "audience": "Software developers and engineers building with open-weight models on local workstations.",
+      "core_tension": "Compiling manual C++ dependencies (llama.cpp/CUDA) creates setup friction, while cloud APIs incur per-token bills and latency.",
+      "core_promise": "Streamlined single-command local model execution and background localhost REST API orchestration.",
+      "message": "Run open models directly in your terminal and code with zero API token costs on localhost:11434.",
+      "evidence_dependency": [
+        "EVID-WEB-893338BD",
+        "EVID-WEB-2BAE59D7",
+        "EVID-FORUM-F119C750"
+      ],
+      "claim_type": "STRATEGIC_INFERENCE",
+      "risks": "Must clarify local GPU/VRAM hardware prerequisites to avoid low-spec CPU fallback frustration.",
+      "what_makes_it_distinct": "Focuses purely on developer setup speed and drop-in REST API workflow integration."
+    },
+    {
+      "territory_id": "TERRITORY-02",
+      "title": "Local Control & Privacy-Sensitive Workflow",
+      "audience": "Privacy-conscious developers and engineering teams handling proprietary code or sensitive domain data.",
+      "core_tension": "Sending proprietary code or private prompts to cloud APIs creates compliance and data sovereignty risks.",
+      "core_promise": "Offline local inference keeping prompts and code on-device by design.",
+      "message": "Build AI workflows locally where your prompts stay on your machine.",
+      "evidence_dependency": [
+        "EVID-WEB-893338BD"
+      ],
+      "claim_type": "FIRST_PARTY_CLAIM",
+      "risks": "Cannot claim 'guaranteed zero data leakage'; must represent as first-party offline architecture design.",
+      "what_makes_it_distinct": "Anchors on data sovereignty and zero remote training."
+    },
+    {
+      "territory_id": "TERRITORY-03",
+      "title": "Hardware Reality & Transparent VRAM Sizing",
+      "audience": "Practical engineers seeking predictable model performance and clear VRAM boundary guidance.",
+      "core_tension": "Local AI tools often promise one-line magic but fail when models exceed GPU memory.",
+      "core_promise": "Transparent model-to-VRAM sizing guidance ensuring models fit memory without CPU fallback stalls.",
+      "message": "Know exactly which model fits your hardware before you pull.",
+      "evidence_dependency": [
+        "EVID-WEB-2BAE59D7",
+        "CONF-40334167"
+      ],
+      "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+      "risks": "May self-select out users on low-spec hardware (which protects developer trust).",
+      "what_makes_it_distinct": "Radical technical honesty around physical hardware constraints."
+    }
+  ],
+  "selection": {
+    "selected_territory_id": "TERRITORY-01",
+    "title": "Local Development Simplicity & Terminal Flow",
+    "selection_rationale": "Directly activates the verified developer wedge identified in Hacker News community research (EVID-FORUM-F119C750) and technical docs (EVID-WEB-2BAE59D7), which supports a testable developer onboarding/acquisition hypothesis for local builder adoption.",
+    "why_not_other_territories": "Territory-02 relies primarily on first-party privacy claims where enterprise compliance procurement baselines are unknown (TRANSACTION_DATA = MISSING). Territory-03 serves as essential supporting qualifier rather than stand-alone acquisition anchor."
+  }
+}

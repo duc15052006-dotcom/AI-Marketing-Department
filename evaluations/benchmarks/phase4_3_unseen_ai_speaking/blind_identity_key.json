@@ -1,0 +1,7 @@
+{
+  "benchmark_id": "PHASE4_3_UNSEEN_AI_ENGLISH_APP",
+  "assembly_timestamp": "2026-08-17T15:09:40.728394+00:00",
+  "SYSTEM_A": "FIVE_AGENT",
+  "SYSTEM_B": "SINGLE_MODEL",
+  "seed": 123
+}

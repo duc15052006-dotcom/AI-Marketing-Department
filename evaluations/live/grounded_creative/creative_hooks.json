@@ -1,0 +1,82 @@
+[
+  {
+    "hook_id": "HOOK-01",
+    "mechanism": "Workflow Friction Recognition",
+    "hook_text": "Tired of configuring CUDA drivers just to test an open-weight model locally?",
+    "promised_value": "Demonstrates automated single-command model runner execution.",
+    "content_delivery": "Shows one-line install and immediate CLI execution.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-02",
+    "mechanism": "Technical Specificity",
+    "hook_text": "Did you know Ollama runs a full REST API daemon on localhost port 11434 by default?",
+    "promised_value": "Shows how to send HTTP JSON requests to local models.",
+    "content_delivery": "Live curl command to localhost:11434 returning streaming JSON response.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-03",
+    "mechanism": "Cost & Iteration Contrast",
+    "hook_text": "Building an agent with 50 prompt iterations? Eliminate per-request hosted API token charges during local prototyping.",
+    "promised_value": "Explains local development workflow without per-request hosted API fees.",
+    "content_delivery": "Demonstrates local debugging without hosted API invoices.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-04",
+    "mechanism": "Hardware Reality Check",
+    "hook_text": "Before you pull that 14B model: here is the exact VRAM you need so your system doesn't fall back to slow CPU.",
+    "promised_value": "Gives exact parameter-to-VRAM requirements (7B ~4-5GB, 14B ~8-10GB).",
+    "content_delivery": "Clear memory sizing breakdown preventing CPU stalls.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-05",
+    "mechanism": "Demonstration",
+    "hook_text": "Watch open-weight AI run in this terminal with one command.",
+    "promised_value": "Immediate real-time CLI terminal execution.",
+    "content_delivery": "Shows 'ollama run llama3' terminal execution.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-06",
+    "mechanism": "Standard REST API Integration",
+    "hook_text": "How to integrate local open-weight model generation into your Python scripts via localhost:11434.",
+    "promised_value": "Shows HTTP POST requests to http://localhost:11434/api/generate.",
+    "content_delivery": "Code snippet demonstrating JSON payload dispatch to local REST daemon.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-07",
+    "mechanism": "Data Sovereignty",
+    "hook_text": "Need to run models on sensitive internal data? Here is the offline developer setup.",
+    "promised_value": "Explains local model execution with no external network dependencies.",
+    "content_delivery": "Demonstrates local offline terminal execution.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-08",
+    "mechanism": "Model Library Exploration",
+    "hook_text": "Switching between Llama 3, Mistral, and specialized coding models in local testing.",
+    "promised_value": "Shows pulling and switching model tags in local CLI workflow.",
+    "content_delivery": "Shows pulling and switching model tags in local CLI workflow.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-09",
+    "mechanism": "Developer Experience Comparison",
+    "hook_text": "Why developers choose a background model daemon over manual llama.cpp compilation.",
+    "promised_value": "Highlights automated quantization and background runtime management.",
+    "content_delivery": "Direct architectural comparison of setup steps.",
+    "match_qa": "PASS"
+  },
+  {
+    "hook_id": "HOOK-10",
+    "mechanism": "Performance Engineering",
+    "hook_text": "The difference between GPU-accelerated token streaming and CPU fallback latency.",
+    "promised_value": "Visualizes token generation speed on dedicated GPU VRAM vs CPU.",
+    "content_delivery": "Transparent performance walkthrough with hardware sizing advice.",
+    "match_qa": "PASS"
+  }
+]

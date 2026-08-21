@@ -1,0 +1,35 @@
+{
+  "condition": "SINGLE_MODEL_BASELINE",
+  "model_requested": "gemini-flash-latest",
+  "model_resolved": "gemini-flash-latest",
+  "status": "ERROR",
+  "raw_text": "",
+  "parsed_output": {
+    "raw": ""
+  },
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "thoughts_tokens": null,
+    "cached_tokens": null,
+    "tool_use_prompt_tokens": null,
+    "total_tokens": 0,
+    "usage_source": "PROVIDER_REPORTED"
+  },
+  "latency_ms": 198398.93531799316,
+  "universal_final_audit": {
+    "total_claims": 1,
+    "supported_claims": 1,
+    "unknown_claims": 0,
+    "hypotheses_count": 0,
+    "blocked_claims": 0,
+    "human_input_required_count": 0,
+    "authorization_status": "APPROVED",
+    "blocking_reasons": [],
+    "claim_actions": {
+      "CLM-SINGLE-001": "AUTHORIZE"
+    }
+  },
+  "content_patch_count": 0,
+  "timestamp": "2026-08-17T15:15:47.186304+00:00"
+}

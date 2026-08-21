@@ -1,0 +1,161 @@
+{
+  "research_question": "Analyze market positioning, developer reception, and operational friction for Ollama local AI model runner across official, video, and community sources.",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "subject_identity": {
+    "product_id": "PROD_OLLAMA_LOCAL_AI",
+    "brand_id": "BRAND_OLLAMA",
+    "canonical_name": "Ollama",
+    "brand_name": "Ollama",
+    "aliases": [
+      {
+        "value": "ollama",
+        "alias_type": "CANONICAL",
+        "verification_status": "VERIFIED",
+        "verified_by": "PROJECT_CONFIGURATION",
+        "source_reference": "https://github.com/ollama/ollama",
+        "verified_at": "2026-08-16T00:00:00+00:00"
+      },
+      {
+        "value": "@ollama",
+        "alias_type": "OFFICIAL_HANDLE",
+        "verification_status": "VERIFIED",
+        "verified_by": "OFFICIAL_REPO_DOCS",
+        "source_reference": "https://ollama.com",
+        "verified_at": "2026-08-16T00:00:00+00:00"
+      },
+      {
+        "value": "ollamarun",
+        "alias_type": "CANDIDATE_ALIAS",
+        "verification_status": "UNVERIFIED",
+        "verified_by": null,
+        "source_reference": "unverified_candidate_mention",
+        "verified_at": null
+      },
+      {
+        "value": "ollama-cli",
+        "alias_type": "COMMUNITY_ALIAS",
+        "verification_status": "UNVERIFIED",
+        "verified_by": null,
+        "source_reference": "community_discussions",
+        "verified_at": null
+      },
+      {
+        "value": "ollama desktop",
+        "alias_type": "COMMUNITY_ALIAS",
+        "verification_status": "UNVERIFIED",
+        "verified_by": null,
+        "source_reference": "community_discussions",
+        "verified_at": null
+      }
+    ],
+    "official_domains": [
+      "ollama.com"
+    ],
+    "official_handles": [
+      "@ollama"
+    ],
+    "known_product_names": [
+      "Ollama 0.1",
+      "Ollama 0.2",
+      "Ollama 0.3",
+      "Ollama Windows",
+      "Ollama macOS",
+      "Ollama Linux"
+    ],
+    "known_company_names": [
+      "Ollama Inc",
+      "Ollama"
+    ],
+    "category_terms": [
+      "AI",
+      "LLM",
+      "large language model",
+      "local models",
+      "inference",
+      "quantization",
+      "gguf",
+      "developer tools"
+    ]
+  },
+  "requested_source_families": [
+    "FIRST_PARTY_WEB",
+    "SECONDARY_WEB",
+    "VIDEO",
+    "COMMUNITY"
+  ],
+  "research_dimensions_planned": [
+    "MARKET_POSITIONING",
+    "DEVELOPER_RECEPTION",
+    "OPERATIONAL_FRICTION"
+  ],
+  "planned_sources": [
+    {
+      "capability": "search_web",
+      "query": "Ollama get up and running with large language models locally",
+      "expected_role": "DISCOVERY",
+      "expected_family": "SEARCH_DISCOVERY"
+    },
+    {
+      "capability": "read_page",
+      "url": "https://ollama.com",
+      "expected_role": "FETCHED_SOURCE_CONTENT",
+      "expected_relationship": "FIRST_PARTY_TO_SUBJECT",
+      "expected_family": "FIRST_PARTY_WEB"
+    },
+    {
+      "capability": "read_page",
+      "url": "https://dev.to/primghostdev/run-your-own-ai-model-locally-a-practical-ollama-setup-guide-2026-2kk9",
+      "expected_role": "FETCHED_SOURCE_CONTENT",
+      "expected_relationship": "SECONDARY_SOURCE",
+      "expected_family": "SECONDARY_WEB",
+      "title": "Run Your Own AI Model Locally: A Practical Ollama Setup Guide (2026)"
+    },
+    {
+      "capability": "youtube_metadata",
+      "url": "https://www.youtube.com/watch?v=AGAETsxjg0o",
+      "expected_role": "PLATFORM_REPORTED_METRIC",
+      "expected_family": "VIDEO",
+      "video_title": "Learn Ollama in 10 Minutes - Run LLMs Locally for FREE"
+    },
+    {
+      "capability": "read_forum_thread",
+      "url": "https://news.ycombinator.com/item?id=37661755",
+      "expected_role": "USER_GENERATED_CONTENT",
+      "expected_relationship": "USER_GENERATED",
+      "expected_family": "COMMUNITY",
+      "title": "Ollama for Linux \u2013 Run LLMs on Linux with GPU Acceleration"
+    }
+  ],
+  "evidence_gaps_planned": [
+    {
+      "question": "What is the exact paid enterprise subscription conversion rate?",
+      "required_evidence_type": "TRANSACTION_DATA",
+      "dimension_id": "MARKET_POSITIONING",
+      "importance": "HIGH"
+    },
+    {
+      "question": "What is the broad representative developer sentiment / satisfaction rate across the wider ecosystem?",
+      "required_evidence_type": "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA",
+      "dimension_id": "DEVELOPER_RECEPTION",
+      "importance": "HIGH"
+    },
+    {
+      "question": "What is the total active monthly daemon install base?",
+      "required_evidence_type": "PRIVATE_TELEMETRY_DATA",
+      "dimension_id": "DEVELOPER_RECEPTION",
+      "importance": "HIGH"
+    }
+  ],
+  "planned_conflicts": [
+    {
+      "topic": "Installation Simplicity vs. Model Runtime Requirements",
+      "relation_type": "DIFFERENT_SCOPE",
+      "claim_a": "Ollama provides one-line installer and lightweight CLI execution.",
+      "claim_b": "Large model inference (13B-70B) requires significant RAM (16-64GB) and GPU acceleration to avoid thermal throttling.",
+      "shared_dimension": "OPERATIONAL_FRICTION",
+      "condition_a": "CLI binary setup and small 3B/7B quantized model loading.",
+      "condition_b": "High-throughput production inference on heavy foundation models."
+    }
+  ]
+}

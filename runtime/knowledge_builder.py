@@ -1,0 +1,110 @@
+"""Knowledge Retrieval and Context Builder (Phase 5.2).
+
+Constructs agent-specific, bounded, and verifiable knowledge context sections
+for each of the 5 permanent agents with full citation provenance.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+from governance.access_matrix import AgentAccessMatrix
+from knowledge.models import AuthorityLevel, KnowledgeCitation, KnowledgeDocument, SourceType
+from knowledge.repository import KnowledgeRepository
+from schemas.base import BaseModel, Field
+
+
+class KnowledgeQuery(BaseModel):
+    """Structured query envelope for retrieving agent-scoped knowledge."""
+    agent_id: str
+    query_text: str = ""
+    allowed_sources: List[SourceType] = Field(default_factory=list)
+    scope: Optional[str] = None
+    min_authority: AuthorityLevel = AuthorityLevel.TIER_3_SECONDARY_INDUSTRY_DATA
+    max_chunks: int = 6
+    max_chars: int = 3500
+
+
+class KnowledgeRetrievalResult(BaseModel):
+    """Normalized outcome of knowledge retrieval with citations and provenance."""
+    agent_id: str
+    documents: List[KnowledgeDocument] = Field(default_factory=list)
+    citations: List[KnowledgeCitation] = Field(default_factory=list)
+    context_text: str = ""
+    retrieved_count: int = 0
+
+
+class KnowledgeContextBuilder:
+    """Retrieves and renders bounded, cited knowledge context tailored to agent roles."""
+
+    def __init__(self, repository: KnowledgeRepository) -> None:
+        self.repository = repository
+
+    def build_context_for_agent(
+        self,
+        agent_id: str,
+        query_text: str = "",
+        scope: Optional[str] = None,
+        max_chars: int = 3500,
+    ) -> KnowledgeRetrievalResult:
+        """Retrieve and format role-authorized knowledge with provenance tracking."""
+        aid = agent_id.lower()
+        prof = AgentAccessMatrix.get_profile(aid)
+        if not prof:
+            return KnowledgeRetrievalResult(
+                agent_id=aid,
+                context_text=f"=== KNOWLEDGE RETRIEVAL DENIED: Unrecognized agent '{agent_id}' ===",
+            )
+
+        # Filter by agent's authorized knowledge sources and exclude RETIRED documents
+        allowed_sources = prof.allowed_knowledge_sources
+        all_docs = self.repository.list_documents(scope=scope)
+        scoped_docs = [d for d in all_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
+
+        # Match by query if provided, or take high-authority scoped docs
+        if query_text:
+            matched = []
+            q_low = query_text.lower()
+            for d in scoped_docs:
+                if q_low in d.title.lower() or q_low in d.content.lower() or any(q_low in t.lower() for t in d.tags):
+                    matched.append(d)
+            target_docs = matched if matched else scoped_docs[:4]
+        else:
+            target_docs = scoped_docs[:4]
+
+        citations: List[KnowledgeCitation] = []
+        lines = [f"=== VERIFIED KNOWLEDGE CONTEXT FOR [{aid.upper()}] ==="]
+        total_chars = 0
+
+        for doc in target_docs:
+            chunk = doc.chunks[0] if doc.chunks else None
+            chunk_id = chunk.chunk_id if chunk else "CHUNK-0"
+            citation = KnowledgeCitation(
+                knowledge_id=doc.knowledge_id,
+                chunk_id=chunk_id,
+                source_id=doc.source_id,
+                claim_ref=doc.title,
+                confidence=1.0 if doc.authority_level == AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH else 0.85,
+            )
+            citations.append(citation)
+
+            doc_header = f"\n[KNOWLEDGE REF: {doc.knowledge_id} | Ver: {doc.version} | Auth: {doc.authority_level.value} | SourceType: {doc.source_type.value}]"
+            doc_body = f"Title: {doc.title}\nContent: {doc.content[:600]}..."
+            entry = f"{doc_header}\n{doc_body}"
+
+            if total_chars + len(entry) > max_chars:
+                lines.append(f"\n[... Knowledge context truncated at {max_chars} chars budget limit ...]")
+                break
+
+            lines.append(entry)
+            total_chars += len(entry)
+
+        if not target_docs:
+            lines.append("No active knowledge documents resolved for this role and scope.")
+
+        return KnowledgeRetrievalResult(
+            agent_id=aid,
+            documents=target_docs,
+            citations=citations,
+            context_text="\n".join(lines),
+            retrieved_count=len(target_docs),
+        )

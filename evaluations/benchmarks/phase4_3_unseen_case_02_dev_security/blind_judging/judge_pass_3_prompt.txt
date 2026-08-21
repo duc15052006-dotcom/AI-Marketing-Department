@@ -1,0 +1,988 @@
+You are an Expert Independent GTM Strategy & Marketing Quality Auditor performing a Double-Blind Evaluation of Go-To-Market proposals for a B2B Developer Security product (SecureCode AI SEA).
+
+[SOURCE EVIDENCE & GROUND TRUTH SPECIFICATIONS]
+VERIFIED PRODUCT CAPABILITIES & FACTS:
+{
+  "product_id": "PROD_SECURE_CODE_AI_SEA",
+  "product_name": "SecureCode AI",
+  "product_category": "B2B Developer Security & Code Analysis SaaS",
+  "target_geography": "Vietnam & Southeast Asia (SEA)",
+  "verified_capabilities": [
+    "IDE extensions for VS Code, JetBrains, and Cursor offering real-time AI security remediation prompts",
+    "CI/CD automated pipeline integration (GitHub Actions, GitLab CI, Bitbucket Pipelines) scanning pull requests in under 90 seconds",
+    "SAST vulnerability detection targeting OWASP Top 10, CWE Top 25, and high-entropy API secret leaks",
+    "Auto-fix pull request generation with contextual security patches verified against language syntax trees (Python, TypeScript, Go, Java)",
+    "Compliance mapping report generator producing downloadable audit-ready SARIF and ISO 27001 / PCI-DSS compliance readiness checklists",
+    "On-premise / VPC air-gapped runner deployment option for regulated fintech and banking clients",
+    "Self-serve 14-day free trial with up to 5 repository scans without requiring credit card"
+  ],
+  "unverified_prohibited_claims": [
+    "100% guarantee against all zero-day vulnerabilities or future security breaches",
+    "Instant replacement of human security audit teams or certified penetration testers",
+    "Legally binding automated certification of SOC 2 or HIPAA compliance",
+    "Unconditional zero-false-positive rate across any arbitrary legacy codebase"
+  ],
+  "pricing_model": {
+    "developer_tier": "Free for public open-source repositories and up to 3 private repositories",
+    "team_tier": " per contributing developer per month (billed annually) for up to 50 repos",
+    "enterprise_tier": "Custom tier with dedicated VPC coordinator, SLA, and enterprise compliance reporting"
+  },
+  "market_context": {
+    "launch_timing": "Q4 2026",
+    "primary_competitors": [
+      "Snyk (High price barrier for mid-sized Vietnamese tech teams, USD-denominated enterprise contracts)",
+      "SonarQube (Strong on code quality, slower on AI-assisted vulnerability auto-remediation and secret scanning)"
+    ],
+    "target_firmographic_profile": "Mid-tier tech startups, outsourced software development houses (ODCs), and emerging fintechs with 10-150 developers in Vietnam and Singapore"
+  }
+}
+
+QUALITATIVE MARKET EVIDENCE:
+{
+  "market_research_bundle_id": "EVID_B2B_DEV_SEC_VN_2026",
+  "verified_findings": [
+    {
+      "evidence_id": "EVID_01",
+      "type": "QUALITATIVE_INTERVIEWS",
+      "sample_size": "24 Engineering Managers and CTOs across Hanoi, HCMC, and Da Nang",
+      "finding": "79% of Vietnamese software development houses (ODCs) report increasing pressure from European and US enterprise clients to provide third-party verified security and secret-scanning audit trails prior to project delivery."
+    },
+    {
+      "evidence_id": "EVID_02",
+      "type": "TOOLING_FRICTION_SURVEY",
+      "finding": "Developers reject incumbent SAST tools primarily due to high false-positive rates (>35%) and context-free alert notifications that interrupt sprint velocity."
+    },
+    {
+      "evidence_id": "EVID_03",
+      "type": "BUDGET_ANALYSIS",
+      "finding": "Mid-tier SEA software companies allocate between ,000 - ,000 annual budget for developer tooling, seeking predictable per-seat monthly billing rather than complex credit-based consumption tiers."
+    },
+    {
+      "evidence_id": "EVID_04",
+      "type": "CHANNEL_EFFECTIVENESS",
+      "finding": "Technical founder word-of-mouth, developer LinkedIn thought leadership, technical documentation, and hands-on interactive GitHub demo PRs yield 3.4x higher trial conversion than generic display advertising."
+    }
+  ],
+  "unverified_market_assertions": [
+    "Every developer in Vietnam uses AI coding assistants daily",
+    "Global enterprise customers will immediately switch away from GitHub Advanced Security without pilot testing"
+  ]
+}
+
+BUSINESS OBJECTIVE & CONSTRAINTS:
+{
+  "objective_id": "OBJ_GTM_SECURE_CODE_Q4_2026",
+  "title": "B2B GTM Launch & Demand Generation Plan for SecureCode AI in SEA",
+  "deliverable_scope": "Comprehensive 28-deliverable canonical go-to-market proposal spanning Executive Strategy, Market Intelligence, Customer Segmentation, Technical Positioning, Creative Multi-Channel Campaigns, Funnel Economics, and Risk Governance.",
+  "key_goals": [
+    "Acquire 150 active paying engineering teams within 6 months of GTM launch",
+    "Achieve a minimum 22% free-trial to paid team conversion rate",
+    "Maintain a blended customer acquisition cost (CAC) payback period under 5 months"
+  ]
+}
+
+PROHIBITED & UNVERIFIED CLAIMS:
+- 100% guarantee against all zero-day vulnerabilities or security breaches
+- Instant replacement of human security audit teams or penetration testers
+- Legally binding automated certification of SOC 2 or HIPAA compliance
+- Unconditional zero-false-positive rate
+
+[FROZEN 14-DIMENSION EVALUATION RUBRIC]
+- **1. Research Quality** (Weight: 0.08): Depth of technical problem framing, developer friction analysis, and market reality synthesis.
+- **2. Evidence Discipline** (Weight: 0.08): Strict distinction between verified facts vs unverified claims; zero hallucinated statistics.
+- **3. Segmentation Quality** (Weight: 0.08): Actionability, firmographic clarity, and prioritization of developer/buyer personas.
+- **4. Positioning Quality** (Weight: 0.08): Technical differentiation against incumbents (Snyk, SonarQube) and value proposition sharpness.
+- **5. Channel Strategy** (Weight: 0.07): Realism of developer acquisition mix (GitHub, DevRel, LinkedIn) and clear deferred channels.
+- **6. Creative Quality** (Weight: 0.07): Originality and resonance of concept territories with engineering leadership.
+- **7. Copy / Script Executability** (Weight: 0.07): Production readiness of short-form ad copy and technical video/demo scripts.
+- **8. Performance Funnel & Metrics** (Weight: 0.07): Clarity of full-funnel conversion benchmarks, CAC payback, and trial-to-paid targets.
+- **9. Experimentation Rigor** (Weight: 0.07): Scientific structure of growth hypotheses, sample sizing, and testable A/B designs.
+- **10. Attribution / Tracking** (Weight: 0.07): Multi-touch attribution, product telemetry integration, and developer activation tracking.
+- **11. Claim Safety / Compliance** (Weight: 0.08): Absolute zero prohibited claims (no zero-day guarantees, no automated SOC2 certification).
+- **12. Governance / Human Approval** (Weight: 0.07): Clarity of Go/Test/Hold/Defer decisions, risk mitigation, and approval checkpoints.
+- **13. Internal Consistency / Lineage** (Weight: 0.07): End-to-end coherence between research findings, creative copy, and measurement KPIs.
+- **14. Completeness** (Weight: 0.04): Coverage of the 28-deliverable GTM proposal without ungrounded synthetic filler.
+
+[EVALUATION RULES]
+1. Score each candidate independently on every dimension using a 0.0 to 10.0 scale.
+2. Penalize severely any presence of prohibited claims, ungrounded statistics, or inconsistent strategy.
+3. Do not reward mere verbosity. Reward precision, technical credibility, executability, and evidence alignment.
+4. Perform pairwise head-to-head comparisons between all candidate pairs.
+5. Identify any critical failure flags for each candidate.
+
+[ANONYMOUS CANDIDATE PROPOSALS TO EVALUATE]
+
+========================================
+CANDIDATE Z
+========================================
+# CANDIDATE Z PROPOSAL
+
+## EXECUTIVE SUMMARY
+As Chief Marketing Officer, I hereby ratify the Go-To-Market (GTM) strategy for SecureCode AI (PROD_SECURE_CODE_AI_SEA) ahead of our targeted Q4 2026 launch in Vietnam and Southeast Asia. This strategy addresses a critical market gap: mid-market software houses and Outsourcing Development Centers (ODCs) in SEA are increasingly blocked from winning lucrative Western (US/EU) contracts due to stringent security compliance audits, yet they are priced out of legacy enterprise security tools like Snyk and SonarQube. SecureCode AI will position itself not merely as a developer tool, but as a 'Contract Unlocker'—a high-velocity, AI-first developer security platform that enables regional software houses to pass Western security audits instantly and cost-effectively. By aligning security directly with revenue generation, we bypass traditional developer friction and appeal directly to business decision-makers (Founders, CTOs, and BD Heads). This document establishes our final strategic governance, resolving all upstream contradictions and setting a clear, risk-mitigated path to market leadership.
+
+## RESEARCH FINDINGS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## KNOWN FACTS
+[
+  "Product name is SecureCode AI (PROD_SECURE_CODE_AI_SEA).",
+  "Target launch date is Q4 2026.",
+  "Target geographic region is Vietnam and Southeast Asia (SEA).",
+  "Primary target audience consists of mid-market software development houses and Outsourcing Development Centers (ODCs).",
+  "Western clients (US/EU) increasingly mandate strict security compliance (e.g., SOC2, ISO 27001, regular SAST and secret-scanning reports) as a prerequisite for signing outsourcing contracts.",
+  "Legacy enterprise security tools (e.g., Snyk, SonarQube) are prohibitively expensive and slow for mid-market SEA software houses."
+]
+
+## OBSERVATIONS
+[
+  "Vietnamese ODCs operate on thin margins where purchasing expensive Western developer security suites directly threatens profitability.",
+  "Sales and Business Development heads at regional software houses frequently experience deal slippage or outright loss when prospective Western clients request proof of secure coding practices.",
+  "Developers in the region often view security tools as roadblocks that slow down deployment velocity and generate overwhelming volumes of false positives.",
+  "There is a growing regional talent pool of developers in Vietnam, but formal DevSecOps training and security-first coding practices remain inconsistent."
+]
+
+## INFERENCES
+[
+  "By reframing security from a 'developer tax' (cost center) to a 'sales enablement engine' (revenue driver), we can shift the purchasing decision from reluctant engineering leads to growth-oriented Founders and BD Heads.",
+  "Providing automated, client-ready compliance and security reports will directly solve the primary pain point of the sales team, making SecureCode AI an indispensable tool for the business development pipeline.",
+  "An AI-assisted SAST tool that not only identifies vulnerabilities but also automatically suggests localized, context-aware code fixes will dramatically reduce developer friction and speed up adoption."
+]
+
+## HYPOTHESES
+To ensure our
+
+## UNKNOWNS
+To ensure a data-driven GTM strategy, we must isolate and test unverified market assertions before committing heavy product resources.
+
+## CUSTOMER SEGMENTS
+### Primary Segment: Mid-Market Software Outsourcing Development Centers (ODCs)
+*   **Geographic Focus:** Vietnam (Hanoi, Ho Chi Minh City, Da Nang hubs) as the primary launchpad, scaling to secondary SEA hubs (Philippines, Indonesia).
+*   **Company Size:** 50 to 500 developers.
+*   **Business Model:** Software development outsourcing, staff augmentation, and dedicated offshore development teams serving Western (US, EU) and APAC enterprise clients.
+*   **Key Pain Point:** 79% of these organizations face direct pressure from Western clients to provide verified security and secret-scanning audit trails before project delivery (`EVID_01`). Failing these audits delays project handovers, damages reputation, and risks contract termination.
+
+## TOP PRIORITY SEGMENT
+*   **Geographic Focus:** Vietnam (Hanoi, Ho Chi Minh City, Da Nang hubs) as the primary launchpad, scaling to secondary SEA hubs (Philippines, Indonesia).
+*   **Company Size:** 50 to 500 developers.
+*   **Business Model:** Software development outsourcing, staff augmentation, and dedicated offshore development teams serving Western (US, EU) and APAC enterprise clients.
+*   **Key Pain Point:** 79% of these organizations face direct pressure from Western clients to provide verified security and secret-scanning audit trails before project delivery (`EVID_01`). Failing these audits delays project handovers, damages reputation, and risks contract termination.
+
+## POSITIONING
+### Brand Narrative & Market Positioning
+SecureCode AI is the high-velocity, AI-first developer security platform designed specifically for Southeast Asian software development houses and Outsourcing Development Centers (ODCs). 
+
+While legacy giants like Snyk and SonarQube cater to deep-pocketed Western enterprise IT departments with complex, slow, and prohibitively expensive suites, SecureCode AI empowers agile SEA development shops to unblock Western client contracts instantly. We position ourselves not merely as a "security tool," but as a **contract-enabling growth engine** that bridges the gap between regional developer velocity and global security compliance.
+
+```
+[Legacy DevSecOps (Snyk/SonarQube)] ──> High Cost, High Friction, Enterprise-Focused
+       VS.
+[SecureCode AI (PROD_SECURE_CODE_AI_SEA)] ──> AI-First Remediation, Predictable Pricing, Compliance-Ready for ODCs
+```
+
+## VALUE PROPOSITION
+### The Core Promise
+> **"SecureCode AI helps SEA development houses secure and retain Western contracts 3x faster by automating security compliance and code remediation at a fraction of legacy tool costs."**
+
+## CHANNEL PRIORITIES
+```
+  HIGH PRIORITY (Q4 2026 Launch)       MEDIUM PRIORITY (Post-Launch)         DEFERRED (Do Not Pursue)
+┌─────────────────────────────────┐   ┌─────────────────────────────────┐   ┌─────────────────────────────────┐
+│ • Account-Based Marketing (ABM) │   │ • Strategic Cloud Partnerships  │   │ • Broad-Scale Consumer/OOH Ads  │
+│ • Developer Relations (DevRel)  │   │ • Search Engine Marketing (SEM) │   │ • Top-Down Enterprise Sales     │
+│ • Product-Led Growth (PLG)      │   │                                 │   │   (Non-ODC Conglomerates)       │
+└─────────────────────────────────┘   └─────────────────────────────────┘   └─────────────────────────────────┘
+```
+
+## DEFERRED CHANNELS
+1.  **Broad-Scale Out-of-Home (OOH) & Consumer Advertising:**
+    *   *Rationale:* Billboards and mass media are highly inefficient for a niche B2B DevSecOps product.
+2.  **Top-Down Enterprise Sales to Traditional Local Conglomerates:**
+    *   *Rationale:* Traditional local enterprises (e.g., local banks, real estate conglomerates) do not face the same immediate Western compliance pressures as ODCs, resulting in long, unprofitable sales cycles.
+
+---
+
+## WHAT NOT TO DO
+*   **Do NOT Compete on Feature Parity:** Do not try to match every legacy enterprise feature of Snyk or SonarQube. Avoid building heavy, complex enterprise governance modules. Focus strictly on **speed, AI remediation, and compliance reporting**.
+*   **Do NOT Hide Pricing Behind a "Contact Sales" Wall:** ODC buyers are highly skeptical of opaque pricing. Keep mid-market pricing transparent, predictable, and self-serve to maintain PLG velocity.
+*   **Do NOT Ignore the Developer Experience (DX):** If the tool generates high false-positive rates or slows down the build pipeline, developers will bypass it, killing retention. Security must not come at the expense of velocity.
+
+---
+
+## CREATIVE TERRITORIES
+### Territory 1: The Contract Unlocker (LEAD TERRITORY)
+*   **The Core Concept:** Security isn't a cost center or a developer roadblock—it is a sales enablement engine. For SEA software houses, passing Western security audits is the final, highest hurdle to signing lucrative US/EU contracts. SecureCode AI is the key that unlocks these contracts instantly.
+*   **Visual Style:** High-contrast, cinematic, business-focused. Split screens showing a frustrated sales/tech team losing a deal vs. a confident team signing a contract with a clean, AI-generated compliance report in hand.
+*   **Why it Wins:** It directly targets the primary business driver of ODC founders and CTOs: revenue growth and international expansion.
+
+## SELECTED CREATIVE TERRITORY
+*   **The Core Concept:** Security isn't a cost center or a developer roadblock—it is a sales enablement engine. For SEA software houses, passing Western security audits is the final, highest hurdle to signing lucrative US/EU contracts. SecureCode AI is the key that unlocks these contracts instantly.
+*   **Visual Style:** High-contrast, cinematic, business-focused. Split screens showing a frustrated sales/tech team losing a deal vs. a confident team signing a contract with a clean, AI-generated compliance report in hand.
+*   **Why it Wins:** It directly targets the primary business driver of ODC founders and CTOs: revenue growth and international expansion.
+
+## ANGLES
+*   **Angle A: The Pain of the "Almost-Won" Deal (Loss Aversion)**
+    *   *Trigger:* The anxiety of spending weeks pitching a US client, only to have the deal stall or fall through at the security questionnaire phase.
+    *   *Emotional Hook:* "Don't let a security checklist kill your biggest deal of the year."
+*   **Angle B: The Pride of Global Competitiveness (Status/Aspiration)**
+    *   *Trigger:* The desire of Vietnamese and SEA software houses to be viewed as world-class, secure, and fully compliant partners, not just "cheap labor."
+    *   *Emotional Hook:* "Build like an offshore team. Secure like a global enterprise."
+*   **Angle C: Developer Peace of Mind (Relief/Friction Reduction)**
+    *   *Trigger:* The exhaustion of developers dealing with false positives and security alerts that block builds right before a release deadline.
+    *   *Emotional Hook:* "No more security alerts that break your build. Just clean, auto-remediated code."
+
+---
+
+## HOOKS
+1.  **The Direct Revenue Hook:**
+    *   *Visual:* A close-up of a digital contract signature being canceled or a "Decline" stamp hitting a document.
+    *   *Copy:* *"Did you just lose a $200k US client because your code failed their security audit?"*
+2.  **The Legacy Call-Out Hook:**
+    *   *Visual:* A developer staring in absolute despair at a screen showing "999+ Vulnerabilities Found" in a legacy UI.
+    *   *Copy:* *"Stop paying Snyk prices for security tools your developers hate using."*
+3.  **The Speed/Velocity Hook:**
+    *   *Visual:* A progress bar instantly jumping from 12% to 100% with a green checkmark.
+    *   *Copy:* *"How SEA software houses are passing Western compliance audits in under 24 hours."*
+4.  **The AI-First Hook:**
+    *   *Visual:* Code writing itself in real-time inside VS Code, fixing a red-underlined vulnerability.
+    *   *Copy:* *"Don't just find vulnerabilities. Let AI write the fix for you instantly."*
+
+---
+
+## SHORT FORM COPY
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## VIDEO SCRIPT
+*   **Format:** 16:9 / 9:16 (Optimized for LinkedIn, Facebook, and YouTube Ads)
+*   **Tone:** Professional, energetic, authoritative, and tech-forward.
+*   **Target Length:** 60 Seconds
+
+| Time | Visual Cues | Audio / Voiceover | On-Screen Text (Overlay) |
+| :--- | :--- | :--- | :--- |
+| **0:00-0:05** | **Fast cut:** Close-up of a CTO looking stressed, staring at an email on his laptop. Zoom in on the email text: *"We cannot proceed without a clean security audit report."* | **Voiceover (Confident, urgent):** "You pitched the client. You aced the technical round. But then... they dropped the security questionnaire." | **LOST CONTRACT?** |
+| **0:05-0:12** | **Cut to:** A developer looking at a screen filled with red warning flags from a legacy tool (Snyk/SonarQube style). He rubs his temples in frustration. | **Voiceover:** "Legacy security tools charge you Western enterprise prices just to dump thousands of alerts on your developers—slowing down your sprints and delaying your delivery." | **Legacy Tools = Friction** |
+| **0:12-0:22** | **Transition:** Smooth, high-tech wipe. Show a sleek, dark-mode dashboard of **SecureCode AI**. A clean, intuitive interface. | **Voiceover:** "Meet SecureCode AI. The high-velocity, AI-first developer security platform built specifically for Southeast Asian software houses and ODCs." | **SecureCode AI** |
+| **0:22-0:35** | **Screen Recording:** Inside VS Code. A red-underlined vulnerability is highlighted. The developer clicks "Auto-Fix with SecureCode AI." The AI instantly rewrites the code, the red line turns green. | **Voiceover:** "We don't just find vulnerabilities. Our AI-first engine automatically writes the secure code to fix them in real-time. No friction. No delays." | **AI-First Remediation** |
+| **0:35-0:45** | **Cut to:** The CTO clicking "Export Compliance Report" on the SecureCode AI dashboard. A beautiful, professional PDF report is generated instantly. | **Voiceover:** "Generate client-ready compliance reports instantly to prove your security posture to US and European clients on day one." | **Client-Ready Reports** |
+| **0:45-0:55** | **Cut to:** The CTO smiling, shaking hands with a client on a video call, and signing a digital contract. | **Voiceover:** "Stop losing deals to security audits. Unblock your global contracts, maintain your developer velocity, and scale your ODC with predictable, regional pricing." | **Unblock Global Contracts** |
+| **0:55-1:00** | **End Screen:** SecureCode AI logo animation. Sleek, modern, green and dark-grey color palette. | **Voiceover:** "Get started with SecureCode AI today. Click the link to book your custom demo." | **SecureCode AI**<br>Secure Code. Signed Contracts.<br>[Book a Demo Button] |
+
+## MEASUREMENT FRAMEWORK
+To support the Q4 2026 launch of SecureCode AI in Southeast Asia, we must establish a measurement framework that bridges top-of-funnel developer engagement with bottom-of-funnel contract enablement. The following architecture tracks the transition of regional software houses and Outsourcing Development Centers (ODCs) from initial awareness to closed-won enterprise contracts.
+
+```
+                     [ TOFU: Awareness & Intent Capture ]
+                     (Impressions -> Clicks -> Sessions)
+                                     │
+                                     ▼
+                  [ MOFU: Lead Gen & Product Engagement ]
+               (Lead Magnet Downloads -> Sandbox Activations)
+                                     │
+                                     ▼
+                     [ BOFU: Pipeline & Sales Velocity ]
+                     (MQLs -> SQLs -> Opportunities)
+                                     │
+                                     ▼
+                     [ BOTTOM LINE: Revenue & LTV ]
+                   (Closed-Won -> Expansion -> LTV:CAC)
+```
+
+## EXPERIMENTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## ATTRIBUTION APPROACH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## RISKS
+### Key Personas
+
+```
+┌────────────────────────────────────────┐     ┌────────────────────────────────────────┐
+│   THE BUYER: VP of Engineering / CTO   │     │ THE INFLUENCER: Lead Dev / Tech Lead   │
+├────────────────────────────────────────┤     ├────────────────────────────────────────┤
+│ • Pain: Margin erosion from expensive  │     │ • Pain: Tool fatigue, false positives, │
+│   tools; delayed project sign-offs.    │     │   and security blocking deployments.   │
+│ • Goal: Win & retain Western clients;  │     │ • Goal: Ship clean, compliant code     │
+│   maintain high developer utilization. │     │   fast without manual security chores. │
+└────────────────────────────────────────┘     └────────────────────────────────────────┘
+```
+
+## TOP 3 PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## GO TEST HOLD DEFER DECISIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HUMAN APPROVAL REQUIREMENTS
+---
+
+## NEXT ACTIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## BENCHMARK ID
+BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING
+
+## RUN ID
+DEFAULT
+
+## RUN FINGERPRINT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CONDITION ID
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SOURCE RAW HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CANONICAL HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXECUTION GENERATION
+phase4_3_v2
+
+## CANDIDATE SCHEMA VERSION
+v2
+
+## CONTENT PATCH COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SEMANTIC REWRITE COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATED AT
+2026-08-19T07:31:33.673143+00:00
+
+
+
+========================================
+CANDIDATE X
+========================================
+# CANDIDATE X PROPOSAL
+
+## EXECUTIVE SUMMARY
+### Market Context & Opportunity
+As we approach the Q4 2026 launch of **SecureCode AI** (`PROD_SECURE_CODE_AI_SEA`) in Southeast Asia, the regional software ecosystem is at a critical inflection point. Vietnam has rapidly emerged as a global hub for Outsourced Development Centers (ODCs) and high-growth tech startups. However, this rapid expansion has run headfirst into a tightening global regulatory and security environment. 
+
+Western enterprise clients (primarily in the US and EU) are increasingly demanding rigorous, verifiable security postures from their offshore development partners before awarding or renewing contracts `[EVID_01]`. Currently, mid-tier software companies in SEA are trapped between two highly flawed alternatives:
+1. **Incumbent Enterprise SAST Tools (e.g., Snyk):** These tools present a prohibitively high price barrier for mid-sized Vietnamese engineering teams, typically requiring complex, USD-denominated enterprise contracts that do not align with regional purchasing power.
+2. **Legacy Code Quality Tools (e.g., SonarQube):** While strong on general code quality, these platforms are slow to adapt to AI-assisted vulnerability auto-remediation and lack robust, real-time API secret scanning.
+
+## RESEARCH FINDINGS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## KNOWN FACTS
+To ensure a strategically grounded GTM execution, we must clearly delineate our verified operational parameters from the critical unknowns that require active market testing.
+
+| Category | Verified Known Facts | Critical Unknowns (To Be Tested) |
+| :--- | :--- | :--- |
+| **Product Capabilities** | - IDE extensions for VS Code, JetBrains, and Cursor offering real-time AI security remediation prompts.<br>- CI/CD pipeline integration (GitHub, GitLab, Bitbucket) scanning PRs in < 90 seconds.<br>- SAST detection targeting OWASP Top 10, CWE Top 25, and high-entropy API secret leaks.<br>- Auto-fix PR generation verified against language syntax trees (Python, TypeScript, Go, Java).<br>- Compliance mapping report generator (SARIF, ISO 27001, PCI-DSS checklists).<br>- On-premise/VPC air-gapped runner deployment option. | - Performance latency of the AI auto-remediation engine when processing highly customized, proprietary frameworks within legacy codebases.<br>- The exact ratio of developers utilizing Cursor vs. VS Code/JetBrains in the Vietnamese market to optimize IDE-specific co-marketing. |
+| **Market & Customer Insights** | - 79% of Vietnamese ODCs face intense pressure from Western clients to provide third-party verified security/secret-scanning audit trails `[EVID_01]`.<br>- Developers reject legacy SAST due to >35% false-positive rates and context-free alerts `[EVID_02]`.<br>- Mid-tier SEA software companies allocate $5,000 - $15,000 annually for developer tooling `[EVID_03]`.<br>- Technical word-of-mouth, LinkedIn thought leadership, technical docs, and interactive GitHub demo PRs yield 3.4x higher trial conversion than display ads `[EVID_04]`. | - The degree of local language localization required for technical documentation and compliance reports to maximize adoption in non-urban Vietnamese tech hubs.<br>- The exact decision-making dynamics between the Head of QA, CTO, and Chief Information Security Officer (CISO) in mid-tier Vietnamese fintechs. |
+| **Pricing & Business Model** | - **Developer Tier:** Free for public open-source and up to 3 private repositories.<br>- **Team Tier:** Billed annually for up to 50 repositories (strategically priced at **$29 per contributing developer/month** to align with regional budgets).<br>- **Enterprise Tier:** Custom pricing with dedicated VPC coordinator, SLA, and compliance reporting. | - The price elasticity of the Team Tier when transitioning from the 14-day free trial (e.g., whether a $24/dev/month introductory rate significantly accelerates conversion vs. $29/dev/month).<br>- The average contract value (ACV) and sales cycle length for the Enterprise VPC air-gapped runner deployment. |
+
+---
+
+## OBSERVATIONS
+By synthesizing our market research with product capabilities, we can draw strategic inferences and formulate testable hypotheses to guide our GTM campaigns.
+
+## INFERENCES
+By synthesizing our market research with product capabilities, we can draw strategic inferences and formulate testable hypotheses to guide our GTM campaigns.
+
+## HYPOTHESES
+[
+  "Positioning as an 'Export-Grade Compliance Enabler' yields 45% higher conversion than 'Developer Productivity Tool'",
+  "Interactive GitHub Demo PRs reduce time-to-first-scan to under 10 minutes, boosting conversion by 30%",
+  "Predictable flat per-seat annual billing results in a 3x faster sales cycle than consumption-based models"
+]
+
+## UNKNOWNS
+[
+  "Exact IDE market share distribution (Cursor vs. VS Code/JetBrains) in Vietnam",
+  "Local language localization depth required for non-urban Vietnamese tech hubs",
+  "Exact price elasticity of the Team Tier during the trial-to-paid transition"
+]
+
+## CUSTOMER SEGMENTS
+To maximize our GTM efficiency and achieve a <5-month CAC payback, we segment the SEA market into three distinct profiles:
+
+```
++-----------------------------------------------------------------------------------+
+|                                 SEA MARKET SEGMENTS                               |
++-----------------------------------------------------------------------------------+
+|                                                                                   |
+|  Segment 1: Export-Oriented ODCs (Vietnam)                                        |
+|  - Size: 10-150 developers                                                        |
+|  - Pain: Western client compliance pressure, high legacy SAST costs               |
+|  - Priority: HIGH (Primary Target)                                                |
+|                                                                                   |
+|  Segment 2: Emerging Fintechs & Regulated Startups (SG & VN)                      |
+|  - Size: 20-150 developers                                                        |
+|  - Pain: Strict regulatory compliance (PCI-DSS), data residency requirements      |
+|  - Priority: MEDIUM (Secondary Target - Enterprise Tier)                          |
+|                                                                                   |
+|  Segment 3: Mid-Tier Local SaaS & Tech Startups (SEA)                             |
+|  - Size: 10-80 developers                                                         |
+|  - Pain: Developer churn, slow sprint velocity due to security bottlenecks        |
+|  - Priority: LOW (Tertiary Target - Self-Serve)                                   |
+|                                                                                   |
++-----------------------------------------------------------------------------------+
+```
+
+## TOP PRIORITY SEGMENT
+To maximize our GTM efficiency and achieve a <5-month CAC payback, we segment the SEA market into three distinct profiles:
+
+```
++-----------------------------------------------------------------------------------+
+|                                 SEA MARKET SEGMENTS                               |
++-----------------------------------------------------------------------------------+
+|                                                                                   |
+|  Segment 1: Export-Oriented ODCs (Vietnam)                                        |
+|  - Size: 10-150 developers                                                        |
+|  - Pain: Western client compliance pressure, high legacy SAST costs               |
+|  - Priority: HIGH (Primary Target)                                                |
+|                                                                                   |
+|  Segment 2: Emerging Fintechs & Regulated Startups (SG & VN)                      |
+|  - Size: 20-150 developers                                                        |
+|  - Pain: Strict regulatory compliance (PCI-DSS), data residency requirements      |
+|  - Priority: MEDIUM (Secondary Target - Enterprise Tier)                          |
+|                                                                                   |
+|  Segment 3: Mid-Tier Local SaaS & Tech Startups (SEA)                             |
+|  - Size: 10-80 developers                                                         |
+|  - Pain: Developer churn, slow sprint velocity due to security bottlenecks        |
+|  - Priority: LOW (Tertiary Target - Self-Serve)                                   |
+|                                                                                   |
++-----------------------------------------------------------------------------------+
+```
+
+## POSITIONING
+*   **Target Audience:** Engineering Managers, CTOs, and Founders of Vietnamese Outsourced Software Development Houses (ODCs).
+*   **Sample Size & Duration:** $N = 2,400$ unique visitors per variant (estimated 30-day run time based on traffic projections).
+*   **Primary Metric:** 14-day Free Trial Signup Rate (Click-through to registration).
+*   **Secondary Metric:** PQL Conversion Rate (to ensure we are attracting high-intent buyers, not just passive signups).
+
+## VALUE PROPOSITION
+Zero-friction velocity (<90s scans, syntax-tree verified auto-fixes) combined with instant export compliance reporting (SARIF, ISO 27001) at predictable, regional-friendly pricing ($29/dev/month).
+
+## CHANNEL PRIORITIES
+Our channel strategy is strictly guided by empirical evidence: technical founder word-of-mouth, developer LinkedIn thought leadership, technical documentation, and hands-on interactive GitHub demo PRs yield **3.4x higher trial conversion** than generic display advertising `[EVID_04]`.
+
+## DEFERRED CHANNELS
+[
+  "Generic Display Advertising (GDN, Meta Ads)",
+  "High-Volume Outbound Cold Calling / Email Spam"
+]
+
+## WHAT NOT TO DO
+| **Developers reject the tool due to perceived high false-positive rates** (similar to legacy SAST tools; `EVID_02`). | High | High | • Emphasize **syntax-tree verification** in all technical copy.<br>• Highlight the "Auto-fix PR" capability which proves the validity of the finding by providing a compilable, contextual patch. |
+| **Snyk or SonarQube aggressively drops prices** or introduces localized regional pricing in Vietnam. | Low | Medium | • Double down on our localized compliance positioning (export-ready audits for Western clients; `EVID_01`).<br>• Maintain our predictable, flat $29/dev/month pricing model, avoiding complex consumption tiers (`EVID_03`). |
+| **Regulated fintech/banking clients refuse cloud-based scanning** due to strict data residency laws. | Medium | High | • Actively promote our **On-premise / VPC air-gapped runner deployment option** specifically for this segment.<br>• Highlight compliance mapping reports (ISO 27001 / PCI-DSS checklists) to satisfy local auditors. |
+
+---
+
+## CREATIVE TERRITORIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SELECTED CREATIVE TERRITORY
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## ANGLES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HOOKS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SHORT FORM COPY
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## VIDEO SCRIPT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MEASUREMENT FRAMEWORK
+To achieve our core business objective of acquiring **150 active paying engineering teams within 6 months of launch** while maintaining a **blended CAC payback period under 5 months** and a **minimum 22% free-trial to paid team conversion rate**, we will implement a highly instrumented, product-led growth (PLG) funnel. 
+
+Based on our Team Tier pricing of **$29 per contributing developer/month (billed annually)**, an average mid-tier software team of 15 to 40 developers represents an Annual Contract Value (ACV) of **$5,220 to $13,920**. This aligns perfectly with the verified annual budget window of **$5,000 to $15,000** for mid-tier SEA software companies (`EVID_03`).
+
+```
+                                 [ FUNNEL CONVERSION MODEL ]
+                                 
+      Stage                      Metric / Target                     Monthly Volume (At Scale)
+  ┌───────────────┐      ┌──────────────────────────────────────┐    ┌───────────────────────┐
+  │  Acquisition  │ ───> │ Unique Web Visitors / Demo PR Views  │ ──>│ 10,000 unique visitors│
+  └───────────────┘      └──────────────────────────────────────┘    └───────────────────────┘
+         │                                  │ (Target: 11% Click-to-Trial)
+         ▼                                  ▼
+  ┌───────────────┐      ┌──────────────────────────────────────┐    ┌───────────────────────┐
+  │  Activation   │ ───> │ 14-Day Free Trial Signups (No CC)    │ ──>│ 114 signups / month   │
+  └───────────────┘      └──────────────────────────────────────┘    └───────────────────────┘
+         │                                  │ (Target: 70% Setup, 50% PQL)
+         ▼                                  ▼
+  ┌───────────────┐      ┌──────────────────────────────────────┐    ┌───────────────────────┐
+  │  Retention    │ ───> │ Product Qualified Leads (PQLs)*      │ ──>│ 57 PQLs / month       │
+  └───────────────┘      └──────────────────────────────────────┘    └───────────────────────┘
+         │                                  │ (Target: 44% PQL-to-Paid / 22% Trial-to-Paid)
+         ▼                                  ▼
+  ┌───────────────┐      ┌──────────────────────────────────────┐    ┌───────────────────────┐
+  │    Revenue    │ ───> │ Paid Team Tier Conversions           │ ──>│ 25 paid teams / month  │
+  └───────────────┘      └──────────────────────────────────────┘    └───────────────────────┘
+```
+*\*PQL Definition: A trial team that has integrated their CI/CD pipeline, run at least 3 scans, and merged at least 1 auto-fix PR within 14 days.*
+
+## EXPERIMENTS
+---
+
+## ATTRIBUTION APPROACH
+To accurately measure marketing ROI and product-led growth loops without compromising developer privacy, we will deploy a hybrid attribution and telemetry architecture.
+
+```
+  [ TRAFFIC SOURCES ]
+  ┌────────────────────────┐
+  │ Developer LinkedIn     │ ──┐
+  └────────────────────────┘   │
+  ┌────────────────────────┐   │
+  │ GitHub Demo PRs        │ ──┼─> [ Segment.io / Reverse Proxy ]
+  └────────────────────────┘   │   • First-Touch / Last-Touch Attribution
+  ┌────────────────────────┐   │   • Anonymized IP & UTM Tracking
+  │ Tech Docs / SEO        │ ──┘
+  └────────────────────────┘
+                                                 │
+                                                 ▼
+                                   [ PRODUCT TELEMETRY ENGINE ]
+                                   ┌──────────────────────────┐
+                                   │ • IDE Extension Installs │
+                                   │ • CI/CD Scan Speeds      │
+                                   │ • Auto-Fix PR Merges     │
+                                   │ • Compliance Downloads   │
+                                   └──────────────────────────┘
+                                                 │
+                                                 ▼
+                                   [ DATA WAREHOUSE & BI ]
+                                   ┌──────────────────────────┐
+                                   │ • Mixpanel (PLG Funnel)  │
+                                   │ • HubSpot (CRM / Sales)  │
+                                   │ • Stripe (Billing / LTV) │
+                                   └──────────────────────────┘
+```
+
+## RISKS
+| Risk Event | Probability | Impact | Mitigation Strategy |
+| :--- | :--- | :--- | :--- |
+| **Marketing team accidentally publishes prohibited claims** (e.g., "100% zero-day guarantee" or "replaces human penetration testers"). | Medium | High | • Establish a mandatory **Claim Compliance Gate** in the CMS.<br>• Run automated CI/CD linting on marketing copy to flag prohibited keywords (e.g., "100% guarantee", "replace auditors", "SOC 2 certified"). |
+| **Developers reject the tool due to perceived high false-positive rates** (similar to legacy SAST tools; `EVID_02`). | High | High | • Emphasize **syntax-tree verification** in all technical copy.<br>• Highlight the "Auto-fix PR" capability which proves the validity of the finding by providing a compilable, contextual patch. |
+| **Snyk or SonarQube aggressively drops prices** or introduces localized regional pricing in Vietnam. | Low | Medium | • Double down on our localized compliance positioning (export-ready audits for Western clients; `EVID_01`).<br>• Maintain our predictable, flat $29/dev/month pricing model, avoiding complex consumption tiers (`EVID_03`). |
+| **Regulated fintech/banking clients refuse cloud-based scanning** due to strict data residency laws. | Medium | High | • Actively promote our **On-premise / VPC air-gapped runner deployment option** specifically for this segment.<br>• Highlight compliance mapping reports (ISO 27001 / PCI-DSS checklists) to satisfy local auditors. |
+
+---
+
+## TOP 3 PRIORITIES
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                               TOP 3 STRATEGIC PRIORITIES                                │
+├──────────────────────────────┬──────────────────────────────┬───────────────────────────┤
+│         PRIORITY 1           │          PRIORITY 2          │        PRIORITY 3         │
+│                              │                              │                           │
+│   Build & Launch the Live    │  Execute the "Export-Ready   │  Deploy the PLG Referral  │
+│    GitHub Demo PR Engine     │   Shield" Campaign to ODCs   │  Loop via Compliance PDF  │
+├──────────────────────────────┼──────────────────────────────┼───────────────────────────┤
+│ • Create a public, safe      │ • Target CTOs/EMs of export- │ • Embed a "Generated by   │
+│   sandbox repository.        │   oriented Vietnamese ODCs.  │   SecureCode AI" badge    │
+│ • Allow developers to trigger│ • Leverage the 79% Western   │   with a direct trial link│
+│   a scan and receive an      │   client pressure pain point │   in every downloaded     │
+│   auto-fix PR in <90s.       │   (`EVID_01`).               │   SARIF/ISO 27001 report. │
+└──────────────────────────────┴──────────────────────────────┴───────────────────────────┘
+```
+
+1.  **Build and Launch the Live GitHub Demo PR Engine:** Developers trust code, not copy (`EVID_04`). We must build a public, safe sandbox repository where developers can trigger a scan and receive an auto-fix PR in under 90 seconds without registering. This directly addresses legacy SAST friction (`EVID_02`).
+2.  **Execute the "Export-Ready Shield" Campaign targeting Vietnamese ODCs:** Launch highly targeted LinkedIn thought leadership and regional co-marketing events focusing on how security compliance helps ODCs win and retain high-value European and US enterprise contracts (`EVID_01`).
+3.  **Deploy the PLG Referral Loop via Compliance PDF Exports:** Ensure that every downloaded SARIF and ISO 27001 / PCI-DSS compliance readiness checklist contains a clean, professional "Generated by SecureCode AI" badge with a direct link to start a free trial. When ODCs share these reports with their Western clients, it acts as a high-trust, organic referral mechanism.
+
+---
+
+## GO TEST HOLD DEFER DECISIONS
+We will allocate our marketing budget and engineering resources strictly according to the following governance matrix to protect our <5-month CAC payback target:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   GOVERNANCE MATRIX                                     │
+├──────────────────────────────────────────────┬──────────────────────────────────────────┤
+│                      GO                      │                   TEST                   │
+│  • Interactive GitHub Demo PRs               │  • Cursor IDE Extension Targeted Ads     │
+│  • Developer LinkedIn Thought Leadership     │  • Localized Vietnamese Tech Docs        │
+│  • Team Tier Flat Pricing ($29/dev/month)    │  • Regional DevOps Agency Co-Marketing   │
+├──────────────────────────────────────────────┼──────────────────────────────────────────┤
+│                     HOLD                     │                  DEFER                   │
+│  • On-premise / VPC Air-Gapped Runner        │  • Generic Display Advertising (GDN/Meta)│
+│    (Hold for enterprise-led sales only)      │  • High-Volume Outbound Cold Calling     │
+│                                              │    (To protect CAC payback target)       │
+└──────────────────────────────────────────────┴──────────────────────────────────────────┘
+```
+
+*   **GO:**
+    *   *Interactive GitHub Demo PRs & Technical Docs:* Yields 3.4x higher trial conversion than generic advertising (`EVID_04`).
+    *   *Developer LinkedIn Thought Leadership & Founder Word-of-Mouth:* Highly effective for reaching regional CTOs and EMs (`EVID_04`).
+    *   *Team Tier Flat Pricing ($29/dev/month):* Fits the predictable annual budget window of $5k-$15k (`EVID_03`).
+*   **TEST:**
+    *   *Cursor IDE Extension Targeted Ads:* Test developer adoption of Cursor in Vietnam.
+    *   *Localized Vietnamese Tech Docs:* Test if local language documentation increases activation rates in non-urban tech hubs.
+    *   *Regional DevOps Agency Co-Marketing:* Test channel partnerships with local cloud migration agencies.
+*   **HOLD:**
+    *   *On-premise / VPC Air-Gapped Runner:* Hold active marketing spend; keep as a reactive sales-enablement asset for regulated fintech/banking clients who request it during enterprise sales cycles.
+*   **DEFER:**
+    *   *Generic Display Advertising (GDN, Meta Ads):* Defer entirely. High cost, low intent, and violates our <5-month CAC payback target (`EVID_04`).
+    *   *High-Volume Outbound Cold Calling / Email Spam:* Defer. Highly damaging to developer brand sentiment and yields poor conversion.
+
+---
+
+## HUMAN APPROVAL REQUIREMENTS
+To protect our brand reputation and prevent legal liability, we will implement a strict **Three-Gate Human Approval Process** for all public-facing marketing, sales, and technical documentation.
+
+```
+                                [ CLAIM COMPLIANCE GATES ]
+                                
+  ┌────────────────────────┐      ┌────────────────────────┐      ┌────────────────────────┐
+  │  GATE 1: Content Lead  │ ───> │  GATE 2: Tech Director │ ───> │  GATE 3: Legal Counsel │
+  │  • Tone & Brand Check  │      │  • Technical Accuracy  │      │  • Prohibited Claims   │
+  │  • Messaging Alignment │      │  • Fact Verification   │      │  • Compliance Check    │
+  └────────────────────────┘      └────────────────────────┘      └────────────────────────┘
+```
+
+## NEXT ACTIONS
+```
+  [ 30-60-90 DAY TIMELINE ]
+  
+  Days 1 - 30: Foundation & Telemetry
+  ├─────────────────────────────────────────────────────────────────────────┐
+  │ • Instrument Segment, Mixpanel, and GA4 tracking.                       │
+  │ • Build the Interactive GitHub Demo PR sandbox environment.             │
+  │ • Draft the "Export-Ready Shield" landing page and run copy linting.    │
+  └─────────────────────────────────────────────────────────────────────────┘
+  Days 31 - 60: Alpha Testing & Content Engine
+  ├─────────────────────────────────────────────────────────────────────────┐
+  │ • Launch Experiment 1 (Landing Page A/B Test) to warm LinkedIn traffic. │
+  │ • Deploy the GitHub Demo PR engine to a closed alpha group of 10 ODCs.  │
+  │ • Publish the first 3 developer-focused thought leadership articles.    │
+  └─────────────────────────────────────────────────────────────────────────┘
+  Days 61 - 90: Public Launch & PLG Acceleration
+  ├─────────────────────────────────────────────────────────────────────────┐
+  │ • Open the 14-day self-serve free trial to the public (No CC required). │
+  │ • Activate the compliance report generator with embedded referral loops.│
+  │ • Launch Experiment 3 (Flat Pricing vs. Consumption) in active sales.   │
+  └─────────────────────────────────────────────────────────────────────────┘
+```
+
+## BENCHMARK ID
+BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING
+
+## RUN ID
+DEFAULT
+
+## RUN FINGERPRINT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CONDITION ID
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SOURCE RAW HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CANONICAL HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXECUTION GENERATION
+phase4_3_v2
+
+## CANDIDATE SCHEMA VERSION
+v2
+
+## CONTENT PATCH COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SEMANTIC REWRITE COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATED AT
+2026-08-19T07:31:33.741365+00:00
+
+
+
+========================================
+CANDIDATE Y
+========================================
+# CANDIDATE Y PROPOSAL
+
+## EXECUTIVE SUMMARY
+### Deliverable 1: Executive Summary (The "Why Now" & Core Thesis)
+The Southeast Asian software development ecosystem is experiencing a structural shift. Outsourced Development Houses (ODCs) and emerging fintechs in Vietnam and Singapore are caught in a pincer movement: Western enterprise clients are demanding rigorous, verifiable security compliance (ISO 27001, PCI-DSS, and secret-scanning audit trails) before project delivery, while developers actively reject legacy Application Security (AppSec) tools due to high false-positive rates (>35%) and disruptive, context-free alerts that derail sprint velocity.
+
+Existing market leaders fail to address this regional dynamic. Snyk imposes a prohibitive price barrier with rigid, USD-denominated enterprise contracts that do not align with mid-tier SEA budgets. SonarQube remains anchored in code quality, lagging significantly in real-time AI-assisted vulnerability auto-remediation and API secret detection.
+
+## RESEARCH FINDINGS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## KNOWN FACTS
+*   **Product Capabilities:** Real-time IDE extensions (VS Code, JetBrains, Cursor); CI/CD integrations (GitHub Actions, GitLab CI, Bitbucket Pipelines) with scan times under 90 seconds; SAST scanning (OWASP Top 10, CWE Top 25, high-entropy API secrets); syntax-tree-verified auto-fix PR generation (Python, TypeScript, Go, Java); downloadable SARIF and ISO 27001/PCI-DSS compliance readiness checklists; on-premise/VPC air-gapped runner deployment option.
+*   **Pricing Structure:** Developer Tier (Free for public OSS and up to 3 private repos); Team Tier ($29/contributing developer/month, billed annually, up to 50 repos); Enterprise Tier (Custom pricing, dedicated VPC coordinator, SLA, enterprise compliance reporting).
+*   **Market Realities:** 79% of Vietnamese ODCs face intense pressure from Western clients to provide verified security and secret-scanning audit trails prior to delivery. Mid-tier SEA software companies allocate between $5,000 and $15,000 annually for developer tooling and demand predictable per-seat billing.
+*   **Competitor Landscape:** Snyk (prohibitively expensive, USD-denominated enterprise contracts); SonarQube (strong on quality, slow on AI auto-remediation and secret scanning).
+*   **Channel Performance:** Technical founder word-of-mouth, developer LinkedIn thought leadership, technical documentation, and interactive GitHub demo PRs yield 3.4x higher trial conversion than generic display advertising.
+
+---
+
+## OBSERVATIONS
+*   **Observation 1:** The rapid growth of ODCs in Vietnam (Hanoi, HCMC, Da Nang) is fueled by cost-arbitrage, but their margins are threatened if they cannot win higher-value Western contracts due to security compliance gaps.
+*   **Observation 2:** Developers are the ultimate gatekeepers of security tooling adoption. If a tool introduces friction (e.g., scans taking longer than 5 minutes, or false-positive rates exceeding 35%), developers will bypass, disable, or ignore it.
+*   **Observation 3:** Traditional enterprise sales cycles in SEA are slow and relationship-driven, whereas developer-led growth (PLG) models with self-serve, credit-card-free trials bypass procurement bottlenecks and accelerate time-to-value.
+
+---
+
+## INFERENCES
+*   **Inference 1:** By positioning SecureCode AI's compliance mapping report generator as an "instant client-win tool," we can convert ODC Engineering Managers who need to prove security posture to international clients to secure and retain contracts.
+*   **Inference 2:** Because developers reject tools with high false-positive rates, highlighting our *syntax-tree-verified auto-fix PRs* (which ensure code compiles and functions post-fix) will be our primary differentiator against legacy SAST tools.
+*   **Inference 3:** Since the annual budget for developer tooling in mid-tier SEA companies is capped at $5,000 to $15,000, our Team Tier pricing ($29/dev/month, which equals $3,480/year for 10 developers or $10,440/year for 30 developers) fits perfectly within their pre-allocated budgets, eliminating the need for custom board-level approvals.
+
+---
+
+## HYPOTHESES
+*   **Hypothesis 1:** Showcasing an interactive, hands-on GitHub demo PR (where developers can see SecureCode AI automatically detect a vulnerability and generate a verified syntax-tree patch in real-time) will achieve a click-to-trial conversion rate of >15%, outperforming standard landing pages by 3x.
+*   **Hypothesis 2:** Targeting ODC CTOs and Engineering Managers with content focused on "reducing client audit friction" will yield a 2x higher demo-request rate than content focused purely on "improving code security."
+*   **Hypothesis 3:** Offering a localized, high-performance VPC air-gapped runner option will allow us to capture the emerging Vietnamese and Singaporean fintech market, which is heavily restricted by local financial data residency regulations.
+
+---
+
+## UNKNOWNS
+*   **Unknown 1:** Will local Vietnamese ODCs attempt to share a single "Team Tier" seat across multiple developers to minimize costs?
+    *   *Mitigation:* Implement hard seat-mapping tied to active GitHub/GitLab commit authors. If a non-licensed developer commits to a monitored repository, trigger an automated in-app notification to the team admin to add a seat.
+*   **Unknown 2:** How will the performance of our AI auto-remediation engine scale when confronted with highly customized, legacy, or poorly structured Vietnamese codebases?
+    *   *Mitigation:* Ensure the product never guarantees 100% zero-false-positives on legacy code. Provide an easy, single-click "Report Bad Fix" button in the IDE to continuously train our contextual filters without storing client IP.
+*   **Unknown 3:** Will the regional internet infrastructure (e.g., periodic subsea cable disruptions in Vietnam) impact the latency of our cloud-based CI/CD scans?
+    *   *Mitigation:* Optimize our runner architecture to cache analysis trees locally, and heavily promote our on-premise/VPC air-gapped runner deployment option for enterprise and highly regulated clients.
+
+---
+
+## CUSTOMER SEGMENTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## TOP PRIORITY SEGMENT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## POSITIONING
+*   **Inference 2:** Because developers reject tools with high false-positive rates, highlighting our *syntax-tree-verified auto-fix PRs* (which ensure code compiles and functions post-fix) will be our primary differentiator against legacy SAST tools.
+*   **Inference 3:** Since the annual budget for developer tooling in mid-tier SEA companies is capped at $5,000 to $15,000, our Team Tier pricing ($29/dev/month, which equals $3,480/year for 10 developers or $10,440/year for 30 developers) fits perfectly within their pre-allocated budgets, eliminating the need for custom board-level approvals.
+
+---
+
+## VALUE PROPOSITION
+#### For the CTO / VP of Engineering (The Economic Buyer)
+> "SecureCode AI helps your engineering team ship secure code that passes international client audits without sacrificing sprint velocity. Get downloadable, audit-ready ISO 27001 and PCI-DSS compliance checklists and sub-90-second CI/CD scans for a predictable $29/developer/month."
+
+## CHANNEL PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## DEFERRED CHANNELS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## WHAT NOT TO DO
+*   **Do NOT sell to non-technical procurement first:** We will not engage in top-down sales cycles that bypass the engineering team. If the developers do not love the tool during the 14-day trial, we do not pursue the sale.
+*   **Do NOT make unverified security guarantees:** We must never claim a "100% guarantee against all zero-day vulnerabilities" or position our tool as an "instant replacement for human penetration testers." This destroys our credibility with sophisticated engineering buyers.
+*   **Do NOT use complex, credit-based consumption pricing:** We will not charge based on "number of lines of code scanned" or "number of pipeline runs." SEA companies demand predictable, per-seat monthly billing.
+
+---
+
+## CREATIVE TERRITORIES
+#### Territory 1: "The Frictionless Audit" (Focus: ODC Business Growth)
+*   **Core Concept:** Visualizing the contrast between an ODC losing a major contract due to a failed security audit versus an ODC effortlessly passing the audit and winning the client using SecureCode AI.
+*   **Visual Style:** Clean, professional, split-screen comparison. Left side: chaotic, manual security reviews, stressed developers, red audit reports. Right side: smooth, automated sub-90s scans, green checkmarks, downloadable ISO 27001 compliance reports, and a signed client contract.
+
+## SELECTED CREATIVE TERRITORY
+We select **Territory 2: "90-Second Shield"** as our primary creative territory for launch, with **Territory 1** as our secondary supporting angle for mid-market decision-makers.
+
+## ANGLES
+#### Angle 1: The "Anti-Friction" Hook (Targeting Developers)
+*   **Hook:** "Your SAST tool took 45 minutes to find 300 false positives. SecureCode AI took 90 seconds to find the real leak—and wrote the PR to fix it."
+*   **Angle:** Focus on the pain of interrupted sprint velocity and the relief of automated, accurate remediation.
+
+## HOOKS
+#### Angle 1: The "Anti-Friction" Hook (Targeting Developers)
+*   **Hook:** "Your SAST tool took 45 minutes to find 300 false positives. SecureCode AI took 90 seconds to find the real leak—and wrote the PR to fix it."
+*   **Angle:** Focus on the pain of interrupted sprint velocity and the relief of automated, accurate remediation.
+
+## SHORT FORM COPY
+#### Option 1: LinkedIn (Targeting CTOs & Engineering Managers)
+> **Headline:** Win Western contracts without slowing down your development sprints.  
+> **Body:**  
+> 79% of SEA development houses face intense pressure from international clients to provide verified security audit trails. But legacy SAST tools slow down your team with >35% false positives.  
+>   
+> SecureCode AI integrates directly into your CI/CD pipeline, scanning pull requests in under 90 seconds and generating downloadable, audit-ready ISO 27001 & PCI-DSS compliance checklists.  
+>   
+> Keep your developers happy. Keep your clients secure.  
+>   
+> 👉 Start your free 14-day trial (No credit card required): [Link]
+
+## VIDEO SCRIPT
+*   **Visual:** Fast-paced montage of a developer typing in VS Code (Dark Mode). The camera zooms in on a highlighted line of code (a hardcoded AWS API key and an unvalidated SQL query).
+*   **Audio (Voiceover):** "Every developer knows the feeling. You're in the zone, shipping fast..."
+*   **Visual:** A legacy security tool alert pops up: *Vulnerability Detected: Critical. Build Failed.* The developer sighs, rubbing their temples.
+*   **Audio (Voiceover):** "...only to be stopped dead in your tracks by a slow, context-free security alert."
+*   **Visual:** Screen transitions rapidly to SecureCode AI running in the IDE. A clean, real-time prompt appears: *"Insecure query detected. Click to apply syntax-tree verified fix."*
+*   **Audio (Voiceover):** "Meet SecureCode AI. Real-time security remediation directly in your IDE and CI/CD pipeline."
+*   **Visual:** A GitHub Actions pipeline runs. A progress bar completes in **84 seconds**. A pull request is automatically generated showing a clean, side-by-side code diff with the security patch.
+*   **Audio (Voiceover):** "Scan PRs in under 90 seconds. Generate verified auto-fix patches that actually compile. Download audit-ready compliance reports instantly."
+*   **Visual:** End screen with the SecureCode AI logo, "Team Tier: $29/dev/month", and a prominent call-to-action: *"Start Free 14-Day Trial. No Credit Card Required."*
+*   **Audio (Voiceover):** "SecureCode AI. Write fast. Ship secure. Start your free trial today."
+
+---
+
+## MEASUREMENT FRAMEWORK
+### Deliverable 19: North Star Metric & Supporting KPIs
+Our **North Star Metric** is **Weekly Active Securing Developers (WASD)**, defined as the number of unique developers who merge at least one SecureCode AI-generated auto-fix PR or run an IDE security remediation prompt in a given week. This metric ensures we are measuring genuine product utility and developer adoption, rather than passive installation.
+
+```
+                             [ NORTH STAR METRIC FLOW ]
+  
+     [ Acquisition ] ──> [ Activation ] ──> [ Retention ] ──> [ NORTH STAR ]
+       Free Trial          First Scan         First Auto-Fix     Weekly Active Securing
+       Sign-ups            Completed (<90s)   PR Merged          Developers (WASD)
+```
+
+## EXPERIMENTS
+### Deliverable 19: North Star Metric & Supporting KPIs
+Our **North Star Metric** is **Weekly Active Securing Developers (WASD)**, defined as the number of unique developers who merge at least one SecureCode AI-generated auto-fix PR or run an IDE security remediation prompt in a given week. This metric ensures we are measuring genuine product utility and developer adoption, rather than passive installation.
+
+```
+                             [ NORTH STAR METRIC FLOW ]
+  
+     [ Acquisition ] ──> [ Activation ] ──> [ Retention ] ──> [ NORTH STAR ]
+       Free Trial          First Scan         First Auto-Fix     Weekly Active Securing
+       Sign-ups            Completed (<90s)   PR Merged          Developers (WASD)
+```
+
+## ATTRIBUTION APPROACH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## RISKS
+*   **Unknown 1:** Will local Vietnamese ODCs attempt to share a single "Team Tier" seat across multiple developers to minimize costs?
+    *   *Mitigation:* Implement hard seat-mapping tied to active GitHub/GitLab commit authors. If a non-licensed developer commits to a monitored repository, trigger an automated in-app notification to the team admin to add a seat.
+*   **Unknown 2:** How will the performance of our AI auto-remediation engine scale when confronted with highly customized, legacy, or poorly structured Vietnamese codebases?
+    *   *Mitigation:* Ensure the product never guarantees 100% zero-false-positives on legacy code. Provide an easy, single-click "Report Bad Fix" button in the IDE to continuously train our contextual filters without storing client IP.
+*   **Unknown 3:** Will the regional internet infrastructure (e.g., periodic subsea cable disruptions in Vietnam) impact the latency of our cloud-based CI/CD scans?
+    *   *Mitigation:* Optimize our runner architecture to cache analysis trees locally, and heavily promote our on-premise/VPC air-gapped runner deployment option for enterprise and highly regulated clients.
+
+---
+
+## TOP 3 PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## GO TEST HOLD DEFER DECISIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HUMAN APPROVAL REQUIREMENTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## NEXT ACTIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## BENCHMARK ID
+BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING
+
+## RUN ID
+DEFAULT
+
+## RUN FINGERPRINT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CONDITION ID
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SOURCE RAW HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CANONICAL HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXECUTION GENERATION
+phase4_3_v2
+
+## CANDIDATE SCHEMA VERSION
+v2
+
+## CONTENT PATCH COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SEMANTIC REWRITE COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATED AT
+2026-08-19T07:31:33.778698+00:00
+
+
+
+
+[REQUIRED JSON RESPONSE FORMAT]
+You must respond ONLY with a single valid JSON object formatted as follows:
+```json
+{
+  "candidate_scores": {
+    "Z": {
+      "research_quality": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "evidence_discipline": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "segmentation_quality": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "positioning_quality": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "channel_strategy": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "creative_quality": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "copy_script_executability": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "performance_funnel_metrics": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "experimentation_rigor": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "attribution_tracking": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "claim_safety_compliance": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "governance_human_approval": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "internal_consistency_lineage": {"score": 8.0, "rationale": "...", "confidence": 0.9},
+      "completeness": {"score": 8.0, "rationale": "...", "confidence": 0.9}
+    },
+    "X": { ... },
+    "Y": { ... }
+  },
+  "pairwise_comparisons": {
+    "X_vs_Y": {"preferred": "X|Y|TIE", "strength": "SLIGHT|MODERATE|DECISIVE", "reason": "..."},
+    "X_vs_Z": {"preferred": "X|Z|TIE", "strength": "SLIGHT|MODERATE|DECISIVE", "reason": "..."},
+    "Y_vs_Z": {"preferred": "Y|Z|TIE", "strength": "SLIGHT|MODERATE|DECISIVE", "reason": "..."}
+  },
+  "critical_failure_flags": {
+    "X": {"unsupported_claims": 0, "prohibited_claims": 0, "internal_contradictions": 0, "governance_failures": 0, "notes": "..."},
+    "Y": {"unsupported_claims": 0, "prohibited_claims": 0, "internal_contradictions": 0, "governance_failures": 0, "notes": "..."},
+    "Z": {"unsupported_claims": 0, "prohibited_claims": 0, "internal_contradictions": 0, "governance_failures": 0, "notes": "..."}
+  }
+}
+```

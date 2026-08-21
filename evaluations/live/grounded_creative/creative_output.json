@@ -1,0 +1,19 @@
+{
+  "run_id": "RUN-8ab05939dd8b",
+  "status": "FAILED",
+  "provider": "gemini",
+  "model_name": "gemini-flash-latest",
+  "output": {},
+  "confidence": "HIGH",
+  "confidence_rationale": "",
+  "evidence_references": [],
+  "unknown_facts": [],
+  "hypotheses": [],
+  "next_action": "",
+  "latency_ms": 11508.622499997728,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  }
+}

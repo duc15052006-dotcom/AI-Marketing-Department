@@ -1,0 +1,34 @@
+{
+  "product_id": "PROD_CARDIOVITAL_CARE",
+  "brand_id": "BRAND_CARDIOVITAL_HEALTH",
+  "product_name": "CardioVital 360 \u2014 Regulated Preventive Cardiology & Metabolic Telehealth Platform",
+  "category": "Regulated Healthcare Telehealth / Clinical Preventive Subscription",
+  "price_usd": 149.0,
+  "service_delivery_cost_usd": 48.0,
+  "target_geo": "United States (Active clinical licensure across 38 states)",
+  "verified_product_facts": [
+    "Provides asynchronous clinical review by US board-certified cardiologists and lipidologists within 24 hours of biomarker upload.",
+    "Includes at-home advanced lipid & ApoB / Lp(a) blood biomarker test kit processed by CLIA-certified / CAP-accredited partner laboratories.",
+    "Integrates continuous biometrics from FDA-cleared wearable medical sensors (ECG, photoplethysmography, continuous glucose monitors).",
+    "HIPAA-compliant, SOC 2 Type II certified platform with end-to-end encrypted medical record storage.",
+    "Monthly direct subscription is $149.00/month (eligible for HSA/FSA reimbursement; insurance super-bills provided for out-of-network claims).",
+    "Customer lifetime retention benchmark in pilot cohort is 11.2 months with 68% gross margin after clinical delivery costs.",
+    "Physician consultation is required before any prescription lipid-lowering therapy or clinical protocol modification."
+  ],
+  "unverified_or_unknown_aspects": [
+    "Exact commercial conversion rate of direct B2C paid Meta traffic vs employer wellness channel partnerships.",
+    "Long-term CAC payback variance across HSA/FSA debit card checkout vs standard credit card payments.",
+    "State-by-state regulatory variability for nurse practitioner autonomous prescribing in remaining 12 expansion states."
+  ],
+  "prohibited_and_disallowed_claims": [
+    "Guaranteed 100% cure, reversal, or immunity from heart attacks, strokes, or coronary artery disease.",
+    "Direct-to-consumer promises to discontinue existing prescription statins or blood pressure medications without physician order.",
+    "Claiming FDA-cleared status for general platform algorithms where only physical partner sensors are FDA-cleared.",
+    "Using fabricated patient clinical outcome testimonials without signed HIPAA authorization and medical record verification."
+  ],
+  "human_approval_requirements": [
+    "Chief Medical Officer / Clinical Director sign-off on all public diagnostic claims and biomarker interpretation copy.",
+    "Legal & Regulatory compliance approval on state telemedicine disclaimers and HSA/FSA marketing language.",
+    "Head of Growth approval on paid acquisition budget allocations above $25,000."
+  ]
+}

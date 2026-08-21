@@ -1,0 +1,29 @@
+{
+  "case_id": "CASE_04_TELEHEALTH_REGULATED_SERVICE",
+  "market_evidence": [
+    {
+      "id": "EVID-CARE-001",
+      "source": "American Heart Association (AHA) 2025 Cardiovascular Health Report",
+      "finding": "Cardiovascular disease remains the leading cause of mortality in North America, but standard annual physicals omit advanced atherogenic particle metrics (ApoB, Lp(a)) in 78% of asymptomatic adults aged 35-55.",
+      "type": "VERIFIED_CLINICAL_DATA"
+    },
+    {
+      "id": "EVID-CARE-002",
+      "source": "Digital Health Consumer Sentiment & Reddit r/Cholesterol Review Mining (2,200 verified patient discussions)",
+      "finding": "Primary patient frustration with traditional cardiology is 3-6 month appointment wait times and dismissive primary care responses to borderline lipid panels (58% of negative comments).",
+      "type": "QUALITATIVE_PATIENT_MINING"
+    },
+    {
+      "id": "EVID-CARE-003",
+      "source": "Healthcare D2C Telehealth Paid Acquisition Benchmark Q4 2025",
+      "finding": "Regulated health subscription customer acquisition costs (CAC) range between $110-$165 on paid search and compliant paid social, requiring trust-first medical authority framing and transparent pricing to convert high-intent cohorts.",
+      "type": "EMPIRICAL_BENCHMARK"
+    },
+    {
+      "id": "EVID-CARE-004",
+      "source": "Employer Health Plan & Benefits Broker Survey 2025",
+      "finding": "Mid-sized self-insured employers (250-2,500 employees) seek preventive cardiology benefits to reduce high-cost catastrophic cardiovascular claims, offering potential CAC-neutral distribution.",
+      "type": "CHANNEL_OBSERVATION"
+    }
+  ]
+}

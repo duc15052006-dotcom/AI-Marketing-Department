@@ -1,0 +1,42 @@
+{
+  "autonomy_mode": "SUPERVISED",
+  "governance_rule": "Autonomous agents may design plans and assets; external public publishing and financial spend require explicit human executive authorization.",
+  "approvals": [
+    {
+      "item": "Grounded Strategy Architecture (STRAT-001..009)",
+      "status": "DESIGN_APPROVED",
+      "authority": "CMO",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Creative Assets Public Distribution (COPY-SF-01..03, SCRIPT-SF-01)",
+      "status": "READY_FOR_HUMAN_APPROVAL",
+      "authority": "Human Business Owner",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Measurement & Tracking Plan Instrumentation (DQ-01..12, Events)",
+      "status": "DESIGN_APPROVED (INTERNAL_EXECUTION_ONLY)",
+      "authority": "CMO",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Organic Experiment Public Distribution (PEXP-001, PEXP-002)",
+      "status": "READY_FOR_HUMAN_APPROVAL",
+      "authority": "Human Business Owner",
+      "live_execution_permitted": false
+    },
+    {
+      "item": "Paid Search Media Spend & Execution (PEXP-003)",
+      "status": "READY_FOR_HUMAN_APPROVAL",
+      "authority": "Human Business Owner",
+      "live_execution_permitted": false
+    }
+  ],
+  "governance_principles": [
+    "DEFAULT_AUTONOMY = SUPERVISED.",
+    "NO_PAID_SPEND_REQUIRED != NO_APPROVAL_REQUIRED.",
+    "All public external actions (organic posting, public distribution, community experiments) require READY_FOR_HUMAN_APPROVAL.",
+    "Live execution strictly requires LIVE_EXECUTION_APPROVED by human business stakeholders."
+  ]
+}

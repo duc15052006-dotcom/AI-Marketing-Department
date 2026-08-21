@@ -1,0 +1,18 @@
+{
+  "benchmark_id": "BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING",
+  "run_id": "RUN-PHASE4-3-V2-001",
+  "execution_generation": "phase4_3_v2",
+  "handoff_contract_version": "v2",
+  "benchmark_schema_version": "v2",
+  "candidate_schema_version": "v2",
+  "benchmark_spec_hash": "b7e2abbe0b669e301216546f4183b58b82137f351732f5fb51de6e1c70ae0a1c",
+  "product_facts_hash": "e34338e873585d44098aa434933f64b320aab9b756867b90d7f018fc853e1516",
+  "evidence_bundle_hash": "e141532d5943510ba9f95f1f652dc44e2d17bdb25dbf4345a9d7db95ce8eddc8",
+  "single_prompt_hash": "688d1576756ae0537d0d52d0b17bb4f1a164d8a0c19d0a55f32d86b166a173b0",
+  "provider_id": "gemini",
+  "requested_model": "gemini-flash-latest",
+  "strict_model_pin": true,
+  "model_call_timeout_seconds": 180.0,
+  "run_fingerprint": "9d4259dd764b39353dce86e7e977f6f2839ec17e951011cb24bf0e5a5d1d8984",
+  "created_at": "2026-08-18T08:21:36.743764+00:00"
+}

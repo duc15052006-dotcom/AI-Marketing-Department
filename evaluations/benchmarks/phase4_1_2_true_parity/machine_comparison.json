@@ -1,0 +1,105 @@
+{
+  "comparison_timestamp": "2026-08-17T12:53:13.936616+00:00",
+  "model_parity": "PASS",
+  "exact_model": "gemini-flash-latest",
+  "dimension_evaluations": {
+    "CLAIM_GROUNDING": {
+      "single_model": "PASS",
+      "five_agent": "PASS"
+    },
+    "INVALID_EVIDENCE_IDS": {
+      "single_model": 0,
+      "five_agent": 0
+    },
+    "UNSUPPORTED_PRODUCT_CLAIMS": {
+      "single_model": 0,
+      "five_agent": 0
+    },
+    "FABRICATED_METRICS": {
+      "single_model": 0,
+      "five_agent": 0
+    },
+    "UNKNOWN_PRESERVATION": {
+      "single_model": "PASS",
+      "five_agent": "PASS"
+    },
+    "PRODUCT_FACT_DISCIPLINE": {
+      "single_model": "PASS",
+      "five_agent": "PASS"
+    },
+    "STRATEGIC_TRADEOFF_DISCIPLINE": {
+      "single_model": "PASS",
+      "five_agent": "PARTIAL"
+    },
+    "CREATIVE_CLAIM_DISCIPLINE": {
+      "single_model": "PASS",
+      "five_agent": "PASS"
+    },
+    "MEASUREMENT_DISCIPLINE": {
+      "single_model": "PASS",
+      "five_agent": "PASS"
+    },
+    "CAUSAL_DISCIPLINE": {
+      "single_model": "PASS",
+      "five_agent": "PASS"
+    },
+    "APPROVAL_GOVERNANCE": {
+      "single_model": "PASS",
+      "five_agent": "PASS"
+    },
+    "LINEAGE_TRACEABILITY": {
+      "single_model": "ADEQUATE",
+      "five_agent": "STRONG"
+    }
+  },
+  "structural_quality_dimensions": {
+    "research_interpretation": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    },
+    "segment_prioritization": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    },
+    "positioning_specificity": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    },
+    "strategic_focus": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    },
+    "what_not_to_do_quality": {
+      "single_model": "STRONG",
+      "five_agent": "ADEQUATE"
+    },
+    "creative_diversity": {
+      "single_model": "ADEQUATE",
+      "five_agent": "STRONG"
+    },
+    "creative_usability": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    },
+    "measurement_quality": {
+      "single_model": "ADEQUATE",
+      "five_agent": "STRONG"
+    },
+    "experiment_falsifiability": {
+      "single_model": "ADEQUATE",
+      "five_agent": "STRONG"
+    },
+    "risk_discipline": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    },
+    "approval_discipline": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    },
+    "actionability": {
+      "single_model": "STRONG",
+      "five_agent": "STRONG"
+    }
+  }
+}

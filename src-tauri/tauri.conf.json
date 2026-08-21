@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI Marketing Department",
+  "version": "1.0.0",
+  "identifier": "com.aimarketingdepartment.desktop",
+  "build": {
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm --prefix frontend run dev",
+    "beforeBuildCommand": {
+      "script": "npm run build",
+      "cwd": "../frontend"
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AI Marketing Department — Command Center",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 1024,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  }
+}

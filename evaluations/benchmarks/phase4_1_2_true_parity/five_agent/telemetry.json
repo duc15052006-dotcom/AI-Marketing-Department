@@ -1,0 +1,83 @@
+{
+  "model_requested": "gemini-flash-latest",
+  "model_resolved": "gemini-flash-latest",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+  "total_model_calls": 6,
+  "prompt_tokens": 69723,
+  "completion_tokens": 16661,
+  "thoughts_tokens": 0,
+  "total_tokens": 89095,
+  "stages": {
+    "cmo_initial": {
+      "status": "SUCCESS",
+      "prompt_tokens": 5230,
+      "completion_tokens": 1431,
+      "thoughts_tokens": 0,
+      "cached_tokens": 0,
+      "total_tokens": 6913,
+      "latency_ms": 43215.287400002126,
+      "model_calls": 1,
+      "usage_source": "PROVIDER_REPORTED"
+    },
+    "intelligence": {
+      "status": "SUCCESS",
+      "prompt_tokens": 9330,
+      "completion_tokens": 2105,
+      "thoughts_tokens": 0,
+      "cached_tokens": 0,
+      "total_tokens": 11764,
+      "latency_ms": 85263.3292999817,
+      "model_calls": 1,
+      "usage_source": "PROVIDER_REPORTED"
+    },
+    "strategist": {
+      "status": "SUCCESS",
+      "prompt_tokens": 10082,
+      "completion_tokens": 2766,
+      "thoughts_tokens": 0,
+      "cached_tokens": 0,
+      "total_tokens": 13341,
+      "latency_ms": 45261.6400999832,
+      "model_calls": 1,
+      "usage_source": "PROVIDER_REPORTED"
+    },
+    "creative": {
+      "status": "SUCCESS",
+      "prompt_tokens": 10527,
+      "completion_tokens": 3698,
+      "thoughts_tokens": 0,
+      "cached_tokens": 0,
+      "total_tokens": 14441,
+      "latency_ms": 49564.88939997507,
+      "model_calls": 1,
+      "usage_source": "PROVIDER_REPORTED"
+    },
+    "performance": {
+      "status": "SUCCESS",
+      "prompt_tokens": 15394,
+      "completion_tokens": 4265,
+      "thoughts_tokens": 0,
+      "cached_tokens": 0,
+      "total_tokens": 20776,
+      "latency_ms": 16847.8935000021,
+      "model_calls": 1,
+      "usage_source": "PROVIDER_REPORTED"
+    },
+    "cmo_final": {
+      "status": "SUCCESS",
+      "prompt_tokens": 19160,
+      "completion_tokens": 2396,
+      "thoughts_tokens": 0,
+      "cached_tokens": 0,
+      "total_tokens": 21860,
+      "latency_ms": 8827.761499967892,
+      "model_calls": 1,
+      "usage_source": "PROVIDER_REPORTED"
+    }
+  },
+  "model_latency_total_ms": 248980.8011999121,
+  "orchestration_overhead_ms": 36285.194000112824,
+  "total_wall_clock_ms": 285265.9952000249,
+  "usage_source": "PROVIDER_REPORTED",
+  "telemetry_completeness": "PASS"
+}

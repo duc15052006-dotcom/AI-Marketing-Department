@@ -1,0 +1,10 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 1.0,
+      "rationale": "The 'Research Findings' section is completely missing from the candidate's output, preventing any evaluation of technical problem framing."
+    },
+    "evidence_discipline": {
+      "score": 5.0,
+      "rationale": "While the candidate lists verified facts and observations, the 'Inferences' section is missing and several parts are truncated."

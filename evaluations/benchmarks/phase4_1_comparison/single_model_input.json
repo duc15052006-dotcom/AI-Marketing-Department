@@ -1,0 +1,133 @@
+{
+  "benchmark_id": "SINGLE_MODEL_BASELINE_GAN65_001",
+  "comparison_mode": "EVIDENCE_CONTROLLED",
+  "business_objective": "Determine whether and how the 65W GaN charger should be brought to market in Vietnam, identify target developer/office/mobile customer segments and positioning, produce launch creative test package, design performance tracking and experiment plan, and deliver governed CMO recommendations.",
+  "target_market": "Vietnam",
+  "business_model": "Ecommerce",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "guaranteed_specifications": [
+    "65W maximum power output",
+    "GaN (Gallium Nitride) semiconductor technology",
+    "USB-C interface / connectivity",
+    "Compact portable form factor"
+  ],
+  "unspecified_specifications_to_preserve_as_unknown": [
+    "Exact number of ports (single vs multi-port is UNKNOWN/TO_BE_DETERMINED)",
+    "Supported protocols (PD3.0/PPS/QC is UNKNOWN/TO_BE_DETERMINED)",
+    "Cable inclusion (UNKNOWN/TO_BE_DETERMINED)",
+    "Retail price and margins (UNKNOWN/TO_BE_DETERMINED)",
+    "Exact physical dimensions and weight (UNKNOWN/TO_BE_DETERMINED)"
+  ],
+  "evidence_bundle": {
+    "bundle_id": "BUNDLE-GAN65-001",
+    "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+    "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+    "items": [
+      {
+        "evidence_id": "EVID-GAN65-01",
+        "source_url": "https://en.wikipedia.org/wiki/Gallium_nitride",
+        "source_family": "TECHNICAL_DOCUMENTATION",
+        "title": "Gallium Nitride (GaN) Power Electronics Overview",
+        "extracted_text": "GaN power semiconductors enable higher power efficiency, higher switching frequencies, and significantly smaller form factors compared to legacy silicon MOSFETs, allowing compact 65W charger designs that run cooler under high loads.",
+        "content_role": "TECHNICAL_FACT",
+        "extraction_confidence": 0.95
+      },
+      {
+        "evidence_id": "EVID-GAN65-02",
+        "source_url": "https://www.usb.org/usb-charger-pd",
+        "source_family": "TECHNICAL_DOCUMENTATION",
+        "title": "USB Power Delivery (USB PD 3.0) Fast Charging Specification",
+        "extracted_text": "65W USB-C Power Delivery can charge typical 13-inch and 14-inch ultrabooks (e.g. MacBook Air/Pro, Dell XPS, ThinkPad) as well as modern fast-charging smartphones at full speed through universal Type-C negotiation.",
+        "content_role": "TECHNICAL_FACT",
+        "extraction_confidence": 0.95
+      },
+      {
+        "evidence_id": "EVID-GAN65-03",
+        "source_url": "https://tinhte.vn/thread/danh-gia-cu-sac-gan-65w-cho-laptop-va-dien-thoai.3701245/",
+        "source_family": "PUBLIC_DISCUSSION",
+        "title": "Tinhte.vn Vietnamese Tech Forum: 65W GaN Charger Review & Discussion",
+        "extracted_text": "Vietnamese office workers and tech commuters frequently express frustration carrying heavy OEM 'brick' chargers in backpacks. Users note 65W GaN allows one compact adapter for both laptop and phone, but emphasize concerns over thermal heat dissipation during prolonged 65W laptop charging and plug stability in loose wall sockets.",
+        "content_role": "USER_VOICE",
+        "extraction_confidence": 0.9
+      },
+      {
+        "evidence_id": "EVID-GAN65-04",
+        "source_url": "https://shopee.vn/search?keyword=sac%20gan%2065w",
+        "source_family": "SEARCH_DISCOVERY",
+        "title": "Shopee Vietnam Ecommerce Search Discovery: 'sac gan 65w'",
+        "extracted_text": "Search discovery reveals prominent competitor brands Baseus, Ugreen, and Anker in the 300,000 VND - 700,000 VND price range. Customer reviews highlight port versatility, fast laptop handshake, and compact travel size as decisive purchase triggers.",
+        "content_role": "MARKET_OBSERVATION",
+        "extraction_confidence": 0.88
+      },
+      {
+        "evidence_id": "EVID-GAN65-05",
+        "source_url": "https://voz.vn/t/hoi-anh-em-dung-cu-sac-gan-cho-laptop.681920/",
+        "source_family": "PUBLIC_DISCUSSION",
+        "title": "VOZ Forum Vietnam: GaN Charger Long-term Reliability Thread",
+        "extracted_text": "Vietnamese tech forum discussions emphasize fear of cheap knockoffs causing voltage surges or frying laptop motherboards. Buyers demand clear thermal safety guarantees and brand warranty before trusting non-OEM chargers with expensive laptops.",
+        "content_role": "USER_VOICE",
+        "extraction_confidence": 0.92
+      }
+    ],
+    "evidence_gaps": [
+      {
+        "dimension": "TRANSACTION_DATA",
+        "reason": "New brand with zero historical sales or conversion telemetry."
+      },
+      {
+        "dimension": "REPRESENTATIVE_SURVEY_DATA",
+        "reason": "No statistically representative nationwide consumer survey exists."
+      },
+      {
+        "dimension": "SPECIFIC_SKU_PRICE",
+        "reason": "Exact retail price and wholesale margin for benchmark brand are UNKNOWN."
+      }
+    ]
+  },
+  "claim_constraints": [
+    "CATEGORY_TECHNOLOGY_PROPERTY != OUR_PRODUCT_VERIFIED_PROPERTY",
+    "COMPETITOR_CAPABILITY != OUR_PRODUCT_CAPABILITY",
+    "CUSTOMER_REQUIREMENT != OUR_PRODUCT_FEATURE",
+    "CUSTOMER_PAIN_POINT != OUR_PRODUCT_SOLVED_OUTCOME",
+    "DESIRED_BENEFIT != VERIFIED_PRODUCT_OUTCOME",
+    "GENERIC_TECHNOLOGY_ADVANTAGE != OUR_PRODUCT_MEASURED_PERFORMANCE",
+    "Do NOT claim universal laptop compatibility; qualify as 'for compatible USB-C devices'.",
+    "Do NOT claim our charger runs cooler or has verified thermal protection without SKU test data.",
+    "Do NOT fabricate financial figures (CAC, LTV, ROAS, budgets).",
+    "Do NOT invent unverified port counts or bundled accessories.",
+    "Enforce DEFAULT_AUTONOMY = SUPERVISED: all external execution requires human approval."
+  ],
+  "required_sections": [
+    "EXECUTIVE_SUMMARY",
+    "RESEARCH_FINDINGS",
+    "KNOWN_FACTS",
+    "OBSERVATIONS",
+    "INFERENCES",
+    "HYPOTHESES",
+    "UNKNOWNS",
+    "CUSTOMER_SEGMENTS",
+    "TOP_PRIORITY_SEGMENT",
+    "POSITIONING",
+    "VALUE_PROPOSITION",
+    "CHANNEL_PRIORITIES",
+    "DEFERRED_CHANNELS",
+    "WHAT_NOT_TO_DO",
+    "CREATIVE_TERRITORIES",
+    "SELECTED_CREATIVE_TERRITORY",
+    "ANGLES",
+    "HOOKS",
+    "SHORT_FORM_COPY",
+    "VIDEO_SCRIPT",
+    "MEASUREMENT_FRAMEWORK",
+    "FUNNEL",
+    "METRICS",
+    "EXPERIMENTS",
+    "ATTRIBUTION_APPROACH",
+    "RISKS",
+    "TOP_3_PRIORITIES",
+    "GO_TEST_HOLD_DEFER_DECISIONS",
+    "HUMAN_APPROVAL_REQUIREMENTS",
+    "NEXT_ACTIONS"
+  ]
+}

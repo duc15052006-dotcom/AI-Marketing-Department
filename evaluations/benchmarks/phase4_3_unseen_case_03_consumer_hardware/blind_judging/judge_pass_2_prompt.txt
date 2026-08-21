@@ -1,0 +1,873 @@
+You are an Expert Independent GTM Strategy & Marketing Quality Auditor performing a Double-Blind Evaluation of Go-To-Market proposals for a Consumer Kitchen Hardware product (AromaBrew Pro — Case 03).
+
+[SOURCE EVIDENCE & GROUND TRUTH SPECIFICATIONS]
+VERIFIED PRODUCT CAPABILITIES & FACTS:
+{
+  "product_id": "PROD_AROMA_BREW_PRO",
+  "brand_id": "BRAND_AROMA_TECH",
+  "product_name": "AromaBrew Pro \u2014 Precision Acoustic Smart Cold Brew Maker",
+  "category": "Consumer Kitchen Hardware / Direct-to-Consumer Physical Goods",
+  "price_usd": 189.0,
+  "unit_cost_usd": 68.0,
+  "target_geo": "United States & Canada (D2C E-commerce + Specialty Retail)",
+  "verified_product_facts": [
+    "Uses low-frequency ultrasonic acoustic extraction to brew concentrate in 12 minutes (vs standard 16-24 hour passive immersion).",
+    "Includes integrated Bluetooth companion mobile app (iOS/Android) for extraction curve customization and bean origin profiles.",
+    "Vacuum-insulated borosilicate glass carafe maintains cold brew temperature below 40\u00b0F for up to 24 hours without ice dilution.",
+    "Precision stainless steel micro-mesh filter (40-micron rating) eliminates coffee sediment without single-use paper filters.",
+    "UL / FDA food contact certified; dishwasher-safe modular parts.",
+    "MSRP is $189.00 with standard 30-day money-back guarantee and 2-year manufacturer warranty.",
+    "Gross margin per unit at MSRP is 64.0% ($121.00 gross margin per unit sold via direct website)."
+  ],
+  "unverified_or_unknown_aspects": [
+    "Actual repeat purchase rate of companion organic whole-bean subscription bags.",
+    "Exact influencer CPA across YouTube coffee channels vs Meta D2C video ads.",
+    "Long-term battery degradation curve of companion digital base unit over 3+ years."
+  ],
+  "prohibited_and_disallowed_claims": [
+    "Guaranteed 100% elimination of all stomach acid or caffeine jitter effects.",
+    "Instant medical claims regarding heart disease or metabolic cure.",
+    "Claiming proprietary acoustic patent ownership if patent is currently 'Patent Pending'.",
+    "Fabricated celebrity barista endorsements without signed commercial release."
+  ]
+}
+
+QUALITATIVE MARKET EVIDENCE:
+{
+  "case_id": "CASE_03_CONSUMER_HARDWARE_D2C",
+  "market_evidence": [
+    {
+      "id": "EVID-001",
+      "source": "Specialty Coffee Association (SCA) 2025 Market Report",
+      "finding": "Cold brew accounts for 28% of total away-from-home coffee consumption in US/CA, with 62% of Gen Z / Millennial consumers drinking cold coffee daily even during winter months.",
+      "type": "VERIFIED_INDUSTRY_DATA"
+    },
+    {
+      "id": "EVID-002",
+      "source": "D2C Coffee Appliance Review Mining (Amazon & Reddit r/Coffee, 1,450 verified purchase reviews)",
+      "finding": "Top customer complaint with existing home cold brewers is 24-hour waiting friction (42% of negative reviews) followed by sludge/sediment in the final cup (31%).",
+      "type": "QUALITATIVE_REVIEW_MINING"
+    },
+    {
+      "id": "EVID-003",
+      "source": "Meta Ads & TikTok D2C Benchmark Q3 2025",
+      "finding": "Kitchen hardware products priced $150-$250 face median customer acquisition cost (CAC) of $55-$75 on paid social, requiring multi-touch video demonstration of speed/clarity to achieve profitable 1st-order payback.",
+      "type": "EMPIRICAL_BENCHMARK"
+    },
+    {
+      "id": "EVID-004",
+      "source": "Retail Distribution Channel Interviews",
+      "finding": "Specialty retailers (Williams Sonoma, Sur La Table) require minimum 45% wholesale discount and proven D2C brand search volume before committing to endcap placement.",
+      "type": "CHANNEL_OBSERVATION"
+    }
+  ]
+}
+
+BUSINESS OBJECTIVE & CONSTRAINTS:
+{
+  "campaign_id": "CAMP-2026-AROMABREW-GTM",
+  "commercial_goal": "Scale D2C launch to 5,000 units sold within first 90 days at blended CAC <= $65.00, achieving positive contribution margin on first purchase and seeding companion bean subscription pipeline.",
+  "primary_kpi": "Direct E-commerce Paid Units Sold (Target: 5,000 units)",
+  "secondary_kpis": [
+    "Blended Customer Acquisition Cost (Target: <= $65.00)",
+    "App Pairing & Onboarding Activation Rate (Target: >= 75%)",
+    "Coffee Bean Subscription Attach Rate (Target: >= 20% at checkout)"
+  ],
+  "guardrails": [
+    "CAC ceiling of $75.00 on paid acquisition channels",
+    "Return rate below 4.5% in first 30 days",
+    "Strict compliance with FTC disclosure guidelines on influencer gifting and no medical claims"
+  ],
+  "budget_allocation_total_usd": 350000.0
+}
+
+PROHIBITED & UNVERIFIED CLAIMS:
+- 100% elimination of stomach acid or caffeine jitter effects
+- Medical claims regarding disease or health cures
+- Claiming patented status if patent is pending
+- Fabricated celebrity barista endorsements
+
+[FROZEN 14-DIMENSION EVALUATION RUBRIC]
+- **1. Research Quality** (Weight: 0.08): Depth of technical problem framing, consumer friction analysis, and market reality synthesis.
+- **2. Evidence Discipline** (Weight: 0.08): Strict distinction between verified facts vs unverified claims; zero hallucinated statistics.
+- **3. Segmentation Quality** (Weight: 0.08): Actionability, consumer demographic/behavioral clarity, and prioritization of beachhead persona.
+- **4. Positioning Quality** (Weight: 0.08): Technical differentiation against traditional immersion cold brew and value proposition sharpness.
+- **5. Channel Strategy** (Weight: 0.07): Realism of D2C e-commerce + retail acquisition mix and clear deferred channels.
+- **6. Creative Quality** (Weight: 0.07): Originality and emotional resonance of concept territories with coffee enthusiasts.
+- **7. Copy / Script Executability** (Weight: 0.07): Production readiness of short-form ad copy and technical video scripts.
+- **8. Performance Funnel & Metrics** (Weight: 0.07): Clarity of full-funnel conversion benchmarks, CAC payback, and subscription attach targets.
+- **9. Experimentation Rigor** (Weight: 0.07): Scientific structure of growth hypotheses, sample sizing, and testable A/B designs.
+- **10. Attribution / Tracking** (Weight: 0.07): Multi-touch attribution, post-purchase survey integration, and companion app telemetry tracking.
+- **11. Claim Safety / Compliance** (Weight: 0.08): Absolute zero prohibited claims (no medical cures, no jitter elimination guarantees).
+- **12. Governance / Human Approval** (Weight: 0.07): Clarity of Go/Test/Hold/Defer decisions, risk mitigation, and approval checkpoints.
+- **13. Internal Consistency / Lineage** (Weight: 0.07): End-to-end coherence between research findings, creative copy, and measurement KPIs.
+- **14. Completeness** (Weight: 0.04): Coverage of the 28-deliverable GTM proposal without ungrounded synthetic filler.
+
+[EVALUATION RULES]
+1. Score each candidate independently on every dimension using a 0.0 to 10.0 scale.
+2. Keep rationales concise (1-2 sentences per dimension) to avoid output truncation.
+3. Penalize severely any presence of prohibited claims, ungrounded statistics, or missing technical sections.
+4. Perform pairwise head-to-head comparisons between all candidate pairs.
+
+[ANONYMOUS CANDIDATE PROPOSALS TO EVALUATE]
+
+========================================
+CANDIDATE Y
+========================================
+# CANDIDATE Y PROPOSAL
+
+## EXECUTIVE SUMMARY
+### Deliverable 1: Strategic Vision & Market Opportunity
+The home coffee landscape is experiencing a structural shift. While cold brew consumption has surged to represent 28% of total away-from-home coffee consumption in the US and Canada—with 62% of Gen Z and Millennial consumers drinking cold coffee daily even during winter months (SCA 2025 Market Report)—the home-brewing experience remains fundamentally broken. Consumers are forced to choose between a 24-hour passive immersion waiting period or sediment-heavy, over-extracted cups from traditional home brewers.
+
+```
+Traditional Cold Brew:  [24-Hour Passive Immersion] ──> High Sediment / Sludge
+AromaBrew Pro:          [12-Min Acoustic Wave]     ──> 40-Micron Clean Concentrate
+```
+
+The **AromaBrew Pro** solves these pain points. By leveraging low-frequency ultrasonic acoustic extraction, it delivers a clean, sediment-free cold brew concentrate in **12 minutes** instead of 16–24 hours. 
+
+Our strategic vision is to position AromaBrew Pro as the definitive "Precision Acoustic Smart Cold Brew Maker" for the modern, tech-forward coffee enthusiast. By combining hardware innovation (acoustic extraction, vacuum-insulated borosilicate glass carafe, 40-micron micro-mesh filter) with a companion mobile app and a high-margin organic whole-bean subscription, we will capture the premium home cold brew market.
+
+---
+
+## RESEARCH FINDINGS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## KNOWN FACTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## OBSERVATIONS
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        RESEARCH FINDINGS (FOIU)                          │
+├──────────────────────────────────────────┬───────────────────────────────┤
+│ FACTS (Verified Specs)                   │ OBSERVATIONS (Market Data)    │
+│ • 12-Min Acoustic Extraction             │ • 28% of coffee is cold brew  │
+│ • 40-Micron Micro-Mesh Filter            │ • 42% complain of 24hr wait   │
+│ • $189 MSRP / $68 COGS (64% Margin)      │ • 31% complain of sediment    │
+├──────────────────────────────────────────┼───────────────────────────────┤
+│ INFERENCES (Hypotheses)                  │ UNKNOWNS (Risks to Test)      │
+│ • Speed & clarity are primary hooks      │ • Whole-bean subscription LTV │
+│ • App pairing drives retention           │ • Influencer vs Paid Social CPA│
+│ • High margin allows aggressive CAC      │ • Long-term battery life (3yr)│
+└──────────────────────────────────────────┴───────────────────────────────┘
+```
+
+## INFERENCES
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        RESEARCH FINDINGS (FOIU)                          │
+├──────────────────────────────────────────┬───────────────────────────────┤
+│ FACTS (Verified Specs)                   │ OBSERVATIONS (Market Data)    │
+│ • 12-Min Acoustic Extraction             │ • 28% of coffee is cold brew  │
+│ • 40-Micron Micro-Mesh Filter            │ • 42% complain of 24hr wait   │
+│ • $189 MSRP / $68 COGS (64% Margin)      │ • 31% complain of sediment    │
+├──────────────────────────────────────────┼───────────────────────────────┤
+│ INFERENCES (Hypotheses)                  │ UNKNOWNS (Risks to Test)      │
+│ • Speed & clarity are primary hooks      │ • Whole-bean subscription LTV │
+│ • App pairing drives retention           │ • Influencer vs Paid Social CPA│
+│ • High margin allows aggressive CAC      │ • Long-term battery life (3yr)│
+└──────────────────────────────────────────┴───────────────────────────────┘
+```
+
+## HYPOTHESES
+Based on our observations, we have formulated several core hypotheses to guide our launch strategy.
+
+*   **Inference 1 (The Speed Hook):** Highlighting the "12-minute acoustic extraction vs. 24-hour wait" in our ad creative will directly address the market's primary pain point, driving lower cost-per-click (CPC) and higher click-through rates (CTR) than standard lifestyle imagery.
+*   **Inference 2 (The Sediment Solution):** Emphasizing the "40-micron micro-mesh filter" alongside visual demonstrations of sediment-free coffee will convert disappointed owners of traditional cold brewers.
+*   **Inference 3 (App-Enabled Retention):** Requiring app pairing for custom extraction curves will help us onboard users into our ecosystem, driving higher adoption of our whole-bean coffee subscription.
+*   **Inference 4 (D2C-First Validation):** We must focus on D2C sales in the first 90 days to build the search volume and brand equity needed to secure favorable retail distribution terms.
+
+---
+
+## UNKNOWNS
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        RESEARCH FINDINGS (FOIU)                          │
+├──────────────────────────────────────────┬───────────────────────────────┤
+│ FACTS (Verified Specs)                   │ OBSERVATIONS (Market Data)    │
+│ • 12-Min Acoustic Extraction             │ • 28% of coffee is cold brew  │
+│ • 40-Micron Micro-Mesh Filter            │ • 42% complain of 24hr wait   │
+│ • $189 MSRP / $68 COGS (64% Margin)      │ • 31% complain of sediment    │
+├──────────────────────────────────────────┼───────────────────────────────┤
+│ INFERENCES (Hypotheses)                  │ UNKNOWNS (Risks to Test)      │
+│ • Speed & clarity are primary hooks      │ • Whole-bean subscription LTV │
+│ • App pairing drives retention           │ • Influencer vs Paid Social CPA│
+│ • High margin allows aggressive CAC      │ • Long-term battery life (3yr)│
+└──────────────────────────────────────────┴───────────────────────────────┘
+```
+
+## CUSTOMER SEGMENTS
+### Deliverable 8: Detailed Customer Segmentation
+We have identified three distinct customer segments for the AromaBrew Pro.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           CUSTOMER SEGMENTS                              │
+├──────────────────────────────┬────────────────────────────┬──────────────┤
+│ 1. TIME-POOR CONNOISSEUR     │ 2. TECH-FORWARD WELLNESS   │ 3. HABITUAL  │
+│ • Gen Z/Millennial Pro       │ • Biohackers & Athletes    │ • Daily Cold │
+│ • Spends $6+/day at cafes    │ • Demands clean energy     │   Brew Drinker│
+│ • Primary Beachhead          │ • Values tech & design     │ • Value-driven│
+└──────────────────────────────┴────────────────────────────┴──────────────┘
+```
+
+## TOP PRIORITY SEGMENT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## POSITIONING
+### Deliverable 11: Brand Positioning Statement & Core Pillars
+Our positioning defines AromaBrew Pro as the intersection of advanced extraction technology and premium coffee craftsmanship.
+
+> **Positioning Statement:**  
+> *For premium coffee lovers who refuse to wait 24 hours for a clean cup of cold brew, the AromaBrew Pro is the only smart kitchen appliance that uses low-frequency acoustic waves to deliver a sediment-free, vacuum-insulated cold brew concentrate in just 12 minutes. Unlike traditional slow-immersion brewers, AromaBrew Pro combines rapid extraction with app-controlled customization to deliver cafe-quality cold brew on demand.*
+
+## VALUE PROPOSITION
+### Deliverable 11: Brand Positioning Statement & Core Pillars
+Our positioning defines AromaBrew Pro as the intersection of advanced extraction technology and premium coffee craftsmanship.
+
+> **Positioning Statement:**  
+> *For premium coffee lovers who refuse to wait 24 hours for a clean cup of cold brew, the AromaBrew Pro is the only smart kitchen appliance that uses low-frequency acoustic waves to deliver a sediment-free, vacuum-insulated cold brew concentrate in just 12 minutes. Unlike traditional slow-immersion brewers, AromaBrew Pro combines rapid extraction with app-controlled customization to deliver cafe-quality cold brew on demand.*
+
+## CHANNEL PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## DEFERRED CHANNELS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## WHAT NOT TO DO
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATIVE TERRITORIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SELECTED CREATIVE TERRITORY
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## ANGLES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HOOKS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SHORT FORM COPY
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## VIDEO SCRIPT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MEASUREMENT FRAMEWORK
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXPERIMENTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## ATTRIBUTION APPROACH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## RISKS
+We have identified three key unknowns and established mitigation strategies for each.
+
+## TOP 3 PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## GO TEST HOLD DEFER DECISIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HUMAN APPROVAL REQUIREMENTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## NEXT ACTIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## BENCHMARK ID
+BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING
+
+## RUN ID
+DEFAULT
+
+## RUN FINGERPRINT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CONDITION ID
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SOURCE RAW HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CANONICAL HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXECUTION GENERATION
+phase4_3_v2
+
+## CANDIDATE SCHEMA VERSION
+v2
+
+## CONTENT PATCH COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SEMANTIC REWRITE COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATED AT
+2026-08-19T08:23:35.487144+00:00
+
+
+
+========================================
+CANDIDATE Z
+========================================
+# CANDIDATE Z PROPOSAL
+
+## EXECUTIVE SUMMARY
+The North American cold brew market represents a high-growth, premium opportunity, particularly among younger demographics. Cold brew now accounts for **28% of total away-from-home coffee consumption in the US and Canada**, with **62% of Gen Z and Millennial consumers drinking cold coffee daily**, even during winter months (**EVID-001**). 
+
+The **AromaBrew Pro** (MSRP: $189.00) is strategically positioned to capture this market by directly solving the primary pain points of home cold brewing. With a unit cost of $68.00, the product yields a highly favorable **64.0% gross margin ($121.00)** when sold via the direct-to-consumer (D2C) website. However, entering this market requires navigating a high-barrier customer acquisition landscape, where the median Customer Acquisition Cost (CAC) for kitchen hardware in the $150–$250 price tier ranges from **$55.00 to $75.00** on paid social (**EVID-003**). 
+
+To achieve profitable first-order unit economics and unlock premium specialty retail distribution (e.g., Williams Sonoma, Sur La Table), we must leverage the product's unique technological advantages in our marketing and positioning strategies.
+
+---
+
+## RESEARCH FINDINGS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## KNOWN FACTS
+[
+  "Uses low-frequency ultrasonic acoustic extraction to brew concentrate in 12 minutes (vs standard 16-24 hour passive immersion).",
+  "Includes integrated Bluetooth companion mobile app (iOS/Android) for extraction curve customization and bean origin profiles.",
+  "Vacuum-insulated borosilicate glass carafe maintains cold brew temperature below 40Â°F for up to 24 hours without ice dilution.",
+  "Precision stainless steel micro-mesh filter (40-micron rating) eliminates coffee sediment without single-use paper filters.",
+  "UL / FDA food contact certified; dishwasher-safe modular parts.",
+  "MSRP is $189.00 with standard 30-day money-back guarantee and 2-year manufacturer warranty.",
+  "Gross margin per unit at MSRP is 64.0% ($121.00 gross margin per unit sold via direct website).",
+  "Cold brew accounts for 28% of total away-from-home coffee consumption in the US and Canada (EVID-001).",
+  "62% of Gen Z and Millennial consumers drink cold coffee daily, even during winter months (EVID-001).",
+  "Median Customer Acquisition Cost (CAC) for kitchen hardware in the $150â$250 price tier ranges from $55.00 to $75.00 on paid social."
+]
+
+## OBSERVATIONS
+[
+  "The cold coffee market is highly resilient to seasonality, with a strong daily consumption habit among younger demographics (62% of Gen Z/Millennials).",
+  "Traditional cold brewing at home requires planning a day in advance (16-24 hours), creating a significant friction point for spontaneous consumption.",
+  "The premium kitchen hardware space ($150-$250) has a high-barrier customer acquisition landscape, requiring efficient, high-converting funnel strategies to maintain profitability.",
+  "Consumers are increasingly seeking sustainable, zero-waste kitchen solutions, making single-use paper filters a negative selling point."
+]
+
+## INFERENCES
+[
+  "By reducing brew time from 24 hours to 12 minutes, the AromaBrew Pro transforms cold brew from a planned chore into an on-demand luxury, directly addressing the primary barrier to home brewing.",
+  "The high gross margin of 64.0% ($121.00) provides a robust buffer to absorb the $55.00 to $75.00 median CAC, allowing for profitable first-order D2C unit economics if conversion rates are optimized.",
+  "The companion app and customizable extraction curves appeal directly to the 'Tech-Forward Purist' segment, who value precision and culinary science over basic convenience.",
+  "The vacuum-insulated carafe's ability to maintain temperature below 40Â°F for 24 hours without ice solves the common consumer complaint of watered-down cold brew."
+]
+
+## HYPOTHESES
+[
+  "Positioning the product through the lens of 'Acoustic Science' (Territory 1) will yield a 15-20% higher click-through rate (CTR) and lower CAC among tech-forward coffee enthusiasts compared to standard convenience-based messaging.",
+  "Highlighting the zero-waste, paperless 40-micron stainless steel filter will increase conversion rates among design and wellness-oriented Millennial buyers.",
+  "Offering a seamless app-onboarding preview on the landing page will increase average session duration and boost purchase intent by demonstrating the customization features."
+]
+
+## UNKNOWNS
+[
+  "The exact percentage of customers who will actively use the Bluetooth companion app daily versus those who will rely on default settings.",
+  "The long-term durability and wear-resistance of the 40-micron micro-mesh filter under daily dishwasher cycles over a multi-year period.",
+  "The specific conversion rate lift achieved by bundling premium single-origin coffee beans with the initial hardware purchase."
+]
+
+## CUSTOMER SEGMENTS
+Our launch strategy targets two distinct, high-value consumer segments within the North American market, where cold brew represents 28% of away-from-home coffee consumption and 62% of Gen Z/Millennials drink cold coffee daily (`EVID-001`).
+
+## TOP PRIORITY SEGMENT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## POSITIONING
+---
+
+## VALUE PROPOSITION
+| Value Dimension | Product Feature (Ground Truth) | Customer Benefit | Marketing Translation |
+| :--- | :--- | :--- | :--- |
+| **Functional** | Low-frequency ultrasonic acoustic extraction (12-minute brew cycle). | Eliminates the 16–24 hour wait time; delivers fresh cold brew on demand. | *"From bean to cold brew concentrate in 12 minutes flat."* |
+| **Functional** | Integrated Bluetooth companion app (iOS/Android) with customizable extraction curves. | Tailors the extraction process to specific bean origins (e.g., Ethiopian light roast vs. Sumatran dark roast). | *"Precision brewing calibrated to your bean's origin."* |
+| **Functional** | Vacuum-insulated borosilicate glass carafe (<40°F for 24 hours). | Keeps cold brew chilled all day without needing ice, preventing flavor dilution. | *"Chilled below 40°F for 24 hours. Pure flavor, zero ice dilution."* |
+| **Functional** | 40-micron stainless steel micro-mesh filter. | Eliminates sediment without requiring ongoing purchases of single
+
+## CHANNEL PRIORITIES
+---
+
+## DEFERRED CHANNELS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## WHAT NOT TO DO
+To protect the brand from legal, regulatory, and reputational risks, all marketing, packaging, and promotional materials must strictly adhere to the following boundaries:
+
+1.  **No Health/Medical Claims:** Absolutely no claims stating or implying that the product guarantees a 100% elimination of stomach acid, prevents caffeine jitters, or cures/prevents medical conditions (e.g., heart disease, metabolic disorders).
+2.  **Patent Accuracy:** The proprietary acoustic technology must be referred to as **"Patent Pending"**. Do not claim active patent ownership until the patent is fully granted.
+3.  **Endorsement Integrity:** Do not fabricate or publish celebrity barista endorsements. Only use testimonials and endorsements backed by signed commercial releases.
+4.  **Warranty & Guarantees:** All customer-facing materials must clearly and accurately represent the standard 30-day money-back guarantee and the 2-year manufacturer warranty.
+
+## CREATIVE TERRITORIES
+We have developed three distinct creative territories to position the AromaBrew Pro across different consumer segments. Each territory is designed to address specific psychological drivers while remaining strictly within our verified product facts.
+
+## SELECTED CREATIVE TERRITORY
+*   **The Core Concept:** Position the AromaBrew Pro as a breakthrough in culinary physics. We shift the narrative from "making coffee" to "harnessing acoustic science." By focusing on the low-frequency ultrasonic extraction process, we appeal to tech enthusiasts, early adopters, and coffee purists who value precision, control, and scientific innovation in their kitchen.
+*   **Visual Aesthetic:** Sleek, high-contrast, minimalist. Dark backgrounds with sharp, dramatic lighting highlighting the micro-vibrations of the liquid during the 12-minute extraction. Close-ups of the companion app interface showing real-time extraction curves.
+*   **Why It Wins:** It establishes a completely new product category ("Acoustic Cold Brew") and justifies the premium $189 price point by highlighting proprietary, high-tech engineering that cannot be replicated by standard passive immersion.
+
+## ANGLES
+To drive high conversion rates, we translate our technical specifications into deep psychological benefits:
+
+*   **Angle A: The Power of Precision (Control & Mastery)**
+    *   *Psychological Driver:* The desire for mastery and personalization.
+    *   *Translation:* We don't just brew coffee; we give you absolute control over the extraction. By using the Bluetooth companion app to customize extraction curves based on bean origin profiles, the user feels like an expert barista and a food scientist in their own home.
+*   **Angle B: Spontaneous Sophistication (Freedom from Planning)**
+    *   *Psychological Driver:* Cognitive load reduction and instant gratification.
+    *   *Translation:* Traditional cold brew requires 16 to 24 hours of foresight. The AromaBrew Pro eliminates this mental chore. A 12-minute acoustic extraction means you can have premium, sediment-free cold brew whenever the craving strikes—no planning required.
+
+---
+
+## HOOKS
+These high-converting hooks are engineered for the first 3 seconds of social video ads:
+
+1.  **The Pattern Interrupt (Visual-Led):**
+    *   *Hook:* "This coffee maker doesn't use heat or time. It uses sound waves."
+    *   *Visual:* Close-up of the AromaBrew Pro's acoustic chamber vibrating gently as dark coffee concentrate rapidly extracts.
+2.  **The Direct Challenge:**
+    *   *Hook:* "Stop waiting 24 hours for cold brew. You can do it in 12 minutes."
+    *   *Visual:* A hand setting a timer on a phone next to the sleek AromaBrew Pro, showing the rapid transformation of water to rich concentrate.
+3.  **The Tech-Forward Hook:**
+    *   *Hook:* "Meet the world's first Bluetooth-enabled acoustic cold brew system."
+    *   *Visual:* A finger tapping "Start Extraction" on the iOS companion app, showing the extraction curve adjusting in real-time.
+4.  **The Problem-Centric Hook:**
+    *   *Hook:* "If you're still putting ice in your cold brew to keep it cold, you're diluting the flavor."
+    *   *Visual:* Ice melting into a glass of coffee, turning it watery, contrasted immediately with a pour from the vacuum-insulated borosilicate glass carafe.
+
+---
+
+## SHORT FORM COPY
+**To:** Growth Marketing & Production Teams
+
+## VIDEO SCRIPT
+*   **Format:** 9:16 Vertical Video (TikTok, Instagram Reels, YouTube Shorts)
+*   **Tone:** Authentic, tech-forward, enthusiastic, and authoritative.
+*   **Talent:** A tech-savvy coffee enthusiast (25-40) in a modern, clean kitchen.
+
+| Time | Visual Cues | Audio / Voiceover | Text On-Screen (Overlay) |
+| :--- | :--- | :--- | :--- |
+| **0:00 - 0:05** | **Fast cut:** Close-up of the AromaBrew Pro. Liquid inside is vibrating rapidly with gentle acoustic waves. The host looks directly at the camera holding a glass of rich, dark cold brew. | "If you’re still waiting 24 hours to make cold brew at home... you need to see this." | **Stop Waiting 24 Hours** |
+| **0:05 - 0:12** | Host points to the sleek AromaBrew Pro on their kitchen counter. They press a button, and we see the low-frequency ultrasonic acoustic extraction begin. | "This is the AromaBrew Pro. It uses low-frequency ultrasonic acoustic extraction to brew rich cold brew concentrate in just 12 minutes." | **12-Minute Acoustic Extraction** |
+| **0:12 - 0:20** | Split screen: On the left, a messy jar of coffee grounds sitting in water (labeled "16-24 Hour Passive Immersion"). On the right, the AromaBrew Pro rapidly extracting (labeled "12 Minutes"). | "Instead of letting coffee grounds sit in water for an entire day, sound waves gently extract the flavor instantly." | **Acoustic vs. Passive Immersion** |
+| **0:20 - 0:32** | Close-up of the host's smartphone. They open the iOS companion app, connect via Bluetooth, and swipe t
+...[CONTENT PRESERVED IN CANONICAL PROPOSAL]
+
+## MEASUREMENT FRAMEWORK
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXPERIMENTS
+### 2. Product Positioning & Pain-Point Alignment
+*   **Context:** Market research shows cold brew represents 28% of away-from-home coffee consumption, with 62% of Gen Z/Millennials drinking it daily year-round (EVID-001). However, home brewing is plagued by two major friction points: a 24-hour wait time (42% of complaints) and cup sediment (31% of complaints) (EVID-002).
+*   **Objective:** Position AromaBrew Pro as the definitive solution to traditional cold brewing pain points.
+*   **Key Messaging Pillars:**
+    *   **Instant Gratification:** Highlight the low-frequency ultrasonic acoustic extraction that brews concentrate in **12 minutes** instead of the standard 16–24 hour passive immersion.
+    *   **Ultra-Clean Cup:** Emphasize the **40-micron precision stainless steel micro-mesh filter** that eliminates sludge and sediment without the ongoing cost or waste of single-use paper filters.
+    *   **Premium Thermal Performance:** Market the vacuum-insulated borosilicate glass carafe that keeps coffee below 40°F for 24 hours without ice dilution.
+
+## ATTRIBUTION APPROACH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## RISKS
+*   **Objective:** Address operational unknowns and protect long-term brand reputation.
+*   **Key Actions:**
+    *   **Subscription LTV:** Analyze the repeat purchase rate of the companion organic whole-bean subscription bags to establish a predictable post-purchase Lifetime Value (LTV) model.
+    *   **Hardware Reliability:** Initiate accelerated life testing on the digital base unit to map the battery degradation curve over a 3+ year lifecycle, ensuring it aligns with the 2-year manufacturer warranty.
+
+---
+
+## TOP 3 PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## GO TEST HOLD DEFER DECISIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HUMAN APPROVAL REQUIREMENTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## NEXT ACTIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## BENCHMARK ID
+BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING
+
+## RUN ID
+DEFAULT
+
+## RUN FINGERPRINT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CONDITION ID
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SOURCE RAW HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CANONICAL HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXECUTION GENERATION
+phase4_3_v2
+
+## CANDIDATE SCHEMA VERSION
+v2
+
+## CONTENT PATCH COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SEMANTIC REWRITE COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATED AT
+2026-08-19T08:23:35.345287+00:00
+
+
+
+========================================
+CANDIDATE X
+========================================
+# CANDIDATE X PROPOSAL
+
+## EXECUTIVE SUMMARY
+This Go-To-Market (GTM) strategy outlines the launch plan for **AromaBrew Pro — Precision Acoustic Smart Cold Brew Maker** (PROD_AROMA_BREW_PRO) under the **AromaTech** brand (BRAND_AROMA_TECH). 
+
+Our primary commercial objective is to scale direct-to-consumer (D2C) launch sales to **5,000 units within the first 90 days** of the campaign (**CAMP-2026-AROMABREW-GTM**), utilizing a total budget of **$350,000 USD**. To ensure long-term unit economics viability, we must achieve a blended Customer Acquisition Cost (CAC) of **$65.00 or lower** (with a strict ceiling of $75.00 on paid acquisition channels), while driving a companion organic whole-bean subscription attach rate of **$\ge$ 20% at checkout** and maintaining a 30-day return rate **below 4.5%**.
+
+AromaBrew Pro directly addresses the two largest pain points in the home cold brew market: the frustrating **24-hour waiting period** and the **presence of muddy sediment/sludge** in the final cup. By leveraging low-frequency ultrasonic acoustic extraction to deliver a clean, sediment-free concentrate in just **12 minutes**, AromaBrew Pro completely redefines the home cold brew experience. 
+
+This document establishes our strategic foundation, identifying our beachhead customer segment, defining our core positioning, and prioritizing high-ROI digital channels while deferring high-friction physical retail partnerships until brand equity is proven.
+
+---
+
+## RESEARCH FINDINGS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## KNOWN FACTS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## OBSERVATIONS
+*   **Friction Points:** Qualitative review mining of 1,450 verified home cold brewer purchases reveals that the top customer complaint is the 24-hour waiting friction (42% of negative reviews), followed closely by sludge/sediment in the final cup (31%).
+*   **Acquisition Benchmarks:** Kitchen hardware products priced between $150 and $250 face a median CAC of $55 to $75 on paid social media. Achieving a profitable first-order payback requires multi-touch video demonstrations that visually contrast the speed and clarity of the brew against traditional methods.
+
+## INFERENCES
+*   **Margin Protection via Channel Selection:** Selling wholesale to specialty retailers at a 45% discount reduces our unit revenue from $189.00 to $103.95. Subtracting the $68.00 unit cost leaves a gross margin of only $35.95 per unit (34.6% margin), which severely limits our ability to absorb customer acquisition costs. Therefore, we must prioritize D2C e-commerce to capture the full $121.00 gross margin per unit during our initial scale phase.
+*   **Creative Asset Requirements:** Because the median CAC on paid social is $55–$75, and our target blended CAC is $\le$ $65.00, our ad creatives must immediately hook viewers by visually demonstrating the 12-minute acoustic brewing process and the sediment-free pour. Static imagery will not suffice; video is mandatory to prove the technology works.
+*   **Subscription Leverage:** Achieving a $\ge$ 20% attach rate for the companion organic whole-bean subscription at checkout will significantly improve our Customer Lifetime Value (LTV), helping offset the upfront $65.00 CAC and driving recurring high-margin revenue.
+
+## HYPOTHESES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## UNKNOWNS
+*   The actual repeat purchase rate and long-term retention curve of the companion organic whole-bean subscription bags.
+*   The exact influencer Cost Per Acquisition (CPA) across dedicated YouTube coffee channels compared to Meta D2C video ads.
+*   The long-term battery and hardware degradation curve of the companion digital base unit over a 3+ year usage cycle.
+
+---
+
+## CUSTOMER SEGMENTS
+To scale efficiently within 90 days, we must focus our $350,000 budget on the consumer segment with the highest intent and lowest barrier to conversion.
+
+```
++---------------------------------------------------------------------------------+
+|                           CUSTOMER SEGMENTATION MATRIX                          |
++---------------------------------------------------------------------------------+
+|  SEGMENT 1: THE IMPATIENT CONNOISSEUR (BEACHHEAD ICP)                           |
+|  - Gen Z & Millennial daily cold brew drinkers who demand speed and clarity.    |
+|  - High willingness to spend on premium coffee gear; active on social media.    |
++---------------------------------------------------------------------------------+
+|  SEGMENT 2: THE SMART HOME TECH ENTHUSIAST                                      |
+|  - Early adopters of connected kitchen appliances and smart home ecosystems.    |
+|  - Motivated by app integration, custom extraction curves, and tech specs.      |
++---------------------------------------------------------------------------------+
+|  SEGMENT 3: THE PREMIUM GIFT BUYER                                              |
+|  - Seasonal buyers purchasing high-end kitchenware for weddings or holidays.    |
+|  - Motivated by premium packaging, warranties, and brand prestige.             |
++---------------------------------------------------------------------------------+
+```
+
+## TOP PRIORITY SEGMENT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## POSITIONING
+---
+
+## VALUE PROPOSITION
+*   **Hypothesis:** Emphasizing the **"12-Minute Acoustic Extraction"** speed (Territory 1) in the hero section will yield a higher conversion rate than emphasizing the **"Sediment-Free 40-Micron Filter"** (Territory 2). This is because wait-time friction is the primary market pain point (42% of negative reviews vs. 31% for sediment, per EVID-002).
+*   **Test Setup:** 50/50 traffic split on the primary D2C landing page using Google Optimize or VWO.
+    *   *Variant A (Speed Focus):* Headline: "Premium Cold Brew in 12 Minutes, Not 24 Hours." Hero image: High-speed video of the acoustic extraction process.
+    *   *Variant B (Clarity Focus):* Headline: "Zero Sludge. Zero Sediment. Pure Cold Brew." Hero image: Close-up of the 40-micron micro-mesh filter and crystal-clear coffee pouring.
+*   **Primary Metric:** Landing Page Conversion Rate (CVR).
+*   **Secondary Metrics:** Add-to-Cart (ATC) Rate, Average Session Duration.
+*   **Stopping Criteria & Decision Rules:** Run for a minimum of 14 days or until reaching **95% statistical significance** with a minimum of 200 conversions per variant. The winning variant will become the permanent hero section.
+
+## CHANNEL PRIORITIES
+To hit our target of 5,000 units sold at a blended CAC of $\le$ $65.00, we must allocate our $350,000 budget to high-efficiency, direct-response channels while deferring capital-intensive, low-margin channels.
+
+```
++---------------------------------------------------------------------------------+
+|                               CHANNEL ALLOCATION                                |
++---------------------------------------------------------------------------------+
+|  PRIMARY CHANNELS (D2C Focus)                                                   |
+|  - Paid Social (Meta/TikTok): $180,000 (51.4%) -> Direct-response video ads     |
+|  - Influencer Marketing: $80,000 (22.9%) -> Unboxings, speed tests, reviews     |
+|  - Paid Search & Retargeting: $50,000 (14.3%) -> High-intent search capture     |
+|  - Email & SMS Marketing: $40,000 (11.4%) -> Cart abandonment, list building    |
++---------------------------------------------------------------------------------+
+|  DEFERRED CHANNELS (Post-Launch Focus)                                          |
+|  - Specialty Retail (Williams Sonoma, Sur La Table): Defer until D2C scale      |
+|  - Amazon Marketplace: Defer to Phase 2 to protect direct customer data         |
++---------------------------------------------------------------------------------+
+```
+
+## DEFERRED CHANNELS
+To hit our target of 5,000 units sold at a blended CAC of $\le$ $65.00, we must allocate our $350,000 budget to high-efficiency, direct-response channels while deferring capital-intensive, low-margin channels.
+
+```
++---------------------------------------------------------------------------------+
+|                               CHANNEL ALLOCATION                                |
++---------------------------------------------------------------------------------+
+|  PRIMARY CHANNELS (D2C Focus)                                                   |
+|  - Paid Social (Meta/TikTok): $180,000 (51.4%) -> Direct-response video ads     |
+|  - Influencer Marketing: $80,000 (22.9%) -> Unboxings, speed tests, reviews     |
+|  - Paid Search & Retargeting: $50,000 (14.3%) -> High-intent search capture     |
+|  - Email & SMS Marketing: $40,000 (11.4%) -> Cart abandonment, list building    |
++---------------------------------------------------------------------------------+
+|  DEFERRED CHANNELS (Post-Launch Focus)                                          |
+|  - Specialty Retail (Williams Sonoma, Sur La Table): Defer until D2C scale      |
+|  - Amazon Marketplace: Defer to Phase 2 to protect direct customer data         |
++---------------------------------------------------------------------------------+
+```
+
+## WHAT NOT TO DO
+*   **Prohibited Acid/Jitter Claims:** Do not claim "100% elimination of all stomach acid" or "guaranteed elimination of caffeine jitters." Instead, use compliant phrasing: *"Our precision acoustic extraction delivers a naturally smoother, lower-acid cup compared to traditional hot brewing methods."*
+*   **Patent Phrasing:** Because our technology is currently in the application phase, all copy must refer to the acoustic extraction technology as **"Patent Pending."** Do not claim "proprietary patented technology."
+*   **Influencer Disclosures:** All paid and gifted influencer content must feature clear, prominent, and FTC-compliant disclosures (e.g., `#ad`, `#sponsored`, `#AromaTechPartner`) within the first two lines of the caption or spoken aloud in the first 3 seconds of the video. No fabricated celebrity barista endorsements are permitted without a signed commercial release.
+
+## CREATIVE TERRITORIES
+*   **Test Setup:** 50/50 traffic split on the primary D2C landing page using Google Optimize or VWO.
+    *   *Variant A (Speed Focus):* Headline: "Premium Cold Brew in 12 Minutes, Not 24 Hours." Hero image: High-speed video of the acoustic extraction process.
+    *   *Variant B (Clarity Focus):* Headline: "Zero Sludge. Zero Sediment. Pure Cold Brew." Hero image: Close-up of the 40-micron micro-mesh filter and crystal-clear coffee pouring.
+*   **Primary Metric:** Landing Page Conversion Rate (CVR).
+*   **Secondary Metrics:** Add-to-Cart (ATC) Rate, Average Session Duration.
+*   **Stopping Criteria & Decision Rules:** Run for a minimum of 14 days or until reaching **95% statistical significance** with a minimum of 200 conversions per variant. The winning variant will become the permanent hero section.
+
+## SELECTED CREATIVE TERRITORY
+*   **Strategic Rationale:** Our qualitative review mining (EVID-002) proves that **waiting 24 hours is the #1 consumer pain point (42%)**, followed closely by **sludge/sediment (31%)**. By leading with Territory 1 and weaving in Territory 2's sediment-free proof, we directly resolve 73% of all market complaints in the first 5 seconds of our creative assets. This dual-problem-solving approach is critical to achieving our target blended CAC of $\le \$65.00$.
+
+---
+
+## ANGLES
+These high-converting hooks are engineered for paid social (Meta, TikTok, YouTube Shorts) to stop the scroll within the first 3 seconds.
+
+*   **Hook 1 (The Time Contrast - Direct Confrontation):**  
+    *"Stop waiting 24 hours for cold brew. This patent-pending acoustic technology brews a rich, full-strength concentrate in exactly 12 minutes."*
+*   **Hook 2 (The Sludge Callout - Problem-Centric):**  
+    *"Tired of that sandy, bitter sludge at the bottom of your cold brew? Our precision 40-micron micro-mesh filter completely eliminates sediment without single-use paper filters."*
+*   **Hook 3 (The Tech Explainer - Curiosity-Driven):**  
+    *"How does sound brew coffee? 🔊 Watch how low-frequency acoustic waves extract rich flavor from organic beans in 12 minutes flat—no heat, no waiting."*
+*   **Hook 4 (The Dilution Problem - Solution-Centric):**  
+    *"Ice cubes are diluting your expensive cold brew. This vacuum-insulated borosilicate glass carafe keeps your brew under 40°F for 24 hours—zero ice required."*
+*   **Hook 5 (The Financial/Value Angle - Economic):**  
+    *"Stop spending $6 a day on watered-down cafe cold brew. Brew premium, sediment-free concentrate at home with the press of a button."*
+
+---
+
+## HOOKS
+These high-converting hooks are engineered for paid social (Meta, TikTok, YouTube Shorts) to stop the scroll within the first 3 seconds.
+
+*   **Hook 1 (The Time Contrast - Direct Confrontation):**  
+    *"Stop waiting 24 hours for cold brew. This patent-pending acoustic technology brews a rich, full-strength concentrate in exactly 12 minutes."*
+*   **Hook 2 (The Sludge Callout - Problem-Centric):**  
+    *"Tired of that sandy, bitter sludge at the bottom of your cold brew? Our precision 40-micron micro-mesh filter completely eliminates sediment without single-use paper filters."*
+*   **Hook 3 (The Tech Explainer - Curiosity-Driven):**  
+    *"How does sound brew coffee? 🔊 Watch how low-frequency acoustic waves extract rich flavor from organic beans in 12 minutes flat—no heat, no waiting."*
+*   **Hook 4 (The Dilution Problem - Solution-Centric):**  
+    *"Ice cubes are diluting your expensive cold brew. This vacuum-insulated borosilicate glass carafe keeps your brew under 40°F for 24 hours—zero ice required."*
+*   **Hook 5 (The Financial/Value Angle - Economic):**  
+    *"Stop spending $6 a day on watered-down cafe cold brew. Brew premium, sediment-free concentrate at home with the press of a button."*
+
+---
+
+## SHORT FORM COPY
+### Variant A: Problem-Agitate-Solve (PAS)
+*   **Primary Focus:** Time friction and sediment frustration.
+
+> **Primary Text:**  
+> Craving cold brew but forgot to prep it last night? Now you’re stuck waiting 24 hours or spending $6 at the cafe for a watered-down cup. 
+> 
+> Worse yet, home brewers always leave you with a mouth full of gritty, bitter sludge at the bottom of your glass. 
+> 
+> Meet the **AromaBrew Pro** by AromaTech. Our patent-pending low-frequency acoustic technology extracts rich, smooth cold brew concentrate in just 12 minutes flat. No heat, no overnight wait. 
+> 
+> Combined with our precision 40-micron stainless steel micro-mesh filter, you get a perfectly clean, sediment-free cup every single time. 
+> 
+> **Headline:** 12-Min Acoustic Cold Brew — Zero Wait, Zero Sludge.  
+> **Description:** 30-Day Money-Back Guarantee & 2-Year Warranty.  
+> **CTA Button:** Shop Now
+
+---
+
+## VIDEO SCRIPT
+*   **Format:** High-energy, premium aesthetic, fast-paced cuts, clear text overlays.
+*   **Compliance Check:** No medical claims, "patent-pending" acoustic technology referenced correctly, no 100% acid/jitter elimination claims.
+
+| Time | Visual | Audio / Sound Effects (SFX) | Voiceover (VO) / Text Overlay |
+| :--- | :--- | :--- | :--- |
+| **0:00 - 0:05** | **Hook:** Split screen. Left: Frustrated consumer looking at an empty jar in a dark fridge. Right: Sleek AromaBrew Pro on a modern countertop, pulsing with a soft blue light as dark coffee swirls inside. | *SFX: Sad "tick-tock" clock sound, transitioning abruptly into a high-tech, energetic bass drop.* | **VO:** "Still waiting 24 hours for cold brew? Stop." <br><br>**Text Overlay:** *12 MINUTES vs. 24 HOURS* |
+| **0:05 - 0:12** | **Core Tech:** Close-up of a finger pressing the physical button on the digital base unit. Cut to a smartphone screen showing the companion app adjusting the extraction curve. Close-up of the acoustic chamber pulsing. | *SFX: Satisfying digital "beep", followed by a low, rhythmic, high-tech hum (representing acoustic waves).* | **VO:** "The AromaBrew Pro uses patent-pending acoustic extraction to brew rich cold coffee concentrate in just 12 minutes." |
+| **0:12 - 0:18** | **Filtration Proof:** Macro shot of the 40-micron stainless steel micro-mesh filter. A clean, amber stream of coffee pours through it into the carafe. No paper filter in sight. | *SFX: Crisp, clean liquid pouring sound.* | **VO:
+...[CONTENT PRESERVED IN CANONICAL PROPOSAL]
+
+## MEASUREMENT FRAMEWORK
+To scale the launch of the **AromaBrew Pro (PROD_AROMA_BREW_PRO)** to 5,000 units sold within the first 90 days, we will deploy a highly structured, data-driven measurement framework. This framework bridges top-of-funnel awareness with bottom-of-funnel unit economics and post-purchase retention.
+
+Our total budget allocation is **$350,000 USD**. To achieve our primary goal of **5,000 units sold** while maintaining a blended Customer Acquisition Cost (CAC) of **<= $65.00** (with a strict ceiling of **$75.00**), we have modeled the funnel below.
+
+## EXPERIMENTS
+To optimize our conversion rates and lower CAC during the critical 90-day launch window, we will run three concurrent, structured A/B tests.
+
+## ATTRIBUTION APPROACH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## RISKS
+To protect the AromaTech brand, ensure strict regulatory compliance, and manage capital efficiently, we will establish a rigorous governance framework.
+
+## TOP 3 PRIORITIES
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## GO TEST HOLD DEFER DECISIONS
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## HUMAN APPROVAL REQUIREMENTS
+To maintain brand integrity, all creative assets, ad copy, and landing page designs must pass a 3-step sign-off process before going live:
+
+```
+[ Creative Team ] ──► [ Brand Marketing Manager ] ──► [ Senior Strategic Marketing Director ] ──► [ Legal Counsel ] ──► [ LIVE ]
+```
+1.  **Brand Marketing Manager:** Reviews for visual identity, tone of voice, and asset specifications.
+2.  **Senior Strategic Marketing Director:** Reviews for strategic alignment, KPI tracking integration, and UTM accuracy.
+3.  **Legal Counsel:** Reviews for FTC compliance, patent-pending phrasing, and claim safety.
+
+---
+
+## NEXT ACTIONS
+To execute this Go-To-Market strategy immediately, the marketing and product teams must prioritize the following three actions:
+
+1.  **Configure the Shopify Storefront & Tracking Stack (Days 1–5):** Integrate the server-side Conversions API (Meta/TikTok) and set up Triple Whale as our primary attribution engine. Implement the pixel and server-side event taxonomy outlined in Section 2.
+2.  **Finalize Creative Assets & Launch Ad Sets (Days 6–12):** Produce the video assets for the 12-minute vs. 24-hour hook (Territory 1) and the 40-micron sediment-free hook (Territory 2). Set up the Meta and TikTok ad campaigns using the UTM taxonomy and prepare for Experiment 3.
+3.  **Deploy the Pre-Purchase Subscription Flow (Days 13–15):** Configure the Recharge subscription app on Shopify to offer the companion organic whole-bean coffee subscription at checkout. Set up the A/B test split (Experiment 2) to optimize the subscription attach rate from Day 1.
+
+---
+
+## BENCHMARK ID
+BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING
+
+## RUN ID
+DEFAULT
+
+## RUN FINGERPRINT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CONDITION ID
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SOURCE RAW HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CANONICAL HASH
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## PROVIDER RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL REQUESTED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## MODEL RESOLVED
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## EXECUTION GENERATION
+phase4_3_v2
+
+## CANDIDATE SCHEMA VERSION
+v2
+
+## CONTENT PATCH COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## SEMANTIC REWRITE COUNT
+[SECTION NOT PROVIDED IN CANDIDATE OUTPUT]
+
+## CREATED AT
+2026-08-19T08:23:35.448871+00:00
+
+
+
+
+[REQUIRED JSON RESPONSE FORMAT]
+Respond ONLY with valid JSON:
+```json
+{
+  "candidate_scores": {
+    "Y": {
+      "research_quality": {"score": 8.0, "rationale": "..."},
+      "evidence_discipline": {"score": 8.0, "rationale": "..."},
+      "segmentation_quality": {"score": 8.0, "rationale": "..."},
+      "positioning_quality": {"score": 8.0, "rationale": "..."},
+      "channel_strategy": {"score": 8.0, "rationale": "..."},
+      "creative_quality": {"score": 8.0, "rationale": "..."},
+      "copy_script_executability": {"score": 8.0, "rationale": "..."},
+      "performance_funnel_metrics": {"score": 8.0, "rationale": "..."},
+      "experimentation_rigor": {"score": 8.0, "rationale": "..."},
+      "attribution_tracking": {"score": 8.0, "rationale": "..."},
+      "claim_safety_compliance": {"score": 8.0, "rationale": "..."},
+      "governance_human_approval": {"score": 8.0, "rationale": "..."},
+      "internal_consistency_lineage": {"score": 8.0, "rationale": "..."},
+      "completeness": {"score": 8.0, "rationale": "..."}
+    },
+    "Z": { ... },
+    "X": { ... }
+  },
+  "pairwise_comparisons": {
+    "X_vs_Y": {"preferred": "X|Y|TIE", "reason": "..."},
+    "X_vs_Z": {"preferred": "X|Z|TIE", "reason": "..."},
+    "Y_vs_Z": {"preferred": "Y|Z|TIE", "reason": "..."}
+  }
+}
+```

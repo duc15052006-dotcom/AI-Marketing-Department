@@ -1,0 +1,45 @@
+{
+  "what_do_we_know": [
+    "Ollama provides a streamlined CLI and background localhost REST API daemon on port 11434 across macOS, Linux, and Windows (EVID-WEB-893338BD, EVID-WEB-2BAE59D7).",
+    "Quantized 7B models need ~4-5GB VRAM, while 14B models need ~8-10GB; hardware constraints dictate inference latency to prevent CPU fallback (EVID-WEB-2BAE59D7, CONF-40334167).",
+    "Hacker News community feedback confirms developer frustration with manual CMake/CUDA toolchains, establishing local setup convenience as the primary adoption wedge (EVID-FORUM-F119C750)."
+  ],
+  "what_do_we_not_know": [
+    "TRANSACTION_DATA is MISSING; enterprise revenue, paid conversion, and commercial monetization baselines are UNKNOWN.",
+    "PRIVATE_TELEMETRY_DATA is MISSING; real-world CLI setup completion rate and repeat local API session frequency are UNKNOWN.",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA is MISSING; general non-technical consumer demand is unproven."
+  ],
+  "what_is_strong_enough_to_act_on": [
+    "Organic developer community engagement focused on terminal setup simplicity and localhost:11434 REST API integration.",
+    "Transparent model-to-VRAM hardware qualification guidance to pre-empt low-spec CPU fallback latency complaints."
+  ],
+  "what_remains_a_hypothesis": [
+    "Technical search capture on 'run llama locally' as a scalable commercial acquisition channel (CHAN-TECH-SEARCH).",
+    "Enterprise compliance officer inbound interest in local/offline model execution."
+  ],
+  "what_should_we_test_first": [
+    "PEXP-001: Creative Hook Mechanism Test (Friction-focused VAR-A vs API-focused VAR-B).",
+    "PEXP-002: Hardware Qualification CTA Test (VRAM Sizing Chart vs Direct Download)."
+  ],
+  "what_should_we_defer": [
+    "Broad non-technical consumer paid social ad spend (deferred due to evidence-limited audience fit).",
+    "Direct enterprise outbound sales (deferred pending monetization model and telemetry baselines)."
+  ],
+  "what_should_we_not_do": [
+    "Will NOT market Ollama as an enterprise cluster replacement without clarifying host VRAM prerequisites.",
+    "Will NOT assert unverified superlatives ('fastest', 'best') or absolute privacy claims ('impossible to leak').",
+    "Will NOT allocate arbitrary monetary advertising budgets before business stakeholder configuration."
+  ],
+  "what_needs_human_approval": [
+    "Business marketing budget authorization and daily stop-loss caps.",
+    "Final public distribution authorization for creative assets (COPY-SF-01..03, SCRIPT-SF-01).",
+    "Formal legal review of session tracking design (LEGAL_COMPLIANCE_STATUS = NOT_EVALUATED)."
+  ],
+  "what_could_invalidate_the_plan": [
+    "Severe Sample Ratio Mismatch (SRM) or browser ad-blocker filtering corrupting first-party web analytics.",
+    "Rapid commoditization of local LLM packaging by upstream model providers."
+  ],
+  "what_is_the_next_department_action": [
+    "Complete first-party event tracking instrumentation (REQUIRED_INSTRUMENTATION) and present formal package for human executive budget sign-off."
+  ]
+}

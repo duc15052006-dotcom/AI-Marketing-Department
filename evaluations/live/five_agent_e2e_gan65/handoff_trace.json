@@ -1,0 +1,43 @@
+{
+  "benchmark_phase": "4.0",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "pipeline_sequence": [
+    {
+      "stage": 1,
+      "agent": "CMO",
+      "task": "Initial Task Decomposition & Delegation",
+      "status": "PASS"
+    },
+    {
+      "stage": 2,
+      "agent": "INTELLIGENCE",
+      "task": "Fresh Category & Competitor Research",
+      "status": "PASS"
+    },
+    {
+      "stage": 3,
+      "agent": "STRATEGIST",
+      "task": "Grounded Positioning & Offer Strategy",
+      "status": "PASS"
+    },
+    {
+      "stage": 4,
+      "agent": "CREATIVE",
+      "task": "Launch Creative Package & Variants",
+      "status": "PASS"
+    },
+    {
+      "stage": 5,
+      "agent": "PERFORMANCE",
+      "task": "Measurement & Experiment Planning",
+      "status": "PASS"
+    },
+    {
+      "stage": 6,
+      "agent": "CMO",
+      "task": "Master Governance & Department Sign-Off",
+      "status": "PASS"
+    }
+  ]
+}

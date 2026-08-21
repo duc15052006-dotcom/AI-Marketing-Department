@@ -1,0 +1,657 @@
+{
+  "context_id": "GCTX-072AFEA5",
+  "task": "Execute grounded intelligence analysis on Ollama market positioning, developer reception, and operational friction across verified multi-channel sources.",
+  "business_context": "Competitive intelligence and developer marketing research for local AI tooling.",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "grounding_metadata": {
+    "bundle_id": "BNDL-0EEE619C",
+    "task_id": "TASK_GROUNDED_OLLAMA_001",
+    "collected_at": "2026-08-16T16:44:37.417588+00:00",
+    "total_sources": 5,
+    "relevant_sources": 5,
+    "rejected_sources": 0,
+    "unique_domains": 4,
+    "unique_platforms": 4,
+    "discovery_sources": 1,
+    "substantive_sources": 2,
+    "platform_metric_sources": 1,
+    "user_generated_sources": 1,
+    "requested_source_families": [
+      "FIRST_PARTY_WEB",
+      "SECONDARY_WEB",
+      "VIDEO",
+      "COMMUNITY"
+    ],
+    "collected_source_families": [
+      "VIDEO",
+      "SEARCH_DISCOVERY",
+      "FIRST_PARTY_WEB",
+      "COMMUNITY",
+      "SECONDARY_WEB"
+    ],
+    "missing_source_families": [],
+    "source_family_coverage": "PASS",
+    "video_substantive_coverage": "PARTIAL",
+    "research_dimension_coverage": "PASS",
+    "semantic_coherence": "PASS"
+  },
+  "known_facts": [
+    "Ollama is an open-source software tool enabling local execution of large language models via CLI and desktop interfaces.",
+    "Researched product domain: ollama.com."
+  ],
+  "unknown_facts": [
+    "Missing TRANSACTION_DATA: What is the exact paid enterprise subscription conversion rate?",
+    "Missing REPRESENTATIVE_DEVELOPER_RECEPTION_DATA: What is the broad representative developer sentiment / satisfaction rate across the wider ecosystem?",
+    "Missing PRIVATE_TELEMETRY_DATA: What is the total active monthly daemon install base?"
+  ],
+  "evidence_bundle_reference": "BNDL-0EEE619C",
+  "evidence_items": [
+    {
+      "evidence_id": "EVID-SRCH-132D6868",
+      "capability": "search_web",
+      "content_role": "DISCOVERY",
+      "source_platform": "search_engine",
+      "source_domain": "",
+      "source_family": "SEARCH_DISCOVERY",
+      "collection_provenance": "UNOFFICIAL_HTML_PARSE",
+      "source_relationship": "UNKNOWN",
+      "relevance_status": "RELEVANT",
+      "relevance_reason": "Explicit canonical anchor 'Ollama' matched in fields: body, url.",
+      "structured_traces": [
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "url",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 10
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "url",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 10
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "body",
+          "matched_value": "AI",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "AI",
+          "occurrence_count": 1
+        }
+      ],
+      "evidence_class": "OBSERVATION",
+      "content_trust": "UNTRUSTED_EXTERNAL",
+      "source_credibility": "UNKNOWN",
+      "content_truth_status": "UNVERIFIED",
+      "freshness_state": "CURRENT",
+      "freshness_days": 0.0,
+      "freshness_policy_source": "DEFAULT_HEURISTIC",
+      "bounded_content": "Rank 1: How to Use Ollama to Run Large Language Models Locally (https://realpython.com/ollama/)\nSnippet: Learn how to useOllamato run largelanguagemodelslocally. Install it, pullmodels, and start chatting from your terminal without needing API keys.\n\nRank 2: Ollama (https://ollama.com/)\nSnippet: Openmodelweights and open-source code.Ollamais the easiest way to automate your work using openmodels, while keeping your data safe.\n\nRank 3: The Complete Guide to Ollama: Run Large Language Models Locally (https://dev.to/ajitkumar/the-complete-guide-to-ollama-run-large-language-models-locally-2mge)\nSnippet: Thanks toOllama, anyone with a modern computer can now run sophisticated AImodelslocally, whether you're coding on a plane at 35,000 feet, analyzing sensitive documents that can never touch the cloud, or simply experimenting with AI without watching your API bill climb.\n\nRank 4: How to Run and Customize LLMs Locally with Ollama (https://www.freecodecamp.org/news/run-and-customize-llms-locally-with-ollama)\nSnippet: You can perform other operations like deleting amodel, copying amodel, show information on amodel, and so on. Type inollamahelp to see all these commands. How to CustomizeLocalLLMs inOllamawith Modelfiles One ofOllama'smost powerful features is the ability to customize how alocalmodelbehaves using Modelfiles.\n\nRank 5: Run Your Own AI Model Locally: A Practical Ollama Setup Guide (2026) (https://dev.to/primghostdev/run-your-own-ai-model-locally-a-practical-ollama-setup-guide-2026-2kk9)\nSnippet: Running AImodelslocally has become surprisingly accessible. WithOllama, you can run capablelanguagemodelson a laptop or desktop \u2014 no API keys, no subscriptions, no internet required. Here's a practical guide to getting set up, choosing the rightmodel, and actually usinglocalAI for something useful.",
+      "content_truncated": false,
+      "duplicate_of": null,
+      "limitations": [
+        "Web discovery via search_duckduckgo_html (Provenance: UNOFFICIAL_HTML_PARSE, Scope: SearchScope.GENERAL_WEB)",
+        "Search rankings do not indicate source credibility, truth, or real-world consumer demand",
+        "Search snippets may be truncated, stale, or contextually incomplete; substantive evidence requires separate read_page()",
+        "Discovered URLs are not automatically fetched by search_web"
+      ]
+    },
+    {
+      "evidence_id": "EVID-WEB-893338BD",
+      "capability": "read_page",
+      "content_role": "FETCHED_SOURCE_CONTENT",
+      "source_platform": "web",
+      "source_domain": "ollama.com",
+      "source_family": "FIRST_PARTY_WEB",
+      "collection_provenance": "DIRECT_PUBLISHER_PAGE",
+      "source_relationship": "FIRST_PARTY_TO_SUBJECT",
+      "relevance_status": "RELEVANT",
+      "relevance_reason": "Matches official domain: ollama.com",
+      "structured_traces": [
+        {
+          "anchor_type": "OFFICIAL_DOMAIN",
+          "field": "domain",
+          "matched_value": "ollama.com",
+          "match_method": "DOMAIN_EXACT_OR_SUBDOMAIN",
+          "subject_anchor": "ollama.com",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "url",
+          "matched_value": "ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "domain",
+          "matched_value": "ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "title",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "headings",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 3
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "url",
+          "matched_value": "ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "domain",
+          "matched_value": "ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "title",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "headings",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 3
+        }
+      ],
+      "evidence_class": "OBSERVATION",
+      "content_trust": "UNTRUSTED_EXTERNAL",
+      "source_credibility": "UNKNOWN",
+      "content_truth_status": "UNVERIFIED",
+      "freshness_state": "CURRENT",
+      "freshness_days": 0.0,
+      "freshness_policy_source": "DEFAULT_HEURISTIC",
+      "bounded_content": "Title: Ollama\nHeadings: Build with open models,on your computer and in the cloud | Works with the tools you already use | Your data stays yours | Trending models | Get started with Ollama\n\nContent:\nBuild with open models,\non your computer and in the cloud\nDownload\nFree to start. See pricing\nWorks with the tools you already use\nBring open models into your workflow. Launch agents from the Ollama CLI, or connect editors and frameworks through Ollama's API.\nSee all integrations \u2192$ ollama\n\u25b8 Run a model\nLaunch Claude Code\nLaunch OpenCode\nLaunch Hermes Agent\nMore...\nYour data stays yours\nHow we handle data \u2192Private\nYour data is never trained on.\nRegions\nCloud models in the United States, Europe, and Singapore.\nDisconnected\nRun entirely offline for mission critical work.\nOpen\nOpen model weights and open-source code.",
+      "content_truncated": false,
+      "duplicate_of": null,
+      "limitations": [
+        "Static HTML observation; client-side JavaScript execution not evaluated",
+        "Source credibility is UNKNOWN; external text asserts claims that remain UNVERIFIED"
+      ]
+    },
+    {
+      "evidence_id": "EVID-WEB-2BAE59D7",
+      "capability": "read_page",
+      "content_role": "FETCHED_SOURCE_CONTENT",
+      "source_platform": "web",
+      "source_domain": "dev.to",
+      "source_family": "SECONDARY_WEB",
+      "collection_provenance": "DIRECT_PUBLISHER_PAGE",
+      "source_relationship": "UNKNOWN",
+      "relevance_status": "RELEVANT",
+      "relevance_reason": "Explicit canonical anchor 'Ollama' matched in fields: title, headings, body, url.",
+      "structured_traces": [
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "url",
+          "matched_value": "ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "title",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "headings",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 3
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 11
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "url",
+          "matched_value": "ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "title",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "headings",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 3
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 11
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "url",
+          "matched_value": "AI",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "AI",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "title",
+          "matched_value": "AI",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "AI",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "headings",
+          "matched_value": "AI",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "AI",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "body",
+          "matched_value": "AI",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "AI",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "body",
+          "matched_value": "inference",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "inference",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "body",
+          "matched_value": "quantization",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "quantization",
+          "occurrence_count": 1
+        }
+      ],
+      "evidence_class": "OBSERVATION",
+      "content_trust": "UNTRUSTED_EXTERNAL",
+      "source_credibility": "UNKNOWN",
+      "content_truth_status": "UNVERIFIED",
+      "freshness_state": "CURRENT",
+      "freshness_days": 0.0,
+      "freshness_policy_source": "DEFAULT_HEURISTIC",
+      "bounded_content": "Title: Run Your Own AI Model Locally: A Practical Ollama Setup Guide (2026) - DEV Community\nHeadings: DEV Community | Run Your Own AI Model Locally: A Practical Ollama Setup Guide (2026) | Why Run AI Locally? | What You Actually Need | Installing Ollama | Your First Model | Choosing the Right Model for Your Hardware | The Ollama API (Actually Useful)\n\nContent:\nRunning AI models locally has become surprisingly accessible. With Ollama, you can run capable language models on a laptop or desktop \u2014 no API keys, no subscriptions, no internet required.\nHere's a practical guide to getting set up, choosing the right model, and actually using local AI for something useful.\nWhy Run AI Locally?\nThree main reasons people do this:\nPrivacy. Your prompts never leave your machine. If you're processing code, client data, personal notes, or anything sensitive, local means you control where it goes.\nCost. After hardware, inference is free. No per-token billing, no monthly subscriptions, no rate limits. Run it as much as you want.\nOwnership. The model doesn't change overnight, doesn't go down, doesn't require an internet connection. Works on a plane, in a basement, wherever.\nThe tradeoff is hardware. You need a GPU with enough VRAM to fit the model, or you fall back to CPU inference (slow but usable for some tasks).\nWhat You Actually Need\nMinimum Viable Setup\n- Any modern CPU (Intel 10th gen+, Ryzen 3000+)\n- 8GB RAM (16GB better)\n- No GPU required \u2014 CPU inference works, just slower\n- ~5-10GB disk space per model\nGPU Setup (Recommended)\n- NVIDIA GPU with 6GB+ VRAM for 7B models\n- 8-12GB VRAM for 13-14B models\n- 16GB VRAM for comfortable 27B models\n- AMD GPU works too (ROCm support, somewhat newer)\nWhat \"VRAM\" Actually Means\nVRAM is your bottleneck. A model loaded into VRAM runs fast (GPU inference). A model that overflows to RAM runs slow (partial CPU fallback). A model entirely on CPU is slower still but still works.\nRule of thumb: a 7B model at Q4 quantization needs about 4-5GB VRAM. A 14B model needs 8-10GB. A 27B model needs 15-16GB.\nInstalling Ollama\nOllama is available for Linux, macOS, and Windows. Installation is straightforward.\nLinux:\ncurl -fsSL https://ollama.com/install.sh | sh\nmacOS: Download from ollama.com \u2014 native app with menu bar integration.\nWindows: Native installer available at ollama.com.\nAfter install, Ollama runs as a background service and exposes a REST API at http://localhost:11434\n.\nYour First Model\nAfter installing Ollama, pull and run your first model:\n# Pull a model\nollama pull llama3.2\n# Run it in the terminal\nollama run llama3.2\n# Or use a specific model\nollama run qwen2.5:14b\nThe first pull downloads the model weights (~4-16GB depending on size). After that, launching is instant.\nChoosing the Right Model for Your Hardware\nIf you have no GPU (CPU only)\nLlama 3.2 3B \u2014 Fast enough for quick tasks. Good for summarizing, drafting, answering questions. Limited by small context.\nPhi-3 Mini \u2014 Microsoft's 3.8B model. Surprisingly capable for its size. Excellent for CPU inference.\nIf you have 6-8GB VRAM\nLlama 3.1 8B \u2014 Meta's flagship small model. Versatile, fast. Great starting point.\nMistral 7B \u2014 Fast, efficient, strong for its size. Good instruction following.\nQwen2.5 7B \u2014 Strong coding performance in a small package.\nIf you have 10-12GB VRAM\nLlama 3.1 8B Q8 \u2014 Higher quality than Q4, fits comfortably in 12GB.\nQwen2.5 14B Q4 \u2014 Best quality/speed tradeoff in this range. Good at code and reasoning.\nPhi-4 14B \u2014 Microsoft's current flags",
+      "content_truncated": true,
+      "duplicate_of": null,
+      "limitations": [
+        "Static HTML observation; client-side JavaScript execution not evaluated",
+        "Source credibility is UNKNOWN; external text asserts claims that remain UNVERIFIED"
+      ]
+    },
+    {
+      "evidence_id": "EVID-YT-3A9BE9D4",
+      "capability": "youtube_metadata",
+      "content_role": "PLATFORM_REPORTED_METRIC",
+      "source_platform": "youtube",
+      "source_domain": "www.youtube.com",
+      "source_family": "VIDEO",
+      "collection_provenance": "PLATFORM_PUBLIC_EXTRACTION",
+      "source_relationship": "SECONDARY_SOURCE",
+      "relevance_status": "RELEVANT",
+      "relevance_reason": "Explicit canonical anchor 'Ollama' matched in fields: title, description.",
+      "structured_traces": [
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "title",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "description",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 3
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "title",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "description",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 3
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "description",
+          "matched_value": "AI",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "AI",
+          "occurrence_count": 1
+        }
+      ],
+      "evidence_class": "OBSERVATION",
+      "content_trust": "UNTRUSTED_EXTERNAL",
+      "source_credibility": "UNKNOWN",
+      "content_truth_status": "UNVERIFIED",
+      "freshness_state": "CURRENT",
+      "freshness_days": 0.0,
+      "freshness_policy_source": "DEFAULT_HEURISTIC",
+      "bounded_content": "Title: Learn Ollama in 10 Minutes - Run LLMs Locally for FREE\nChannel: proflead\nDuration: 658s\nViews: 2477\nLikes: 36\nDescription: Learn how to use Ollama in 2026! This complete ollama tutorial covers everything you need to run large language models (LLMs) locally on Linux, Mac, and Windows. We dive into the CLI, new Cloud features, and how to use local ollama Python scripts to integrate AI into your own projects.\n\nIn this video, we explore the power of ollama to run open-source models like Gemma and Mistral without paying for cloud API fees. You will learn how to download models, manage them via the command line, create cu",
+      "content_truncated": false,
+      "duplicate_of": null,
+      "limitations": [
+        "Public metadata observed via yt-dlp Python adapter",
+        "Engagement metrics (views, likes, comments) are platform-reported observations, not verified transaction demand"
+      ]
+    },
+    {
+      "evidence_id": "EVID-FORUM-F119C750",
+      "capability": "read_forum_thread",
+      "content_role": "USER_GENERATED_CONTENT",
+      "source_platform": "hacker_news",
+      "source_domain": "news.ycombinator.com",
+      "source_family": "COMMUNITY",
+      "collection_provenance": "FIRST_PARTY_OFFICIAL_API",
+      "source_relationship": "USER_GENERATED",
+      "relevance_status": "RELEVANT",
+      "relevance_reason": "Explicit canonical anchor 'Ollama' matched in fields: body.",
+      "structured_traces": [
+        {
+          "anchor_type": "CANONICAL_NAME",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "Ollama",
+          "occurrence_count": 9
+        },
+        {
+          "anchor_type": "VERIFIED_ALIAS",
+          "field": "body",
+          "matched_value": "Ollama",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "ollama",
+          "occurrence_count": 9
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "body",
+          "matched_value": "AI",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "AI",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "body",
+          "matched_value": "LLM",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "LLM",
+          "occurrence_count": 1
+        },
+        {
+          "anchor_type": "CATEGORY_TERM",
+          "field": "body",
+          "matched_value": "local models",
+          "match_method": "CASE_INSENSITIVE_TOKEN_MATCH",
+          "subject_anchor": "local models",
+          "occurrence_count": 1
+        }
+      ],
+      "evidence_class": "OBSERVATION",
+      "content_trust": "UNTRUSTED_EXTERNAL",
+      "source_credibility": "UNKNOWN",
+      "content_truth_status": "UNVERIFIED",
+      "freshness_state": "CURRENT",
+      "freshness_days": 0.0,
+      "freshness_policy_source": "DEFAULT_HEURISTIC",
+      "bounded_content": "Thread: Ollama for Linux \u2013 Run LLMs on Linux with GPU Acceleration\nBody: Hi HN,<p>Over the last few months I&#x27;ve been working with some folks on a tool named Ollama (<a href=\"https:&#x2F;&#x2F;github.com&#x2F;jmorganca&#x2F;ollama\">https:&#x2F;&#x2F;github.com&#x2F;jmorganca&#x2F;ollama</a>) to run open-source LLMs like Llama 2, Code Llama and Falcon locally, starting with macOS.<p>The biggest ask since then has been &quot;how can I run Ollama on Linux?&quot; with GPU support out of the box. Setting up and configuring CUDA and then compiling and running llama.cpp (which is a fantastic library and runs under the hood) can be quite painful on different combinations of linux distributions and Nvidia GPUs. The goal for Ollama&#x27;s linux version was to automate this process to make it easy to get up and running.<p>The is the first Linux release! There&#x27;s still lots to do, but I wanted to share it here for to see what everyone thinks. Thanks for anyone who has given it a try and sent feedback!\n\nComment by brucethemoose2: Oh, this is a llama.cpp frontend. Y'all should have lead with that! I saw this on HN before, but I thought it was another from-scratch llama implementation... Which is fine, but much less interesting to me, as a from-scratch implementation probably not as fast/feature packed as llama.cpp or the TVM implementation. Keeping up with llama.cpp's rapid evolution is very difficult, and there's a need for projects like this.\nComment by UncleOxidant: Where does one find this TVM implementation you mention?\nComment by capableweb: Maybe they're talking about  https://github.com/mlc-ai/mlc-llm  which is used for web-llm ( https://github.com/mlc-ai/web-llm )? Seems to be using TVM.\nComment by brucethemoose2: Yep. Its very fast on Vulkan, and from what I understand fast on metal, but its not as feature packed as llama.cpp yet.\nComment by mgreg: I'm actually using Ollama for it's Rest API endpoint.  Llama.cpp does now have it's server implementation.  Unfortunately they do have different endpoints and behave a little differently. *  https://github.com/jmorganca/ollama/blob/main/docs/api.md *  https://github.com/ggerganov/llama.cpp/blob/master/examples/...\nComment by lhl: I put together a list of OpenAI API compatibility layers for local LLMs recently:  https://llm-tracker.info/books/llms/page/openai-api-compatib... Some like c0sogi/llama-api are pretty neat because they support concurrency, and supports multiple backends (llama.cpp and Exllama, although it could be expanded). While you might lose out on some low-level configurability, being able to easily swap between OpenAI and local models is a big win in my book.\nComment by mgreg: Very cool and thanks for sharing. To me a killer feature would be easily running different models simultaneously such as one for embeddings and another for completion (e.g. Chat).  This likely can be done already by specifying the model parameter in Ollama (and others) but I've not explored it much yet.\nComment by d4rkp4ttern: Ooba is my favorite. It automatically converts chats to single prompts using the model-specific (finicky) formatting specs (e.g [INST] [/INST] etc for llama2) so that you can directly submit chat dialogs to the endpoint. This is a subtle point not obvious to many and I wrote about it here \u2014 https://langroid.github.io/langroid/blog/2023/09/19/language...\nComment by jmorgan: There's a ton of cool opportunity in the runtime layer. I've been keeping my eye on the compiler-based app",
+      "content_truncated": true,
+      "duplicate_of": null,
+      "limitations": [
+        "Public discussion observation from hacker_news (Provenance: FIRST_PARTY_OFFICIAL_API)",
+        "Sample contains 25 collected comments out of reported total (25)",
+        "Community statements are pseudonymous public opinions/observations, not verified factual claims"
+      ]
+    }
+  ],
+  "research_dimensions": [
+    {
+      "dimension_id": "MARKET_POSITIONING",
+      "question": "How is the subject positioned in the local AI ecosystem relative to hosted cloud APIs and raw model weights?",
+      "required_evidence_roles": [
+        "FETCHED_SOURCE_CONTENT",
+        "METADATA"
+      ],
+      "supporting_evidence_ids": [
+        "EVID-WEB-893338BD",
+        "EVID-WEB-2BAE59D7"
+      ],
+      "excluded_evidence_ids": [
+        "EVID-SRCH-132D6868"
+      ],
+      "exclusion_reasons": {
+        "EVID-SRCH-132D6868": "SEARCH_DISCOVERY is a discovery pointer only; cannot serve as substantive positioning evidence."
+      },
+      "coverage_status": "SUPPORTED",
+      "sampling_limitations": [],
+      "source_limitations": [],
+      "limitations": []
+    },
+    {
+      "dimension_id": "DEVELOPER_RECEPTION",
+      "question": "What is the community sentiment, adoption feedback, and developer response?",
+      "required_evidence_roles": [
+        "USER_GENERATED_CONTENT"
+      ],
+      "supporting_evidence_ids": [
+        "EVID-FORUM-F119C750"
+      ],
+      "excluded_evidence_ids": [
+        "EVID-YT-3A9BE9D4"
+      ],
+      "exclusion_reasons": {
+        "EVID-YT-3A9BE9D4": "PLATFORM_REPORTED_METRIC reflects external engagement observations, not developer sentiment or satisfaction."
+      },
+      "coverage_status": "PARTIAL",
+      "sampling_limitations": [
+        "Evidence EVID-FORUM-F119C750 reflects user comments within collected thread sample; not general population truth."
+      ],
+      "source_limitations": [],
+      "limitations": [
+        "Supported by single bounded forum thread; lacks multi-source or survey validation."
+      ]
+    },
+    {
+      "dimension_id": "OPERATIONAL_FRICTION",
+      "question": "What are the practical installation, runtime memory, GPU acceleration, and hardware bottlenecks reported by developers?",
+      "required_evidence_roles": [
+        "USER_GENERATED_CONTENT",
+        "FETCHED_SOURCE_CONTENT"
+      ],
+      "supporting_evidence_ids": [
+        "EVID-WEB-2BAE59D7",
+        "EVID-FORUM-F119C750"
+      ],
+      "excluded_evidence_ids": [
+        "EVID-WEB-893338BD"
+      ],
+      "exclusion_reasons": {
+        "EVID-WEB-893338BD": "Official installation commands document procedure, not empirical friction or user difficulty."
+      },
+      "coverage_status": "SUPPORTED",
+      "sampling_limitations": [],
+      "source_limitations": [],
+      "limitations": []
+    }
+  ],
+  "conflicts": [
+    {
+      "conflict_id": "CONF-40334167",
+      "topic": "Installation Simplicity vs. Model Runtime Requirements",
+      "evidence_ids": [
+        "EVID-WEB-893338BD",
+        "EVID-WEB-2BAE59D7"
+      ],
+      "relation_type": "DIFFERENT_SCOPE",
+      "conflict_type": "DIFFERENT_SCOPE",
+      "claim_a": "Ollama provides one-line installer and lightweight CLI execution for local models.",
+      "claim_b": "Large model inference (13B-70B) requires significant RAM (16-64GB) and GPU acceleration to avoid thermal throttling.",
+      "shared_dimension": "OPERATIONAL_FRICTION",
+      "condition_a": "CLI binary setup and small 3B/7B quantized model loading.",
+      "condition_b": "High-throughput production inference on heavy foundation models.",
+      "resolution_status": "UNRESOLVED",
+      "description": "Claims apply to different operational scopes rather than logical impossibility under identical parameters.",
+      "limitations": [
+        "Epistemic relation classified as DIFFERENT_SCOPE.",
+        "Deterministic layer preserves unresolved tension without selecting a winner without explicit rules."
+      ]
+    }
+  ],
+  "evidence_gaps": [
+    {
+      "gap_id": "GAP-90A1CCC9",
+      "question": "What is the exact paid enterprise subscription conversion rate?",
+      "required_evidence_type": "TRANSACTION_DATA",
+      "dimension_id": null,
+      "importance": "HIGH",
+      "status": "MISSING"
+    },
+    {
+      "gap_id": "GAP-6145A5BB",
+      "question": "What is the broad representative developer sentiment / satisfaction rate across the wider ecosystem?",
+      "required_evidence_type": "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA",
+      "dimension_id": null,
+      "importance": "HIGH",
+      "status": "MISSING"
+    },
+    {
+      "gap_id": "GAP-06B25FFB",
+      "question": "What is the total active monthly daemon install base?",
+      "required_evidence_type": "PRIVATE_TELEMETRY_DATA",
+      "dimension_id": null,
+      "importance": "HIGH",
+      "status": "MISSING"
+    }
+  ],
+  "sampling_notes": [
+    "Total evidence items: 5 (5 admitted, 0 rejected).",
+    "Source Family Coverage: PASS | Video Content Depth: PARTIAL.",
+    "Research Dimension Coverage: PASS (3 dimensions evaluated).",
+    "Discovery items: 1, Substantive items: 2, Metrics: 1, UGC items: 1."
+  ],
+  "freshness_notes": [
+    "Freshness breakdown: {'CURRENT': 5}"
+  ],
+  "source_limitations": [
+    "Evidence integration compiled deterministically without LLM synthesis or claim creation.",
+    "Search snippets represent discovery pointers and are segregated from substantive fetched page evidence.",
+    "Platform metrics and user comments remain unverified empirical observations."
+  ],
+  "grounding_rules": [
+    "Use supplied evidence items strictly for assertions represented as evidence-supported.",
+    "Cite Evidence IDs (e.g. 'EVID-...') for all empirical claims and findings.",
+    "Search snippets are discovery pointers; substantive claims require fetched source content.",
+    "Platform-reported metrics (views, likes, comments) are external observations, not verified sales, revenue, or demand.",
+    "User-generated content (reviews, forum posts) reflects pseudonymous opinions within the collected sample, not general population truth.",
+    "Preserve UNKNOWN status when evidence is absent; do not hallucinate missing variables.",
+    "Preserve unresolved conflicts and distinct scope conditions rather than silently inventing resolutions.",
+    "Distinguish FACT / OBSERVATION / INFERENCE / HYPOTHESIS strictly in reasoning output."
+  ]
+}

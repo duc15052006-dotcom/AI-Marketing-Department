@@ -1,0 +1,103 @@
+{
+  "benchmark_id": "BENCHMARK-PHASE4-3-CASE02-DEV-SECURITY-BLIND-EVALUATION",
+  "case_id": "CASE_02_DEV_SECURITY_SEA",
+  "protocol_fingerprint": "4585defccbe3870ddd6d1f4d6821043e4828e4e33ea3d5dcc38cbe3bf6324273",
+  "evaluated_at": "2026-08-19T07:36:25.144670+00:00",
+  "blind_mapping": {
+    "X": "B3",
+    "Y": "C3",
+    "Z": "A3"
+  },
+  "blind_commitment_hash": "ca36c886e77e7b72d9646a08dd26b507f01de8145ec6c03a80a1ea0f240b7f26",
+  "blind_aggregate_hash": "20e3e33b5949d14d7a86223ec0d74813a825c7521826147cdbf7de11e416a9b9",
+  "judge_hashes": [
+    "291d9823a742418fde56ffa8881251aedaeb8b3462486dec1efb82321635b679",
+    "58a24b8c0f011a95477e6a7afa976161b77eb5f8f443b197ad5666ea0089e599",
+    "23ea22fe4a49ccd10c0dc00a400ff537fed11921f90ae871326664b1e2761595"
+  ],
+  "unmasked_results": {
+    "B3": {
+      "letter": "X",
+      "weighted_quality_score": 7.31,
+      "dimension_scores": {
+        "research_quality": 9.0,
+        "evidence_discipline": 9.5,
+        "segmentation_quality": 9.0,
+        "positioning_quality": 8.0,
+        "channel_strategy": 9.0,
+        "creative_quality": 1.0,
+        "copy_script_executability": 1.0,
+        "performance_funnel_metrics": 9.5,
+        "experimentation_rigor": 1.0,
+        "attribution_tracking": 9.5,
+        "claim_safety_compliance": 10.0,
+        "governance_human_approval": 9.5,
+        "internal_consistency_lineage": 8.5,
+        "completeness": 6.0
+      }
+    },
+    "C3": {
+      "letter": "Y",
+      "weighted_quality_score": 5.235,
+      "dimension_scores": {
+        "research_quality": 8.5,
+        "evidence_discipline": 8.5,
+        "segmentation_quality": 1.0,
+        "positioning_quality": 5.0,
+        "channel_strategy": 1.0,
+        "creative_quality": 8.5,
+        "copy_script_executability": 9.0,
+        "performance_funnel_metrics": 7.5,
+        "experimentation_rigor": 2.0,
+        "attribution_tracking": 1.0,
+        "claim_safety_compliance": 10.0,
+        "governance_human_approval": 1.0,
+        "internal_consistency_lineage": 4.5,
+        "completeness": 4.5
+      }
+    },
+    "A3": {
+      "letter": "Z",
+      "weighted_quality_score": 6.316,
+      "dimension_scores": {
+        "research_quality": 8.2,
+        "evidence_discipline": 7.5,
+        "segmentation_quality": 7.5,
+        "positioning_quality": 8.5,
+        "channel_strategy": 8.0,
+        "creative_quality": 8.5,
+        "copy_script_executability": 7.0,
+        "performance_funnel_metrics": 5.0,
+        "experimentation_rigor": 1.0,
+        "attribution_tracking": 1.0,
+        "claim_safety_compliance": 9.5,
+        "governance_human_approval": 2.0,
+        "internal_consistency_lineage": 7.5,
+        "completeness": 5.5
+      }
+    }
+  },
+  "efficiency_summary": {
+    "A3": {
+      "quality_per_10k_tokens": 2.316,
+      "quality_per_call": 1.053,
+      "deliverables_per_10k_tokens": 7.699
+    },
+    "B3": {
+      "quality_per_10k_tokens": 2.459,
+      "quality_per_call": 2.437,
+      "deliverables_per_10k_tokens": 7.064
+    },
+    "C3": {
+      "quality_per_10k_tokens": 5.451,
+      "quality_per_call": 5.235,
+      "deliverables_per_10k_tokens": 18.744
+    }
+  },
+  "primary_comparison": {
+    "a3_score": 6.316,
+    "b3_score": 7.31,
+    "delta": -0.994,
+    "verdict": "CASE02_B3_STRONGER"
+  }
+}

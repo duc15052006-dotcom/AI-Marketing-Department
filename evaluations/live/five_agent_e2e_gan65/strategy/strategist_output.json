@@ -1,0 +1,98 @@
+{
+  "summary": "Grounded marketing strategy for 65W GaN USB-C charger targeting Vietnamese laptop commuters and mobile professionals.",
+  "target_segments": {
+    "top_priority_segment": {
+      "segment_id": "SEG-01",
+      "name": "Hybrid Laptop Commuters & Urban Tech Professionals",
+      "strategic_rationale": "Directly experiences high friction carrying bulky OEM laptop chargers in daily urban commute (EVID-GAN65-03)."
+    },
+    "secondary_segment": {
+      "segment_id": "SEG-02",
+      "name": "Mobile Tech Enthusiasts & Frequent Commuters",
+      "strategic_rationale": "High affinity for GaN power density and multi-device minimalism (EVID-GAN65-03, EVID-GAN65-05)."
+    },
+    "deferred_segments": [
+      "Low-power feature phone users (65W power output exceeds user requirement).",
+      "Heavy gaming laptop users requiring >140W dedicated barrel jacks."
+    ]
+  },
+  "positioning": {
+    "core_positioning": "The ultra-compact 65W GaN charger designed to replace bulky OEM laptop bricks and fast-charge compatible phones in one pocketable adapter (for compatible USB-C devices).",
+    "frame_of_reference": "Alternative to bulky single-device OEM laptop power supplies for compatible USB-C hardware."
+  },
+  "value_proposition": {
+    "primary": "Consolidate daily bag carry into one compact 65W GaN charger for compatible laptop and phone models (EVID-GAN65-01, EVID-GAN65-03).",
+    "supporting_points": [
+      "Up to 65W USB-C charging leveraging category-level GaN efficiency advantages for compatible USB-C laptops (EVID-GAN65-01, EVID-GAN65-02).",
+      "Addresses customer requirements for thermal safety and device protection via transparent technical and compatibility disclosures (EVID-GAN65-05)."
+    ]
+  },
+  "channel_priorities": {
+    "primary_channels": [
+      "Shopee/Lazada Ecommerce Search & Category Placement",
+      "Vietnamese Tech Community Social (Tinhte, VOZ, Tech Reviewers)"
+    ],
+    "experimental_channels": [
+      "Short-form Video Demonstrations (EDC bag unpack, charger size comparison)"
+    ],
+    "deferred_channels": [
+      "Broad Non-tech Mass Media / OOH (deferred due to evidence-limited audience fit)"
+    ]
+  },
+  "top_3_priorities": [
+    "1. Focus positioning on OEM brick weight and bag clutter reduction for hybrid laptop commuters.",
+    "2. Address customer requirements regarding device compatibility and thermal dissipation via clear technical disclosures across product touchpoints.",
+    "3. Validate ecommerce search demand capture via controlled keyword experiments before scaling media spend."
+  ],
+  "what_not_to_do": [
+    "Do NOT claim 'fastest charger in the world' or unbacked superlatives.",
+    "Do NOT promise charging compatibility with non-USB-C proprietary laptop ports.",
+    "Do NOT invent arbitrary effect-size percentages (e.g. 'charges 50% faster') without device-specific baseline data.",
+    "Do NOT infer our product runs cooler or has unverified thermal protections from generic GaN category properties.",
+    "Do NOT assert universal laptop compatibility without verifying device charging voltage and protocol requirements.",
+    "Do NOT treat customer thermal/safety requirements as verified product features without SKU test data."
+  ],
+  "recommendations": [
+    {
+      "rec_id": "STRAT-01",
+      "title": "Pocket-Sized EDC Positioning",
+      "recommendation": "Position the 65W GaN charger as an Everyday Carry (EDC) consolidation tool replacing heavy OEM laptop power bricks for compatible USB-C devices.",
+      "rationale": "Directly addresses the primary commuter pain point identified in Vietnamese tech forum discussions (EVID-GAN65-03).",
+      "claim_type": "STRATEGIC_INFERENCE",
+      "supported_by": [
+        "EVID-GAN65-01",
+        "EVID-GAN65-03"
+      ],
+      "assumptions": [],
+      "uncertainties": [],
+      "validation_test": "",
+      "stop_or_reconsider_condition": "",
+      "epistemic_tier": "INFERENCE",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-02",
+      "title": "Transparent Thermal & Voltage Safety Messaging",
+      "recommendation": "Incorporate verified device compatibility guidance and address customer thermal safety concerns directly on all product listings.",
+      "rationale": "Addresses customer risk requirements regarding non-OEM charger safety with expensive laptops (EVID-GAN65-05).",
+      "claim_type": "STRATEGIC_INFERENCE",
+      "supported_by": [
+        "EVID-GAN65-05"
+      ],
+      "assumptions": [],
+      "uncertainties": [],
+      "validation_test": "",
+      "stop_or_reconsider_condition": "",
+      "epistemic_tier": "INFERENCE",
+      "grounding_status": "GROUNDED"
+    }
+  ],
+  "experiments": [],
+  "unknown_or_required_research": [
+    "TRANSACTION_DATA = MISSING",
+    "EXACT_RETAIL_PRICE = UNKNOWN",
+    "BASELINE_CONVERSION_RATE = TO_BE_ESTABLISHED"
+  ],
+  "confidence": "HIGH",
+  "confidence_rationale": "Strategy directly reflects verified commuter pain points, GaN technical properties, and Vietnamese ecommerce pricing landscape."
+}

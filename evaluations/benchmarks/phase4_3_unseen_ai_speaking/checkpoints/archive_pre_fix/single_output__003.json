@@ -1,0 +1,18 @@
+{
+  "condition": "SINGLE_MODEL_BASELINE",
+  "model_requested": "mistralai/mistral-large-2512",
+  "status": "ERROR",
+  "error": "AUTH_ERROR: xkiro HTTP 403: Forbidden. Detail: error code: 1010\n",
+  "raw_text": "",
+  "parsed_output": {},
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "thoughts_tokens": null,
+    "cached_tokens": null,
+    "tool_use_prompt_tokens": null,
+    "total_tokens": 0,
+    "usage_source": "NOT_AVAILABLE"
+  },
+  "latency_ms": 346.24671936035156
+}

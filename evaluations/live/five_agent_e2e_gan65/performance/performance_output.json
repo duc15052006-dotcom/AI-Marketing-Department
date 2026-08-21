@@ -1,0 +1,151 @@
+{
+  "handoff_id": "HNDF-PERF-GAN65-001",
+  "task_id": "TASK_E2E_PERF_001",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "created_at": "2026-08-17T05:23:44.219786+00:00",
+  "business_objective": "Measurement, tracking, experimentation, and channel governance for 65W GaN charger launch in Vietnam.",
+  "measurement_framework": {
+    "performance_mode": "PLANNING_ONLY",
+    "funnel_stages": [
+      "STAGE-01: Impression",
+      "STAGE-02: 3s Hook Retention",
+      "STAGE-03: Landing View",
+      "STAGE-04: Compatibility Check",
+      "STAGE-05: Checkout Initiation",
+      "STAGE-06: Purchase Completion (TO_BE_ESTABLISHED)"
+    ],
+    "metric_taxonomy": {
+      "distribution": "Impressions (Count)",
+      "attention": "3-Second Hook Retention Rate (3s views / total impressions)",
+      "traffic": "Click-Through Rate (clicks / impressions)",
+      "conversion": "Checkout Initiation Rate (checkouts / landing views)",
+      "economics": "Cost Per Initiated Checkout (spend / checkouts, TO_BE_ESTABLISHED)"
+    }
+  },
+  "channel_priorities": {
+    "tier_1_core": [
+      "Ecommerce Category Search (Shopee/Lazada Vietnam)"
+    ],
+    "tier_2_demonstration": [
+      "Tech Social Short-Form Video Placements"
+    ],
+    "tier_3_search_hypothesis": [
+      "Google/Shopee Keyword Search: 'sac gan 65w' (HYPOTHESIZED_CHANNEL)"
+    ],
+    "deferred_channels": [
+      {
+        "channel_id": "CHAN-MASS-TV-OOH",
+        "rationale": "Current evidence is strongly tech-commuter oriented and does not establish broad non-technical mass market fit.",
+        "classification": "EVIDENCE_LIMITED_STRATEGIC_DECISION"
+      }
+    ]
+  },
+  "performance_hypotheses": [
+    "HYP-01: VAR-A OEM Brick Friction hook achieves higher 3s hook retention than VAR-B 2-in-1 Feature hook.",
+    "HYP-02: Upfront device compatibility checking tool increases landing-to-checkout initiation rate."
+  ],
+  "experiment_portfolio": [
+    {
+      "experiment_id": "PEXP-001",
+      "name": "Creative Hook Mechanism Test (VAR-A vs VAR-B)",
+      "primary_metric": "3-Second Hook Retention Rate",
+      "duration_requirement": "TO_BE_DETERMINED (Requires traffic volume, MDE, and variance derivation)",
+      "duration_classification": "PLANNING_ASSUMPTION",
+      "sample_requirement": "TO_BE_DETERMINED",
+      "baseline_status": "TO_BE_ESTABLISHED",
+      "approval_status": "DESIGN_APPROVED (READY_FOR_HUMAN_APPROVAL)"
+    },
+    {
+      "experiment_id": "PEXP-002",
+      "name": "Compatibility CTA vs Direct Buy Test (VAR-C vs Standard)",
+      "primary_metric": "Checkout Initiation Rate",
+      "duration_requirement": "TO_BE_DETERMINED",
+      "duration_classification": "PLANNING_ASSUMPTION",
+      "sample_requirement": "TO_BE_DETERMINED",
+      "baseline_status": "TO_BE_ESTABLISHED",
+      "approval_status": "DESIGN_APPROVED (READY_FOR_HUMAN_APPROVAL)"
+    },
+    {
+      "experiment_id": "PEXP-003",
+      "name": "Ecommerce Search Keyword Intent Test ('sac gan 65w')",
+      "primary_metric": "Search Intent CPIC",
+      "duration_requirement": "TO_BE_DETERMINED",
+      "duration_classification": "PLANNING_ASSUMPTION",
+      "sample_requirement": "TO_BE_DETERMINED",
+      "baseline_status": "TO_BE_ESTABLISHED",
+      "approval_status": "DESIGN_APPROVED (READY_FOR_HUMAN_APPROVAL)"
+    }
+  ],
+  "creative_variant_tests": [
+    {
+      "variant_id": "VAR-A",
+      "test_id": "PEXP-001"
+    },
+    {
+      "variant_id": "VAR-B",
+      "test_id": "PEXP-001"
+    },
+    {
+      "variant_id": "VAR-C",
+      "test_id": "PEXP-002"
+    }
+  ],
+  "known_unknowns": [
+    "TRANSACTION_DATA = MISSING",
+    "CAC = UNKNOWN",
+    "LTV = UNKNOWN",
+    "ROAS = UNKNOWN",
+    "BUDGET = NOT_CONFIGURED",
+    "STOP_LOSS_VALUE = NOT_CONFIGURED"
+  ],
+  "required_instrumentation": [
+    "creative_impression",
+    "creative_click",
+    "landing_page_view",
+    "compatibility_tool_interact",
+    "checkout_click"
+  ],
+  "economics_unknowns": [
+    "CAC = UNKNOWN",
+    "LTV = UNKNOWN",
+    "ROAS = UNKNOWN",
+    "PAYBACK = UNKNOWN",
+    "BUDGET = NOT_CONFIGURED",
+    "STOP_LOSS_VALUE = NOT_CONFIGURED"
+  ],
+  "risks": [
+    "High ad-blocker usage suppressing client-side pixel events in tech audiences.",
+    "Thermal anxiety causing high product page abandonment if heat dissipation specs are unclear."
+  ],
+  "decision_rules": [
+    {
+      "condition": "VAR-A hook retention significantly > VAR-B (p < 0.05)",
+      "action": "CONTINUE VAR-A as primary creative anchor"
+    },
+    {
+      "condition": "Sample size inadequate or 95% CI spans zero",
+      "action": "Declare outcome INCONCLUSIVE; continue test until sample reached"
+    }
+  ],
+  "escalations": [
+    "Escalate to CMO: Business budget authorization required for paid search testing (PEXP-003)."
+  ],
+  "candidate_learnings": [
+    {
+      "learning_id": "LEARN-CAND-GAN-001",
+      "hypothesis": "Commuter bag-weight friction hooks generate higher attention than feature-only charging hooks for compatible USB-C laptop audiences.",
+      "current_status": "CANDIDATE_ONLY"
+    }
+  ],
+  "evidence_lineage": {
+    "EVID-GAN65-01..05": "Verified GaN hardware parameters and user pain points"
+  },
+  "strategy_lineage": {
+    "STRAT-GAN65-001": "Positioning and segment definitions"
+  },
+  "creative_lineage": {
+    "VAR-A..C": "Controlled creative asset testing pairs"
+  },
+  "performance_confidence": "MEDIUM"
+}

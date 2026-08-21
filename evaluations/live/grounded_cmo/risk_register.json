@@ -1,0 +1,50 @@
+[
+  {
+    "risk_id": "RISK-01",
+    "risk": "Low-spec host CPU fallback creates high latency and developer onboarding abandonment.",
+    "category": "TECHNICAL_PRODUCT",
+    "likelihood": "HIGH",
+    "impact": "HIGH",
+    "evidence_or_reason": "Technical documentation and Hacker News feedback show quantization memory overflow triggers severe CPU fallback stalls (CONF-40334167, EVID-FORUM-F119C750).",
+    "mitigation": "Enforce transparent Model-to-VRAM hardware qualification (STRAT-004) across all landing pages and CLI quickstart guides.",
+    "owner": "STRATEGIST",
+    "trigger": "Elevated churn or negative community comments regarding inference speed.",
+    "escalation": "Escalate to CMO to mandate VRAM sizing calculator as default hero CTA."
+  },
+  {
+    "risk_id": "RISK-02",
+    "risk": "Browser ad-blocker usage among technical developers suppresses web tracking telemetry.",
+    "category": "MEASUREMENT_DATA",
+    "likelihood": "HIGH",
+    "impact": "MEDIUM",
+    "evidence_or_reason": "Technical developer audiences exhibit high ad-blocker and tracking-prevention penetration.",
+    "mitigation": "Rely on first-party server-side click logs and direct download endpoint checksums rather than third-party client pixels.",
+    "owner": "PERFORMANCE",
+    "trigger": "Sample Ratio Mismatch (SRM) or >30% discrepancy between ad clicks and landing sessions.",
+    "escalation": "Escalate to Performance Lead to enforce server-side event logging."
+  },
+  {
+    "risk_id": "RISK-03",
+    "risk": "Search capture budget waste due to broad-match non-technical query leakage.",
+    "category": "MEDIA_EFFICIENCY",
+    "likelihood": "MEDIUM",
+    "impact": "MEDIUM",
+    "evidence_or_reason": "Search queries containing 'ai runner' or 'free ai' capture casual consumers lacking local hardware.",
+    "mitigation": "Enforce exact-match technical keywords and strict negative keyword exclusion lists in PEXP-003.",
+    "owner": "PERFORMANCE",
+    "trigger": "High bounce rate (>70%) or zero initiated downloads from search traffic.",
+    "escalation": "Pause CHAN-TECH-SEARCH immediately under RULE-03."
+  },
+  {
+    "risk_id": "RISK-04",
+    "risk": "Unverified legal compliance claims create regulatory or brand liability.",
+    "category": "LEGAL_COMPLIANCE",
+    "likelihood": "LOW",
+    "impact": "HIGH",
+    "evidence_or_reason": "Tracking plan instrumentation design has not undergone formal legal counsel review.",
+    "mitigation": "Explicitly classify LEGAL_COMPLIANCE_STATUS = NOT_EVALUATED and submit telemetry design for human legal review.",
+    "owner": "CMO",
+    "trigger": "Introduction of cross-site identifiers or third-party cookies.",
+    "escalation": "Halt tag deployment until human legal review completes."
+  }
+]

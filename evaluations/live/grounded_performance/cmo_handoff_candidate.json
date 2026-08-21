@@ -1,0 +1,287 @@
+{
+  "handoff_id": "HNDF-PERF-CMO-EE074BE2",
+  "task_id": "TASK_GROUNDED_CMO_PREP_001",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "created_at": "2026-08-17T04:21:04.620041+00:00",
+  "business_objective": "Design a rigorous, grounded measurement framework, event tracking plan, experiment portfolio (PEXP-001..003), media allocation logic, and diagnostic decision rules for local developer acquisition, strictly preserving unknown baselines without fabricating campaign telemetry.",
+  "measurement_framework": {
+    "funnel_stages_count": 6,
+    "metrics_count": 9,
+    "tracking_events_count": 6,
+    "causal_attribution_hierarchy": "RCTs > Lift Tests > Quasi-Experiments > MTA > Platform-Reported"
+  },
+  "channel_priorities": {
+    "primary_channels": [
+      {
+        "channel_id": "CHAN-DEV-COMMUNITY",
+        "channel_name": "Technical Developer Communities & Hacker News / Reddit",
+        "rationale": "High concentration of active open-weight model practitioners seeking CLI tooling (EVID-FORUM-F119C750).",
+        "evidence_dependency": [
+          "EVID-FORUM-F119C750"
+        ],
+        "status": "GO",
+        "measurement_requirement": "First-party referral traffic and documentation engagement depth."
+      }
+    ],
+    "secondary_channels": [
+      {
+        "channel_id": "CHAN-DEV-SOCIAL",
+        "channel_name": "Developer-Focused Social & Creator Demonstrations",
+        "rationale": "Visual demonstration of CLI setup and port 11434 REST API in short-form video (EVID-YT-3A9BE9D4).",
+        "evidence_dependency": [
+          "EVID-YT-3A9BE9D4"
+        ],
+        "status": "GO",
+        "measurement_requirement": "3-second hook retention and landing page click rate."
+      }
+    ],
+    "experimental_channels": [
+      {
+        "channel_id": "CHAN-TECH-SEARCH",
+        "channel_name": "Technical Search Capture ('run llama locally', 'offline llm runner')",
+        "rationale": "Search discovery identified technical queries; demand volume and conversion rate require validation (EVID-SRCH-132D6868).",
+        "evidence_dependency": [
+          "EVID-SRCH-132D6868"
+        ],
+        "status": "TEST (HYPOTHESIZED_CHANNEL)",
+        "measurement_requirement": "Controlled 21-day keyword search capture test to establish search install intent."
+      }
+    ],
+    "deferred_channels": [
+      {
+        "channel_id": "CHAN-CONSUMER-PAID",
+        "channel_name": "Broad Non-Technical Consumer Paid Social Ads",
+        "rationale": "Current evidence is strongly developer-oriented and does not establish broad non-technical consumer-market fit.",
+        "evidence_dependency": [
+          "EVID-WEB-893338BD",
+          "EVID-FORUM-F119C750"
+        ],
+        "status": "HOLD",
+        "measurement_requirement": "Deferred pending consumer-friendly GUI release.",
+        "classification": "EVIDENCE_LIMITED_STRATEGIC_DECISION"
+      },
+      {
+        "channel_id": "CHAN-ENTERPRISE-OUTBOUND",
+        "channel_name": "Direct Enterprise Field Outbound Sales",
+        "rationale": "Enterprise transaction baselines and monetization features are currently UNKNOWN (TRANSACTION_DATA = MISSING).",
+        "evidence_dependency": [],
+        "status": "HOLD",
+        "measurement_requirement": "Deferred pending enterprise compliance tier validation."
+      }
+    ]
+  },
+  "performance_hypotheses": [
+    "Friction-focused terminal setup hook (VAR-A) outperforms generic announcements in 3s hook retention.",
+    "Localhost REST API specificity hook (VAR-B) drives higher technical documentation depth.",
+    "Upfront VRAM compatibility CTA (VAR-C) pre-qualifies traffic and increases downstream CLI installation completion."
+  ],
+  "experiment_portfolio": [
+    {
+      "experiment_id": "PEXP-001",
+      "title": "Creative Hook Mechanism Test: Setup Friction vs REST API Specificity",
+      "question": "Does framing local LLM adoption around setup friction (VAR-A) generate higher initial developer retention than REST API specificity (VAR-B)?",
+      "hypothesis": "Friction-focused hook (VAR-A) outperforms API specificity (VAR-B) in initial 3-second developer hook retention.",
+      "control": "VAR-B (REST API daemon specificity hook: 'Did you know Ollama runs on port 11434?')",
+      "treatment": "VAR-A (Friction recognition hook: 'Tired of configuring CUDA drivers?')",
+      "target_segment": "Software developers on macOS, Linux, and Windows browsing technical content",
+      "primary_metric": "3-Second Hook Retention Rate",
+      "secondary_metrics": [
+        "CTR to Documentation",
+        "Video Completion Rate"
+      ],
+      "guardrails": [
+        "Bounce Rate must not increase by > 10%"
+      ],
+      "unit_of_analysis": "Impression / Session",
+      "randomization_or_assignment": "50/50 randomized delivery across identical audience cohorts",
+      "sample_requirement": "TO_BE_DETERMINED (Requires baseline rate, MDE, and statistical power parameters)",
+      "duration_requirement": "TO_BE_DETERMINED (Requires traffic volume, MDE, variance, conversion lag, and business cycle calculation)",
+      "baseline_status": "TO_BE_ESTABLISHED",
+      "stop_condition": "Halt early if treatment exhibits severe anomaly (>50% bounce increase) or tracking failure",
+      "analysis_method": "Two-sample proportion test with 95% confidence intervals; INCONCLUSIVE supported if power is inadequate",
+      "limitations": "Does not measure local CLI execution after download.",
+      "next_decision": "If VAR-A wins, scale friction-first creative across technical channels; if inconclusive, maintain balanced distribution.",
+      "evidence_lineage": [
+        "EVID-FORUM-F119C750",
+        "EVID-WEB-893338BD"
+      ],
+      "duration_classification": "PLANNING_ASSUMPTION"
+    },
+    {
+      "experiment_id": "PEXP-002",
+      "title": "Hardware Qualification CTA Test: VRAM Tool vs Direct Download",
+      "question": "Does offering upfront model-to-VRAM hardware qualification (VAR-C) reduce early onboarding drop-off compared to direct binary download CTA?",
+      "hypothesis": "Providing an upfront model-to-VRAM compatibility guide pre-qualifies developers and improves downstream CLI setup completion.",
+      "control": "Direct 'Download Ollama' CTA on landing page hero",
+      "treatment": "Interactive 'Check Model Hardware Compatibility Chart' CTA on landing page hero",
+      "target_segment": "Developers arriving on landing page with bounded GPU VRAM",
+      "primary_metric": "CLI Setup Completion Rate (TO_BE_ESTABLISHED)",
+      "secondary_metrics": [
+        "Download Initiation Rate",
+        "VRAM Calculator Completion Rate"
+      ],
+      "guardrails": [
+        "Total initiated downloads must not decrease significantly"
+      ],
+      "unit_of_analysis": "Unique Landing Visitor",
+      "randomization_or_assignment": "Server-side A/B split on landing page hero module",
+      "sample_requirement": "TO_BE_DETERMINED (Requires baseline rate, MDE, and statistical power parameters)",
+      "duration_requirement": "TO_BE_DETERMINED (Requires traffic volume, MDE, variance, conversion lag, and business cycle calculation)",
+      "baseline_status": "TO_BE_ESTABLISHED",
+      "stop_condition": "Halt if treatment reduces total download intent by > 20%",
+      "analysis_method": "Relative risk comparison and bootstrap confidence intervals",
+      "limitations": "Downstream setup completion requires opt-in verification or follow-up feedback telemetry.",
+      "next_decision": "If VRAM qualification improves downstream activation, make hardware sizing the standard onboarding step.",
+      "evidence_lineage": [
+        "EVID-WEB-2BAE59D7",
+        "CONF-40334167"
+      ],
+      "duration_classification": "PLANNING_ASSUMPTION"
+    },
+    {
+      "experiment_id": "PEXP-003",
+      "title": "Search Intent Validation Test: Technical Keyword Demand Capture",
+      "question": "Does commercial intent exist for technical search queries ('run llama locally', 'offline llm runner')?",
+      "hypothesis": "Developers searching for local model execution keywords have high downstream documentation and installation intent.",
+      "control": "Baseline organic community referral traffic",
+      "treatment": "Targeted search capture on exact-match technical developer queries",
+      "target_segment": "High-intent developers searching technical local LLM queries",
+      "primary_metric": "Documentation Depth & Download Initiation Rate",
+      "secondary_metrics": [
+        "Cost Per Initiated Download (CPID)",
+        "Landing Bounce Rate"
+      ],
+      "guardrails": [
+        "Maintain strict negative keyword list to prevent consumer/gaming traffic leakage"
+      ],
+      "unit_of_analysis": "Search Query Click / Session",
+      "randomization_or_assignment": "Search ad group geographic holdout or time-series switchback test",
+      "sample_requirement": "TO_BE_DETERMINED (Requires baseline rate, MDE, and statistical power parameters)",
+      "duration_requirement": "TO_BE_DETERMINED (Requires traffic volume, MDE, variance, conversion lag, and business cycle calculation)",
+      "baseline_status": "TO_BE_ESTABLISHED",
+      "stop_condition": "Halt if search queries demonstrate zero download intent after initial sample threshold",
+      "analysis_method": "Pre/post quasi-experimental lift analysis against non-search control cohorts",
+      "limitations": "Search engine keyword volume estimates may fluctuate.",
+      "next_decision": "If search demonstrates qualified intent, transition CHAN-TECH-SEARCH from HYPOTHESIS to PRIMARY channel.",
+      "evidence_lineage": [
+        "EVID-SRCH-132D6868"
+      ],
+      "duration_classification": "PLANNING_ASSUMPTION"
+    }
+  ],
+  "creative_variant_tests": [
+    {
+      "variant_id": "VAR-A",
+      "focus": "Setup Friction Recognition Hook",
+      "baseline_status": "TO_BE_ESTABLISHED"
+    },
+    {
+      "variant_id": "VAR-B",
+      "focus": "Localhost REST API Daemon Specificity Hook",
+      "baseline_status": "TO_BE_ESTABLISHED"
+    },
+    {
+      "variant_id": "VAR-C",
+      "focus": "Upfront Model-to-VRAM Hardware Sizing CTA",
+      "baseline_status": "TO_BE_ESTABLISHED"
+    }
+  ],
+  "known_unknowns": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ],
+  "required_instrumentation": [
+    "First-party landing page view and download click event logging",
+    "Interactive VRAM calculator slider event listener",
+    "Video player 3-second hook retention telemetry"
+  ],
+  "economics_unknowns": [
+    "CAC = UNKNOWN (Requires media spend and verified install attribution)",
+    "LTV = UNKNOWN (Requires monetization tier and transaction history)",
+    "ROAS = UNKNOWN (Requires revenue tracking)"
+  ],
+  "risks": [
+    "Ad-blocker usage among technical developers may suppress browser-based tracking pixels.",
+    "Low-spec host CPU fallback may create post-download latency disappointment without VRAM qualification.",
+    "Search keyword volume may fluctuate based on emerging open-weight model releases."
+  ],
+  "decision_rules": [
+    {
+      "rule_id": "RULE-01",
+      "action": "CONTINUE",
+      "condition": "Data quality passes (no SRM), primary metric shows statistically significant positive lift with 95% CI > 0, guardrail metrics remain healthy.",
+      "next_step": "Scale winning variant distribution within authorized allocation limits."
+    },
+    {
+      "rule_id": "RULE-02",
+      "action": "ITERATE",
+      "condition": "Primary metric shows directional improvement but confidence interval overlaps zero, or creative demonstrates strong top-funnel hook but high landing drop-off.",
+      "next_step": "Refine landing page message alignment or test secondary angle without expanding budget."
+    },
+    {
+      "rule_id": "RULE-03",
+      "action": "PAUSE",
+      "condition": "Guardrail metric breached (e.g. bounce rate increases >20%), or primary conversion rate drops significantly below baseline.",
+      "next_step": "Halt variant delivery immediately and initiate multi-cause diagnostic review."
+    },
+    {
+      "rule_id": "RULE-04",
+      "action": "ESCALATE",
+      "condition": "Severe tracking anomaly detected (DataQuality failure), or stop-loss threshold reached, or unverified feature claims reported in community feedback.",
+      "next_step": "Escalate to CMO and technical leads for review before resuming any promotional activity."
+    },
+    {
+      "rule_id": "RULE-05",
+      "action": "INCONCLUSIVE",
+      "condition": "Experiment completes duration requirement but sample size or effect size is insufficient to reject null hypothesis at predefined decision threshold.",
+      "next_step": "Preserve candidate hypothesis as unproven; do not declare a false winner or promote permanent learning."
+    }
+  ],
+  "escalations": [
+    "Escalate to CMO if DataQualityChecklist detects Sample Ratio Mismatch (SRM) > 1% significance.",
+    "Escalate to CMO if total test spend reaches unconfigured stop-loss threshold.",
+    "Escalate to CMO if community feedback indicates technical inaccuracies in copy."
+  ],
+  "candidate_learnings": [
+    {
+      "learning_id": "LEARN-CAND-001",
+      "observation_required": "Statistically significant retention lift in PEXP-001 with 95% CI > 0 across 14 days",
+      "confidence": "CANDIDATE_ONLY",
+      "alternative_explanations": [
+        "Placements variance",
+        "Audience composition skew"
+      ],
+      "retest_requirement": "Replication across secondary developer platform",
+      "promotion_status": "CANDIDATE_ONLY"
+    }
+  ],
+  "evidence_lineage": {
+    "VAR-A": [
+      "EVID-WEB-893338BD",
+      "EVID-FORUM-F119C750"
+    ],
+    "VAR-B": [
+      "EVID-WEB-2BAE59D7"
+    ],
+    "VAR-C": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ]
+  },
+  "strategy_lineage": {
+    "STRAT-001": "Local setup positioning wedge",
+    "STRAT-003": "Localhost REST API integration",
+    "STRAT-004": "Upfront model-to-VRAM hardware guidance"
+  },
+  "creative_lineage": {
+    "COPY-SF-01": "Terminal setup and multi-OS availability",
+    "COPY-SF-02": "Localhost REST API on port 11434",
+    "COPY-SF-03": "VRAM hardware sizing breakdown (7B vs 14B)",
+    "SCRIPT-SF-01": "38s video script with VRAM qualifier"
+  },
+  "performance_confidence": "HIGH",
+  "media_allocation_status": "ILLUSTRATIVE_TEST_ALLOCATION (EMPIRICAL_OPTIMALITY = UNKNOWN, REQUIRES_BUSINESS_BUDGET_CONFIGURATION = TRUE)",
+  "stop_loss_policy": "STOP_LOSS_VALUE = NOT_CONFIGURED (Requires CMO / business stakeholder configuration)"
+}

@@ -1,0 +1,164 @@
+[
+  {
+    "rec_id": "STRAT-001",
+    "title": "Core Market Positioning Architecture",
+    "recommendation": "Position as Local LLM runtime and model orchestration CLI/API for Software developers and privacy-sensitive engineering teams. Promise: Single-command local AI execution with zero data leakage and predictable, zero-token-cost local development. Mechanism: Automated backend dependency management (CUDA/quantization) wrapped in a unified localhost REST API service (port 11434)",
+    "rationale": "Contrasts against Closed hosted APIs (OpenAI/Anthropic) with recurring token costs and data residency concerns, or raw llama.cpp requiring manual compilation and CUDA setup by solving Friction compiling manual C++ inference dependencies (llama.cpp/CUDA) and recurring per-token costs or data privacy concerns with hosted cloud APIs.",
+    "supported_by": [
+      "EVID-WEB-893338BD",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "assumptions": [
+      "Developers value local control and predictable zero-token cost over cloud managed simplicity."
+    ],
+    "uncertainties": [
+      "Enterprise paid cloud conversion rates are unknown (TRANSACTION_DATA = MISSING)."
+    ],
+    "validation_test": "Developer setup completion rate and CLI activation rate on local machine.",
+    "stop_or_reconsider_condition": "Halt positioning if cloud API token prices fall so low that local runtime maintenance is non-compelling.",
+    "epistemic_tier": "INFERENCE"
+  },
+  {
+    "rec_id": "STRAT-002",
+    "title": "Action: Position Ollama as the fastest local developer setup wedge f...",
+    "recommendation": "Position Ollama as the fastest local developer setup wedge for open-weight models (EVID-FORUM-F119C750)",
+    "rationale": "Direct tactical implementation of evidence-backed developer wedge.",
+    "supported_by": [
+      "EVID-FORUM-F119C750"
+    ],
+    "assumptions": [
+      "Target developers have sufficient local hardware/GPU resources."
+    ],
+    "uncertainties": [
+      "Broad ecosystem developer satisfaction is unknown (REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING)."
+    ],
+    "validation_test": "A/B test onboarding copy and documentation clarity against GitHub issue volume.",
+    "stop_or_reconsider_condition": "Reconsider if hardware CPU fallback causes unacceptable latency feedback.",
+    "epistemic_tier": "OBSERVATION"
+  },
+  {
+    "rec_id": "STRAT-003",
+    "title": "Action: Promote the localhost REST API (port 11434) as a drop-in com...",
+    "recommendation": "Promote the localhost REST API (port 11434) as a drop-in component for local development and workflow automation (EVID-WEB-2BAE59D7)",
+    "rationale": "Direct tactical implementation of evidence-backed developer wedge.",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7"
+    ],
+    "assumptions": [
+      "Target developers have sufficient local hardware/GPU resources."
+    ],
+    "uncertainties": [
+      "Broad ecosystem developer satisfaction is unknown (REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING)."
+    ],
+    "validation_test": "A/B test onboarding copy and documentation clarity against GitHub issue volume.",
+    "stop_or_reconsider_condition": "Reconsider if hardware CPU fallback causes unacceptable latency feedback.",
+    "epistemic_tier": "OBSERVATION"
+  },
+  {
+    "rec_id": "STRAT-004",
+    "title": "Action: Provide clear, honest hardware guidance (e.g., 4-5GB VRAM fo...",
+    "recommendation": "Provide clear, honest hardware guidance (e.g., 4-5GB VRAM for 7B Q4, 8-10GB for 14B) to pre-empt CPU fallback latency disappointment (EVID-WEB-2BAE59D7, CONF-40334167)",
+    "rationale": "Direct tactical implementation of evidence-backed developer wedge.",
+    "supported_by": [
+      "CONF-40334167",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "assumptions": [
+      "Target developers have sufficient local hardware/GPU resources."
+    ],
+    "uncertainties": [
+      "Broad ecosystem developer satisfaction is unknown (REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING)."
+    ],
+    "validation_test": "A/B test onboarding copy and documentation clarity against GitHub issue volume.",
+    "stop_or_reconsider_condition": "Reconsider if hardware CPU fallback causes unacceptable latency feedback.",
+    "epistemic_tier": "OBSERVATION"
+  },
+  {
+    "rec_id": "STRAT-005",
+    "title": "Demand Creation Strategy",
+    "recommendation": "Publish technical architecture teardowns and workflow automation guides showing how local inference eliminates cloud API compliance friction",
+    "rationale": "Educates technical developers on zero-data-leakage architecture and local compliance.",
+    "supported_by": [
+      "EVID-WEB-893338BD"
+    ],
+    "assumptions": [
+      "Enterprise engineering teams are actively seeking compliance-safe AI architectures."
+    ],
+    "uncertainties": [
+      "Enterprise compliance procurement cycle times are unknown."
+    ],
+    "validation_test": "Organic technical blog engagement and content sharing in developer forums.",
+    "stop_or_reconsider_condition": "Pivot if technical guides fail to drive CLI installation actions.",
+    "epistemic_tier": "INFERENCE"
+  },
+  {
+    "rec_id": "STRAT-006",
+    "title": "Demand Capture Strategy",
+    "recommendation": "Target high-intent technical search queries ('run llama locally', 'local openai api alternative', 'offline llm runner')",
+    "rationale": "Intercepts high-intent technical search traffic seeking offline / local model runners.",
+    "supported_by": [
+      "EVID-SRCH-132D6868",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "assumptions": [
+      "High search volume exists for local llama runner queries."
+    ],
+    "uncertainties": [
+      "Exact organic search conversion rate to CLI execution is unmeasured."
+    ],
+    "validation_test": "Search impression-to-install rate on download pages.",
+    "stop_or_reconsider_condition": "Halt keyword capture if landing bounce rate exceeds baseline thresholds.",
+    "epistemic_tier": "INFERENCE"
+  },
+  {
+    "rec_id": "STRAT-007",
+    "title": "Trade-off: Will NOT market Ollama as a replacement for high-throughput ...",
+    "recommendation": "Will NOT market Ollama as a replacement for high-throughput enterprise production clusters without clarifying host VRAM prerequisites",
+    "rationale": "Prevents misaligned ad spend and guards brand integrity by honoring hardware boundaries.",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ],
+    "assumptions": [
+      "Protecting developer trust outweighs short-term unqualified traffic acquisition."
+    ],
+    "uncertainties": [],
+    "validation_test": "Monitor user satisfaction and refund/churn avoidance.",
+    "stop_or_reconsider_condition": "Maintain permanently as core brand guardrail.",
+    "epistemic_tier": "INFERENCE"
+  },
+  {
+    "rec_id": "STRAT-008",
+    "title": "Trade-off: Will NOT run aggressive direct-response paid ad spend agains...",
+    "recommendation": "Will NOT run aggressive direct-response paid ad spend against broad non-technical consumer audiences lacking local GPU compute",
+    "rationale": "Prevents misaligned ad spend and guards brand integrity by honoring hardware boundaries.",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ],
+    "assumptions": [
+      "Protecting developer trust outweighs short-term unqualified traffic acquisition."
+    ],
+    "uncertainties": [],
+    "validation_test": "Monitor user satisfaction and refund/churn avoidance.",
+    "stop_or_reconsider_condition": "Maintain permanently as core brand guardrail.",
+    "epistemic_tier": "INFERENCE"
+  },
+  {
+    "rec_id": "STRAT-009",
+    "title": "Trade-off: Will NOT fabricate proprietary model claims; positioning rem...",
+    "recommendation": "Will NOT fabricate proprietary model claims; positioning remains strictly focused on runtime orchestration and developer UX",
+    "rationale": "Prevents misaligned ad spend and guards brand integrity by honoring hardware boundaries.",
+    "supported_by": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ],
+    "assumptions": [
+      "Protecting developer trust outweighs short-term unqualified traffic acquisition."
+    ],
+    "uncertainties": [],
+    "validation_test": "Monitor user satisfaction and refund/churn avoidance.",
+    "stop_or_reconsider_condition": "Maintain permanently as core brand guardrail.",
+    "epistemic_tier": "INFERENCE"
+  }
+]

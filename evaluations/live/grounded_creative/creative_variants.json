@@ -1,0 +1,29 @@
+[
+  {
+    "variant_id": "VAR-A",
+    "concept": "Terminal Flow Lead (Base)",
+    "changed_variable": "HOOK",
+    "constants": "Body demonstration, REST API feature, VRAM sizing qualifier, CTA.",
+    "variable_value": "Hook 1: 'Tired of configuring CUDA drivers just to test an open-weight model locally?' (Friction Focus)",
+    "hypothesis": "Friction-focused hook outperforms generic feature announcements in technical developer feeds.",
+    "measurement_requirement": "Compare 3-second hook view rate and total watch-through rate in initial test cohort."
+  },
+  {
+    "variant_id": "VAR-B",
+    "concept": "Terminal Flow Lead (Alternative Hook)",
+    "changed_variable": "HOOK",
+    "constants": "Body demonstration, REST API feature, VRAM sizing qualifier, CTA.",
+    "variable_value": "Hook 2: 'Did you know Ollama runs a full REST API daemon on localhost port 11434 by default?' (API Specificity Focus)",
+    "hypothesis": "API-specific hook attracts higher-intent backend engineers with existing script pipelines.",
+    "measurement_requirement": "Compare click-through rate to documentation pages between VAR-A and VAR-B."
+  },
+  {
+    "variant_id": "VAR-C",
+    "concept": "Terminal Flow Lead (Alternative CTA)",
+    "changed_variable": "CTA",
+    "constants": "Hook 1, Body demonstration, REST API feature, VRAM sizing qualifier.",
+    "variable_value": "CTA: 'Check the model hardware compatibility chart' (Hardware Qualification CTA) vs 'Download Ollama'",
+    "hypothesis": "Hardware-first CTA pre-qualifies developers with compatible VRAM and reduces early drop-off.",
+    "measurement_requirement": "Compare downstream CLI setup completion rate between direct download vs hardware chart CTAs."
+  }
+]

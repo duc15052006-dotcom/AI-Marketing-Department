@@ -1,0 +1,72 @@
+{
+  "summary": "CMO initial strategic decomposition plan for launching the 65W GaN USB-C charger in Vietnam ecommerce under SUPERVISED autonomy mode. Orchestrates structured work packages for Intelligence, Strategist, Creative, and Performance agents while enforcing strict epistemic discipline regarding unverified technical specs and baseline unit economics.",
+  "details": {
+    "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+    "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+    "commercial_objective": "Establish market entry strategy and launch campaign infrastructure for a 65W GaN USB-C charger across Vietnamese ecommerce platforms (Shopee, Lazada, TikTok Shop), establishing initial unit economics and CAC/ROAS benchmarks.",
+    "autonomy_mode": "SUPERVISED",
+    "primary_kpi_framework": {
+      "north_star_metric": "Blended Customer Acquisition Cost (CAC) vs. Contribution Margin per Unit",
+      "secondary_guardrail_metrics": [
+        "Landing page / Product Display Page (PDP) Conversion Rate (CVR)",
+        "Ad Click-Through Rate (CTR) and Cost Per Click (CPC)",
+        "ROAS across paid ecommerce search and social channels",
+        "Return/Refund Rate due to device compatibility mismatch"
+      ]
+    },
+    "epistemic_and_claims_governance": {
+      "strict_rules": [
+        "CATEGORY_TECHNOLOGY_PROPERTY != OUR_PRODUCT_VERIFIED_PROPERTY",
+        "COMPETITOR_CAPABILITY != OUR_PRODUCT_CAPABILITY",
+        "CUSTOMER_REQUIREMENT != OUR_PRODUCT_FEATURE",
+        "CUSTOMER_PAIN_POINT != OUR_PRODUCT_SOLVED_OUTCOME",
+        "DESIRED_BENEFIT != VERIFIED_PRODUCT_OUTCOME",
+        "GENERIC_TECHNOLOGY_ADVANTAGE != OUR_PRODUCT_MEASURED_PERFORMANCE",
+        "Laptop compatibility must strictly be qualified as 'for compatible USB-C devices'",
+        "Missing unit economics and technical certifications remain tagged as UNKNOWN / TO_BE_ESTABLISHED"
+      ]
+    },
+    "specialist_task_decomposition": [
+      {
+        "agent": "INTELLIGENCE",
+        "task_id": "TASK_DECOMP_INTEL_001",
+        "objective": "Conduct competitive landscape, pricing tier analysis, and customer pain point extraction for 65W GaN chargers in the Vietnamese ecommerce market (Shopee/Lazada/TikTok Shop).",
+        "deliverables": [
+          "Top competitor price-point and bundle analysis (Baseus, Ugreen, Anker, Baseus VN)",
+          "Review mining report on charging speed complaints, heating issues, and port failure frequencies",
+          "Keyword volume and search intent mapping for GaN chargers in Vietnam"
+        ]
+      },
+      {
+        "agent": "STRATEGIST",
+        "task_id": "TASK_DECOMP_STRAT_001",
+        "objective": "Develop target customer persona segmentation, value proposition hierarchy, and unit economic threshold models based on verified GaN 65W specifications.",
+        "deliverables": [
+          "Audience segment profiles (mobile professionals, tech early adopters, students)",
+          "Positioning matrix balancing compact portability vs. charging output",
+          "Target retail price recommendations and gross margin target bands"
+        ]
+      },
+      {
+        "agent": "CREATIVE",
+        "task_id": "TASK_DECOMP_CREATIVE_001",
+        "objective": "Formulate messaging angles, hook architectures, and creative briefs for video/static ad assets compliant with claim discipline guardrails.",
+        "deliverables": [
+          "3 core messaging angles (Portability/Commute, 65W High-Speed Output, GaN Architecture)",
+          "Storyboard manifests and 3-second hook scripts tailored to Vietnamese consumer vernacular",
+          "PDP copy drafts qualifying laptop compatibility for compatible USB-C devices"
+        ]
+      },
+      {
+        "agent": "PERFORMANCE",
+        "task_id": "TASK_DECOMP_PERF_001",
+        "objective": "Architect tracking taxonomy, UTM structure, and pilot test budget allocation framework for Vietnamese ad networks and marketplace ads.",
+        "deliverables": [
+          "UTM taxonomy and platform tracking plan",
+          "Pilot budget allocation matrix across Shopee In-App Ads, Facebook/Meta Ads, and TikTok Shop",
+          "Experiment protocol for A/B testing creative hooks vs. baseline CPA caps"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 3.5,
+      "rationale": "The core Research Findings section is completely missing, though some consumer friction analysis is salvaged in the Observations section."
+    },
+    "evidence_discipline": {
+      "score": 9.0,
+      "

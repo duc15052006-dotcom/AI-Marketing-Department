@@ -1,0 +1,94 @@
+{
+  "short_form_posts": [
+    {
+      "asset_id": "COPY-SF-01",
+      "platform": "Developer Social / X / LinkedIn",
+      "headline": "Local AI in your terminal without manual C++ toolchains.",
+      "body": "Running open-weight models locally shouldn't require manual CMake builds and CUDA driver headaches. Ollama packages model quantization and execution into a streamlined CLI and background REST API service on port 11434 across macOS, Linux, and Windows.",
+      "cta": "Download Ollama and test with your first open model.",
+      "claim_types": [
+        "EVIDENCE_BACKED_RECOMMENDATION",
+        "STRATEGIC_INFERENCE"
+      ],
+      "evidence_lineage": [
+        "EVID-WEB-893338BD",
+        "EVID-WEB-2BAE59D7",
+        "EVID-FORUM-F119C750"
+      ]
+    },
+    {
+      "asset_id": "COPY-SF-02",
+      "platform": "Developer Community / Dev.to",
+      "headline": "Localhost Port 11434: Your drop-in local inference API.",
+      "body": "When you need predictable zero-token cost for agent testing and script automation, Ollama exposes a standard REST API daemon right on localhost. Integrate it into your existing Python or Node workflows without sending prompts to remote clouds.",
+      "cta": "Explore the REST API documentation.",
+      "claim_types": [
+        "EVIDENCE_BACKED_RECOMMENDATION"
+      ],
+      "evidence_lineage": [
+        "EVID-WEB-2BAE59D7"
+      ]
+    },
+    {
+      "asset_id": "COPY-SF-03",
+      "platform": "Technical Forums / GitHub Discussions",
+      "headline": "Hardware Sizing 101: How to pick the right model for your VRAM.",
+      "body": "7B Q4 models typically need ~4-5GB VRAM, while 14B models need ~8-10GB. If your model exceeds GPU memory, inference falls back to slower CPU compute. Sizing upfront keeps your local token generation fast and predictable.",
+      "cta": "Check the hardware model sizing chart.",
+      "claim_types": [
+        "EVIDENCE_BACKED_RECOMMENDATION"
+      ],
+      "evidence_lineage": [
+        "EVID-WEB-2BAE59D7",
+        "CONF-40334167"
+      ]
+    }
+  ],
+  "long_form_post": {
+    "asset_id": "COPY-LF-01",
+    "platform": "Engineering Blog / Substack / Medium",
+    "title": "Architecting Local AI Workflows: Why Developers Run Models on Localhost",
+    "sections": [
+      {
+        "subheading": "1. The Setup Friction in Local Open-Weight Inference",
+        "text": "For years, running models locally meant downloading raw GGUF weights, cloning repositories, and manually configuring C++ compilers and CUDA backends. Ollama abstracts this complexity into a single background daemon and CLI across macOS, Linux, and Windows (EVID-WEB-893338BD, EVID-FORUM-F119C750)."
+      },
+      {
+        "subheading": "2. Programmability on Port 11434",
+        "text": "Rather than confining models to an interactive CLI, Ollama exposes a background HTTP REST API on port 11434. Developers can query models via standard JSON payloads, making local testing an drop-in component for local development pipelines (EVID-WEB-2BAE59D7)."
+      },
+      {
+        "subheading": "3. Understanding Physical Hardware Boundaries",
+        "text": "Local model execution is fundamentally bound by physical hardware. A quantized 7B parameter model requires approximately 4-5GB of GPU VRAM, while 14B models require 8-10GB. Ensuring adequate GPU memory avoids slow CPU fallback compute and maintains responsive token streaming (EVID-WEB-2BAE59D7, CONF-40334167)."
+      }
+    ],
+    "cta": "Get started with Ollama and explore open-weight model orchestration locally.",
+    "claim_types": [
+      "EVIDENCE_BACKED_RECOMMENDATION",
+      "STRATEGIC_INFERENCE",
+      "FIRST_PARTY_CLAIM"
+    ],
+    "evidence_lineage": [
+      "EVID-WEB-893338BD",
+      "EVID-WEB-2BAE59D7",
+      "EVID-FORUM-F119C750",
+      "CONF-40334167"
+    ]
+  },
+  "landing_page_hero": {
+    "asset_id": "COPY-HERO-01",
+    "headline": "Get up and running with large language models locally.",
+    "subheadline": "A streamlined CLI and localhost REST API runtime for running open-weight models on macOS, Linux, and Windows. Predictable, local compute with zero per-token cost.",
+    "primary_cta": "Download for macOS / Linux / Windows",
+    "secondary_cta": "View Documentation on localhost:11434",
+    "trust_badge": "First-party offline design: Runs entirely on your machine.",
+    "claim_types": [
+      "EVIDENCE_BACKED_RECOMMENDATION",
+      "FIRST_PARTY_CLAIM"
+    ],
+    "evidence_lineage": [
+      "EVID-WEB-893338BD",
+      "EVID-WEB-2BAE59D7"
+    ]
+  }
+}

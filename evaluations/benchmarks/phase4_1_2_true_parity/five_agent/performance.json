@@ -1,0 +1,210 @@
+{
+  "summary": "Performance marketing telemetry architecture, tracking validation protocol, A/B experiment execution blueprint, unit economics guardrails, and marketing operations governance for the 65W GaN USB-C Charger launch across Vietnam marketplace channels (Shopee, Lazada, TikTok Shop). Built to enforce empirical measurement integrity, prevent margin destruction, and rigorously test creative-to-conversion hypotheses.",
+  "details": {
+    "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+    "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+    "measurement_context_audit": {
+      "business_objective": "Achieve top-3 marketplace contender rank in the 65W GaN segment within 90 days while securing profitable first-order unit economics and review velocity (>4.8 stars).",
+      "campaign_objective": "Demand capture and high-intent acquisition on Shopee, Lazada, and TikTok Shop for Vietnamese urban professionals.",
+      "primary_kpi": "First-Order Net Contribution Margin (VND) & Blended Cost Per Acquisition (CPA <= 120,000 VND).",
+      "secondary_kpis": [
+        "Shopee/Lazada In-Search Click-Through Rate (Link CTR %)",
+        "Product Detail Page (PDP) Click-to-Purchase Conversion Rate (CVR %)",
+        "TikTok Shop 3-Second Hook Retention Rate (%)",
+        "TikTok Shop Video Click-to-Shop Rate (%)",
+        "Search Advertising Cost of Sales (ACOS % / ROAS)"
+      ],
+      "guardrail_metrics": {
+        "max_blended_cpa_ceiling_vnd": 120000,
+        "max_return_refund_rate_percent": 3.5,
+        "min_acceptable_roas": 3.5,
+        "target_search_acos_ceiling_percent": 18.0,
+        "min_organic_review_rating": 4.8
+      },
+      "time_window": "Initial 30-Day Launch & Calibration Flight (Phase 1: Days 1\u201314 Testing; Phase 2: Days 15\u201330 Scaling).",
+      "segment_and_channel": {
+        "geographic_focus": "Hanoi & Ho Chi Minh City (Urban Metro Hubs)",
+        "channels": [
+          "Shopee In-Shop & Keyword Search Ads",
+          "Lazada Sponsored Solutions (Discovery & Search)",
+          "TikTok Shop Video Shopping Ads & Creator Affiliate Seeding"
+        ],
+        "target_audience": "Urban professionals & remote workers (Ages 22\u201335) using USB-C PD ultrabooks/MacBooks."
+      },
+      "creative_variant_and_offer": {
+        "tested_angles": [
+          "Angle 01: Kitchen Scale Weigh-In (350g OEM vs 100g GaN)",
+          "Angle 02: Coffee Shop Loose Socket Friction Teardown",
+          "Angle 03: Hardware Safety & 12-Month Replacement Teardown"
+        ],
+        "price_points": "369,000\u2013399,000 VND (Flash Promo Corridor) / 429,000 VND (Standard Retail Anchor)",
+        "core_offer": "65W GaN Charger + 12-Month 1-to-1 Direct Replacement Warranty"
+      },
+      "attribution_context": {
+        "attribution_model": "Last-Click Platform Model reconciled against Backend ERP / Marketplace Settled Orders (7-day click / 1-day view default).",
+        "attribution_caveats": "Marketplace platform-reported ROAS typically over-attributes view-through conversions; all decisions require cross-referencing net settled cash flow."
+      },
+      "data_source_and_freshness": {
+        "primary_sources": [
+          "Shopee Seller Center Open API Telemetry",
+          "Lazada Marketing Solutions Dashboard",
+          "TikTok Shop Partner Center API",
+          "Internal Inventory & COD Settlement ERP"
+        ],
+        "reporting_lag_window": "24 to 72 hours for complete COD return reconciliations."
+      }
+    },
+    "metric_taxonomy_and_tracking_plan": {
+      "event_tracking_architecture": [
+        {
+          "funnel_stage": "DISTRIBUTION",
+          "metric_name": "Ad Impressions & CPM",
+          "denominator_definition": "Per 1,000 Ad Impressions delivered within target keyword/demographic cluster",
+          "telemetry_source": "Shopee Ads API / TikTok Ads Manager",
+          "diagnostic_function": "Evaluates platform bidding competitiveness and category search volume."
+        },
+        {
+          "funnel_stage": "ATTENTION",
+          "metric_name": "3-Second Video Hook Retention Rate (%)",
+          "denominator_definition": "Total 3-Second Video Views / Total Video Impressions",
+          "telemetry_source": "TikTok Shop Ads Analytics",
+          "diagnostic_function": "Measures creative pattern interrupt effectiveness (Scene 01 visual scale weigh-in)."
+        },
+        {
+          "funnel_stage": "TRAFFIC",
+          "metric_name": "Outbound Link CTR (%)",
+          "denominator_definition": "Outbound PDP Link Clicks / Total Impressions",
+          "telemetry_source": "Shopee Search / Lazada Discovery / TikTok Ad Center",
+          "diagnostic_function": "Measures ad headline, thumbnail, and hook relevance before PDP arrival."
+        },
+        {
+          "funnel_stage": "INTENT",
+          "metric_name": "Add-to-Cart (ATC) Rate (%)",
+          "denominator_definition": "Unique Add-to-Cart Actions / Unique PDP Visitors",
+          "telemetry_source": "Shopee / Lazada In-Shop Analytics",
+          "diagnostic_function": "Measures initial offer resonance and price perception."
+        },
+        {
+          "funnel_stage": "CONVERSION",
+          "metric_name": "Click-to-Purchase Conversion Rate (CVR %)",
+          "denominator_definition": "Completed Settled Orders / Total In-Shop Clicks",
+          "telemetry_source": "Marketplace Order Gateway API",
+          "diagnostic_function": "Measures PDP conversion power, trust signals, and objection neutralization."
+        },
+        {
+          "funnel_stage": "ECONOMICS",
+          "metric_name": "Blended Customer Acquisition Cost (CPA VND)",
+          "denominator_definition": "Total Marketing Spend (VND) / Total Attributed Units Sold",
+          "telemetry_source": "Ad Spend Reports + ERP Order Logs",
+          "diagnostic_function": "Ensures marketing spend stays within unit margin constraints (<= 120,000 VND)."
+        },
+        {
+          "funnel_stage": "RETENTION_&_SAFETY",
+          "metric_name": "Return & Refund Rate (%)",
+          "denominator_definition": "Refunded/Returned Orders / Total Shipped Orders",
+          "telemetry_source": "Seller Center Customer Service Logs",
+          "diagnostic_function": "Monitors compatibility complaints, thermal dissatisfaction, and product defect signals."
+        }
+      ],
+      "tracking_integrity_rules": [
+        "Rule 01: Enforce standardized UTM campaign naming across all external influencer links: utm_source=tiktok&utm_medium=affiliate&utm_campaign=gan65_launch&utm_content={creator_id}_{angle_id}.",
+        "Rule 02: Deduplicate marketplace affiliate conversions against direct in-app search ads via unique promotional voucher codes.",
+        "Rule 03: Reconcile daily reported ad platform spend against settled Shopee/Lazada wallet statements to prevent currency/FX drift."
+      ]
+    },
+    "experiment_design_and_statistical_protocol": {
+      "experiment_id": "EXP-GAN65-VN-001",
+      "experiment_title": "Laptop Dual Replacement Hook vs Generic GaN Speed Hook on Shopee Search",
+      "test_structure": {
+        "variant_a_control": "Generic High-Tech GaN Hook ('C\u1ee7 S\u1ea1c GaN 65W Si\u00eau Nhanh - Chu\u1ea9n PD Qu\u1ed1c T\u1ebf')",
+        "variant_b_treatment": "Everyday Carry Problem Hook ('C\u1ee7 S\u1ea1c 65W Thay Th\u1ebf To\u00e0n B\u1ed9 S\u1ea1c Laptop & \u0110i\u1ec7n Tho\u1ea1i - Nh\u1eb9 100g')",
+        "traffic_allocation": "50/50 Split on Shopee Search Ads targeting identical keyword cluster ('c\u1ee7 s\u1ea1c 65w', 's\u1ea1c laptop type c')",
+        "sample_size_requirement": "Minimum 1,000 attributed clicks and >= 40 conversions per arm to ensure statistical stability."
+      },
+      "evaluation_criteria": {
+        "primary_metric": "Direct SKU Purchase CVR (%)",
+        "decision_boundary": "Declare Variant B winner if CVR lift is >= 15% with non-overlapping 90% confidence bounds and ACOS <= 18%.",
+        "inconclusive_protocol": "If CVR difference is < 8% after 1,200 clicks per variant, declare INCONCLUSIVE and prioritize Angle 02 (Loose Socket) testing.",
+        "guardrail_termination_trigger": "Terminate variant immediately if ROAS falls below 3.5x over a 48-hour moving window with >= 200 clicks."
+      },
+      "creative_fatigue_governance": {
+        "fatigue_detection_signals": [
+          "Trailing 5-day Link CTR decay > 25% relative to initial 3-day baseline.",
+          "Audience frequency > 2.8 on TikTok retargeting pools accompanied by CPA inflation > 30%.",
+          "Shopee Search Ad average CPC inflation > 20% at identical ad quality score."
+        ],
+        "fatigue_response_action": "Do NOT apply arbitrary calendar-day pausing. Cycle secondary thumbnail assets and refresh the first 3.5 seconds of video hooks while preserving winning PDP copy."
+      }
+    },
+    "unit_economics_and_margin_protection": {
+      "unit_economics_waterfall": {
+        "retail_price_vnd": 429000,
+        "promotional_launch_price_vnd": 379000,
+        "cogs_estimate_vnd": 175000,
+        "marketplace_fees_commission_vnd": 45480,
+        "packaging_and_fulfillment_vnd": 18000,
+        "allowance_for_warranty_refunds_vnd": 15000,
+        "max_allowable_ad_cpa_vnd": 125520,
+        "target_net_contribution_margin_vnd": 75000
+      },
+      "stop_loss_governance": {
+        "stop_loss_rule": "Enforce hard campaign budget stop if trailing 7-day blended CPA exceeds 120,000 VND or if campaign contribution margin falls below 10% of revenue.",
+        "authorization_boundary": "Budget scaling beyond 15,000,000 VND daily spend requires CMO sign-off and verified 14-day return rate < 3.0%."
+      }
+    },
+    "funnel_bottleneck_diagnostic_matrix": [
+      {
+        "telemetry_symptom": "High TikTok 3s Hook Rate (>40%) + Low Outbound Click-to-Shop Rate (<1.2%)",
+        "identified_bottleneck": "Vampire Entertainment / Lack of Commercial Transition in Scene 02",
+        "root_cause_hypothesis": "Video entertains with the scale weigh-in but fails to clearly communicate laptop compatibility or shopping basket link before second 20.",
+        "corrective_action": "Shift product value statement and yellow shopping cart overlay forward to second 8.0 in video edit."
+      },
+      {
+        "telemetry_symptom": "High Search Ad CTR (>6.5%) + Low PDP Conversion Rate (<2.0%)",
+        "identified_bottleneck": "Destination Bridge Disconnect / Pricing & Trust Friction",
+        "root_cause_hypothesis": "Shoppers clicked searching for 's\u1ea1c laptop macbook' but doubted thermal safety or warranty legitimacy upon reading PDP details.",
+        "corrective_action": "Move Slide 4 (12-Month 1-to-1 Replacement Warranty badge) to Slide 2 in the PDP carousel; add verified unboxing reviews to top of description."
+      },
+      {
+        "telemetry_symptom": "Healthy CVR (>5.0%) + High Return/Refund Rate (>4.0%) citing 'Does not charge laptop'",
+        "identified_bottleneck": "Product Expectation Mismatch / Over-Promised Compatibility",
+        "root_cause_hypothesis": "Customers with 100W+ gaming laptops or proprietary non-PD USB-C ports purchased the 65W charger expecting full-speed charging.",
+        "corrective_action": "Implement bold PDP compatibility checklist specifying: 'T\u1ed1i \u01b0u cho laptop v\u0103n ph\u00f2ng 65W Type-C PD (MacBook Air/Pro 13-14, Dell XPS, ThinkPad). Kh\u00f4ng d\u00f9ng cho laptop gaming >100W'."
+      }
+    ],
+    "marketing_operations_and_audit_governance": {
+      "operational_mode": "SUPERVISED MODE (Performance prepares automated tracking sheets, budget allocations, and bid scripts; external API mutations require human sign-off).",
+      "audit_logging_record": {
+        "action_id": "ACT_2026_GAN65_PERF_001",
+        "agent_name": "performance",
+        "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+        "campaign_id": "CMP_VN_MKTPLACE_GAN65_LAUNCH_Q3",
+        "platform_target": "Shopee Open API / TikTok Ads Manager",
+        "requested_action": "Configure EXP-GAN65-VN-001 split test flight with 10,000,000 VND initial testing allocation and 120,000 VND CPA ceiling guardrail.",
+        "permission_state": "SUPERVISED",
+        "approval_status": "PENDING_HUMAN_SIGN_OFF",
+        "execution_result": "DRY_RUN_VALIDATED"
+      },
+      "candidate_learning_framework": {
+        "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+        "target_learning_inquiry": "Does emphasizing 'Desk & Commute Freedom' via weight reduction yield higher commercial intent in Vietnam than raw technical wattage specifications?",
+        "validation_methodology": "Replicate winning search headline across Lazada and TikTok Video Shopping Ads; monitor 30-day cohort repeat purchase rate."
+      }
+    },
+    "specialist_handoffs": {
+      "performance_to_creative_feedback": {
+        "target_asset": "SCR_TIKTOK_01_WEIGHT_CONTRAST (Scene 01 to Scene 04)",
+        "telemetry_checkpoint": "Track 3s Hook Drop Gradient and Scene 02 transition at 3.5s.",
+        "diagnostic_instruction": "Ensure digital scale numbers (385g vs 100g) are visually legible on mobile screens without zooming. If 3s retention drops below 30%, replace kitchen scale with direct pocket-insertion hook."
+      },
+      "performance_to_strategist_feedback": {
+        "strategic_checkpoint": "Validate whether 369,000\u2013399,000 VND launch pricing generates target 5.5x ROAS on Shopee keyword cluster 'c\u1ee7 s\u1ea1c gan 65w'.",
+        "pivot_trigger": "If keyword CPC exceeds 8,000 VND due to Baseus/Ugreen bidding wars, pivot 40% of demand capture budget into TikTok creator affiliate video ads."
+      },
+      "performance_to_cmo_report": {
+        "executive_summary": "Testing framework ready for 30-day launch. Guardrails locked at 120k VND CPA and 3.5% refund ceiling. Projected first-order net margin of 75,000 VND per unit at 379k promo price.",
+        "recommendation": "Authorize 20,000,000 VND Phase 1 test budget under Supervised Mode."
+      }
+    }
+  }
+}

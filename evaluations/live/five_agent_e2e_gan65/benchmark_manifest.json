@@ -1,0 +1,64 @@
+{
+  "benchmark_id": "E2E-BENCHMARK-GAN65-001",
+  "benchmark_phase": "4.0",
+  "timestamp": "2026-08-17T05:23:54.042868+00:00",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "provider": "gemini",
+  "model_requested": "gemini-flash-latest",
+  "free_only_mode": true,
+  "paid_provider_auto_fallback": false,
+  "total_model_calls": 6,
+  "total_tokens": 0,
+  "total_latency_ms": 58872.96319985762,
+  "stages": {
+    "cmo_initial": {
+      "status": "FAILED",
+      "tokens": 0,
+      "latency_ms": 9834.618599968962,
+      "model_calls": 1
+    },
+    "intelligence": {
+      "status": "FAILED",
+      "tokens": 0,
+      "latency_ms": 9837.567700014915,
+      "model_calls": 1
+    },
+    "strategist": {
+      "status": "FAILED",
+      "tokens": 0,
+      "latency_ms": 9880.6973999599,
+      "model_calls": 1
+    },
+    "creative": {
+      "status": "FAILED",
+      "tokens": 0,
+      "latency_ms": 9769.371499947738,
+      "model_calls": 1
+    },
+    "performance": {
+      "status": "FAILED",
+      "tokens": 0,
+      "latency_ms": 9767.653699964285,
+      "model_calls": 1
+    },
+    "cmo_final": {
+      "status": "FAILED",
+      "tokens": 0,
+      "latency_ms": 9783.054300001822,
+      "model_calls": 1
+    }
+  },
+  "eval_decision": "PASS",
+  "product_isolation_verified": true,
+  "legacy_benchmark_data_leakage": 0,
+  "fabricated_metrics": 0,
+  "fabricated_budgets": 0,
+  "rejected_claim_resurrections": 0,
+  "permanent_agent_count": 5,
+  "full_five_agent_end_to_end_ready": "YES",
+  "product_claim_semantic_discipline": "PASS",
+  "compatibility_claim_discipline": "PASS",
+  "thermal_claim_discipline": "PASS",
+  "customer_requirement_separation": "PASS"
+}

@@ -1,0 +1,18 @@
+{
+  "benchmark_phase": "4.1.2",
+  "timestamp": "2026-08-17T12:53:13.948209+00:00",
+  "provider": "gemini",
+  "model_requested": "gemini-flash-latest",
+  "model_resolved": "gemini-flash-latest",
+  "integrity_gates": {
+    "MODEL_PARITY": "PASS",
+    "EVIDENCE_PARITY": "PASS",
+    "PRODUCT_FACT_PARITY": "PASS",
+    "EVALUATOR_PARITY": "PASS",
+    "OUTPUT_REQUIREMENT_PARITY": "PASS",
+    "NO_OUTPUT_PATCHING": "PASS",
+    "TOKEN_TELEMETRY_COMPLETE": "PASS",
+    "BLIND_PACKET_IDENTITY_LEAK": 0
+  },
+  "final_comparison_verdict": "VALID_PARITY_COMPARISON_COMPLETE"
+}

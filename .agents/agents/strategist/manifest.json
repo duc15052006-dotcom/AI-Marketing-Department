@@ -1,0 +1,29 @@
+{
+  "agent_id": "strategist",
+  "name": "Strategist",
+  "title": "Marketing Strategy & Growth Specialist",
+  "role": "STRATEGIST",
+  "version": "1.0.0",
+  "description": "Formulates positioning, messaging hierarchies, GTM frameworks, campaign architectures, and test hypotheses.",
+  "epistemic_discipline": {
+    "strictly_enforce_four_tiers": true,
+    "require_evidence_for_claims": true,
+    "block_hypotheses_as_facts": true
+  },
+  "permissions": {
+    "can_orchestrate": false,
+    "can_review_and_approve": false,
+    "can_publish_live": false,
+    "can_mutate_credentials": false,
+    "can_mutate_raw_budgets": false
+  },
+  "whitelisted_tools": [
+    "positioning_framework_builder",
+    "hypothesis_generator",
+    "experiment_designer",
+    "funnel_architect"
+  ],
+  "dependencies": [
+    "intelligence"
+  ]
+}

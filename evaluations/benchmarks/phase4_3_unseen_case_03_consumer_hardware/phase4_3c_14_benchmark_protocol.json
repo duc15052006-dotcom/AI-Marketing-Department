@@ -1,0 +1,28 @@
+{
+  "benchmark_id": "BENCHMARK-PHASE4-3-CASE03-CONSUMER-HARDWARE",
+  "case_id": "CASE_03_CONSUMER_HARDWARE_D2C",
+  "protocol_version": "v3_rc2",
+  "brain_version": "FIVE_AGENT_BRAIN_V1_RC2",
+  "brain_rc2_fingerprint": "35987acba993572515a0e8daaab9f6910448ba7fc6cb1121b371b6a755f99900",
+  "benchmark_input_hash": "34a46c5c63ce85b0dc9641476651212bc66b9bbcc3dd262f6a0d22301a816f91",
+  "prompt_hash_a4": "5e32c4c47a37dc98d709c00a7dd2c245d7c35d3053141f8338efa6e8d198707d",
+  "prompt_hash_b4": "8241e52f55dfbb8a16282bd3a2ba6d18e0574227eb999d9f27d8b5f06763335c",
+  "prompt_hash_b4_passes": {
+    "pass_1": "99b8d7c695d660081c566bf84d713d3a0bf9e0cc52b920378df7a3dd3773db9c",
+    "pass_2": "ec76ecb3cea239c14e156dbc91e0f18c10fbe4bb9bd586af8c14304a05cd8d60",
+    "pass_3": "9c7287ef8fd1441287bebb62e5a016cb4fa2ba3f422b5c9aa657e088eb2b52e2"
+  },
+  "prompt_hash_c4": "eeb5f0b9e5180183a8588e1c017d9dfd5383b6ef4ec0c7eb6048aaf020020590",
+  "model_config": {
+    "provider": "gemini",
+    "requested_model": "gemini-flash-latest",
+    "resolved_model": "gemini-3.5-flash",
+    "strict_model_pin": true,
+    "max_output_tokens": 8192,
+    "temperature": 0.2,
+    "top_p": 0.95,
+    "top_k": 40,
+    "timeout_seconds": 180.0
+  },
+  "protocol_fingerprint": "4973d2a42445197b8a843c8adc30c81956670d571145a934def78e26619e6d8b"
+}

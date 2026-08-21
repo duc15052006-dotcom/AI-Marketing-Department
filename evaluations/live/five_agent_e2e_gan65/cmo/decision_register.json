@@ -1,0 +1,86 @@
+[
+  {
+    "decision_id": "CMO-DEC-001",
+    "decision": "Adopt 'Pocket-Sized Power / Bag Consolidation' (TERRITORY-01) as primary launch positioning anchor for compatible USB-C devices.",
+    "decision_type": "EVIDENCE_SUPPORTED_ACTION",
+    "status": "INTERNAL_GO (DESIGN_APPROVED)",
+    "rationale": "Directly activates verified commuter friction observed in community discussions (EVID-GAN65-03).",
+    "supported_by": [
+      "STRAT-GAN65-001",
+      "EVID-GAN65-01",
+      "EVID-GAN65-03"
+    ],
+    "owner_agent": "CREATIVE",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Prepare creative assets for human executive distribution sign-off."
+  },
+  {
+    "decision_id": "CMO-DEC-002",
+    "decision": "Target Hybrid Laptop Commuters (SEG-01) as top-priority initial customer segment.",
+    "decision_type": "BOUNDED_STRATEGIC_BET",
+    "status": "INTERNAL_GO (DESIGN_APPROVED)",
+    "rationale": "High pain-point intensity carrying OEM laptop bricks between home, office, and coffee shops.",
+    "supported_by": [
+      "SEG-01",
+      "EVID-GAN65-03"
+    ],
+    "owner_agent": "STRATEGIST",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Align marketing touchpoints with commuter EDC workflows."
+  },
+  {
+    "decision_id": "CMO-DEC-003",
+    "decision": "Approve experimental design of PEXP-001 (Hook Test) and PEXP-002 (Compatibility CTA Test).",
+    "decision_type": "EXPERIMENT_APPROVAL",
+    "status": "DESIGN_APPROVED (READY_FOR_HUMAN_APPROVAL)",
+    "rationale": "Controlled tests to determine optimal developer/commuter hook and conversion friction.",
+    "supported_by": [
+      "PEXP-001",
+      "PEXP-002"
+    ],
+    "owner_agent": "PERFORMANCE",
+    "required_approval": "READY_FOR_HUMAN_APPROVAL",
+    "next_action": "Submit test protocols for human executive distribution sign-off upon tracking validation."
+  },
+  {
+    "decision_id": "CMO-DEC-004",
+    "decision": "Classify Ecommerce Keyword Search ('sac gan 65w') as HYPOTHESIZED_CHANNEL subject to PEXP-003.",
+    "decision_type": "BOUNDED_STRATEGIC_BET",
+    "status": "DESIGN_APPROVED (READY_FOR_HUMAN_APPROVAL)",
+    "rationale": "Search queries indicate intent but commercial acquisition viability requires validation.",
+    "supported_by": [
+      "EVID-GAN65-04",
+      "PEXP-003"
+    ],
+    "owner_agent": "PERFORMANCE",
+    "required_approval": "READY_FOR_HUMAN_APPROVAL",
+    "next_action": "Submit PEXP-003 budget proposal for human executive review."
+  },
+  {
+    "decision_id": "CMO-DEC-005",
+    "decision": "Defer broad non-technical mass TV/OOH media spend.",
+    "decision_type": "DEFERRED_DECISION",
+    "status": "DEFER",
+    "rationale": "Current evidence is strongly tech-commuter oriented and does not establish broad mass-market fit.",
+    "supported_by": [
+      "EVID-GAN65-03"
+    ],
+    "owner_agent": "STRATEGIST",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Re-evaluate after online ecommerce penetration establishes baseline demand."
+  },
+  {
+    "decision_id": "CMO-DEC-006",
+    "decision": "Submit formal request for Human Business Owner Budget, Pricing, and Stop-Loss Policy configuration.",
+    "decision_type": "HUMAN_APPROVAL_REQUIRED",
+    "status": "ESCALATE (READY_FOR_HUMAN_APPROVAL)",
+    "rationale": "Autonomous agents must not invent monetary budgets or financial risk parameters.",
+    "supported_by": [
+      "Media Allocation Logic",
+      "Governance Charter"
+    ],
+    "owner_agent": "CMO",
+    "required_approval": "READY_FOR_HUMAN_APPROVAL",
+    "next_action": "Present CMO brief to Human Executive for budget authorization."
+  }
+]

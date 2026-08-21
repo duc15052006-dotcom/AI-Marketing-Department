@@ -1,0 +1,28 @@
+{
+  "claim_grounding": "PASS",
+  "invalid_evidence_ids_count": 0,
+  "unsupported_product_claims_count": 0,
+  "fabricated_metrics_count": 0,
+  "unknown_preservation": "PASS",
+  "product_fact_discipline": "PASS",
+  "strategic_tradeoff_discipline": "PARTIAL",
+  "creative_claim_discipline": "PASS",
+  "measurement_discipline": "PASS",
+  "causal_discipline": "PASS",
+  "approval_governance": "PASS",
+  "lineage_traceability": "STRONG",
+  "structural": {
+    "research_interpretation": "STRONG",
+    "segment_prioritization": "STRONG",
+    "positioning_specificity": "STRONG",
+    "strategic_focus": "STRONG",
+    "what_not_to_do_quality": "ADEQUATE",
+    "creative_diversity": "STRONG",
+    "creative_usability": "STRONG",
+    "measurement_quality": "STRONG",
+    "experiment_falsifiability": "STRONG",
+    "risk_discipline": "STRONG",
+    "approval_discipline": "STRONG",
+    "actionability": "STRONG"
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "observation_id": "OBS-aa25b4d6f813",
+  "capability": "search_web",
+  "source_platform": "search_engine",
+  "source_type": "search_discovery",
+  "source_url_or_id": "search://search_duckduckgo_html?q=Python%20packaging%20guide",
+  "collected_at": "2026-08-16T16:09:30.837634+00:00",
+  "observed_at": null,
+  "backend_used": "search_duckduckgo_html",
+  "collection_method": "SEARCH_ENGINE_DISCOVERY",
+  "raw_reference": null,
+  "normalized_data": {
+    "search_results": {
+      "query": "Python packaging guide",
+      "executed_query": "Python packaging guide",
+      "backend": "search_duckduckgo_html",
+      "backend_provenance": "UNOFFICIAL_HTML_PARSE",
+      "result_count": 5,
+      "results": [
+        {
+          "rank": 1,
+          "title": "Create Python Package - Python Packaging Tutorial",
+          "url": "https://duckduckgo.com/y.js?ad_domain=udemy.com&ad_provider=bingv7aa&ad_type=txad&click_metadata=%2DVJC2vj2JedlHxb8Rll2rJhCYrh3iUbyB7WG36s7Enpi%2DGpP9VO7%2DB4UWQug1TyMahQato79Ry_NEduOcCHvQEnNSGdXe27SpPuUrSUMcFtE_Z6iOdz2VaD4W%2DqLUQIijwu621CdQglJwTSzo_Lsp5TZRwV%2DQzmJ3sD34Mk5xdA.IZfk9lsmOWDpfdcd9xlRNw&rut=429226496f28f0146a2218aba840e07d0ee48aaaf2da481853cffe88ab14d2ca&u3=https%3A%2F%2Fwww.bing.com%2Faclick%3Fld%3De8LzjC36DwXmcn2P0eSeLzMzVUCUxFT%2D99Zk6Sm3WRToVFA%2DPRFOUtI8BI7YMXZK6WC7KEb4zUfsrDGVoVcv%2DlRMWNFllqlMbrj_KtuQIXOM48bCoWQjHk3ZBSvVsWTcP80MKR4t76tt7zR36t%2DMZMYWb2rlclFc%2DKjPGgSD0f0_mRCDDz_BtKoBgVQLhdtXCnzcIII3%2D0PoBqQIu2wZMLUd7KiRQ%26u%3DaHR0cHMlM2ElMmYlMmZ3d3cudWRlbXkuY29tJTJmY291cnNlJTJmcHl0aG9uLXBhY2thZ2luZy10dXRvcmlhbCUyZiUzZnV0bV9jYW1wYWlnbiUzZEJHLVNlYXJjaF9EU0FfQWxwaGFfUHJvZl9sYS5FTl9jYy5ST1ctRW5nbGlzaCUyNnV0bV9zb3VyY2UlM2RiaW5nJTI2dXRtX21lZGl1bSUzZHBhaWQtc2VhcmNoJTI2cG9ydGZvbGlvJTNkQmluZy1ST1ctRW5nbGlzaCUyNnV0bV9hdWRpZW5jZSUzZG14JTI2dXRtX3RhY3RpYyUzZG5iJTI2dXRtX3Rlcm0lM2RfLl9hZ18xMzE2MTE3ODA2Njg4MTc5Xy5fYWRfXy5fa3dfUHl0aG9uJTI1MjBlbiUyNnV0bV9jb250ZW50JTNkcyUyNmZ1bm5lbCUzZCUyNnRlc3QlM2QlMjZ1dG1fY2FtcGFpZ25faWQlM2Q2Mzg1OTYyMjglMjZtc2Nsa2lkJTNkNDFiMWQ0MmVlMGNjMWFiY2U2ZWNiZWFmMDA3NWQ5N2Q%26rlid%3D41b1d42ee0cc1abce6ecbeaf0075d97d&vqd=4-67457810944580403285778028549410068058&iurl=%7B1%7DIG%3DC71CC89149574BF0827A94F64EDB34F9%26CID%3D04716713D3F261B93DEE70A4D27B6046%26ID%3DDevEx%2C5034.1",
+          "display_url": "duckduckgo.com/y.js",
+          "snippet": "MasterPythonand become a pro. Start today and improve your skills. Find the right instructor for you. Choose from many topics, skill levels, and languages.",
+          "published_at": null,
+          "source_domain": "duckduckgo.com",
+          "result_type": "web_page"
+        },
+        {
+          "rank": 2,
+          "title": "Python Packaging User Guide",
+          "url": "https://packaging.python.org/",
+          "display_url": "packaging.python.org/",
+          "snippet": "Welcome to thePythonPackagingUserGuide, a collection of tutorials and references to help you distribute and installPythonpackages with modern tools. Thisguideis maintained on GitHub by thePythonPackagingAuthority.",
+          "published_at": null,
+          "source_domain": "packaging.python.org",
+          "result_type": "web_page"
+        },
+        {
+          "rank": 3,
+          "title": "Packaging Python Projects - Python Packaging User Guide",
+          "url": "https://packaging.python.org/en/latest/tutorials/packaging-projects/",
+          "display_url": "packaging.python.org/en/latest/tutorials/packaging-projects/",
+          "snippet": "PackagingPythonProjects \u00b6 This tutorial walks you through how to package a simplePythonproject. It will show you how to add the necessary files and structure to create the package, how to build the package, and how to upload it to thePythonPackage Index (PyPI).",
+          "published_at": null,
+          "source_domain": "packaging.python.org",
+          "result_type": "web_page"
+        },
+        {
+          "rank": 4,
+          "title": "Python Packaging User Guide - GitHub",
+          "url": "https://github.com/pypa/packaging.python.org",
+          "display_url": "github.com/pypa/packaging.python.org",
+          "snippet": "The \"PythonPackagingUserGuide\" (PyPUG) aims to be the authoritative resource on how to package and install distributions inPythonusing current tools. To follow the development ofPythonpackaging, see thePythonPackagingAuthority.",
+          "published_at": null,
+          "source_domain": "github.com",
+          "result_type": "web_page"
+        },
+        {
+          "rank": 5,
+          "title": "Python Packaging: The Complete Guide to Building, Publishing, and ...",
+          "url": "https://inventivehq.com/blog/python-packaging-complete-guide",
+          "display_url": "inventivehq.com/blog/python-packaging-complete-guide",
+          "snippet": "MasterPythonpackagingfrom development to PyPI publication. Completeguidecovering pyproject.toml, dependencies, versioning, testing, CLI tools, and documentation with links to 11 detailed tutorials.",
+          "published_at": null,
+          "source_domain": "inventivehq.com",
+          "result_type": "web_page"
+        }
+      ],
+      "pagination_state": null,
+      "collection_limit": 5,
+      "has_more": true,
+      "collected_at": "2026-08-16T16:09:30.837418+00:00"
+    },
+    "sampling_context": {
+      "original_query": "Python packaging guide",
+      "executed_query": "Python packaging guide",
+      "language": "en",
+      "region": null,
+      "time_range": null,
+      "safe_search": true,
+      "collection_limit": 5,
+      "result_count": 5,
+      "backend_used": "search_duckduckgo_html",
+      "backend_provenance": "UNOFFICIAL_HTML_PARSE",
+      "allowed_domains": [],
+      "blocked_domains": [],
+      "collected_at": "2026-08-16T16:09:30.837487+00:00"
+    },
+    "telemetry": {
+      "total_latency_ms": 887.94
+    }
+  },
+  "evidence_class": "OBSERVATION",
+  "freshness_days": null,
+  "extraction_confidence": "HIGH",
+  "source_credibility": "UNKNOWN",
+  "content_truth_status": "UNVERIFIED",
+  "confidence": "HIGH",
+  "limitations": [
+    "Web discovery via search_duckduckgo_html (Provenance: UNOFFICIAL_HTML_PARSE)",
+    "Search rankings do not indicate source credibility, truth, or real-world consumer demand",
+    "Search snippets may be truncated, stale, or contextually incomplete; substantive evidence requires separate read_page()",
+    "Discovered URLs are not automatically fetched by search_web"
+  ],
+  "product_id": "PROD_TEST_SEARCH_01",
+  "brand_id": "BRAND_TEST",
+  "content_trust": "UNTRUSTED_EXTERNAL"
+}

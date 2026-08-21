@@ -1,0 +1,32 @@
+[
+  {
+    "rule_id": "RULE-01",
+    "action": "CONTINUE",
+    "condition": "Data quality passes (no SRM), primary metric shows statistically significant positive lift with 95% CI > 0, guardrail metrics remain healthy.",
+    "next_step": "Scale winning variant distribution within authorized allocation limits."
+  },
+  {
+    "rule_id": "RULE-02",
+    "action": "ITERATE",
+    "condition": "Primary metric shows directional improvement but confidence interval overlaps zero, or creative demonstrates strong top-funnel hook but high landing drop-off.",
+    "next_step": "Refine landing page message alignment or test secondary angle without expanding budget."
+  },
+  {
+    "rule_id": "RULE-03",
+    "action": "PAUSE",
+    "condition": "Guardrail metric breached (e.g. bounce rate increases >20%), or primary conversion rate drops significantly below baseline.",
+    "next_step": "Halt variant delivery immediately and initiate multi-cause diagnostic review."
+  },
+  {
+    "rule_id": "RULE-04",
+    "action": "ESCALATE",
+    "condition": "Severe tracking anomaly detected (DataQuality failure), or stop-loss threshold reached, or unverified feature claims reported in community feedback.",
+    "next_step": "Escalate to CMO and technical leads for review before resuming any promotional activity."
+  },
+  {
+    "rule_id": "RULE-05",
+    "action": "INCONCLUSIVE",
+    "condition": "Experiment completes duration requirement but sample size or effect size is insufficient to reject null hypothesis at predefined decision threshold.",
+    "next_step": "Preserve candidate hypothesis as unproven; do not declare a false winner or promote permanent learning."
+  }
+]

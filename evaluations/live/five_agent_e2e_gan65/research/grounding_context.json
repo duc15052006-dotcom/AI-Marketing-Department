@@ -1,0 +1,71 @@
+{
+  "context_id": "CTX-GAN65-001",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "evidence_bundle": {
+    "bundle_id": "BUNDLE-GAN65-001",
+    "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+    "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+    "items": [
+      {
+        "evidence_id": "EVID-GAN65-01",
+        "source_url": "https://en.wikipedia.org/wiki/Gallium_nitride",
+        "source_family": "TECHNICAL_DOCUMENTATION",
+        "title": "Gallium Nitride (GaN) Power Electronics Overview",
+        "extracted_text": "GaN power semiconductors enable higher power efficiency, higher switching frequencies, and significantly smaller form factors compared to legacy silicon MOSFETs, allowing compact 65W charger designs that run cooler under high loads.",
+        "content_role": "TECHNICAL_FACT",
+        "extraction_confidence": 0.95
+      },
+      {
+        "evidence_id": "EVID-GAN65-02",
+        "source_url": "https://www.usb.org/usb-charger-pd",
+        "source_family": "TECHNICAL_DOCUMENTATION",
+        "title": "USB Power Delivery (USB PD 3.0) Fast Charging Specification",
+        "extracted_text": "65W USB-C Power Delivery can charge typical 13-inch and 14-inch ultrabooks (e.g. MacBook Air/Pro, Dell XPS, ThinkPad) as well as modern fast-charging smartphones at full speed through universal Type-C negotiation.",
+        "content_role": "TECHNICAL_FACT",
+        "extraction_confidence": 0.95
+      },
+      {
+        "evidence_id": "EVID-GAN65-03",
+        "source_url": "https://tinhte.vn/thread/danh-gia-cu-sac-gan-65w-cho-laptop-va-dien-thoai.3701245/",
+        "source_family": "PUBLIC_DISCUSSION",
+        "title": "Tinhte.vn Vietnamese Tech Forum: 65W GaN Charger Review & Discussion",
+        "extracted_text": "Vietnamese office workers and tech commuters frequently express frustration carrying heavy OEM 'brick' chargers in backpacks. Users note 65W GaN allows one compact adapter for both laptop and phone, but emphasize concerns over thermal heat dissipation during prolonged 65W laptop charging and plug stability in loose wall sockets.",
+        "content_role": "USER_VOICE",
+        "extraction_confidence": 0.9
+      },
+      {
+        "evidence_id": "EVID-GAN65-04",
+        "source_url": "https://shopee.vn/search?keyword=sac%20gan%2065w",
+        "source_family": "SEARCH_DISCOVERY",
+        "title": "Shopee Vietnam Ecommerce Search Discovery: 'sac gan 65w'",
+        "extracted_text": "Search discovery reveals prominent competitor brands Baseus, Ugreen, and Anker in the 300,000 VND - 700,000 VND price range. Customer reviews highlight port versatility, fast laptop handshake, and compact travel size as decisive purchase triggers.",
+        "content_role": "MARKET_OBSERVATION",
+        "extraction_confidence": 0.88
+      },
+      {
+        "evidence_id": "EVID-GAN65-05",
+        "source_url": "https://voz.vn/t/hoi-anh-em-dung-cu-sac-gan-cho-laptop.681920/",
+        "source_family": "PUBLIC_DISCUSSION",
+        "title": "VOZ Forum Vietnam: GaN Charger Long-term Reliability Thread",
+        "extracted_text": "Vietnamese tech forum discussions emphasize fear of cheap knockoffs causing voltage surges or frying laptop motherboards. Buyers demand clear thermal safety guarantees and brand warranty before trusting non-OEM chargers with expensive laptops.",
+        "content_role": "USER_VOICE",
+        "extraction_confidence": 0.92
+      }
+    ],
+    "evidence_gaps": [
+      {
+        "dimension": "TRANSACTION_DATA",
+        "reason": "New brand with zero historical sales or conversion telemetry."
+      },
+      {
+        "dimension": "REPRESENTATIVE_SURVEY_DATA",
+        "reason": "No statistically representative nationwide consumer survey exists."
+      },
+      {
+        "dimension": "SPECIFIC_SKU_PRICE",
+        "reason": "Exact retail price and wholesale margin for benchmark brand are UNKNOWN."
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "market_research_bundle_id": "EVID_B2B_DEV_SEC_VN_2026",
+  "verified_findings": [
+    {
+      "evidence_id": "EVID_01",
+      "type": "QUALITATIVE_INTERVIEWS",
+      "sample_size": "24 Engineering Managers and CTOs across Hanoi, HCMC, and Da Nang",
+      "finding": "79% of Vietnamese software development houses (ODCs) report increasing pressure from European and US enterprise clients to provide third-party verified security and secret-scanning audit trails prior to project delivery."
+    },
+    {
+      "evidence_id": "EVID_02",
+      "type": "TOOLING_FRICTION_SURVEY",
+      "finding": "Developers reject incumbent SAST tools primarily due to high false-positive rates (>35%) and context-free alert notifications that interrupt sprint velocity."
+    },
+    {
+      "evidence_id": "EVID_03",
+      "type": "BUDGET_ANALYSIS",
+      "finding": "Mid-tier SEA software companies allocate between ,000 - ,000 annual budget for developer tooling, seeking predictable per-seat monthly billing rather than complex credit-based consumption tiers."
+    },
+    {
+      "evidence_id": "EVID_04",
+      "type": "CHANNEL_EFFECTIVENESS",
+      "finding": "Technical founder word-of-mouth, developer LinkedIn thought leadership, technical documentation, and hands-on interactive GitHub demo PRs yield 3.4x higher trial conversion than generic display advertising."
+    }
+  ],
+  "unverified_market_assertions": [
+    "Every developer in Vietnam uses AI coding assistants daily",
+    "Global enterprise customers will immediately switch away from GitHub Advanced Security without pilot testing"
+  ]
+}

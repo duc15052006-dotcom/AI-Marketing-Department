@@ -1,0 +1,62 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 3.0,
+      "rationale": "The core Research Findings and Inferences sections are completely missing, leaving the problem framing highly underdeveloped despite some basic observations."
+    },
+    "evidence_discipline": {
+      "score": 8.5,
+      "rationale": "The candidate accurately references the provided qualitative and quantitative evidence codes without introducing hallucinated statistics."
+    },
+    "segmentation_quality": {
+      "score": 1.0,
+      "rationale": "Both the Customer Segments and Top Priority Segment sections are entirely missing from the candidate's output."
+    },
+    "positioning_quality": {
+      "score": 4.0,
+      "rationale": "While the brand positioning statement is well-crafted, the actual Value Proposition section is left completely blank."
+    },
+    "channel_strategy": {
+      "score": 1.0,
+      "rationale": "The candidate failed to provide any content for the Channel Priorities and Deferred Channels sections."
+    },
+    "creative_quality": {
+      "score": 7.0,
+      "rationale": "The hybrid creative territory and hooks are highly relevant to the clinical facts, though the overall creative section is truncated."
+    },
+    "copy_script_executability": {
+      "score": 3.0,
+      "rationale": "Short-form copy is entirely missing, and the vertical video script is severely truncated, preventing production readiness."
+    },
+    "performance_funnel_metrics": {
+      "score": 5.0,
+      "rationale": "The measurement framework defines solid KPIs and guardrails, but the table is truncated and incomplete."
+    },
+    "experimentation_rigor": {
+      "score": 6.0,
+      "rationale": "The candidate outlines clear hypotheses and statistical parameters, though the experiment details are awkwardly placed under the Risks section."
+    },
+    "attribution_tracking": {
+      "score": 8.0,
+      "rationale": "The event taxonomy is technically sound, utilizing a compliant schema that respects HIPAA and SOC 2 boundaries."
+    },
+    "claim_safety_compliance": {
+      "score": 9.5,
+      "rationale": "The candidate demonstrates excellent compliance discipline by explicitly outlining prohibited claims and hardcoding required medical disclaimers."
+    },
+    "governance_human_approval": {
+      "score": 3.0,
+      "rationale": "The Go/Test/Hold/Defer section is missing, and the human approval requirements are incomplete."
+    },
+    "internal_consistency_lineage": {
+      "score": 2.0,
+      "rationale": "The extensive number of missing and truncated sections severely disrupts the end-to-end strategic lineage of the proposal."
+    },
+    "completeness": {
+      "score": 2.0,
+      "rationale": "The proposal is highly incomplete, with multiple critical GTM deliverables omitted entirely."
+    }
+  }
+}
+```

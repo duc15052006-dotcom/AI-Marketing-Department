@@ -1,0 +1,81 @@
+{
+  "TRACE_ID": "TRACE-20260816-LIVE-001",
+  "TIMESTAMP": "2026-08-16T15:20:21Z",
+  "TASK_ID": "TASK-20260816-LIVE-STRAT-01",
+  "PRODUCT_ID": "PROD_VIRAL_CONSUMER_01",
+  "PROVIDER": "thespark",
+  "MODEL_REPORTED": "gpt-5.6-sol",
+  "PROVIDER_PROVENANCE": "THIRD_PARTY",
+  "MODEL_PROVENANCE": "UNVERIFIED_THIRD_PARTY_CLAIM",
+  "TRUST_STATUS": "UNVERIFIED",
+  "FROM_AGENT": "INTELLIGENCE",
+  "TO_AGENT": "STRATEGIST",
+  "HANDOFF_TRACE": {
+    "trace_id": "TRACE-20260816-LIVE-001",
+    "task_id": "TASK-20260816-LIVE-STRAT-01",
+    "from_agent": "INTELLIGENCE",
+    "to_agent": "STRATEGIST",
+    "handoff_type": "DELEGATION",
+    "input_summary": "Transmitted Intelligence demand assessment with preserved transaction unknowns",
+    "facts_preserved": [
+      "High video views online (80M across TikTok/Reels)",
+      "High engagement rates (shares, comments, likes) on comedic video formats"
+    ],
+    "assumptions_preserved": [
+      "Comedic engagement may or may not translate to commercial willingness-to-pay"
+    ],
+    "unknowns_preserved": [
+      "Transaction volume / actual purchases",
+      "Conversion rate from view to checkout",
+      "Purchase-intent evidence vs pure entertainment attention",
+      "Repeat purchase / churn rate",
+      "Market-wide representativeness beyond viral video viewer cohort",
+      "Net revenue, contribution margin, refund rate, cancellation rate, and product return rate",
+      "Unique viewer count after deduplication across TikTok and Reels",
+      "Audience geography, demographics, target-customer fit, and purchasing power",
+      "Viral-content click-through rate and qualified-session volume",
+      "Add-to-cart, checkout-start, payment-attempt, and completed-order rates by traffic source",
+      "Branded search lift and direct-traffic lift relative to the pre-viral baseline",
+      "Inventory, shipping, price, promotion, landing-page, and checkout constraints during the viral period",
+      "Whether comments contain explicit buying language, price questions, or where-to-buy requests",
+      "Whether any concurrent sales movement was caused by viral exposure rather than another campaign or external factor"
+    ],
+    "output_reference": "evaluations/live/collaboration/intelligence_to_strategist.json",
+    "timestamp": "2026-08-16T15:20:21.938941+00:00",
+    "status": "BLOCKED_PROVIDER_QUOTA"
+  },
+  "STRATEGIST_RESULT": {
+    "run_id": "RUN-fb96d8190016",
+    "agent_id": "strategist",
+    "task_id": "TASK-20260816-LIVE-STRAT-01",
+    "product_id": "PROD_VIRAL_CONSUMER_01",
+    "status": "BLOCKED_PROVIDER_QUOTA",
+    "output": {},
+    "confidence": "UNKNOWN",
+    "confidence_rationale": "Execution halted before completion due to provider credit quota limit",
+    "statistical_confidence": null,
+    "evidence_references": [],
+    "unknown_facts": [],
+    "assumptions": [],
+    "hypotheses": [],
+    "next_action": "",
+    "usage": {
+      "prompt_tokens": 10346,
+      "completion_tokens": 4096,
+      "total_tokens": 14442
+    },
+    "latency_ms": 54893.57,
+    "error": "TheSpark HTTP 429: Too Many Requests. Detail: {\"error\":{\"message\":\"Budget has been exceeded! Team=584d78b0-0aeb-44dd-8d33-c095de377981 Current cost: 0.100164, Max budget: 0.1\",\"type\":\"budget_exceeded\",\"param\":null,\"code\":\"429\"}}"
+  },
+  "SEMANTIC_EVALUATION": "NOT_COMPLETED_PROVIDER_QUOTA",
+  "TOTAL_WORKFLOW_COST_SUMMARY": {
+    "model_calls": 6,
+    "prompt_tokens": 32679,
+    "completion_tokens": 12871,
+    "total_tokens": 45550,
+    "local_estimated_cost_usd": 0.071292,
+    "provider_reported_cost_usd": 0.100164,
+    "pricing_source": "ESTIMATED_PUBLIC_RATES",
+    "estimate_limitations": "Local calculation estimated $0.0713; provider returned 429 budget exceeded reporting team cost of $0.100164."
+  }
+}

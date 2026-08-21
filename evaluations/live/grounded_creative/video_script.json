@@ -1,0 +1,56 @@
+{
+  "script_id": "SCRIPT-SF-01",
+  "title": "Localhost Port 11434: Local AI in 30 Seconds",
+  "target_duration_seconds": 38,
+  "structure_breakdown": {
+    "hook": "0-4s: Terminal prompt friction vs single command",
+    "setup": "4-10s: One-line install and execution across OS",
+    "problem": "10-18s: Manual compilation vs background daemon",
+    "demonstration": "18-28s: Querying localhost:11434 REST API in code",
+    "limitation_qualifier": "28-34s: VRAM memory sizing requirement (4-5GB for 7B)",
+    "cta": "34-38s: Download and test locally"
+  },
+  "dialogue_and_action": [
+    {
+      "timestamp": "0:00 - 0:04",
+      "segment": "HOOK",
+      "voiceover": "Tired of configuring CUDA drivers just to test an open-weight model locally?",
+      "visual_action": "Close-up of developer terminal showing a failed C++ compilation error, quickly cleared.",
+      "on_screen_text": "Skip manual C++ toolchains."
+    },
+    {
+      "timestamp": "0:04 - 0:12",
+      "segment": "SETUP & DEMONSTRATION",
+      "voiceover": "With Ollama, running open models across macOS, Linux, or Windows takes a single command.",
+      "visual_action": "Clean terminal typing 'ollama run llama3' with instant model prompt ready.",
+      "on_screen_text": "$ ollama run llama3"
+    },
+    {
+      "timestamp": "0:12 - 0:22",
+      "segment": "VALUE & INTEGRATION",
+      "voiceover": "It runs a background service on localhost port 11434, giving you a full REST API for your local scripts with zero per-token costs.",
+      "visual_action": "Split screen: terminal on left, Python code sending HTTP POST request to localhost:11434 on right, receiving streaming tokens.",
+      "on_screen_text": "http://localhost:11434/api/generate"
+    },
+    {
+      "timestamp": "0:22 - 0:30",
+      "segment": "QUALIFIER & HARDWARE REALITY",
+      "voiceover": "Just make sure your hardware fits: 7B models need about 4 to 5 gigabytes of VRAM to keep streaming fast and avoid CPU fallback.",
+      "visual_action": "Clean graphics showing 7B Q4 (~4-5GB VRAM) and 14B (~8-10GB VRAM) memory sizing badges.",
+      "on_screen_text": "7B Model ~ 4-5GB VRAM | 14B Model ~ 8-10GB VRAM"
+    },
+    {
+      "timestamp": "0:30 - 0:38",
+      "segment": "CTA",
+      "voiceover": "Get up and running with open models locally today.",
+      "visual_action": "Ollama documentation page with quickstart commands.",
+      "on_screen_text": "ollama.com \u2014 Available for macOS, Linux, Windows"
+    }
+  ],
+  "evidence_lineage": [
+    "EVID-WEB-893338BD",
+    "EVID-WEB-2BAE59D7",
+    "EVID-FORUM-F119C750",
+    "CONF-40334167"
+  ]
+}

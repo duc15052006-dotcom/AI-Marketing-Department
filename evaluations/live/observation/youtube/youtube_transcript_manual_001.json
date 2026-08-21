@@ -1,0 +1,72 @@
+{
+  "observation_id": "OBS-28dd781dece9",
+  "capability": "read_transcript",
+  "source_platform": "youtube",
+  "source_type": "transcript",
+  "source_url_or_id": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+  "collected_at": "2026-08-16T15:59:15.691657+00:00",
+  "observed_at": null,
+  "backend_used": "youtube_ytdlp",
+  "collection_method": "YTDLP_PUBLIC_EXTRACTION",
+  "raw_reference": null,
+  "normalized_data": {
+    "video_id": "jNQXAC9IVRw",
+    "title": "Me at the zoo",
+    "language": "en",
+    "language_code": "en",
+    "transcript_type": "MANUAL_SUBTITLES",
+    "segment_count": 6,
+    "segments": [
+      {
+        "start_seconds": 1.2,
+        "duration_seconds": 2.16,
+        "text": "All right, so here we are, in front of the\nelephants"
+      },
+      {
+        "start_seconds": 5.318,
+        "duration_seconds": 2.656,
+        "text": "the cool thing about these guys is that they\nhave really..."
+      },
+      {
+        "start_seconds": 7.974,
+        "duration_seconds": 4.642,
+        "text": "really really long trunks"
+      },
+      {
+        "start_seconds": 12.616,
+        "duration_seconds": 1.751,
+        "text": "and that's cool"
+      },
+      {
+        "start_seconds": 14.421,
+        "duration_seconds": 1.312,
+        "text": "(baaaaaaaaaaahhh!!)"
+      },
+      {
+        "start_seconds": 16.881,
+        "duration_seconds": 2.0,
+        "text": "and that's pretty much all there is to\nsay"
+      }
+    ],
+    "telemetry": {
+      "backend_version": "2026.07.04",
+      "validation_latency_ms": 0.04,
+      "backend_extraction_latency_ms": 1066.15,
+      "transcript_parse_latency_ms": 263.03,
+      "total_latency_ms": 1329.23
+    }
+  },
+  "evidence_class": "OBSERVATION",
+  "freshness_days": null,
+  "extraction_confidence": "HIGH",
+  "source_credibility": "UNKNOWN",
+  "content_truth_status": "UNVERIFIED",
+  "confidence": "HIGH",
+  "limitations": [
+    "Transcript track type: MANUAL_SUBTITLES (en)",
+    "Spoken assertions in transcript reflect external untrusted speaker claims, not verified objective truth"
+  ],
+  "product_id": "PROD_TEST_YT_01",
+  "brand_id": "BRAND_TEST",
+  "content_trust": "UNTRUSTED_EXTERNAL"
+}

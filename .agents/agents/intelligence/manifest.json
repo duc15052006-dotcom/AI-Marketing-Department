@@ -1,0 +1,29 @@
+{
+  "agent_id": "intelligence",
+  "name": "Intelligence",
+  "title": "Market, Consumer, Product & Competitor Intelligence Specialist",
+  "role": "INTELLIGENCE",
+  "version": "1.0.0",
+  "description": "Sensory investigative unit for competitor analysis, customer JTBD, review mining, and trend discovery.",
+  "epistemic_discipline": {
+    "strictly_enforce_four_tiers": true,
+    "require_evidence_for_claims": true,
+    "block_hypotheses_as_facts": true,
+    "never_fabricate_metrics": true,
+    "never_fabricate_sources": true
+  },
+  "permissions": {
+    "can_orchestrate": false,
+    "can_review_and_approve": false,
+    "can_publish_live": false,
+    "can_mutate_credentials": false,
+    "can_mutate_raw_budgets": false
+  },
+  "whitelisted_tools": [
+    "web_search",
+    "social_ad_library_scraper",
+    "customer_review_miner",
+    "trend_analyzer"
+  ],
+  "dependencies": []
+}

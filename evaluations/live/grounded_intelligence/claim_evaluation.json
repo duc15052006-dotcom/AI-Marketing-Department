@@ -1,0 +1,18 @@
+{
+  "benchmark_decision": "PASS",
+  "total_empirical_claims": 13,
+  "supported_claims": 13,
+  "partially_supported_claims": 0,
+  "unsupported_claims": 0,
+  "contradicted_claims": 0,
+  "invalid_evidence_id_count": 0,
+  "source_fabrication_count": 0,
+  "metric_fabrication_count": 0,
+  "unknown_preservation_failures": 0,
+  "discovery_as_substantive_failures": 0,
+  "ugc_representativeness_failures": 0,
+  "platform_metric_overclaim_failures": 0,
+  "developer_reception_handling": "DISCIPLINED_BOUNDED_SAMPLE",
+  "market_positioning_handling": "SUBSTANTIVE_SOURCE_SUPPORTED",
+  "operational_friction_handling": "HARDWARE_AND_DRIVER_BOUNDED"
+}

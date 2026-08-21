@@ -1,0 +1,45 @@
+```json
+{
+  "candidate_scores": {
+    "X": {
+      "research_quality": {"score": 8.5, "rationale": "Strong technical problem framing, clear understanding of the ODC market in Vietnam, and accurate competitive positioning against Snyk and SonarQube.", "confidence": 0.95},
+      "evidence_discipline": {"score": 9.5, "rationale": "Excellent discipline. Explicitly maps and references the verified evidence IDs (EVID_01, EVID_02, EVID_03, EVID_04) throughout the text.", "confidence": 0.98},
+      "segmentation_quality": {"score": 8.5, "rationale": "Clear, prioritized segmentation (Export-Oriented ODCs, Emerging Fintechs, Mid-Tier Local SaaS) with firmographic clarity.", "confidence": 0.95},
+      "positioning_quality": {"score": 7.0, "rationale": "Good positioning, but the section is brief and focuses more on testing parameters than a fully developed brand narrative.", "confidence": 0.9},
+      "channel_strategy": {"score": 8.5, "rationale": "Highly realistic channel mix directly guided by EVID_04, with clear deferred channels (GDN, Meta, cold calling).", "confidence": 0.95},
+      "creative_quality": {"score": 0.0, "rationale": "Section not provided.", "confidence": 1.0},
+      "copy_script_executability": {"score": 0.0, "rationale": "Section not provided.", "confidence": 1.0},
+      "performance_funnel_metrics": {"score": 9.0, "rationale": "Outstanding funnel conversion model with specific, realistic volume and conversion targets aligned with the $29/dev/month pricing and $5k-$15k budget.", "confidence": 0.98},
+      "experimentation_rigor": {"score": 0.0, "rationale": "Section not provided.", "confidence": 1.0},
+      "attribution_tracking": {"score": 9.0, "rationale": "Excellent hybrid attribution and telemetry architecture diagrammed and explained clearly.", "confidence": 0.95},
+      "claim_safety_compliance": {"score": 9.5, "rationale": "Explicitly addresses the risk of publishing prohibited claims and establishes a mandatory Claim Compliance Gate.", "confidence": 0.98},
+      "governance_human_approval": {"score": 9.5, "rationale": "Excellent Go/Test/Hold/Defer matrix and a clear Three-Gate Human Approval Process.", "confidence": 0.98},
+      "internal_consistency_lineage": {"score": 9.0, "rationale": "Very high consistency across pricing, budget, and metrics.", "confidence": 0.95},
+      "completeness": {"score": 6.0, "rationale": "Missing creative, copy, and experiment sections, but highly complete on strategy, operations, and governance.", "confidence": 0.95}
+    },
+    "Y": {
+      "research_quality": {"score": 8.0, "rationale": "Good framing of the ODC market and developer friction, but lacks the structured presentation of Candidate X.", "confidence": 0.9},
+      "evidence_discipline": {"score": 8.0, "rationale": "Mentions the correct facts and figures but does not explicitly reference the evidence IDs.", "confidence": 0.9},
+      "segmentation_quality": {"score": 0.0, "rationale": "Section not provided.", "confidence": 1.0},
+      "positioning_quality": {"score": 8.0, "rationale": "Good positioning focusing on syntax-tree-verified auto-fix PRs and predictable pricing.", "confidence": 0.9},
+      "channel_strategy": {"score": 0.0, "rationale": "Section not provided.", "confidence": 1.0},
+      "creative_quality": {"score": 8.5, "rationale": "Good creative territories, angles, and hooks that resonate with engineering leadership.", "confidence": 0.92},
+      "copy_script_executability": {"score": 8.5, "rationale": "Production-ready LinkedIn copy and a detailed, high-quality video script.", "confidence": 0.92},
+      "performance_funnel_metrics": {"score": 7.0, "rationale": "Defines a solid North Star Metric (WASD) and flow diagram, but lacks a full funnel conversion model with specific numbers.", "confidence": 0.88},
+      "experimentation_rigor": {"score": 3.0, "rationale": "Has an Experiments section, but it is a duplicate of the Measurement Framework.", "confidence": 0.95},
+      "attribution_tracking": {"score": 0.0, "rationale": "Section not provided.", "confidence": 1.0},
+      "claim_safety_compliance": {"score": 9.0, "rationale": "Explicitly lists what not to do (no 100% zero-day guarantee, no replacement of human testers).", "confidence": 0.95},
+      "governance_human_approval": {"score": 0.0, "rationale": "Section not provided.", "confidence": 1.0},
+      "internal_consistency_lineage": {"score": 6.0, "rationale": "Good where present, but heavily impacted by missing sections.", "confidence": 0.9},
+      "completeness": {"score": 4.5, "rationale": "Many critical strategic and operational sections are missing.", "confidence": 0.95}
+    },
+    "Z": {
+      "research_quality": {"score": 7.5, "rationale": "Good framing but slightly less detailed and structured than X and Y.", "confidence": 0.88},
+      "evidence_discipline": {"score": 8.0, "rationale": "Mentions facts and uses some EVID tags, but has some ungrounded assertions.", "confidence": 0.88},
+      "segmentation_quality": {"score": 6.0, "rationale": "Provides segments but duplicates the primary segment under the top priority segment.", "confidence": 0.9},
+      "positioning_quality": {"score": 8.5, "rationale": "Strong brand narrative ('Contract Unlocker') and a clear comparison diagram.", "confidence": 0.92},
+      "channel_strategy": {"score": 8.0, "rationale": "Clear priorities diagram and well-reasoned deferred channels.", "confidence": 0.9},
+      "creative_quality": {"score": 8.0, "rationale": "Good creative territories, angles, and hooks, but duplicates the selected territory.", "confidence": 0.88},
+      "copy_script_executability": {"score": 6.5, "rationale": "Missing short-form copy, but has a good video script table.", "confidence": 0.9},
+      "performance_funnel_metrics": {"score": 6.0, "rationale": "Has a conceptual funnel diagram but lacks specific numbers and conversion targets.", "confidence": 0.85},
+      "experimentation_rigor": {"score": 0

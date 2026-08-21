@@ -1,0 +1,22 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 2.0,
+      "rationale": "The executive summary introduces key clinical and patient pain points, but the dedicated research section is entirely missing."
+    },
+    "evidence_discipline": {
+      "score": 3.0,
+      "rationale": "The candidate correctly cites qualitative evidence codes in the summary and inferences, but the lack of content limits further verification."
+    },
+    "segmentation_quality": {
+      "score": 2.5,
+      "rationale": "A partial segmentation matrix is provided, but it is heavily truncated and the top priority segment is completely missing."
+    },
+    "positioning_quality": {
+      "score": 0.0,
+      "rationale": "The positioning and value proposition sections are completely omitted from the proposal."
+    },
+    "channel_strategy": {
+      "score": 0.0,
+      "rationale": "Both channel priorities and deferred channels are entirely missing from the submission."

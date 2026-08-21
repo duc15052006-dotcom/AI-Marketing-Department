@@ -1,0 +1,47 @@
+[
+  {
+    "video_prompt_id": "VID-PROMPT-01",
+    "scene_purpose": "Hook scene transitioning from compilation error to clean terminal prompt.",
+    "start_state": "Close-up of a terminal screen with red C++ compilation failure text.",
+    "action": "A keypress clears the screen instantly, typing '$ ollama run llama3' in crisp green and white typography.",
+    "end_state": "The terminal displays an active prompt ready for input.",
+    "camera_movement": "Slow smooth zoom into the terminal cursor.",
+    "subject_movement": "Text typing across screen in real-time cadence.",
+    "environment": "Minimalist developer terminal window on dark background.",
+    "product_behavior": "Real CLI command execution.",
+    "continuity_requirements": "Consistent dark slate background and monospaced font.",
+    "physical_constraints": "Standard 2D screen recording fidelity without impossible 3D particle distortion.",
+    "duration": "4.0s",
+    "claim_constraints": "Reflects single-command CLI setup convenience without claiming universal hardware perfection."
+  },
+  {
+    "video_prompt_id": "VID-PROMPT-02",
+    "scene_purpose": "Demonstrating localhost REST API token streaming on port 11434.",
+    "start_state": "IDE code editor with a Python script sending HTTP POST to localhost:11434.",
+    "action": "Script executes and tokens stream smoothly into the output console word-by-word.",
+    "end_state": "Console displays complete JSON response object with completion metadata.",
+    "camera_movement": "Static high-definition screen capture.",
+    "subject_movement": "Text streaming in continuous natural reading flow.",
+    "environment": "Split-screen IDE and output terminal.",
+    "product_behavior": "Local background REST API stream.",
+    "continuity_requirements": "Port 11434 visibly rendered in request URL.",
+    "physical_constraints": "Natural token generation rate without unnatural speed jumps.",
+    "duration": "8.0s",
+    "claim_constraints": "Accurately represents port 11434 REST API service."
+  },
+  {
+    "video_prompt_id": "VID-PROMPT-03",
+    "scene_purpose": "Hardware memory sizing infographic overlay.",
+    "start_state": "Clean dark technical graphic displaying two GPU memory bars at 0% fill.",
+    "action": "Memory bars smoothly animate to 4.5GB (labeled 7B Q4) and 9GB (labeled 14B) with clear VRAM callout badges.",
+    "end_state": "Both badges lock in place with a subtitle: 'Ensure adequate GPU VRAM to avoid CPU fallback'.",
+    "camera_movement": "Subtle slow push-in.",
+    "subject_movement": "Smooth data bar fill animation.",
+    "environment": "Dark technical motion graphics background.",
+    "product_behavior": "Verified parameter-to-VRAM documentation values.",
+    "continuity_requirements": "Exact numbers match 4-5GB and 8-10GB documentation specs.",
+    "physical_constraints": "Clean 2D motion graphic layout.",
+    "duration": "8.0s",
+    "claim_constraints": "Strict adherence to VRAM documentation requirements."
+  }
+]

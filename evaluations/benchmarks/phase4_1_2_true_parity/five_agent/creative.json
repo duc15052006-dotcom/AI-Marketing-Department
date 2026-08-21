@@ -1,0 +1,157 @@
+{
+  "summary": "Full creative production package and multi-platform campaign asset blueprint for the 65W GaN USB-C Charger launch in Vietnam ecommerce (Shopee, Lazada, TikTok Shop). Built on the strategic concept 'M\u1ed9t C\u1ee7 S\u1ea1c Cho T\u1ea5t C\u1ea3' (One Charger For Everything \u2014 Commute & Desk Freedom), the creative suite directly addresses Vietnamese tech commuters' pain points: heavy 350g OEM laptop bricks, coffee shop socket wobble, and anxiety over overheating/motherboard damage. The execution spans TikTok short-form video hooks, Shopee/Lazada conversion carousel assets, and high-converting product teardown scripts with explicit hardware safety disclosures.",
+  "details": {
+    "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+    "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+    "campaign_name": "M\u1ed9t C\u1ee7 S\u1ea1c Cho T\u1ea5t C\u1ea3 \u2014 Desk & Commute Liberation",
+    "target_audience": {
+      "persona": "Vietnamese Urban Professionals & Remote Tech Workers (Ages 22\u201335, Hanoi & HCMC)",
+      "acute_context": "Daily commuting between coworking spaces, coffee shops, and offices carrying heavy laptop bags with bulky OEM power adapters.",
+      "awareness_state": "Problem Aware / Solution Aware (Searching for lighter travel setups, familiar with GaN concept but skeptical about third-party safety and heat)."
+    },
+    "message_hierarchy": {
+      "primary_message": "V\u1ee9t b\u1ecf c\u1ee7 s\u1ea1c laptop c\u1ed3ng k\u1ec1nh \u2014 Thu g\u1ecdn to\u00e0n b\u1ed9 ngu\u1ed3n s\u1ea1c v\u00e0o l\u00f2ng b\u00e0n tay v\u1edbi c\u00f4ng ngh\u1ec7 GaN 65W.",
+      "supporting_mechanism": "Ki\u1ebfn tr\u00fac b\u00e1n d\u1eabn GaN (Gallium Nitride) t\u1ed1i \u01b0u hi\u1ec7u su\u1ea5t nhi\u1ec7t, s\u1ea1c nhanh chu\u1ea9n Type-C Power Delivery trong k\u00edch th\u01b0\u1edbc si\u00eau nh\u1ecf g\u1ecdn.",
+      "reasons_to_believe": [
+        "C\u00f4ng ngh\u1ec7 GaN 65W s\u1ea1c m\u01b0\u1ee3t m\u00e0 cho MacBook Air/Pro 13-14 inch v\u00e0 Ultrabook h\u1ed7 tr\u1ee3 USB-C PD.",
+        "Ch\u00ednh s\u00e1ch b\u1ea3o h\u00e0nh 1 \u0111\u1ed5i 1 trong 12 th\u00e1ng \u2014 Cam k\u1ebft an to\u00e0n tuy\u1ec7t \u0111\u1ed1i cho thi\u1ebft b\u1ecb \u0111\u1eaft ti\u1ec1n.",
+        "Thi\u1ebft k\u1ebf tr\u1ecdng t\u00e2m c\u00e2n b\u1eb1ng, c\u1eafm ch\u1eafc ch\u1eafn tr\u00ean c\u00e1c \u1ed5 \u0111i\u1ec7n 2 ch\u1ea5u ti\u00eau chu\u1ea9n t\u1ea1i qu\u00e1n caf\u00e9 Vi\u1ec7t Nam."
+      ],
+      "objection_neutralized": "X\u00f3a tan n\u1ed7i lo 's\u1ea1c n\u00f3ng h\u1ecfng m\u00e1y/ch\u1eadp mainboard' b\u1eb1ng c\u01a1 ch\u1ebf b\u1ea3o v\u1ec7 d\u00f2ng \u0111i\u1ec7n th\u00f4ng minh v\u00e0 b\u1ea3o h\u00e0nh 1-\u0111\u1ed5i-1 ch\u00ednh h\u00e3ng.",
+      "mandatory_legal_disclaimer": "L\u01b0u \u00fd: T\u01b0\u01a1ng th\u00edch v\u1edbi c\u00e1c d\u00f2ng laptop v\u00e0 smartphone h\u1ed7 tr\u1ee3 chu\u1ea9n s\u1ea1c nhanh Type-C Power Delivery (PD)."
+    },
+    "creative_territories_and_angles": [
+      {
+        "territory": "Live Demonstration & Physical Contrast",
+        "angle_id": "ANGLE_01_SCALE_WEIGH_IN",
+        "angle_name": "C\u00e2n \u0110o Th\u1ef1c T\u1ebf: 350g OEM vs C\u1ee7 S\u1ea1c GaN B\u1ecf T\u00fai",
+        "psychological_hook": "Visual pattern break using an accurate kitchen scale to prove dramatic weight reduction in everyday carry.",
+        "primary_platform": "TikTok Shop / Meta Reels (9:16 Short-form Video)"
+      },
+      {
+        "territory": "Relatable Daily Friction",
+        "angle_id": "ANGLE_02_CAFE_SOCKET_WOBBLE",
+        "angle_name": "C\u1ee9u Tinh Qu\u00e1n Caf\u00e9: H\u1ebft C\u1ea3nh C\u1ee7 S\u1ea1c N\u1eb7ng R\u01a1i Kh\u1ecfi \u1ed4 C\u1eafm",
+        "psychological_hook": "Visually dramatizing the annoying moment a heavy adapter falls out of a loose coffee shop wall socket.",
+        "primary_platform": "TikTok Video Shopping Ads & Facebook Community Seeding"
+      },
+      {
+        "territory": "Hardware Safety & Teardown",
+        "angle_id": "ANGLE_03_SAFETY_FIRST",
+        "angle_name": "\u0110\u1eebng \u0110\u00e1nh \u0110\u1ed5i Laptop Ch\u1ee5c Tri\u1ec7u V\u1edbi C\u1ee7 S\u1ea1c Tr\u00f4i N\u1ed5i",
+        "psychological_hook": "Pre-empting Voz/Tinhte forum skepticism regarding thermal safety and motherboard protection with transparent warranty proof.",
+        "primary_platform": "Shopee/Lazada PDP Carousel & Long-form Tech Teardown"
+      }
+    ],
+    "storyboards_and_scripts": [
+      {
+        "script_id": "SCR_TIKTOK_01_WEIGHT_CONTRAST",
+        "concept_name": "V\u1ee9t B\u1ecf C\u1ee7 S\u1ea1c C\u1ee5c G\u1ea1ch (Kitchen Scale Pattern Interrupt)",
+        "format": "9:16 Vertical Video (30s)",
+        "target_kpi": "Hook Stop-Rate (>35% 3s View Rate) & Click-to-Shop CVR",
+        "scenes": [
+          {
+            "scene_id": "SCENE_01",
+            "time_range": "0.0s - 3.5s",
+            "stage_purpose": "Pattern Interrupt Hook",
+            "visual_description": "Top-down overhead shot of a digital kitchen scale on a clean wooden desk. A hand slams down a massive, dusty 350g OEM laptop power brick with long tangled cables. The scale displays 385g with a red digital flash.",
+            "action_and_movement": "Hand immediately sweeps the heavy brick out of frame to the left.",
+            "dialogue_vo": "N\u0103m 2024 r\u1ed3i, \u0111\u1eebng \u0111\u1ec3 c\u1ee7 s\u1ea1c laptop n\u1eb7ng g\u1ea7n n\u1eeda k\u00fd n\u00e0y l\u00e0m tr\u0129u vai b\u1ea1n m\u1ed7i ng\u00e0y n\u1eefa!",
+            "on_screen_text": "C\u1ee6 S\u1ea0C C\u0168: 385g \u274c (N\u1eb7ng & C\u1ed3ng K\u1ec1nh)",
+            "audio_sfx": "Heavy thud sound effect followed by buzzer sound.",
+            "product_state": "OEM brick removed; 65W GaN charger placed smoothly onto scale displaying ~100g."
+          },
+          {
+            "scene_id": "SCENE_02",
+            "time_range": "3.5s - 12.0s",
+            "stage_purpose": "Mechanism Demonstration & Value Transformation",
+            "visual_description": "Close-up macro of the 65W GaN Charger held between thumb and forefinger. Subject drops it effortlessly into a slim front pocket of a minimalist backpack.",
+            "action_and_movement": "Cut to coffee shop table: Single USB-C cable connects from the GaN wall plug directly into a MacBook / Ultrabook screen showing instant fast-charging animation icon.",
+            "dialogue_vo": "\u0110\u00e2y l\u00e0 c\u1ee7 s\u1ea1c GaN 65W nh\u1ecf ch\u1ec9 b\u1eb1ng 1/3, nh\u01b0ng c\u1ea5p ngu\u1ed3n t\u1ed1i \u0111a cho c\u1ea3 MacBook, Dell XPS hay ThinkPad qua chu\u1ea9n Type-C PD.",
+            "on_screen_text": "GaN 65W: Nh\u1ecf G\u1ecdn B\u1ecf T\u00fai \u2705 | S\u1ea1c Nhanh Laptop & Phone",
+            "audio_sfx": "Crisp charging chime + subtle upbeat background beat.",
+            "product_state": "Active in-use charging demonstration."
+          },
+          {
+            "scene_id": "SCENE_03",
+            "time_range": "12.0s - 22.0s",
+            "stage_purpose": "Objection Handling & Proof",
+            "visual_description": "Split screen. Left: Thermal stability visual icon demonstrating controlled heat dissipation. Right: 12-Month direct 1-to-1 replacement warranty badge.",
+            "action_and_movement": "Finger firmly tests the plug in a vertical round-pin wall socket\u2014snug fit, zero wobble.",
+            "dialogue_vo": "Nhi\u1ec1u anh em s\u1ee3 s\u1ea1c GaN n\u00f3ng hay h\u1ea1i main? Y\u00ean t\u00e2m v\u1edbi chip \u1ed5n \u0111\u1ecbnh d\u00f2ng nhi\u1ec7t v\u00e0 b\u1ea3o h\u00e0nh 1 \u0111\u1ed5i 1 ch\u00ednh h\u00e3ng 12 th\u00e1ng.",
+            "on_screen_text": "Ki\u1ec3m So\u00e1t Nhi\u1ec7t Chu\u1ea9n GaN \ud83d\udd25\u27a1\ufe0f\u2744\ufe0f | B\u1ea3o H\u00e0nh 1 \u0110\u1ed5i 1 Trong 12 Th\u00e1ng",
+            "audio_sfx": "Subtle reassurance whoosh and shield lock click.",
+            "product_state": "Macro shot of charger build and snug socket fit."
+          },
+          {
+            "scene_id": "SCENE_04",
+            "time_range": "22.0s - 30.0s",
+            "stage_purpose": "Call to Action & Risk-Free Offer",
+            "visual_description": "Clean packaging unboxing with Shopee Mall / LazMall / TikTok Shop yellow shopping basket icon popping up.",
+            "action_and_movement": "Hand taps the product link on screen showing introductory voucher pricing.",
+            "dialogue_vo": "Gh\u00e9 gi\u1ecf h\u00e0ng g\u00f3c tr\u00e1i s\u0103n voucher \u01b0u \u0111\u00e3i ch\u1ec9 t\u1eeb 3xx c\u00e0nh ngay h\u00f4m nay!",
+            "on_screen_text": "MUA NGAY G\u00d3C TR\u00c1I \ud83d\uded2 | Gi\u00e1 Tr\u1ea3i Nghi\u1ec7m 3xx.000\u0111 | H\u1ed7 Tr\u1ee3 \u0110\u1ed5i Tr\u1ea3 15 Ng\u00e0y",
+            "audio_sfx": "Cash register chime / click CTA.",
+            "product_state": "Complete retail pack with warranty card clearly visible."
+          }
+        ]
+      }
+    ],
+    "ecommerce_carousel_specifications": {
+      "platform": "Shopee / Lazada Product Detail Page (PDP)",
+      "aspect_ratio": "1:1 Square (1200x1200px)",
+      "slides": [
+        {
+          "slide_index": 1,
+          "role": "Main Hero Image (Search Click-Through Optimization)",
+          "visual_layout": "Clean studio lighting, centered 65W GaN charger floating with crisp shadow, badge 'GaN 65W Si\u00eau Nh\u1ecf G\u1ecdn' at top left, 'B\u1ea3o H\u00e0nh 12 Th\u00e1ng 1 \u0110\u1ed5i 1' badge at bottom right.",
+          "copy_headline": "C\u1ee7 S\u1ea1c Nhanh GaN 65W Si\u00eau Nh\u1ecf G\u1ecdn",
+          "sub_copy": "S\u1ea1c Laptop & \u0110i\u1ec7n Tho\u1ea1i Type-C | B\u1ea3o H\u00e0nh 12 Th\u00e1ng",
+          "proof_badge": "1 \u0110\u1ed5i 1 Trong 12 Th\u00e1ng"
+        },
+        {
+          "slide_index": 2,
+          "role": "Size & Portability Comparison",
+          "visual_layout": "Side-by-side direct comparison: Left shows heavy 350g OEM brick (desaturated), Right shows compact GaN 65W charger in vibrant color.",
+          "copy_headline": "Nh\u1ecf H\u01a1n 60% \u2014 Nh\u1eb9 H\u01a1n G\u1ea5p 3 L\u1ea7n",
+          "sub_copy": "T\u1ea1m bi\u1ec7t c\u1ee7 s\u1ea1c c\u1ed3ng k\u1ec1nh. G\u1ecdn g\u00e0ng b\u1ecf t\u00fai cho d\u00e2n v\u0103n ph\u00f2ng.",
+          "proof_badge": "Chu\u1ea9n C\u00f4ng Ngh\u1ec7 GaN M\u1edbi Nh\u1ea5t"
+        },
+        {
+          "slide_index": 3,
+          "role": "Universal Type-C Laptop Compatibility",
+          "visual_layout": "Infographic showing laptop icons (MacBook Air/Pro, Dell XPS, ThinkPad, Asus Zenbook) and smartphone fast charging icons.",
+          "copy_headline": "C\u00f4ng Su\u1ea5t Th\u1ef1c 65W \u2014 S\u1ea1c Nhanh Laptop & \u0110i\u1ec7n Tho\u1ea1i",
+          "sub_copy": "H\u1ed7 tr\u1ee3 chu\u1ea9n Type-C Power Delivery ti\u00eau chu\u1ea9n qu\u1ed1c t\u1ebf.",
+          "proof_badge": "Type-C Fast Charging Certified"
+        },
+        {
+          "slide_index": 4,
+          "role": "Safety, Thermal Control & Warranty",
+          "visual_layout": "Exploded tech aesthetic illustrating smart thermal protection chip + official 12-month replacement commitment seal.",
+          "copy_headline": "An To\u00e0n Tuy\u1ec7t \u0110\u1ed1i Cho Thi\u1ebft B\u1ecb C\u1ee7a B\u1ea1n",
+          "sub_copy": "T\u1ef1 ng\u1eaft khi qu\u00e1 nhi\u1ec7t, ch\u1ed1ng \u0111o\u1ea3n m\u1ea1ch & cam k\u1ebft b\u1ea3o v\u1ec7 mainboard.",
+          "proof_badge": "B\u1ea3o H\u00e0nh Ch\u00ednh H\u00e3ng 12 Th\u00e1ng"
+        }
+      ]
+    },
+    "generative_asset_specifications": {
+      "ai_image_generation_prompt": {
+        "objective": "Commercial hero product render for Vietnam marketplace advertising.",
+        "subject": "Minimalist matte-black compact 65W GaN USB-C wall charger with clean bevel edges, resting on a premium warm oak desk next to an ultra-thin 13-inch aluminum laptop.",
+        "product_anchor": "Verified 65W GaN compact form factor, 2-prong round pin plug tailored for Southeast Asian wall sockets.",
+        "environment_and_setting": "Modern minimalist Hanoi coffee shop interior in background, soft natural daylight entering from large window, pleasant bokeh.",
+        "composition_and_framing": "45-degree angle medium close-up, rule of thirds, product in sharp focus with clean negative space on top for typography overlay.",
+        "lighting_and_color": "Soft diffuse 4500K natural key light, subtle specular highlights on matte texture, realistic shadow roll-off, zero plastic gloss.",
+        "materials_and_texture": "Tactile matte polycarbonate body, laser-etched 65W GaN subtle typography, brushed aluminum laptop texture.",
+        "realism_guardrails": "Authentic commercial product photography, no distorted geometry, no floating artifacts, realistic gravity and proportions.",
+        "negative_prompts": "cheap plastic gloss, warped pins, extra prongs, fake logos, oversaturated neon lights, blurry textures, AI artifacts"
+      }
+    },
+    "creative_qa_governance": {
+      "product_fidelity_status": "PARTIAL (Core 65W GaN architecture, USB-C PD capabilities verified; exact port count and proprietary handshake chip marked UNKNOWN until engineering sign-off).",
+      "claim_accuracy_audit": "Zero unsupported claims. Mandatory disclaimer 'H\u1ed7 tr\u1ee3 c\u00e1c thi\u1ebft b\u1ecb chu\u1ea9n Type-C PD' added to all customer-facing video and carousel assets.",
+      "ethical_persuasion_check": "No fake scarcity, no unverified customer reviews, genuine 12-month replacement guarantee prominently highlighted."
+    }
+  }
+}

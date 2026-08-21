@@ -1,0 +1,94 @@
+[
+  {
+    "experiment_id": "PEXP-001",
+    "title": "Creative Hook Mechanism Test: Setup Friction vs REST API Specificity",
+    "question": "Does framing local LLM adoption around setup friction (VAR-A) generate higher initial developer retention than REST API specificity (VAR-B)?",
+    "hypothesis": "Friction-focused hook (VAR-A) outperforms API specificity (VAR-B) in initial 3-second developer hook retention.",
+    "control": "VAR-B (REST API daemon specificity hook: 'Did you know Ollama runs on port 11434?')",
+    "treatment": "VAR-A (Friction recognition hook: 'Tired of configuring CUDA drivers?')",
+    "target_segment": "Software developers on macOS, Linux, and Windows browsing technical content",
+    "primary_metric": "3-Second Hook Retention Rate",
+    "secondary_metrics": [
+      "CTR to Documentation",
+      "Video Completion Rate"
+    ],
+    "guardrails": [
+      "Bounce Rate must not increase by > 10%"
+    ],
+    "unit_of_analysis": "Impression / Session",
+    "randomization_or_assignment": "50/50 randomized delivery across identical audience cohorts",
+    "sample_requirement": "TO_BE_DETERMINED (Requires baseline rate, MDE, and statistical power/significance parameters)",
+    "duration_requirement": "TO_BE_DETERMINED (Requires traffic volume, MDE, variance, conversion lag, and business cycle calculation)",
+    "baseline_status": "TO_BE_ESTABLISHED",
+    "stop_condition": "Halt early if treatment exhibits severe anomaly (>50% bounce increase) or tracking failure",
+    "analysis_method": "Two-sample proportion test with 95% confidence intervals; INCONCLUSIVE supported if power is inadequate",
+    "limitations": "Does not measure local CLI execution after download.",
+    "next_decision": "If VAR-A wins, scale friction-first creative across technical channels; if inconclusive, maintain balanced distribution.",
+    "evidence_lineage": [
+      "EVID-FORUM-F119C750",
+      "EVID-WEB-893338BD"
+    ],
+    "duration_classification": "PLANNING_ASSUMPTION"
+  },
+  {
+    "experiment_id": "PEXP-002",
+    "title": "Hardware Qualification CTA Test: VRAM Tool vs Direct Download",
+    "question": "Does offering upfront model-to-VRAM hardware qualification (VAR-C) reduce early onboarding drop-off compared to direct binary download CTA?",
+    "hypothesis": "Providing an upfront model-to-VRAM compatibility guide pre-qualifies developers and improves downstream CLI setup completion.",
+    "control": "Direct 'Download Ollama' CTA on landing page hero",
+    "treatment": "Interactive 'Check Model Hardware Compatibility Chart' CTA on landing page hero",
+    "target_segment": "Developers arriving on landing page with bounded GPU VRAM",
+    "primary_metric": "CLI Setup Completion Rate (TO_BE_ESTABLISHED)",
+    "secondary_metrics": [
+      "Download Initiation Rate",
+      "VRAM Calculator Completion Rate"
+    ],
+    "guardrails": [
+      "Total initiated downloads must not decrease significantly"
+    ],
+    "unit_of_analysis": "Unique Landing Visitor",
+    "randomization_or_assignment": "Server-side A/B split on landing page hero module",
+    "sample_requirement": "TO_BE_DETERMINED (Requires baseline rate, MDE, and statistical power/significance parameters)",
+    "duration_requirement": "TO_BE_DETERMINED (Requires traffic volume, MDE, variance, conversion lag, and business cycle calculation)",
+    "baseline_status": "TO_BE_ESTABLISHED",
+    "stop_condition": "Halt if treatment reduces total download intent by > 20%",
+    "analysis_method": "Relative risk comparison and bootstrap confidence intervals",
+    "limitations": "Downstream setup completion requires opt-in verification or follow-up feedback telemetry.",
+    "next_decision": "If VRAM qualification improves downstream activation, make hardware sizing the standard onboarding step.",
+    "evidence_lineage": [
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167"
+    ],
+    "duration_classification": "PLANNING_ASSUMPTION"
+  },
+  {
+    "experiment_id": "PEXP-003",
+    "title": "Search Intent Validation Test: Technical Keyword Demand Capture",
+    "question": "Does commercial intent exist for technical search queries ('run llama locally', 'offline llm runner')?",
+    "hypothesis": "Developers searching for local model execution keywords have high downstream documentation and installation intent.",
+    "control": "Baseline organic community referral traffic",
+    "treatment": "Targeted search capture on exact-match technical developer queries",
+    "target_segment": "High-intent developers searching technical local LLM queries",
+    "primary_metric": "Documentation Depth & Download Initiation Rate",
+    "secondary_metrics": [
+      "Cost Per Initiated Download (CPID)",
+      "Landing Bounce Rate"
+    ],
+    "guardrails": [
+      "Maintain strict negative keyword list to prevent consumer/gaming traffic leakage"
+    ],
+    "unit_of_analysis": "Search Query Click / Session",
+    "randomization_or_assignment": "Search ad group geographic holdout or time-series switchback test",
+    "sample_requirement": "TO_BE_DETERMINED (Requires baseline rate, MDE, and statistical power/significance parameters)",
+    "duration_requirement": "TO_BE_DETERMINED (Requires traffic volume, MDE, variance, conversion lag, and business cycle calculation)",
+    "baseline_status": "TO_BE_ESTABLISHED",
+    "stop_condition": "Halt if search queries demonstrate zero download intent after initial sample threshold",
+    "analysis_method": "Pre/post quasi-experimental lift analysis against non-search control cohorts",
+    "limitations": "Search engine keyword volume estimates may fluctuate.",
+    "next_decision": "If search demonstrates qualified intent, transition CHAN-TECH-SEARCH from HYPOTHESIS to PRIMARY channel.",
+    "evidence_lineage": [
+      "EVID-SRCH-132D6868"
+    ],
+    "duration_classification": "PLANNING_ASSUMPTION"
+  }
+]

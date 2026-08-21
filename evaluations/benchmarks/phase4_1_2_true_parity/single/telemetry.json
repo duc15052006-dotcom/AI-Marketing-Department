@@ -1,0 +1,14 @@
+{
+  "model_requested": "gemini-flash-latest",
+  "model_resolved": "gemini-flash-latest",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
+  "model_calls": 1,
+  "prompt_tokens": 1577,
+  "completion_tokens": 3197,
+  "thoughts_tokens": 1252,
+  "total_tokens": 6026,
+  "model_latency_ms": 20475.470899953507,
+  "usage_source": "PROVIDER_REPORTED",
+  "telemetry_completeness": "PASS",
+  "token_arithmetic_note": "total_tokens (6026) = prompt_tokens (1577) + candidate_tokens (3197) + thoughts_tokens (1252)"
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "stage_id": "STAGE-01",
+    "stage_name": "Exposure & Discovery",
+    "event": "creative_impression",
+    "primary_metric": "Impressions (Count)",
+    "secondary_metric": "Frequency",
+    "data_requirement": "Platform Delivery Logging",
+    "status": "REQUIRED_INSTRUMENTATION",
+    "possible_failure_modes": "Ad-blockers in developer browsers, poor targeting distribution."
+  },
+  {
+    "stage_id": "STAGE-02",
+    "stage_name": "Attention & Hook",
+    "event": "video_hook_view",
+    "primary_metric": "3-Second Hook Retention Rate",
+    "secondary_metric": "Completion Rate",
+    "data_requirement": "Video Player Telemetry",
+    "status": "REQUIRED_INSTRUMENTATION",
+    "possible_failure_modes": "Autoplay drop-off, non-resonant opening copy."
+  },
+  {
+    "stage_id": "STAGE-03",
+    "stage_name": "Traffic & Landing",
+    "event": "landing_page_view",
+    "primary_metric": "Landing Page Visitors (Count)",
+    "secondary_metric": "Bounce Rate",
+    "data_requirement": "First-Party Web Analytics",
+    "status": "REQUIRED_INSTRUMENTATION",
+    "possible_failure_modes": "Slow page load, mismatch between hook promise and landing headline."
+  },
+  {
+    "stage_id": "STAGE-04",
+    "stage_name": "Technical Qualification",
+    "event": "vram_sizing_tool_use",
+    "primary_metric": "VRAM Tool Completion Rate",
+    "secondary_metric": "Docs Section Views",
+    "data_requirement": "Interactive Widget Event Tracking",
+    "status": "REQUIRED_INSTRUMENTATION",
+    "possible_failure_modes": "Calculator UI complexity, user lacks host GPU."
+  },
+  {
+    "stage_id": "STAGE-05",
+    "stage_name": "Download Intent",
+    "event": "download_click",
+    "primary_metric": "CLI Download Initiation Rate",
+    "secondary_metric": "OS Platform Breakdown (Mac/Linux/Win)",
+    "data_requirement": "First-Party Click Event Tracking",
+    "status": "REQUIRED_INSTRUMENTATION",
+    "possible_failure_modes": "Unclear OS installer compatibility, lack of admin privileges."
+  },
+  {
+    "stage_id": "STAGE-06",
+    "stage_name": "Local Runtime Execution",
+    "event": "first_model_run",
+    "primary_metric": "CLI Setup Completion Rate (TO_BE_ESTABLISHED)",
+    "secondary_metric": "Time to First Token",
+    "data_requirement": "Opt-in Local CLI Ping / Community Feedback",
+    "status": "UNKNOWN_AVAILABILITY",
+    "possible_failure_modes": "Low-spec CPU fallback latency, network download failure for model weights."
+  }
+]

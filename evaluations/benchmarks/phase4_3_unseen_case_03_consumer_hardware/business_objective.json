@@ -1,0 +1,16 @@
+{
+  "campaign_id": "CAMP-2026-AROMABREW-GTM",
+  "commercial_goal": "Scale D2C launch to 5,000 units sold within first 90 days at blended CAC <= $65.00, achieving positive contribution margin on first purchase and seeding companion bean subscription pipeline.",
+  "primary_kpi": "Direct E-commerce Paid Units Sold (Target: 5,000 units)",
+  "secondary_kpis": [
+    "Blended Customer Acquisition Cost (Target: <= $65.00)",
+    "App Pairing & Onboarding Activation Rate (Target: >= 75%)",
+    "Coffee Bean Subscription Attach Rate (Target: >= 20% at checkout)"
+  ],
+  "guardrails": [
+    "CAC ceiling of $75.00 on paid acquisition channels",
+    "Return rate below 4.5% in first 30 days",
+    "Strict compliance with FTC disclosure guidelines on influencer gifting and no medical claims"
+  ],
+  "budget_allocation_total_usd": 350000.0
+}

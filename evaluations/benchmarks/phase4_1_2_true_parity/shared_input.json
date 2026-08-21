@@ -1,0 +1,34 @@
+{
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "business_goal": "Launch a compact 65W GaN USB-C charger for Vietnamese ecommerce consumers.",
+  "target_market": "Vietnam",
+  "business_model": "Ecommerce",
+  "guaranteed_specifications": [
+    "65W maximum power output",
+    "GaN (Gallium Nitride) semiconductor architecture",
+    "USB-C connectivity",
+    "Compact portable form factor",
+    "Vietnam ecommerce benchmark"
+  ],
+  "unspecified_specifications_to_preserve_as_unknown": [
+    "Exact port count and configuration",
+    "Specific charging protocols (PPS, PD3.0, QC4+)",
+    "Measured internal operating temperatures or cooling efficiency",
+    "Universal laptop model compatibility",
+    "Specific safety/surge protection certifications",
+    "Retail pricing, margin targets, and advertising budgets",
+    "CAC, LTV, and ROAS baselines"
+  ],
+  "claim_discipline_rules": [
+    "CATEGORY_TECHNOLOGY_PROPERTY != OUR_PRODUCT_VERIFIED_PROPERTY",
+    "COMPETITOR_CAPABILITY != OUR_PRODUCT_CAPABILITY",
+    "CUSTOMER_REQUIREMENT != OUR_PRODUCT_FEATURE",
+    "CUSTOMER_PAIN_POINT != OUR_PRODUCT_SOLVED_OUTCOME",
+    "DESIRED_BENEFIT != VERIFIED_PRODUCT_OUTCOME",
+    "GENERIC_TECHNOLOGY_ADVANTAGE != OUR_PRODUCT_MEASURED_PERFORMANCE",
+    "Qualify laptop compatibility as 'for compatible USB-C devices'",
+    "Preserve missing metrics and unit economics as UNKNOWN / TO_BE_ESTABLISHED",
+    "DEFAULT_AUTONOMY = SUPERVISED: public distribution requires explicit human approval"
+  ]
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "observation_id": "OBS-e011a18e00b4",
+    "capability": "search_web",
+    "source_url_or_id": "search://search_duckduckgo_html?q=Ollama%20local%20language%20models",
+    "family": "SEARCH_DISCOVERY",
+    "status": "SUCCESS"
+  },
+  {
+    "observation_id": "OBS-8db4a0d54857",
+    "capability": "read_page",
+    "source_url_or_id": "https://ollama.com",
+    "family": "FIRST_PARTY_WEB",
+    "status": "SUCCESS"
+  },
+  {
+    "observation_id": "OBS-82f4a62c2637",
+    "capability": "read_page",
+    "source_url_or_id": "https://dev.to/primghostdev/run-your-own-ai-model-locally-a-practical-ollama-setup-guide-2026-2kk9",
+    "family": "SECONDARY_WEB",
+    "status": "SUCCESS"
+  },
+  {
+    "observation_id": "OBS-1795032349b0",
+    "capability": "youtube_metadata",
+    "source_url_or_id": "https://www.youtube.com/watch?v=AGAETsxjg0o",
+    "family": "VIDEO",
+    "status": "SUCCESS"
+  },
+  {
+    "observation_id": "OBS-c8d7a76f6d6c",
+    "capability": "read_forum_thread",
+    "source_url_or_id": "https://news.ycombinator.com/item?id=37661755",
+    "family": "COMMUNITY",
+    "status": "SUCCESS"
+  },
+  {
+    "observation_id": "OBS-38151e87b67a",
+    "capability": "youtube_metadata",
+    "source_url_or_id": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    "family": "VIDEO",
+    "status": "SUCCESS"
+  }
+]

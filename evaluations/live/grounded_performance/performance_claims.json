@@ -1,0 +1,44 @@
+[
+  {
+    "claim_id": "PERF-CLAIM-001",
+    "claim_text": "Campaign performance metrics (CTR, CVR, CPA, CAC, ROAS, LTV) are currently UNKNOWN and TO_BE_ESTABLISHED because no live campaign telemetry exists.",
+    "claim_type": "UNKNOWN",
+    "grounding_status": "SUPPORTED",
+    "notes": "Strictly preserves known unknowns."
+  },
+  {
+    "claim_id": "PERF-CLAIM-002",
+    "claim_text": "CTR is calculated strictly as Clicks / Impressions (not Reach).",
+    "claim_type": "CALCULATED_METRIC",
+    "grounding_status": "SUPPORTED",
+    "notes": "Denominator discipline validated."
+  },
+  {
+    "claim_id": "PERF-CLAIM-003",
+    "claim_text": "Platform-reported attribution represents directional delivery data and must not be interpreted as causal incrementality.",
+    "claim_type": "INFERENCE",
+    "grounding_status": "SUPPORTED",
+    "notes": "Causal hierarchy enforced."
+  },
+  {
+    "claim_id": "PERF-CLAIM-004",
+    "claim_text": "Technical search capture on 'run llama locally' is classified as HYPOTHESIZED_CHANNEL subject to controlled intent validation.",
+    "claim_type": "HYPOTHESIS",
+    "grounding_status": "SUPPORTED",
+    "notes": "Aligns with STRAT-006 and EVID-SRCH-132D6868."
+  },
+  {
+    "claim_id": "PERF-CLAIM-005",
+    "claim_text": "Budget and stop-loss values remain NOT_CONFIGURED until specified by business stakeholders.",
+    "claim_type": "UNKNOWN",
+    "grounding_status": "SUPPORTED",
+    "notes": "Zero monetary fabrication."
+  },
+  {
+    "claim_id": "PERF-CLAIM-006",
+    "claim_text": "Experiment duration and holdout size are classified as PLANNING_ASSUMPTIONS with status TO_BE_DETERMINED based on empirical power calculations.",
+    "claim_type": "PLANNED_MEASUREMENT",
+    "grounding_status": "SUPPORTED",
+    "notes": "Duration and holdout discipline enforced."
+  }
+]

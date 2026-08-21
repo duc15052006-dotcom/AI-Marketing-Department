@@ -1,0 +1,311 @@
+{
+  "protocol_id": "PHASE4_3C_9_FAIR_THREE_WAY_BENCHMARK",
+  "version": "1.1.0",
+  "created_at": "2026-08-18T12:54:26.352779+00:00",
+  "benchmark_input_hash": "ec155c53ffbca8b5ae52d358803092d3c876e0de30fb24ed0e824dfad1dbd8a5",
+  "deliverable_schema_hash": "61a9f7d1ba756b72aeb91ffc5746bdf7433e960673147823bff2d91c565abf68",
+  "evaluation_rubric_hash": "c5e990a9b2fbe4e1a850f8bdf5a254c69d3468a62529d2e147569d412528f605",
+  "resource_match_hash": "5d4a7ad8590d1afa930add7f0bb76d78056a25a0262c1c3dc5bee61d420e3554",
+  "execution_order_hash": "4a5de2fa63a8f6c40f0ec5d51d2fd40e7177d6f14a6fe084eac2f537d69d1349",
+  "model_config_hash": "2bc99f1d45cf9f3855de7404ca6931923446621140393f7bae2a0376367c12bd",
+  "assembler_policy_hash": "1a21d9edca542ff351f0c992e798e0a21f20ece54129a9a300e11ccf39c131a4",
+  "failure_policy_hash": "ca0c06ed78019641e25211665a2f0444aaa56adda85c56dfd30f027d2db89fbc",
+  "blinding_policy_hash": "f8d21a7fcf8e9f87b7e213058eb38e200c0dee0c8e5608da1486c870f9a02560",
+  "prompt_hash_a": "d7a41db2aeddd8e5f1c5346b65a293c8f58c2f64022a7b05de93eac09060dd45",
+  "prompt_hash_b": "a9ccf32deabfb4a361c44a5efc20a66e159d2ebc424805b1a7d70b185335ed62",
+  "prompt_hash_c": "28c830ccf3839c0919c82e7347b0c12a4f141c6ebcc92370a08bc261fa1858b5",
+  "candidate_a_spec": {
+    "candidate_id": "CANDIDATE_A",
+    "name": "Five-Agent Governed Multi-Agent V2",
+    "architecture": "ROLE_SPECIALIZED_MULTI_AGENT",
+    "stages": 6,
+    "stage_flow": [
+      "cmo_initial",
+      "intelligence",
+      "strategist",
+      "creative",
+      "performance",
+      "final_cmo"
+    ],
+    "handoff_contract": "HandoffPackage_v2",
+    "prompt_hash": "d7a41db2aeddd8e5f1c5346b65a293c8f58c2f64022a7b05de93eac09060dd45",
+    "fresh_run_mandatory": true,
+    "max_output_tokens": 8192,
+    "historical_baseline_run_id": "RUN-PHASE4-3-V2-LIVE-001 (HISTORICAL_4096_CEILING_ONLY)"
+  },
+  "candidate_b_spec": {
+    "candidate_id": "CANDIDATE_B",
+    "name": "Single-Agent Multi-Pass (Resource-Matched Control)",
+    "architecture": "SINGLE_AGENT_ITERATIVE_SCRATCHPAD",
+    "identity": "UNIFIED_SINGLE_PLANNING_ENGINE",
+    "passes": 5,
+    "pass_flow": [
+      "pass_1_research_and_context",
+      "pass_2_positioning_and_channels",
+      "pass_3_creative_and_hooks",
+      "pass_4_performance_and_experiments",
+      "pass_5_governance_and_synthesis"
+    ],
+    "state_mechanism": "STRUCTURED_WORKING_MEMORY_SCRATCHPAD",
+    "prompt_hash": "a9ccf32deabfb4a361c44a5efc20a66e159d2ebc424805b1a7d70b185335ed62",
+    "pass_prompt_hashes": {
+      "pass_1": "2f6d333cbbdb714cfd26d965f9b43f76db747bc83666975b9b1e8f1aaac7654e",
+      "pass_2": "baa7413a7a48cea9e3bee7e530d4d28467d03f4a14420b0e2c422dcfa3e9c1a5",
+      "pass_3": "867bdac872e482baf93c40ce358b513bb70ced8218280f73796c5ab3094bc573",
+      "pass_4": "c6233f7fb49be4ec8516c99079f9cf90551f3c7c4aff149bb38dad9b2116907d",
+      "pass_5": "2d5e42a1f975dfa37ed8eb0831f614bcf0e76e62977001e304483a726b2c0f83"
+    },
+    "resource_target_formula": "ACTUAL_FRESH_A_PROVIDER_TOTAL_TOKENS",
+    "token_budget_tolerance_percent": 10.0,
+    "historical_a_reference_tokens": 29421,
+    "historical_a_used_as_live_b_target": false,
+    "max_output_tokens": 8192
+  },
+  "candidate_c_spec": {
+    "candidate_id": "CANDIDATE_C",
+    "name": "Single-Agent One-Shot (Practical Baseline)",
+    "architecture": "SINGLE_AGENT_ONE_SHOT",
+    "identity": "UNIFIED_SINGLE_PLANNING_ENGINE",
+    "passes": 1,
+    "prompt_style": "DIRECT_ALL_IN_ONE_PROPOSAL_REQUEST",
+    "prompt_hash": "28c830ccf3839c0919c82e7347b0c12a4f141c6ebcc92370a08bc261fa1858b5",
+    "target_deliverables": 28,
+    "max_output_tokens": 8192
+  },
+  "evaluation_rubric": {
+    "dimensions": [
+      {
+        "id": "DIM-01",
+        "name": "Research Quality & Qualitative Discovery",
+        "weight": 0.08,
+        "scale": "1-10",
+        "description": "Depth of customer pain points, JTBD understanding, speaking anxiety analysis, competitor landscape."
+      },
+      {
+        "id": "DIM-02",
+        "name": "Evidence Discipline & Grounding",
+        "weight": 0.08,
+        "scale": "1-10",
+        "description": "Strict adherence to verified product facts, zero factual fabrication, correct citation of evidence IDs."
+      },
+      {
+        "id": "DIM-03",
+        "name": "Customer Segmentation Quality",
+        "weight": 0.07,
+        "scale": "1-10",
+        "description": "Precision of demographic/psychographic tiers, prioritization rationale for top segment."
+      },
+      {
+        "id": "DIM-04",
+        "name": "Strategic Positioning Architecture",
+        "weight": 0.08,
+        "scale": "1-10",
+        "description": "Clarity of value proposition, differentiation from human tutors and passive apps."
+      },
+      {
+        "id": "DIM-05",
+        "name": "Channel Strategy & Discipline",
+        "weight": 0.07,
+        "scale": "1-10",
+        "description": "Justified primary/secondary/deferred channels, clear rationale for deferred channels."
+      },
+      {
+        "id": "DIM-06",
+        "name": "Creative Quality & Emotional Resonance",
+        "weight": 0.08,
+        "scale": "1-10",
+        "description": "Distinct creative territories, cultural relevance to Vietnamese learners, scroll-stopping hooks."
+      },
+      {
+        "id": "DIM-07",
+        "name": "Copywriting & Script Executability",
+        "weight": 0.07,
+        "scale": "1-10",
+        "description": "Production readiness of short-form ad copy and video script with visual/audio cues."
+      },
+      {
+        "id": "DIM-08",
+        "name": "Performance Funnel & Metric Architecture",
+        "weight": 0.07,
+        "scale": "1-10",
+        "description": "Full-funnel KPI hierarchy (CAC, onboarding completion, D7 retention targets)."
+      },
+      {
+        "id": "DIM-09",
+        "name": "Experimentation Rigor & Falsifiability",
+        "weight": 0.08,
+        "scale": "1-10",
+        "description": "Testable hypotheses, clear treatments/controls, statistical stopping rules."
+      },
+      {
+        "id": "DIM-10",
+        "name": "Attribution & Technical Tracking",
+        "weight": 0.06,
+        "scale": "1-10",
+        "description": "SKAdNetwork 4.0, MMP postbacks, CAPI, UTM taxonomy."
+      },
+      {
+        "id": "DIM-11",
+        "name": "Claim Safety & Regulatory Compliance",
+        "weight": 0.08,
+        "scale": "1-10",
+        "description": "Absolute absence of ungrounded guarantees, IELTS score promises, or unauthorized claims."
+      },
+      {
+        "id": "DIM-12",
+        "name": "Strategic Governance & Approvals",
+        "weight": 0.06,
+        "scale": "1-10",
+        "description": "Go/Test/Hold/Defer decisions, explicit human approval gates before spend."
+      },
+      {
+        "id": "DIM-13",
+        "name": "Internal Section Consistency & Lineage",
+        "weight": 0.06,
+        "scale": "1-10",
+        "description": "Coherence between research -> strategy -> creative -> performance -> CMO governance."
+      },
+      {
+        "id": "DIM-14",
+        "name": "Canonical Deliverable Completeness",
+        "weight": 0.06,
+        "scale": "1-10",
+        "description": "Presence, depth, and substance across all 28 canonical deliverable sections."
+      }
+    ],
+    "total_weight": 1.0,
+    "scoring_scale": {
+      "min": 1.0,
+      "max": 10.0,
+      "step": 0.5
+    }
+  },
+  "resource_match": {
+    "policy_id": "DYNAMIC_FRESH_A_RESOURCE_MATCHING_V2",
+    "resource_match_metric": "PROVIDER_TOTAL_TOKENS",
+    "target_formula": "ACTUAL_FRESH_A_PROVIDER_TOTAL_TOKENS",
+    "resource_token_tolerance_percent": 10.0,
+    "historical_validation_baseline": {
+      "run_id": "RUN-PHASE4-3-V2-LIVE-001",
+      "provider_total_tokens": 29421,
+      "max_output_tokens": 4096,
+      "status": "HISTORICAL_VALIDATION_ONLY_NOT_USED_AS_LIVE_B_TARGET"
+    },
+    "fresh_candidate_a_requirement": {
+      "run_id_prefix": "RUN-PHASE4-3-V2-BENCH",
+      "max_output_tokens": 8192,
+      "fresh_run_mandatory": true
+    },
+    "dynamic_target_computation": "B_TARGET = A_ACTUAL_PROVIDER_TOTAL_TOKENS; B_MIN = round(B_TARGET * 0.90); B_MAX = round(B_TARGET * 1.10)",
+    "target_candidate_b_passes": 5,
+    "candidate_c_model_calls": 1,
+    "information_firewall": {
+      "A_TO_B_CONTENT_LEAK_COUNT": 0,
+      "permitted_runtime_fields_from_a": [
+        "A_ACTUAL_PROVIDER_TOTAL_TOKENS"
+      ],
+      "prohibited_runtime_fields_from_a": [
+        "raw_text",
+        "findings",
+        "decisions",
+        "canonical_proposal",
+        "scoring",
+        "completeness"
+      ]
+    },
+    "budget_behavior_rules": {
+      "natural_within_bounds": "RESOURCE_PARITY = PASS",
+      "natural_under_budget": "RESOURCE_PARITY = UNDER_BUDGET (NO filler text generation)",
+      "natural_over_budget": "RESOURCE_PARITY = OVER_BUDGET (NO active response truncation)"
+    },
+    "retry_accounting_rules": {
+      "TOTAL_COMPUTE_CONSUMED": "Sum of all provider-reported tokens across all attempts",
+      "VALID_CANDIDATE_GENERATION_TOKENS": "Tokens belonging strictly to successful attempts"
+    }
+  },
+  "execution_order": {
+    "step_1": "Execute Candidate A fresh under common 8192 config (new run ID)",
+    "step_2": "Seal Candidate A raw artifacts immediately",
+    "step_3": "Read ONLY Candidate A provider_total_tokens for resource matching",
+    "step_4": "Compute Candidate B target budget range deterministically (A_TOTAL * [0.90, 1.10])",
+    "step_5": "Execute Candidate B using frozen B prompts and 5 passes with scratchpad",
+    "step_6": "Execute Candidate C using frozen C prompt and 1 call",
+    "step_7": "Seal all candidate artifacts",
+    "step_8": "Begin 3-way double blind evaluation"
+  },
+  "model_config": {
+    "provider_id": "gemini",
+    "requested_model": "gemini-flash-latest",
+    "resolved_model": "gemini-3.5-flash",
+    "provider_protocol": "gemini_native",
+    "strict_model_pin": true,
+    "timeout_seconds": 180.0,
+    "max_tokens_per_call": 8192,
+    "temperature": 0.2,
+    "cooldown_seconds": 15.0
+  },
+  "assembler_policy": {
+    "policy_id": "NEUTRAL_CANONICAL_ASSEMBLER_V2",
+    "truncation_policy": "PARTIAL_IMMUTABLE_SALVAGE",
+    "allowed_actions": [
+      "COLLECT_STAGE_DELIVERABLES",
+      "STRUCTURAL_JSON_PARSING",
+      "SCHEMA_FIELD_MAPPING",
+      "VERBATIM_UNCLOSED_FIELD_SALVAGE",
+      "VERBATIM_MARKDOWN_SECTION_EXTRACTION"
+    ],
+    "prohibited_actions": [
+      "SYNTHETIC_CONTENT_GENERATION",
+      "SEMANTIC_REWRITING",
+      "PROMPT_OR_OUTPUT_PATCHING",
+      "TRUNCATED_JSON_CLOSURE_FABRICATION",
+      "UNSUPPORTED_CLAIM_INJECTION"
+    ],
+    "invariant_requirements": {
+      "CONTENT_PATCH_COUNT": 0,
+      "SEMANTIC_REWRITE_COUNT": 0,
+      "FABRICATED_DELIVERABLE_COUNT": 0,
+      "IDENTITY_LEAK_COUNT": 0
+    }
+  },
+  "failure_policy": {
+    "policy_id": "PARTIAL_IMMUTABLE_SALVAGE_FAIL_CLOSED_V2",
+    "truncation_policy": "PARTIAL_IMMUTABLE_SALVAGE",
+    "model_call_timeout_seconds": 180.0,
+    "max_retries_per_call": 1,
+    "retry_conditions": [
+      "HTTP_503_SERVICE_UNAVAILABLE",
+      "SOCKET_TIMEOUT"
+    ],
+    "non_retryable_conditions": [
+      "HTTP_400_BAD_REQUEST",
+      "HTTP_403_FORBIDDEN",
+      "HTTP_404_NOT_FOUND",
+      "HTTP_429_RATE_LIMIT"
+    ],
+    "malformed_output_action": "REJECT_UNPARSEABLE_SECTIONS_SALVAGE_VERBATIM_COMPLETED_FIELDS",
+    "truncated_output_action": "PARTIAL_IMMUTABLE_SALVAGE_VERBATIM_COMPLETED_ONLY",
+    "manual_completion_allowed": false,
+    "cross_candidate_fallback_allowed": false
+  },
+  "blinding_policy": {
+    "policy_id": "DOUBLE_BLIND_EVALUATION_POLICY_V2",
+    "anonymous_labels": [
+      "Candidate X",
+      "Candidate Y",
+      "Candidate Z"
+    ],
+    "redaction_rules": [
+      "STRIP_AGENT_NAMES",
+      "STRIP_ARCHITECTURE_METADATA",
+      "STRIP_TOKEN_AND_USAGE_TELEMETRY",
+      "STRIP_RUN_IDS_AND_FILE_PATHS",
+      "STRIP_HANDOFF_IDENTIFIERS",
+      "STRIP_SPECIALIST_LABELS"
+    ],
+    "required_blind_leak_count": 0
+  },
+  "previous_protocol_fingerprint": "00d17aaab9ed79a471a7d7826d40013806eb59786b2124066c249bb4ba52387f",
+  "previous_fingerprint_status": "SUPERSEDED_BEFORE_LIVE_EXECUTION",
+  "protocol_fingerprint": "462086a31dd80c257ecbabfba12d6249772c3207e86ce379d8d76ea2248ceb0f"
+}

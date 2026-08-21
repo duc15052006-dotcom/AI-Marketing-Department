@@ -1,0 +1,17 @@
+{
+  "campaign_id": "CAMP-2026-CARDIOVITAL-GTM",
+  "commercial_goal": "Acquire 3,500 active paying telehealth members within 120 days at blended CAC <= $135.00, achieving member onboarding completion rate >= 85% and maintaining 6-month retention >= 75%.",
+  "primary_kpi": "Active Paying Memberships Activated (Target: 3,500 members)",
+  "secondary_kpis": [
+    "Blended Customer Acquisition Cost (Target: <= $135.00)",
+    "At-Home Biomarker Kit Return & Processing Rate (Target: >= 90% within 14 days)",
+    "Member Clinical Consultation Completion Rate (Target: >= 85%)",
+    "HSA/FSA Payment Utilization Rate (Target: >= 40%)"
+  ],
+  "guardrails": [
+    "Paid CAC ceiling of $160.00 across all paid acquisition channels",
+    "100% adherence to FDA, FTC, and HIPAA healthcare marketing compliance rules (zero cure promises)",
+    "Clinical capacity ceiling of 40 new patient intakes per cardiologist per week"
+  ],
+  "budget_allocation_total_usd": 450000.0
+}

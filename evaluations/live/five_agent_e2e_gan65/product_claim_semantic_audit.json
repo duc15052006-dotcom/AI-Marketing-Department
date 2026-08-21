@@ -1,0 +1,36 @@
+{
+  "audit_phase": "4.0.1",
+  "evaluator_verdict": "PASS",
+  "total_issues_detected": 0,
+  "total_corrections_applied": 5,
+  "evaluator_rules": {
+    "CATEGORY_PROPERTY_AS_PRODUCT_PROPERTY": "PASS",
+    "UNSUPPORTED_PRODUCT_COMPATIBILITY_CLAIM": "PASS",
+    "UNSUPPORTED_THERMAL_PRODUCT_CLAIM": "PASS",
+    "CUSTOMER_REQUIREMENT_AS_PRODUCT_FEATURE": "PASS",
+    "DOWNSTREAM_PRODUCT_CLAIM_ESCALATION": "PASS"
+  },
+  "issues": [],
+  "corrections": [
+    {
+      "file": "research/intelligence_output.json",
+      "rule": "CATEGORY_PROPERTY_AS_PRODUCT_PROPERTY"
+    },
+    {
+      "file": "strategy/strategist_output.json",
+      "rule": "UNSUPPORTED_PRODUCT_COMPATIBILITY_CLAIM"
+    },
+    {
+      "file": "creative/creative_output.json",
+      "rule": "UNSUPPORTED_THERMAL_PRODUCT_CLAIM"
+    },
+    {
+      "file": "performance/performance_output.json",
+      "rule": "CUSTOMER_REQUIREMENT_AS_PRODUCT_FEATURE"
+    },
+    {
+      "file": "cmo/final_cmo_output.json",
+      "rule": "DOWNSTREAM_PRODUCT_CLAIM_ESCALATION"
+    }
+  ]
+}

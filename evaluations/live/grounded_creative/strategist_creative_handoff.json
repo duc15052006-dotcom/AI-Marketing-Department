@@ -1,0 +1,280 @@
+{
+  "brief_id": "BRIEF-STRAT-80D5C564",
+  "task_id": "TASK_GROUNDED_CREATIVE_001",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "created_at": "2026-08-16T17:29:31.853749+00:00",
+  "business_objective": "Build a high-converting, grounded developer creative package for Ollama local AI model runner, highlighting streamlined CLI setup and localhost REST API integration while honoring physical VRAM hardware realities.",
+  "target_segments": {
+    "observed_segments": [
+      "Software developers, engineers, and AI builders on macOS, Linux, and Windows seeking local inference without cloud per-token costs or manual C++ compilation friction."
+    ],
+    "hypothesized_segments": [
+      "Enterprise compliance teams and privacy-sensitive engineering leads evaluating offline AI architectures."
+    ]
+  },
+  "positioning": {
+    "category_frame": "Local LLM runtime and model orchestration CLI/API",
+    "core_promise": "Single-command local AI execution on localhost:11434 with predictable zero-token cost",
+    "differentiating_mechanism": "Automated backend dependency management (CUDA/quantization) wrapped in a unified localhost REST API service (port 11434)",
+    "unlike": "Closed cloud APIs with per-token billing and data privacy concerns, or manual llama.cpp compilation"
+  },
+  "value_proposition": "A streamlined developer gateway for local open-weight model execution on localhost port 11434 with predictable zero-per-token local compute and first-party privacy claims of offline data processing.",
+  "strategic_priorities": [
+    "Position as fastest local developer setup wedge for open-weight models without manual compilation",
+    "Promote localhost REST API (port 11434) as a drop-in component for local development orchestration",
+    "Provide upfront model-to-VRAM hardware guidance to pre-empt low-spec CPU fallback latency disappointment"
+  ],
+  "deferred_channels": [
+    "Broad consumer social media paid ads (deferred due to lack of local GPU developer hardware fit)",
+    "Direct enterprise outbound field sales (deferred pending telemetry install baselines)"
+  ],
+  "what_not_to_do": [
+    "Will NOT market Ollama as a replacement for high-throughput enterprise production clusters without clarifying host VRAM prerequisites",
+    "Will NOT run aggressive direct-response paid ad spend against broad non-technical consumer audiences",
+    "Will NOT fabricate proprietary model benchmark claims; positioning remains strictly focused on runtime orchestration and developer UX"
+  ],
+  "validated_recommendations": [
+    {
+      "rec_id": "STRAT-001",
+      "title": "Local Developer Runtime Positioning Architecture",
+      "recommendation": "Position Ollama as a streamlined CLI and localhost REST API runtime layer for local open-weight model execution across macOS, Linux, and Windows.",
+      "rationale": "Provides developer convenience over manual C++ inference dependencies (llama.cpp/CUDA) and predictable, zero-per-token local execution.",
+      "claim_type": "STRATEGIC_INFERENCE",
+      "supported_by": [
+        "EVID-WEB-893338BD",
+        "EVID-WEB-2BAE59D7"
+      ],
+      "assumptions": [
+        "Target developers value local execution and predictable costs over cloud-managed API simplicity."
+      ],
+      "uncertainties": [
+        "Paid enterprise conversion and telemetry install base remain unmeasured (TRANSACTION_DATA = MISSING)."
+      ],
+      "validation_test": "Measure CLI download-to-activation completion rates.",
+      "stop_or_reconsider_condition": "Reconsider if cloud API token prices fall so low that local runtime maintenance is economically non-compelling.",
+      "epistemic_tier": "INFERENCE",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-002",
+      "title": "Developer Setup Friction Reduction Wedge",
+      "recommendation": "Position Ollama as a streamlined local developer setup wedge for running open-weight models without manual compilation.",
+      "rationale": "Sampled Hacker News developer discussions (N=25) confirm utility of automated CUDA setup and model abstraction.",
+      "claim_type": "STRATEGIC_INFERENCE",
+      "supported_by": [
+        "EVID-FORUM-F119C750"
+      ],
+      "assumptions": [
+        "Automated setup is a primary decision factor for local developers."
+      ],
+      "uncertainties": [
+        "Representative ecosystem-wide developer satisfaction remains unmeasured (REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING)."
+      ],
+      "validation_test": "A/B test onboarding copy clarity against setup-related GitHub issue volume.",
+      "stop_or_reconsider_condition": "Halt positioning if automated setup friction exceeds manual llama.cpp compilation.",
+      "epistemic_tier": "INFERENCE",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-003",
+      "title": "Localhost REST API Promotion",
+      "recommendation": "Promote the localhost REST API service (running on port 11434) as a drop-in integration layer for local workflow automation and script integration.",
+      "rationale": "Verified in technical documentation and developer community samples.",
+      "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+      "supported_by": [
+        "EVID-WEB-2BAE59D7",
+        "EVID-FORUM-F119C750"
+      ],
+      "assumptions": [
+        "Developers desire local HTTP/REST API endpoints rather than CLI-only subprocess execution."
+      ],
+      "uncertainties": [
+        "Concurrency scaling and multi-model routing constraints on local hardware."
+      ],
+      "validation_test": "Track local API call activation velocity in sample developer workflows.",
+      "stop_or_reconsider_condition": "Halt promotion if API endpoint compatibility issues cause widespread integration failures.",
+      "epistemic_tier": "OBSERVATION",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-004",
+      "title": "Transparent Model-to-Hardware VRAM Boundary Guidance",
+      "recommendation": "Provide upfront, explicit hardware guidance (e.g., 4-5GB VRAM for 7B Q4, 8-10GB for 14B) to pre-empt CPU fallback latency disappointment.",
+      "rationale": "Verified in technical documentation that low VRAM triggers slow CPU inference fallback.",
+      "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+      "supported_by": [
+        "EVID-WEB-2BAE59D7",
+        "CONF-40334167"
+      ],
+      "assumptions": [
+        "Upfront hardware transparency preserves developer trust and reduces early churn."
+      ],
+      "uncertainties": [
+        "Exact hardware distribution among active user base is unknown (PRIVATE_TELEMETRY_DATA = MISSING)."
+      ],
+      "validation_test": "Compare onboarding retention between users seeing VRAM sizing tools vs generic download pages.",
+      "stop_or_reconsider_condition": "Maintain permanently as core technical transparency guardrail.",
+      "epistemic_tier": "OBSERVATION",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-005",
+      "title": "Demand Creation Technical Architecture Guides",
+      "recommendation": "Publish technical architecture teardowns and workflow automation guides showing how local inference addresses compliance and data sovereignty requirements.",
+      "rationale": "First-party copy emphasizes offline execution and data privacy.",
+      "claim_type": "FIRST_PARTY_CLAIM",
+      "supported_by": [
+        "EVID-WEB-893338BD"
+      ],
+      "assumptions": [
+        "Engineering teams in regulated domains seek offline local inference architectures."
+      ],
+      "uncertainties": [
+        "Enterprise procurement cycles and decision-maker roles remain unvalidated."
+      ],
+      "validation_test": "Engagement velocity and inbound technical inquiries generated from architecture teardowns.",
+      "stop_or_reconsider_condition": "Pivot content strategy if compliance content fails to drive technical engagement.",
+      "epistemic_tier": "INFERENCE",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-006",
+      "title": "Hypothesized Demand Capture via Technical Search",
+      "recommendation": "Hypothesize technical search as a qualified developer acquisition channel, targeting queries like 'run llama locally' and 'offline llm runner' subject to keyword demand validation.",
+      "rationale": "Search discovery identified active technical queries; demand magnitude requires empirical test.",
+      "claim_type": "HYPOTHESIS",
+      "supported_by": [
+        "EVID-SRCH-132D6868",
+        "EVID-WEB-2BAE59D7"
+      ],
+      "assumptions": [
+        "Sufficient commercial and technical search volume exists for local model runners."
+      ],
+      "uncertainties": [
+        "Organic search impression-to-install conversion rate is unmeasured."
+      ],
+      "validation_test": "Execute controlled search capture experiment to measure search intent and install rate.",
+      "stop_or_reconsider_condition": "De-prioritize organic search if search traffic fails to generate active CLI sessions.",
+      "epistemic_tier": "HYPOTHESIS",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-007",
+      "title": "Trade-off: Do NOT Market as Production Cluster Replacement",
+      "recommendation": "Explicitly avoid positioning Ollama as an enterprise high-throughput production cluster replacement without clarifying host VRAM prerequisites.",
+      "rationale": "Physical hardware boundaries dictate inference throughput; misleading claims damage credibility.",
+      "claim_type": "STRATEGIC_INFERENCE",
+      "supported_by": [
+        "EVID-WEB-2BAE59D7",
+        "CONF-40334167"
+      ],
+      "assumptions": [
+        "Brand credibility with technical developers requires strict adherence to physical compute realities."
+      ],
+      "uncertainties": [],
+      "validation_test": "Monitor community sentiment and technical issue reports regarding performance expectations.",
+      "stop_or_reconsider_condition": "Maintain permanently as core positioning constraint.",
+      "epistemic_tier": "INFERENCE",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-008",
+      "title": "Trade-off: Do NOT Run Broad Consumer Ad Spend",
+      "recommendation": "Explicitly avoid broad consumer paid ad campaigns across non-technical social channels.",
+      "rationale": "Current evidence is strongly developer-oriented and does not establish broad consumer-market fit.",
+      "claim_type": "STRATEGIC_INFERENCE",
+      "supported_by": [
+        "EVID-WEB-893338BD",
+        "EVID-FORUM-F119C750"
+      ],
+      "assumptions": [
+        "Non-technical consumers lack motivation or workflow needs for local terminal/API model execution."
+      ],
+      "uncertainties": [
+        "Potential consumer desktop GUI adoption remains unmeasured."
+      ],
+      "validation_test": "Audit CAC against developer conversion baselines before allocating non-developer ad budget.",
+      "stop_or_reconsider_condition": "Re-evaluate only if an end-consumer GUI app is released with verified consumer demand.",
+      "epistemic_tier": "INFERENCE",
+      "grounding_status": "GROUNDED"
+    },
+    {
+      "rec_id": "STRAT-009",
+      "title": "Trade-off: Do NOT Claim Proprietary AI Model Benchmarks",
+      "recommendation": "Explicitly avoid claiming proprietary model benchmark leadership; maintain focus strictly on runtime orchestration, developer UX, and hardware boundary transparency.",
+      "rationale": "Ollama orchestrates open-weight models (Llama, Mistral) rather than training proprietary weights.",
+      "claim_type": "EVIDENCE_BACKED_RECOMMENDATION",
+      "supported_by": [
+        "EVID-WEB-893338BD",
+        "EVID-WEB-2BAE59D7"
+      ],
+      "assumptions": [
+        "Developers evaluate Ollama on orchestration utility, not model weight architecture."
+      ],
+      "uncertainties": [],
+      "validation_test": "Track developer brand perception as neutral model orchestrator.",
+      "stop_or_reconsider_condition": "Maintain permanently as core brand distinction.",
+      "epistemic_tier": "OBSERVATION",
+      "grounding_status": "GROUNDED"
+    }
+  ],
+  "strategic_hypotheses": [
+    "Upfront model-to-VRAM sizing guidance may reduce initial CLI onboarding drop-off caused by low-spec CPU fallback.",
+    "Enterprise compliance teams may prioritize data-residency and offline execution over cloud compute convenience.",
+    "Technical search capture targeting OpenAI API compatibility queries represents a viable developer acquisition channel."
+  ],
+  "experiments": [
+    {
+      "experiment_id": "EXP-001",
+      "hypothesis": "Upfront model-to-VRAM sizing guidance may reduce initial CLI onboarding drop-off caused by low-spec CPU fallback.",
+      "target_segment": "Developers on macOS, Linux, and Windows with bounded GPU hardware",
+      "change_or_treatment": "Interactive model-to-VRAM sizing tool on landing page",
+      "primary_metric": "CLI Setup Completion Rate (TO_BE_ESTABLISHED)",
+      "metric_status": "TO_BE_ESTABLISHED",
+      "secondary_metrics": [
+        "Time to First Token",
+        "CPU Fallback Issue Count"
+      ],
+      "expected_signal": "Reduced onboarding abandonment due to pre-aligned hardware expectations",
+      "time_or_sample_requirement": "14 days / N=500 visitors",
+      "stop_condition": "Halt if calculator introduces excess friction",
+      "evidence_dependency": [
+        "EVID-WEB-2BAE59D7",
+        "CONF-40334167"
+      ]
+    }
+  ],
+  "known_unknowns": [
+    "Missing TRANSACTION_DATA: What is the exact paid enterprise subscription conversion rate?",
+    "Missing REPRESENTATIVE_DEVELOPER_RECEPTION_DATA: What is the broad representative developer sentiment / satisfaction rate across the wider ecosystem?",
+    "Missing PRIVATE_TELEMETRY_DATA: What is the total active monthly daemon install base?"
+  ],
+  "evidence_gaps": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ],
+  "claim_strength_constraints": [
+    "Do NOT use unverified superlatives ('fastest', 'best').",
+    "Do NOT make absolute claims ('zero data leakage', 'complete privacy', 'guaranteed impossible to leak'); represent as FIRST_PARTY_CLAIM ('designed for local, offline execution').",
+    "Do NOT invent unbacked numerical effect size percentages; use TO_BE_ESTABLISHED.",
+    "Do NOT invent fake software dashboard UIs, buttons, or unverified feature tabs."
+  ],
+  "first_party_claims": [
+    "First-party copy emphasizes data privacy ('Your data is never trained on', 'Run entirely offline') (EVID-WEB-893338BD)."
+  ],
+  "evidence_references": [
+    "EVID-SRCH-132D6868",
+    "EVID-WEB-893338BD",
+    "EVID-WEB-2BAE59D7",
+    "EVID-YT-3A9BE9D4",
+    "EVID-FORUM-F119C750"
+  ],
+  "creative_constraints": [
+    "Target audience: Technical software developers, ML engineers, script automators.",
+    "Visual tone: Clean, functional, terminal/code-native, engineering-focused.",
+    "Product behavior: Real CLI execution ('ollama run llama3'), localhost HTTP requests on port 11434."
+  ],
+  "success_definition": "Coherent multi-asset creative package transforming grounded strategy into platform-ready creative assets with 100% claim discipline."
+}

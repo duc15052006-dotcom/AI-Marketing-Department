@@ -1,0 +1,29 @@
+{
+  "agent_id": "creative",
+  "name": "Creative",
+  "title": "Creative Director, Copywriter, Scriptwriter & Creative Production Director",
+  "role": "CREATIVE",
+  "version": "1.0.0",
+  "description": "Transforms strategic briefs into high-converting hooks, scripts, storyboards, and orchestrates multimedia synthesis.",
+  "epistemic_discipline": {
+    "strictly_enforce_four_tiers": true,
+    "require_evidence_for_claims": false,
+    "block_hypotheses_as_facts": true
+  },
+  "permissions": {
+    "can_orchestrate": false,
+    "can_review_and_approve": false,
+    "can_publish_live": false,
+    "can_mutate_credentials": false,
+    "can_mutate_raw_budgets": false
+  },
+  "whitelisted_tools": [
+    "hook_writer",
+    "script_generator",
+    "storyboard_compiler",
+    "creative_engine_invoker"
+  ],
+  "dependencies": [
+    "strategist"
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "handoff_id": "HNDF-INTEL-91CDF537",
+  "task_id": "TASK_GROUNDED_OLLAMA_001",
+  "product_id": "PROD_OLLAMA_LOCAL_AI",
+  "brand_id": "BRAND_OLLAMA",
+  "research_question": "Analyze market positioning, developer reception, and operational friction for Ollama local AI model runner across official, video, and community sources.",
+  "created_at": "2026-08-16T17:18:20.340569+00:00",
+  "validated_findings": [
+    "Ollama positions itself as a streamlined CLI and background runtime abstraction over llama.cpp, facilitating local and offline execution of open-weight LLMs without API costs or data leakage (EVID-WEB-893338BD, EVID-WEB-2BAE59D7). Community reception within sampled developer discussions validates high utility for its REST API and local model orchestration, while highlighting that real-world performance remains strictly bounded by hardware VRAM constraints (EVID-FORUM-F119C750, EVID-WEB-2BAE59D7).",
+    "Ollama is an open-source software tool enabling local execution of large language models via CLI and desktop interfaces across macOS, Linux, and Windows (EVID-WEB-893338BD, EVID-WEB-2BAE59D7).",
+    "Ollama exposes a background REST API service running on localhost port 11434 (EVID-WEB-2BAE59D7).",
+    "First-party copy emphasizes data privacy ('Your data is never trained on', 'Run entirely offline') and multi-region cloud integration options (EVID-WEB-893338BD).",
+    "Technical documentation samples indicate that 7B Q4 quantized models require ~4-5GB VRAM, while 14B models require 8-10GB VRAM, with CPU inference acting as a slower fallback (EVID-WEB-2BAE59D7).",
+    "Sampled Hacker News thread (N=25 comments) reveals developers value the automated CUDA setup on Linux and REST API endpoint over manual llama.cpp compilation, but desire concurrent multi-model execution and OpenAI API compatibility layers (EVID-FORUM-F119C750).",
+    "Observed YouTube tutorial video demonstrates CLI and cloud feature usage with 2,477 views and 36 likes (EVID-YT-3A9BE9D4).",
+    "Ollama's primary market wedge is reducing developer setup friction for local inference by automating CUDA/quantization backend dependencies, rather than competing on novel model architectures (EVID-FORUM-F119C750, EVID-WEB-2BAE59D7).",
+    "A distinct scope condition exists between setup ease (one-line install) and production feasibility, as practical utility is heavily governed by host VRAM capacity (CONF-40334167).",
+    "Enterprise adoption of Ollama's hosted cloud tier will be primarily driven by compliance/data-residency requirements rather than compute cost savings alone.",
+    "Positioned as the 'easiest way to automate work using open models' directly on-device or in private cloud infrastructure, contrasting against closed hosted APIs with per-token billing (EVID-WEB-893338BD, EVID-WEB-2BAE59D7).",
+    "Within the collected 25-comment Hacker News discussion sample, developers appreciated the abstraction of llama.cpp compilation and GPU setup on Linux, while noting architectural nuances regarding server endpoint compatibility and multi-model concurrency limits (EVID-FORUM-F119C750).",
+    "Primary friction points involve hardware limitations (VRAM saturation causing CPU fallback) and managing model-specific prompt templates or concurrency across local endpoints (EVID-WEB-2BAE59D7, EVID-FORUM-F119C750)."
+  ],
+  "facts": [
+    "Ollama is an open-source software tool enabling local execution of large language models via CLI and desktop interfaces across macOS, Linux, and Windows (EVID-WEB-893338BD, EVID-WEB-2BAE59D7).",
+    "Ollama exposes a background REST API service running on localhost port 11434 (EVID-WEB-2BAE59D7)."
+  ],
+  "observations": [
+    "First-party copy emphasizes data privacy ('Your data is never trained on', 'Run entirely offline') and multi-region cloud integration options (EVID-WEB-893338BD).",
+    "Technical documentation samples indicate that 7B Q4 quantized models require ~4-5GB VRAM, while 14B models require 8-10GB VRAM, with CPU inference acting as a slower fallback (EVID-WEB-2BAE59D7).",
+    "Sampled Hacker News thread (N=25 comments) reveals developers value the automated CUDA setup on Linux and REST API endpoint over manual llama.cpp compilation, but desire concurrent multi-model execution and OpenAI API compatibility layers (EVID-FORUM-F119C750).",
+    "Observed YouTube tutorial video demonstrates CLI and cloud feature usage with 2,477 views and 36 likes (EVID-YT-3A9BE9D4)."
+  ],
+  "inferences": [
+    "Ollama's primary market wedge is reducing developer setup friction for local inference by automating CUDA/quantization backend dependencies, rather than competing on novel model architectures (EVID-FORUM-F119C750, EVID-WEB-2BAE59D7).",
+    "A distinct scope condition exists between setup ease (one-line install) and production feasibility, as practical utility is heavily governed by host VRAM capacity (CONF-40334167)."
+  ],
+  "hypotheses": [
+    "Enterprise adoption of Ollama's hosted cloud tier will be primarily driven by compliance/data-residency requirements rather than compute cost savings alone."
+  ],
+  "dimension_findings": {
+    "market_positioning": {
+      "status": "SUPPORTED",
+      "findings": "Positioned as the 'easiest way to automate work using open models' directly on-device or in private cloud infrastructure, contrasting against closed hosted APIs with per-token billing (EVID-WEB-893338BD, EVID-WEB-2BAE59D7).",
+      "evidence_ids": [
+        "EVID-WEB-893338BD",
+        "EVID-WEB-2BAE59D7"
+      ]
+    },
+    "developer_reception": {
+      "status": "PARTIAL",
+      "findings": "Within the collected 25-comment Hacker News discussion sample, developers appreciated the abstraction of llama.cpp compilation and GPU setup on Linux, while noting architectural nuances regarding server endpoint compatibility and multi-model concurrency limits (EVID-FORUM-F119C750).",
+      "evidence_ids": [
+        "EVID-FORUM-F119C750"
+      ],
+      "limitations": [
+        "Derived from a single bounded forum thread sample; cannot be generalized as broad population sentiment."
+      ]
+    },
+    "operational_friction": {
+      "status": "SUPPORTED",
+      "findings": "Primary friction points involve hardware limitations (VRAM saturation causing CPU fallback) and managing model-specific prompt templates or concurrency across local endpoints (EVID-WEB-2BAE59D7, EVID-FORUM-F119C750).",
+      "evidence_ids": [
+        "EVID-WEB-2BAE59D7",
+        "EVID-FORUM-F119C750"
+      ]
+    }
+  },
+  "known_unknowns": [
+    "Missing TRANSACTION_DATA: What is the exact paid enterprise subscription conversion rate?",
+    "Missing REPRESENTATIVE_DEVELOPER_RECEPTION_DATA: What is the broad representative developer sentiment / satisfaction rate across the wider ecosystem?",
+    "Missing PRIVATE_TELEMETRY_DATA: What is the total active monthly daemon install base?"
+  ],
+  "evidence_gaps": [
+    "TRANSACTION_DATA = MISSING: What is the exact paid enterprise subscription conversion rate?",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING: What is the broad representative developer sentiment / satisfaction rate across the wider ecosystem?",
+    "PRIVATE_TELEMETRY_DATA = MISSING: What is the total active monthly daemon install base?"
+  ],
+  "conflicts": [
+    {
+      "conflict_id": "CONF-40334167",
+      "topic": "Installation Simplicity vs. Model Runtime Requirements",
+      "claim_a": "Ollama offers single-command installation and instant CLI execution (EVID-WEB-893338BD).",
+      "claim_b": "Practical local execution requires dedicated GPU VRAM (6GB-16GB+) to avoid slow CPU execution (EVID-WEB-2BAE59D7).",
+      "epistemic_relation": "DIFFERENT_SCOPE",
+      "evaluation": "Both claims are valid under distinct operational conditions: software binary setup is friction-free, but inference throughput is bound to physical hardware constraints."
+    }
+  ],
+  "evidence_references": [
+    "EVID-SRCH-132D6868",
+    "EVID-WEB-893338BD",
+    "EVID-WEB-2BAE59D7",
+    "EVID-YT-3A9BE9D4",
+    "EVID-FORUM-F119C750"
+  ],
+  "confidence": "MEDIUM",
+  "confidence_rationale": "High-quality first-party documentation and verified technical guides provide solid evidence for positioning and operational constraints. However, overall confidence is medium due to developer sentiment being limited to a single bounded forum thread (N=25) and the complete absence of enterprise transaction/telemetry data.",
+  "research_limitations": [
+    "Developer reception is derived from a single bounded forum sample (N=25 comments); not general population truth.",
+    "All enterprise monetization, conversion, and install base telemetry remain completely unknown."
+  ],
+  "next_research_actions": "Handoff to Strategist for local AI tooling positioning and to Creative for pain-point messaging focusing on hardware optimization and frictionless private setup."
+}

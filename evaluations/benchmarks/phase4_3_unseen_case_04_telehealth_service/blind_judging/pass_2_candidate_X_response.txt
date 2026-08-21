@@ -1,0 +1,62 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 0.0,
+      "rationale": "The research findings section is completely missing from the candidate's output."
+    },
+    "evidence_discipline": {
+      "score": 4.5,
+      "rationale": "While known facts and observations are listed, the inferences section is missing and other parts are truncated."
+    },
+    "segmentation_quality": {
+      "score": 0.0,
+      "rationale": "Both the customer segments and top priority segment sections are completely missing."
+    },
+    "positioning_quality": {
+      "score": 3.5,
+      "rationale": "A brand positioning statement is provided, but the value proposition section is entirely empty."
+    },
+    "channel_strategy": {
+      "score": 0.0,
+      "rationale": "Both the channel priorities and deferred channels sections are completely missing."
+    },
+    "creative_quality": {
+      "score": 4.0,
+      "rationale": "Creative territories and hooks are defined but lack depth and are heavily truncated."
+    },
+    "copy_script_executability": {
+      "score": 2.0,
+      "rationale": "Short-form copy is missing entirely, and the vertical video script is severely truncated."
+    },
+    "performance_funnel_metrics": {
+      "score": 3.5,
+      "rationale": "The measurement framework is introduced but truncated, leaving the funnel metrics incomplete."
+    },
+    "experimentation_rigor": {
+      "score": 3.0,
+      "rationale": "The experimentation section is highly fragmented, truncated, and incorrectly mixed into the risks section."
+    },
+    "attribution_tracking": {
+      "score": 4.0,
+      "rationale": "The event taxonomy and schema are initiated but truncated before full implementation details are shown."
+    },
+    "claim_safety_compliance": {
+      "score": 8.0,
+      "rationale": "The candidate successfully incorporates the required disclaimers and avoids prohibited claims despite the missing sections."
+    },
+    "governance_human_approval": {
+      "score": 3.0,
+      "rationale": "The Go/Test/Hold/Defer decisions are missing, though some human approval requirements are listed."
+    },
+    "internal_consistency_lineage": {
+      "score": 2.0,
+      "rationale": "The end-to-end strategic lineage is broken due to the high volume of missing and truncated sections."
+    },
+    "completeness": {
+      "score": 1.5,
+      "rationale": "The proposal is highly incomplete, with multiple critical sections entirely omitted or truncated."
+    }
+  }
+}
+```

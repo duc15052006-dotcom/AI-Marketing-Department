@@ -1,0 +1,18 @@
+{
+  "graph_id": "LINEAGE-GAN65-E2E-001",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "chain": [
+    {
+      "evidence": [
+        "EVID-GAN65-01 (GaN Efficiency)",
+        "EVID-GAN65-03 (Tinhte Commuter Friction)"
+      ],
+      "intelligence_finding": "Vietnamese urban tech commuters experience daily friction with bulky OEM laptop bricks and demand compact consolidation.",
+      "strategy_positioning": "The ultra-compact 65W GaN charger designed to replace bulky OEM bricks and charge compatible USB-C laptops and phones.",
+      "creative_asset": "COPY-SF-01 ('Still carrying a 500g power brick for your laptop? Upgrade to 65W GaN for compatible devices.')",
+      "performance_experiment": "PEXP-001 (Creative Hook Mechanism Test: VAR-A vs VAR-B)",
+      "cmo_decision": "CMO-DEC-001 (Adopt Pocket-Sized Power / Bag Consolidation as primary positioning anchor)"
+    }
+  ]
+}

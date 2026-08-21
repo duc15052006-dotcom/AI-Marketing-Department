@@ -1,0 +1,32 @@
+[
+  {
+    "risk_id": "RISK-GAN-01",
+    "risk": "Thermal safety anxiety causes high product page abandonment among laptop owners.",
+    "category": "CUSTOMER_PERCEPTION",
+    "likelihood": "HIGH",
+    "impact": "HIGH",
+    "evidence_or_reason": "Vietnamese forum discussions highlight fear of laptop damage from overheating adapters (EVID-GAN65-05).",
+    "mitigation": "Enforce transparent thermal safety and multi-stage voltage protection messaging across all landing touchpoints.",
+    "owner": "STRATEGIST"
+  },
+  {
+    "risk_id": "RISK-GAN-02",
+    "risk": "Loose wall socket fit in Vietnamese coffee shops and older offices.",
+    "category": "PHYSICAL_USABILITY",
+    "likelihood": "MEDIUM",
+    "impact": "MEDIUM",
+    "evidence_or_reason": "Tinhte forum users report heavy chargers falling out of loose 2-pin sockets (EVID-GAN65-03).",
+    "mitigation": "Highlight compact balanced center-of-gravity design in product messaging.",
+    "owner": "CREATIVE"
+  },
+  {
+    "risk_id": "RISK-GAN-03",
+    "risk": "Ad-blocker tracking suppression corrupting first-party analytics.",
+    "category": "MEASUREMENT",
+    "likelihood": "HIGH",
+    "impact": "MEDIUM",
+    "evidence_or_reason": "Tech-savvy audiences exhibit high tracking prevention tool adoption.",
+    "mitigation": "Implement server-side conversion logging and checkout verification.",
+    "owner": "PERFORMANCE"
+  }
+]

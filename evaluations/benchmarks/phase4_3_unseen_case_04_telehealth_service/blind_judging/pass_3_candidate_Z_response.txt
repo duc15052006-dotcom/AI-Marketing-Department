@@ -1,0 +1,62 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 4.0,
+      "rationale": "The dedicated Research Findings section is entirely missing, though some solid consumer friction analysis is integrated into the observations."
+    },
+    "evidence_discipline": {
+      "score": 8.5,
+      "rationale": "The candidate strictly adheres to the provided qualitative and quantitative evidence, correctly referencing source IDs like EVID-CARE-001 and EVID-CARE-002."
+    },
+    "segmentation_quality": {
+      "score": 5.0,
+      "rationale": "While a segmentation matrix is provided, the critical 'Top Priority Segment' section is completely missing from the output."
+    },
+    "positioning_quality": {
+      "score": 7.5,
+      "rationale": "The positioning architecture and value proposition are technically sharp and well-differentiated, despite minor truncation."
+    },
+    "channel_strategy": {
+      "score": 6.0,
+      "rationale": "The channel prioritization framework is logical and addresses the budget constraints, but the details are heavily truncated."
+    },
+    "creative_quality": {
+      "score": 4.5,
+      "rationale": "The candidate outlines creative hooks, but the 'Selected Creative Territory' section is completely missing."
+    },
+    "copy_script_executability": {
+      "score": 5.0,
+      "rationale": "The hooks are highly relevant and grounded in clinical data, but the actual short-form copy and video scripts are truncated or missing."
+    },
+    "performance_funnel_metrics": {
+      "score": 5.5,
+      "rationale": "The candidate establishes a mathematically sound blended CAC target of $128.57, but the full performance funnel details are truncated."
+    },
+    "experimentation_rigor": {
+      "score": 6.0,
+      "rationale": "The first experiment on HSA/FSA checkout friction is well-structured with a clear hypothesis, but subsequent experiments are truncated."
+    },
+    "attribution_tracking": {
+      "score": 1.0,
+      "rationale": "The Attribution Approach section is completely missing from the candidate's proposal."
+    },
+    "claim_safety_compliance": {
+      "score": 9.5,
+      "rationale": "The candidate demonstrates exceptional compliance discipline, explicitly outlining prohibited claims and enforcing clear distinctions between platform software and FDA-cleared physical sensors."
+    },
+    "governance_human_approval": {
+      "score": 7.0,
+      "rationale": "The proposal outlines clear human approval gates and a Go/Test/Hold/Defer matrix, though some parts are truncated."
+    },
+    "internal_consistency_lineage": {
+      "score": 6.5,
+      "rationale": "There is strong logical alignment between the clinical capacity constraints and the operational next actions, though missing sections disrupt the overall lineage."
+    },
+    "completeness": {
+      "score": 3.0,
+      "rationale": "The proposal is highly incomplete, with multiple critical sections entirely omitted and several others severely truncated."
+    }
+  }
+}
+```

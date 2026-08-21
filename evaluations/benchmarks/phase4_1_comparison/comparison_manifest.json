@@ -1,0 +1,43 @@
+{
+  "comparison_phase": "4.1.1",
+  "timestamp": "2026-08-17T05:46:28.834669+00:00",
+  "comparison_mode": "EVIDENCE_CONTROLLED",
+  "comparison_framing": "PRODUCTION_ARCHITECTURE_VS_SINGLE_CALL_BASELINE",
+  "hardening_disclosure": "The Five-Agent candidate underwent prior multi-pass deterministic qualification through Phase 4.0.1. The Single-Model baseline was evaluated as a raw, single-call generation without multi-pass post-editing. Therefore, this benchmark compares a hardened multi-agent production architecture against a raw single-call baseline.",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "model_parity": {
+    "status": "FAIL",
+    "baseline_model_requested": "gemini-flash-latest",
+    "baseline_model_resolved": "gemini-flash-lite-latest",
+    "five_agent_model_requested": "gemini-flash-latest",
+    "five_agent_model_resolved": "gemini-flash-latest"
+  },
+  "telemetry_breakdown": {
+    "single_model": {
+      "calls": 1,
+      "prompt_tokens": 2076,
+      "completion_tokens": 2341,
+      "total_tokens": 4417,
+      "latency_ms": 9090.485900000203
+    },
+    "five_agent": {
+      "calls": 6,
+      "stage_latencies_ms": {
+        "cmo_initial": 9834.618599968962,
+        "intelligence": 9837.567700014915,
+        "strategist": 9880.6973999599,
+        "creative": 9769.371499947738,
+        "performance": 9767.653699964285,
+        "cmo_final": 9783.054300001822
+      },
+      "total_latency_ms": 58872.96319985762,
+      "token_comparison_status": "INCOMPLETE"
+    }
+  },
+  "preliminary_verdict": "INCONCLUSIVE_MODEL_MISMATCH",
+  "blind_packet_audit": {
+    "identity_leak_count": 0,
+    "leaks_detected": []
+  }
+}

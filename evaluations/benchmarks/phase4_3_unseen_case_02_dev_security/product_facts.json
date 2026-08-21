@@ -1,0 +1,34 @@
+{
+  "product_id": "PROD_SECURE_CODE_AI_SEA",
+  "product_name": "SecureCode AI",
+  "product_category": "B2B Developer Security & Code Analysis SaaS",
+  "target_geography": "Vietnam & Southeast Asia (SEA)",
+  "verified_capabilities": [
+    "IDE extensions for VS Code, JetBrains, and Cursor offering real-time AI security remediation prompts",
+    "CI/CD automated pipeline integration (GitHub Actions, GitLab CI, Bitbucket Pipelines) scanning pull requests in under 90 seconds",
+    "SAST vulnerability detection targeting OWASP Top 10, CWE Top 25, and high-entropy API secret leaks",
+    "Auto-fix pull request generation with contextual security patches verified against language syntax trees (Python, TypeScript, Go, Java)",
+    "Compliance mapping report generator producing downloadable audit-ready SARIF and ISO 27001 / PCI-DSS compliance readiness checklists",
+    "On-premise / VPC air-gapped runner deployment option for regulated fintech and banking clients",
+    "Self-serve 14-day free trial with up to 5 repository scans without requiring credit card"
+  ],
+  "unverified_prohibited_claims": [
+    "100% guarantee against all zero-day vulnerabilities or future security breaches",
+    "Instant replacement of human security audit teams or certified penetration testers",
+    "Legally binding automated certification of SOC 2 or HIPAA compliance",
+    "Unconditional zero-false-positive rate across any arbitrary legacy codebase"
+  ],
+  "pricing_model": {
+    "developer_tier": "Free for public open-source repositories and up to 3 private repositories",
+    "team_tier": " per contributing developer per month (billed annually) for up to 50 repos",
+    "enterprise_tier": "Custom tier with dedicated VPC coordinator, SLA, and enterprise compliance reporting"
+  },
+  "market_context": {
+    "launch_timing": "Q4 2026",
+    "primary_competitors": [
+      "Snyk (High price barrier for mid-sized Vietnamese tech teams, USD-denominated enterprise contracts)",
+      "SonarQube (Strong on code quality, slower on AI-assisted vulnerability auto-remediation and secret scanning)"
+    ],
+    "target_firmographic_profile": "Mid-tier tech startups, outsourced software development houses (ODCs), and emerging fintechs with 10-150 developers in Vietnam and Singapore"
+  }
+}

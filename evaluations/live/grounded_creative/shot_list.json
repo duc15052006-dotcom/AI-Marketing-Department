@@ -1,0 +1,52 @@
+[
+  {
+    "shot_id": "SHOT-01",
+    "shot_type": "Macro Close-Up Screen Recording",
+    "subject": "Terminal window on developer desktop",
+    "action": "Cursor typing CLI command '$ ollama run llama3' with instantaneous response.",
+    "composition": "Centered terminal on minimalist dark slate background with subtle code editor in soft focus.",
+    "visual_intent": "Establish direct terminal-native technical credibility.",
+    "duration": "4.0s",
+    "product_reference_coverage": "VERIFIED_PRODUCT_FACT: CLI workflow and command syntax"
+  },
+  {
+    "shot_id": "SHOT-02",
+    "shot_type": "Over-The-Shoulder Medium Shot",
+    "subject": "Developer working at clean multi-monitor workstation",
+    "action": "Developer running Python script on IDE, observing instant local token generation in terminal output.",
+    "composition": "Over-the-shoulder framing focusing on IDE and terminal split-screen.",
+    "visual_intent": "Convey real-world engineering productivity and workflow integration.",
+    "duration": "8.0s",
+    "product_reference_coverage": "VERIFIED_PRODUCT_FACT: Local inference execution across workstation OS"
+  },
+  {
+    "shot_id": "SHOT-03",
+    "shot_type": "Split-Screen Technical Recording",
+    "subject": "HTTP REST client and localhost port 11434 endpoint",
+    "action": "Sending POST request to http://localhost:11434/api/generate and receiving streamed JSON tokens.",
+    "composition": "Left side shows HTTP payload structure; right side displays live streaming response text.",
+    "visual_intent": "Demonstrate drop-in REST API programmability on port 11434.",
+    "duration": "10.0s",
+    "product_reference_coverage": "VERIFIED_PRODUCT_FACT: Background REST API daemon on port 11434"
+  },
+  {
+    "shot_id": "SHOT-04",
+    "shot_type": "Motion Graphics Data Visualization",
+    "subject": "VRAM memory allocation infographic",
+    "action": "Animated memory bars showing 4-5GB VRAM requirement for 7B Q4 model and 8-10GB for 14B model.",
+    "composition": "Clean technical bar chart with clear numerical VRAM callouts on dark technical grid.",
+    "visual_intent": "Communicate honest hardware requirements to prevent CPU fallback performance disappointment.",
+    "duration": "8.0s",
+    "product_reference_coverage": "VERIFIED_PRODUCT_FACT: Parameter-to-VRAM memory sizing constraints"
+  },
+  {
+    "shot_id": "SHOT-05",
+    "shot_type": "Minimalist Endcard",
+    "subject": "Brand download endpoint and platform badges",
+    "action": "Displaying official download URL and macOS, Linux, and Windows platform support icons.",
+    "composition": "Clean typography centered on dark background.",
+    "visual_intent": "Drive immediate developer download action.",
+    "duration": "8.0s",
+    "product_reference_coverage": "VERIFIED_PRODUCT_FACT: Official distribution across macOS, Linux, Windows"
+  }
+]

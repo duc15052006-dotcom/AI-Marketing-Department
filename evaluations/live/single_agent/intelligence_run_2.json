@@ -1,0 +1,226 @@
+{
+  "RUN_ID": "RUN-cb368b5c8af1",
+  "RUN_INDEX": 2,
+  "TIMESTAMP": "2026-08-16T15:18:54Z",
+  "AGENT_ID": "intelligence",
+  "TASK_ID": "TASK-20260816-LIVE-INTEL-01",
+  "PRODUCT_ID": "PROD_VIRAL_CONSUMER_01",
+  "PROVIDER": "thespark",
+  "MODEL_REPORTED": "gpt-5.6-sol",
+  "PROVIDER_PROVENANCE": "THIRD_PARTY",
+  "MODEL_PROVENANCE": "UNVERIFIED_THIRD_PARTY_CLAIM",
+  "TRUST_STATUS": "UNVERIFIED",
+  "MODEL_PARAMETERS": {
+    "temperature": 0.2,
+    "model": "gpt-5.6-sol"
+  },
+  "TASK_INPUT": {
+    "task_id": "TASK-20260816-LIVE-INTEL-01",
+    "parent_task_id": null,
+    "objective": "Evaluate commercial demand for viral consumer product and identify required missing evidence",
+    "business_context": "A consumer product is receiving very high viral attention online (80M views).",
+    "product_id": "PROD_VIRAL_CONSUMER_01",
+    "brand_id": "BRAND_VIRAL_01",
+    "known_facts": [
+      "High video views online (80M across TikTok/Reels)",
+      "High engagement rates (shares, comments, likes) on comedic video formats"
+    ],
+    "unknown_facts": [
+      "Transaction volume / actual purchases",
+      "Conversion rate from view to checkout",
+      "Purchase-intent evidence vs pure entertainment attention",
+      "Repeat purchase / churn rate",
+      "Market-wide representativeness beyond viral video viewer cohort"
+    ],
+    "assumptions": [
+      "Comedic engagement may or may not translate to commercial willingness-to-pay"
+    ],
+    "hypotheses": [
+      "Viral entertainment traffic has lower commercial conversion than high-intent search traffic"
+    ],
+    "owner_agent": "INTELLIGENCE",
+    "supporting_agents": [],
+    "tools_allowed": [],
+    "data_allowed": [],
+    "evidence_required": true,
+    "output_schema": "IntelligenceDemandAssessment",
+    "success_criteria": [],
+    "confidence": 1.0,
+    "risks": [],
+    "blockers": [],
+    "escalation_rule": "Escalate to CMO before committing production or inventory budget",
+    "next_action": "Handoff to Strategist for bounded experimentation",
+    "created_at": "2026-08-16T15:17:38.636898+00:00"
+  },
+  "NORMALIZED_OUTPUT": {
+    "summary": "The available evidence establishes substantial online attention but does not establish commercial demand. The reported 80M TikTok/Reels views and high engagement on comedic formats are attention signals; without transaction, checkout, purchase-intent, cohort, and retention data, willingness-to-pay cannot be verified. The immediate decision should be to defer demand-based scaling and instrument a controlled conversion test that separates viral entertainment traffic from high-intent search traffic.",
+    "details": {
+      "task_id": "TASK-20260816-LIVE-INTEL-01",
+      "product_id": "PROD_VIRAL_CONSUMER_01",
+      "brand_id": "BRAND_VIRAL_01",
+      "business_question": "Does the viral attention surrounding the product represent commercially actionable consumer demand?",
+      "decision_supported": "Whether to scale inventory and marketing investment or first validate conversion economics through a controlled pilot.",
+      "epistemic_breakdown": {
+        "facts": [],
+        "observations": [
+          {
+            "claim": "High video views online (80M across TikTok/Reels)",
+            "status": "USER_SUPPLIED_KNOWN_FACT_NOT_INDEPENDENTLY_VERIFIED",
+            "signal_type": "ATTENTION",
+            "commercial_interpretation": "Demonstrates reported reach, not purchases or willingness-to-pay.",
+            "verification_gap": "No platform exports, post-level records, deduplicated reach, geography, time window, attribution, or collection timestamp were supplied."
+          },
+          {
+            "claim": "High engagement rates (shares, comments, likes) on comedic video formats",
+            "status": "USER_SUPPLIED_KNOWN_FACT_NOT_INDEPENDENTLY_VERIFIED",
+            "signal_type": "ATTENTION_INTEREST",
+            "commercial_interpretation": "Shows audience response to comedic content, but the response may concern entertainment rather than the product offer.",
+            "verification_gap": "No engagement-rate calculation, denominator, comment sample, sentiment analysis, CTA behavior, or platform benchmark was supplied."
+          }
+        ],
+        "inferences": [
+          {
+            "claim": "Commercial demand cannot currently be confirmed or rejected.",
+            "confidence_tier": "HIGH",
+            "reasoning": "The supplied evidence measures attention and engagement, while transaction volume, funnel conversion, purchase-intent behavior, and retention are explicitly unknown."
+          },
+          {
+            "claim": "Scaling inventory or acquisition spending solely from the 80M-view figure would carry substantial demand-validation risk.",
+            "confidence_tier": "HIGH",
+            "reasoning": "Views do not quantify unique prospective buyers, checkout behavior, unit economics, or repeat demand."
+          },
+          {
+            "claim": "The comedic creative format may be attracting an entertainment-led audience whose conversion behavior differs from high-intent visitors.",
+            "confidence_tier": "LOW",
+            "reasoning": "This is plausible and consistent with the supplied hypothesis, but no source-level cohort conversion data are available."
+          }
+        ],
+        "hypotheses": [
+          {
+            "claim": "Viral entertainment traffic has lower commercial conversion than high-intent search traffic",
+            "status": "UNVERIFIED",
+            "test": "Tag viral-social and high-intent-search cohorts separately, hold landing page and offer conditions constant, and compare qualified product-page visits, checkout starts, completed purchases, customer acquisition cost, refund rate, and contribution margin.",
+            "falsification_condition": "The hypothesis is falsified if viral entertainment traffic produces an equal or higher conversion rate under comparable measurement and offer conditions."
+          }
+        ]
+      },
+      "demand_signal_assessment": {
+        "transaction_signals": {
+          "status": "UNKNOWN",
+          "required_evidence": [
+            "Completed orders by date, source, campaign, and creative",
+            "Net revenue after cancellations, refunds, discounts, taxes, and chargebacks",
+            "Units sold and unique purchasers",
+            "Contribution margin and customer acquisition cost by cohort"
+          ]
+        },
+        "purchase_intent_signals": {
+          "status": "UNKNOWN",
+          "required_evidence": [
+            "Product-page sessions from viral posts",
+            "Pricing-page engagement",
+            "Where-to-buy clicks",
+            "Add-to-cart events",
+            "Checkout starts",
+            "Trial or waitlist registrations where applicable"
+          ]
+        },
+        "consideration_signals": {
+          "status": "UNKNOWN",
+          "required_evidence": [
+            "Branded and product-category comparison searches",
+            "Product FAQ and specification engagement",
+            "Comment questions about price, availability, shipping, product fit, or purchase location"
+          ]
+        },
+        "interest_signals": {
+          "status": "PARTIALLY_INDICATED_BUT_UNVERIFIED",
+          "available_evidence": [
+            "Reported shares, comments, and likes"
+          ],
+          "limitation": "Engagement was generated by comedic formats and has not been classified by commercial intent."
+        },
+        "attention_signals": {
+          "status": "STRONG_REPORTED_SIGNAL",
+          "available_evidence": [
+            "Reported 80M views across TikTok/Reels"
+          ],
+          "limitation": "Unique reach, duplication across platforms, paid versus organic distribution, geography, audience relevance, view quality, and time window are unknown."
+        },
+        "overall_demand_status": "UNVERIFIED",
+        "decision_rule": "Do not infer either strong commercial demand or zero demand from the current evidence."
+      },
+      "minimum_validation_plan": {
+        "instrumentation": [
+          "Apply unique UTMs or post-level click identifiers to every viral creative and platform.",
+          "Validate analytics events for product views, add-to-cart actions, checkout starts, completed orders, refunds, and repeat purchases.",
+          "Separate paid, organic viral, creator, direct, and high-intent search cohorts.",
+          "Deduplicate users where legally and technically permissible using aggregated privacy-compliant analytics."
+        ],
+        "controlled_pilot": [
+          "Run a limited inventory or preorder test with transparent delivery terms.",
+          "Use the same product offer and substantially equivalent landing experience across viral-social and high-intent-search cohorts.",
+          "Track conversion rate, customer acquisition cost, average order value, contribution margin, cancellation rate, refund rate, and cohort retention.",
+          "Analyze commercial-intent comments separately from humor-only or meme engagement."
+        ],
+        "evidence_needed_before_scaling": [
+          "Verified completed purchase volume attributable to identifiable traffic cohorts",
+          "View-to-click, click-to-checkout, and checkout-to-purchase conversion rates",
+          "Positive or acceptable contribution economics after fulfillment and returns",
+          "Geographic and demographic fit between viral viewers and serviceable buyers",
+          "Repeat purchase or retention evidence if the product relies on recurring demand",
+          "Evidence that results persist beyond the viral spike"
+        ],
+        "stopping_condition": "Evidence becomes decision-sufficient when cohort-level transactions and unit economics can determine whether viral traffic converts profitably and whether the result persists beyond the initial attention spike."
+      },
+      "contradictions_and_alternative_explanations": [
+        "High sharing may reflect humor, novelty, controversy, or social signaling rather than product interest.",
+        "Low observed conversion could result from landing-page friction, poor availability, price, shipping limitations, broken tracking, or weak calls-to-action rather than absent demand.",
+        "High conversion in a small viral cohort may not generalize to the broader market.",
+        "A viral spike can decay quickly even when short-term purchases occur."
+      ],
+      "confidence_assessment": {
+        "tier": "LOW_FOR_COMMERCIAL_DEMAND",
+        "confidence_rationale": "No primary transaction records, funnel telemetry, platform exports, customer cohorts, pricing evidence, retention data, or representative market sample were supplied. The conclusion is therefore limited to identifying the evidence gap and preventing attention metrics from being misclassified as purchase demand. Confidence is high only in the narrower conclusion that current evidence is insufficient.",
+        "numeric_field_note": "The top-level numeric confidence is included only to satisfy the requested schema and is not a statistically calibrated probability."
+      }
+    }
+  },
+  "CONFIDENCE": 0.2,
+  "UNKNOWN_FACTS": [
+    "Transaction volume / actual purchases",
+    "Conversion rate from view to checkout",
+    "Purchase-intent evidence vs pure entertainment attention",
+    "Repeat purchase / churn rate",
+    "Market-wide representativeness beyond viral video viewer cohort",
+    "Unique reach after deduplicating viewers across TikTok and Reels",
+    "View-to-click and click-to-product-page rates",
+    "Add-to-cart, checkout-start, and checkout-completion rates",
+    "Revenue, contribution margin, refund rate, and chargeback rate by traffic cohort",
+    "Audience geography and overlap with serviceable markets",
+    "Paid versus organic share of the reported views",
+    "Duration and decay rate of the viral attention",
+    "Product price, availability, shipping constraints, and landing-page friction",
+    "Commercial-intent share of comments and engagement",
+    "Incremental lift relative to a holdout or pre-viral baseline"
+  ],
+  "ASSUMPTIONS": [
+    "Comedic engagement may or may not translate to commercial willingness-to-pay"
+  ],
+  "HYPOTHESES": [
+    "Viral entertainment traffic has lower commercial conversion than high-intent search traffic",
+    "A meaningful portion of engagement is driven by entertainment value rather than purchase intent",
+    "Conversion may be materially constrained by offer, landing-page, price, availability, or tracking friction rather than underlying demand alone",
+    "Commercial response will decay faster than sustained category demand if the observed activity is primarily a viral spike"
+  ],
+  "PARSE_STATUS": "VALID",
+  "SCHEMA_STATUS": "PASS",
+  "SEMANTIC_EVALUATION": "PASS",
+  "TOKEN_USAGE": {
+    "prompt_tokens": 7439,
+    "completion_tokens": 2738,
+    "total_tokens": 10177
+  },
+  "LATENCY_MS": 35055.96,
+  "ERROR": null
+}

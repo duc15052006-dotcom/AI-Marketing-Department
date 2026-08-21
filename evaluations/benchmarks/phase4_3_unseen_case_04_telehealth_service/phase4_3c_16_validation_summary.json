@@ -1,0 +1,52 @@
+{
+  "benchmark_id": "BENCHMARK-PHASE4-3-CASE04-TELEHEALTH-SERVICE",
+  "case_id": "CASE_04_TELEHEALTH_REGULATED_SERVICE",
+  "brain_version": "FIVE_AGENT_BRAIN_V1_RC3",
+  "brain_rc3_fingerprint": "b13f2f6c28007dd7a6f9e2a00175b9e87f59908ece647fb53ceba5186496354a",
+  "input_hash": "e8bd72e193bc1dd980ff0e667df3eff0f5e329248a2c9bf8cf19d78bb900b811",
+  "evaluated_at": "2026-08-19T17:10:27.724432+00:00",
+  "candidates": {
+    "A5": {
+      "run_id": "RUN-PHASE4-3-RC3-CASE04-A5-001",
+      "calls": 7,
+      "provider_total_tokens": 41559,
+      "artifact_hash": "2da9639535d4b0d4f0b2e90da6a17c676cf26efad4dbcbe8e59dd12ee1414f47",
+      "deliverables": 19,
+      "weighted_score": null,
+      "dimension_scores": {}
+    },
+    "B5": {
+      "run_id": "RUN-PHASE4-3-RC3-CASE04-B5-001",
+      "calls": 4,
+      "provider_total_tokens": 31971,
+      "artifact_hash": "14bd1d876f4f5b20e23394b4f7e5e268991914c6ce1cca069e849c330ff7670e",
+      "deliverables": 22,
+      "resource_parity": "UNDER_BUDGET",
+      "weighted_score": null,
+      "dimension_scores": {}
+    },
+    "C5": {
+      "run_id": "RUN-PHASE4-3-RC3-CASE04-C5-001",
+      "calls": 1,
+      "provider_total_tokens": 9880,
+      "artifact_hash": "b9d26e81e0fbd289237fb224cd67affbf93e57dff9492422cdb9de47827732c1",
+      "deliverables": 8,
+      "weighted_score": null,
+      "dimension_scores": {}
+    }
+  },
+  "primary_comparison": {
+    "a5_score": null,
+    "b5_score": null,
+    "delta": null,
+    "quality_gate": "INCOMPLETE"
+  },
+  "valid_judge_pass_count": 0,
+  "failed_judge_attempts": 6,
+  "blind_mapping": {
+    "X": "A5",
+    "Y": "C5",
+    "Z": "B5"
+  },
+  "blind_commitment_hash": "e8e6d016adb0e39c553bb50076c602d374b5bad8c39825d3cce53eaa8aca7f19"
+}

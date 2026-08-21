@@ -1,0 +1,259 @@
+{
+  "run_id": "RUN-b1211d6cb6dd",
+  "status": "COMPLETED",
+  "provider": "gemini",
+  "model_name": "gemini-flash-latest",
+  "output": {
+    "summary": "Grounded Performance Measurement, Tracking, Experimentation, and Diagnostic Framework designed for PROD_OLLAMA_LOCAL_AI in PLANNING_ONLY mode. Establishes telemetry taxonomy, non-telemetry developer event mapping, experiment specifications PEXP-001 through PEXP-003, allocation logic, and falsifiable diagnostic thresholds while strictly preserving missing baseline telemetry.",
+    "details": {
+      "measurement_framework": {
+        "business_objective": "Drive qualified developer adoption and local CLI/daemon activation on macOS, Linux, and Windows without cloud token friction.",
+        "campaign_objective": "Demand creation and technical documentation/download activation.",
+        "primary_kpis": [
+          "Outbound Download / Documentation Link CTR (Denom: Impressions)",
+          "Landing Page Download Initiation Rate (Denom: Landing Page Unique Sessions)",
+          "CLI First-Run Activation Proxy (Denom: Verified Downloads, TO_BE_ESTABLISHED via voluntary ping/docs completion)"
+        ],
+        "secondary_kpis": [
+          "3-Second Hook Retention Rate (Denom: Total Video Impressions)",
+          "Average Documentation Reading Depth (Denom: Documentation Sessions)",
+          "Model Sizing Guide Interaction Rate (Denom: Hardware Page Visitors)"
+        ],
+        "guardrail_metrics": [
+          "Landing Page Bounce Rate (<1s visit anomaly indicating bot traffic/click misdirection)",
+          "VRAM Misconfiguration Bounce Rate (drop-off on hardware chart indicating hardware incompatibility)",
+          "Non-Configured Stop-Loss Guardrail: Hard stop thresholds remain NOT_CONFIGURED pending explicit CMO budgetary input."
+        ],
+        "attribution_context": {
+          "attribution_method": "Multi-Touch First-Click / Direct Platform with Geo-Holdout validation planned for scale",
+          "causal_strength": "OBSERVATIONAL_MODEL_DEPENDENT",
+          "key_assumptions": [
+            "Platform click-through data reflects direct technical interest but not guaranteed successful local CLI execution.",
+            "Organic word-of-mouth creates unmeasured baseline lift in direct GitHub/CLI downloads."
+          ],
+          "known_limitations": [
+            "Private local execution and lack of telemetry daemon mean post-install usage cannot be directly tracked without client opt-in.",
+            "Ad network post-view attribution over-credits generic developer search interest."
+          ]
+        }
+      },
+      "event_tracking_plan": {
+        "taxonomy": [
+          {
+            "event_name": "view_creative_impression",
+            "tier": "DISTRIBUTION",
+            "trigger": "Ad creative loaded in developer feed or search result",
+            "parameters": [
+              "variant_id",
+              "creative_asset_id",
+              "channel_id",
+              "placement"
+            ]
+          },
+          {
+            "event_name": "engage_hook_3s",
+            "tier": "ATTENTION",
+            "trigger": "User watches >= 3 seconds of technical terminal workflow video",
+            "parameters": [
+              "creative_asset_id",
+              "hook_type",
+              "duration_watched"
+            ]
+          },
+          {
+            "event_name": "click_documentation_download",
+            "tier": "TRAFFIC",
+            "trigger": "Outbound click to Ollama documentation or platform binary download page",
+            "parameters": [
+              "target_os (macOS/Linux/Windows)",
+              "referrer",
+              "utm_campaign",
+              "utm_content"
+            ]
+          },
+          {
+            "event_name": "view_vram_sizing_table",
+            "tier": "INTENT",
+            "trigger": "Scroll depth reaches 7B/14B VRAM compatibility table",
+            "parameters": [
+              "time_on_table",
+              "os_detected",
+              "viewport_resolution"
+            ]
+          },
+          {
+            "event_name": "initiate_binary_download",
+            "tier": "CONVERSION",
+            "trigger": "User clicks direct binary download button for OS",
+            "parameters": [
+              "os_platform",
+              "architecture (arm64/amd64)",
+              "variant_id"
+            ]
+          },
+          {
+            "event_name": "copy_cli_install_command",
+            "tier": "CONVERSION",
+            "trigger": "User clicks clipboard copy button for 'curl -fsSL https://ollama.com/install.sh | sh'",
+            "parameters": [
+              "source_page",
+              "command_type"
+            ]
+          }
+        ],
+        "data_validation_protocol": [
+          "Deduplicate repeated binary download clicks within a 5-minute window per IP/session.",
+          "Reconcile web server log downloads against client-side analytics event dispatches.",
+          "Enforce UTM parameter strictness: utm_source, utm_medium, utm_campaign, utm_content (matching variant IDs VAR-A, VAR-B, VAR-C)."
+        ]
+      },
+      "experiment_portfolio": {
+        "experiments": [
+          {
+            "experiment_id": "PEXP-001",
+            "name": "Terminal Setup Hook vs Generic AI Feature Hook",
+            "objective": "Test whether friction-focused terminal demonstration (VAR-A, SCRIPT-SF-01) improves link CTR compared to standard feature announcement copy.",
+            "variants": [
+              {
+                "variant_id": "VAR-A",
+                "asset_id": "SCRIPT-SF-01",
+                "hypothesis": "Terminal 1-line setup visual break drives higher link CTR among engineers seeking fast local execution."
+              },
+              {
+                "variant_id": "VAR-CONTROL",
+                "asset_id": "COPY-HERO-01",
+                "hypothesis": "Standard high-level local AI capability overview."
+              }
+            ],
+            "primary_metric": "Link CTR (Outbound Clicks / Impressions)",
+            "guardrail_metric": "Landing Page 3-Second Bounce Rate",
+            "sample_size_requirement": "TO_BE_ESTABLISHED upon initial traffic baseline stabilization",
+            "decision_rule": "If VAR-A Link CTR > VAR-CONTROL with non-overlapping 95% confidence intervals and bounce rate within guardrails, scale VAR-A. If intervals overlap, mark INCONCLUSIVE."
+          },
+          {
+            "experiment_id": "PEXP-002",
+            "name": "Localhost REST API Specificity vs Abstract Privacy Messaging",
+            "objective": "Evaluate whether highlighting localhost:11434 API integration (VAR-B, COPY-SF-02) increases technical documentation page depth.",
+            "variants": [
+              {
+                "variant_id": "VAR-B",
+                "asset_id": "COPY-SF-02",
+                "hypothesis": "API endpoint specificity captures developer builder intent and drives deeper documentation exploration."
+              },
+              {
+                "variant_id": "VAR-CONTROL",
+                "asset_id": "COPY-LF-01",
+                "hypothesis": "Broad offline privacy and zero-token cost value proposition."
+              }
+            ],
+            "primary_metric": "Documentation Session Depth (>2 API pages viewed or endpoint copy event)",
+            "guardrail_metric": "Total Session Duration",
+            "sample_size_requirement": "TO_BE_ESTABLISHED",
+            "decision_rule": "If VAR-B documentation depth exceeds control with practical significance, validate API-first messaging for developer builder cohorts."
+          },
+          {
+            "experiment_id": "PEXP-003",
+            "name": "Upfront VRAM Hardware Sizing vs Direct Immediate Download CTA",
+            "objective": "Determine whether transparent 7B/14B VRAM requirements (VAR-C, COPY-SF-03) pre-qualify traffic and reduce misconfiguration drop-offs.",
+            "variants": [
+              {
+                "variant_id": "VAR-C",
+                "asset_id": "COPY-SF-03",
+                "hypothesis": "Upfront hardware sizing reduces unqualified downloads on underpowered machines and increases install-command copy rate."
+              },
+              {
+                "variant_id": "VAR-A",
+                "asset_id": "COPY-SF-01",
+                "hypothesis": "Direct download CTA maximizes raw top-of-funnel binary download initiation."
+              }
+            ],
+            "primary_metric": "Qualified Download Intent Rate (Download Initiation or CLI Copy / Landing Page Sessions)",
+            "guardrail_metric": "Hardware sizing page exit rate",
+            "sample_size_requirement": "TO_BE_ESTABLISHED",
+            "decision_rule": "Evaluate trade-off between top-of-funnel click volume and qualified post-click installation intent. Mark INCONCLUSIVE if conversion variance is high."
+          }
+        ]
+      },
+      "media_allocation_logic": {
+        "mode": "PLANNING_ONLY (Zero financial budget fabrication)",
+        "allocation_principles": [
+          "Phase 1 (Exploration): Split traffic equally (33.3% / 33.3% / 33.3%) across VAR-A, VAR-B, and VAR-C across verified developer channels (GitHub forums, technical search discovery).",
+          "Phase 2 (Evaluation): Hold test variants until planned sample power is reached. Do not halt early for small-number anomalies.",
+          "Phase 3 (Exploitation): Reallocate proportional distribution towards validated winner only if statistical criteria are met and guardrails respected; if INCONCLUSIVE, maintain balanced learning split."
+        ],
+        "stop_loss_rules": "No artificial stop-loss dollar amount is assumed. Stop-loss logic requires explicit campaign budgetary ceilings from CMO."
+      },
+      "funnel_diagnostics_and_failure_memory": {
+        "diagnostic_matrix": [
+          {
+            "symptom": "High impressions, low CTR on VAR-A",
+            "bottleneck": "Hook Stopping Power / Technical Relevance",
+            "investigation": "Deconstruct opening 2-second terminal visual; evaluate whether font sizing or terminal contrast fails to communicate ease of use."
+          },
+          {
+            "symptom": "High CTR, low documentation depth on VAR-B",
+            "bottleneck": "Message Continuity / Landing Bridge",
+            "investigation": "Check whether ad promised immediate curl API syntax while landing page directed to generic download overview."
+          },
+          {
+            "symptom": "High download clicks, high immediate exits on hardware table",
+            "bottleneck": "Hardware Expectation Mismatch",
+            "investigation": "Evaluate if ad attracted users expecting cloud execution who lack 4-5GB VRAM for 7B models."
+          }
+        ],
+        "failure_taxonomy_logging": {
+          "categories": [
+            "STRATEGY_FAILURE",
+            "CREATIVE_FAILURE",
+            "EXECUTION_FAILURE",
+            "TRACKING_FAILURE",
+            "CHANNEL_FAILURE"
+          ],
+          "logging_requirement": "Any terminated variant must log empirical observation, sample size, failure category, and disproven hypothesis to prevent institutional re-testing."
+        }
+      }
+    },
+    "confidence": "HIGH",
+    "confidence_rationale": "Measurement architecture, event taxonomy, statistical experiment designs (PEXP-001..003), and diagnostic routing are strictly grounded in known product technical facts (CLI/daemon on port 11434, VRAM constraints, OS support) while explicitly withholding unmeasured telemetry and unconfigured budgets in accordance with PLANNING_ONLY governance.",
+    "evidence_references": [
+      "EVID-WEB-893338BD",
+      "EVID-FORUM-F119C750",
+      "EVID-WEB-2BAE59D7",
+      "CONF-40334167",
+      "EVID-SRCH-132D6868"
+    ],
+    "unknown_facts": [
+      "TRANSACTION_DATA = MISSING",
+      "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+      "PRIVATE_TELEMETRY_DATA = MISSING",
+      "Baseline Click-Through Rates and Conversion Rates for developer ad variants are TO_BE_ESTABLISHED.",
+      "Exact authorized test flight budget and monetary stop-loss ceilings are NOT_CONFIGURED."
+    ],
+    "assumptions": [
+      "Developers primarily evaluate local LLM tools based on terminal setup speed, API compatibility (localhost:11434), and VRAM footprint.",
+      "Outbound binary downloads and CLI curl command copies serve as the best non-telemetry proxies for user acquisition intent."
+    ],
+    "hypotheses": [
+      "Terminal setup speed hooks (VAR-A) generate higher developer Link CTR than generic AI feature announcements.",
+      "Localhost REST API integration hooks (VAR-B) yield higher documentation engagement depth among engineering builders.",
+      "Upfront VRAM requirement transparency (VAR-C) filters out underpowered machines and increases qualified installation intent."
+    ],
+    "next_action": "Submit Grounded Performance Package to CMO for budget configuration approval and coordinate with Creative/Strategist for flight asset staging."
+  },
+  "confidence": "HIGH",
+  "confidence_rationale": "",
+  "evidence_references": [],
+  "unknown_facts": [
+    "TRANSACTION_DATA = MISSING",
+    "REPRESENTATIVE_DEVELOPER_RECEPTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING"
+  ],
+  "hypotheses": [],
+  "next_action": "Handoff to CMO Master Orchestrator",
+  "latency_ms": 12857.555099995807,
+  "usage": {
+    "prompt_tokens": 8915,
+    "completion_tokens": 2960,
+    "total_tokens": 12033
+  }
+}

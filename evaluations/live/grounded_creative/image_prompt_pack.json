@@ -1,0 +1,44 @@
+[
+  {
+    "image_prompt_id": "IMG-PROMPT-01",
+    "purpose": "Developer workstation hero visual for technical article and social banner.",
+    "subject": "Modern clean developer desk setup with an ultrawide monitor displaying an active terminal window with code execution and local model orchestration.",
+    "setting": "Minimalist engineering workspace with soft ambient lighting, dark matte desk surface, mechanical keyboard, and clean wire management.",
+    "composition": "Centered wide view of workstation monitor with crisp typography on screen.",
+    "lighting": "Subtle cool ambient backlighting behind monitor, soft warm desk lamp illuminating keyboard.",
+    "visual_intent": "Showcase focused, professional local AI engineering flow.",
+    "product_elements": "Terminal display showing '$ ollama run llama3' command prompt and local JSON stream.",
+    "verified_details": "CLI terminal execution and localhost orchestration.",
+    "creative_interpretations": "Modern ambient desk lighting and mechanical keyboard styling.",
+    "negative_constraints": "No glowing futuristic sci-fi robots, no floating hologram brain meshes, no generic corporate stock models, no fake dashboard charts.",
+    "aspect_ratio": "16:9"
+  },
+  {
+    "image_prompt_id": "IMG-PROMPT-02",
+    "purpose": "Technical diagram visual for Model-to-VRAM hardware sizing guide.",
+    "subject": "Precision technical hardware diagram illustrating GPU VRAM capacity tiers for 7B and 14B model weights.",
+    "setting": "Dark slate engineering schematic background with crisp typography and subtle grid lines.",
+    "composition": "Horizontal comparison layout comparing 4GB, 8GB, and 16GB memory tiers with parameter sizing badges.",
+    "lighting": "Crisp high-contrast technical UI illumination.",
+    "visual_intent": "Provide clear, trustworthy memory sizing information for technical builders.",
+    "product_elements": "Text callouts for 7B Q4 (~4-5GB VRAM) and 14B (~8-10GB VRAM).",
+    "verified_details": "Exact VRAM figures from technical documentation.",
+    "creative_interpretations": "Stylized hardware memory bar layout.",
+    "negative_constraints": "No magical infinite RAM claims, no 3D cartoon characters, no low-resolution fuzzy text.",
+    "aspect_ratio": "16:9"
+  },
+  {
+    "image_prompt_id": "IMG-PROMPT-03",
+    "purpose": "Social card visual for localhost REST API quickstart announcement.",
+    "subject": "Split code view showing a clean Python HTTP POST request on left and streaming JSON response on right with port 11434 highlighted.",
+    "setting": "Dark mode code editor interface with syntax-highlighted code.",
+    "composition": "Clean dual-panel code layout with crisp monospaced typography.",
+    "lighting": "High-contrast IDE syntax theme.",
+    "visual_intent": "Demonstrate straightforward HTTP REST integration for developers.",
+    "product_elements": "URL string 'http://localhost:11434/api/generate'.",
+    "verified_details": "Verified REST API daemon endpoint and default port 11434.",
+    "creative_interpretations": "Color scheme of syntax highlighting.",
+    "negative_constraints": "No fake GUI buttons, no cartoon illustrations, no blurry code.",
+    "aspect_ratio": "1:1"
+  }
+]

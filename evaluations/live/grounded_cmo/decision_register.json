@@ -1,0 +1,166 @@
+[
+  {
+    "decision_id": "CMO-DEC-001",
+    "decision": "Adopt 'Local Development Simplicity & Terminal Flow' (TERRITORY-01) as primary strategic positioning anchor.",
+    "decision_type": "EVIDENCE_SUPPORTED_ACTION",
+    "status": "INTERNAL_GO (DESIGN_APPROVED)",
+    "rationale": "Directly activates verified developer wedge in community feedback (EVID-FORUM-F119C750) and technical docs (EVID-WEB-2BAE59D7).",
+    "supported_by": [
+      "STRAT-001",
+      "EVID-FORUM-F119C750",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "dependencies": [
+      "Creative Asset Package"
+    ],
+    "assumptions": "Developers prioritize terminal setup speed over GUI wrappers.",
+    "unknowns": [
+      "Long-term developer retention without GUI tools"
+    ],
+    "risks": "Low risk; aligns with core open-source distribution.",
+    "owner_agent": "CREATIVE",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Prepare creative asset package for human distribution review.",
+    "reconsider_condition": "Reconsider if community feedback shifts toward GUI requirement."
+  },
+  {
+    "decision_id": "CMO-DEC-002",
+    "decision": "Enforce transparent Model-to-VRAM hardware qualification (STRAT-004) across all onboarding touchpoints.",
+    "decision_type": "BOUNDED_STRATEGIC_BET",
+    "status": "INTERNAL_GO (DESIGN_APPROVED)",
+    "rationale": "Pre-empts developer churn and low-spec CPU fallback performance disappointment.",
+    "supported_by": [
+      "STRAT-004",
+      "CONF-40334167",
+      "EVID-WEB-2BAE59D7"
+    ],
+    "dependencies": [
+      "Interactive VRAM sizing widget"
+    ],
+    "assumptions": "Hardware transparency increases long-term trust even if it filters unqualified visitors.",
+    "unknowns": [
+      "Exact conversion drop-off introduced by qualification step"
+    ],
+    "risks": "Top-funnel drop-off if widget is overly complex.",
+    "owner_agent": "STRATEGIST",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Monitor PEXP-002 landing page test results.",
+    "reconsider_condition": "Halt if qualification decreases initiated downloads by >20%."
+  },
+  {
+    "decision_id": "CMO-DEC-003",
+    "decision": "Approve experimental design of PEXP-001 (Hook Mechanism) and PEXP-002 (Hardware CTA).",
+    "decision_type": "EXPERIMENT_APPROVAL",
+    "status": "DESIGN_APPROVED (READY_FOR_HUMAN_APPROVAL)",
+    "rationale": "Falsifiable experiments to determine optimal developer hook and CTA messaging.",
+    "supported_by": [
+      "PEXP-001",
+      "PEXP-002"
+    ],
+    "dependencies": [
+      "Event tracking instrumentation"
+    ],
+    "assumptions": "Sufficient organic traffic exists to achieve statistical power.",
+    "unknowns": [
+      "Baseline conversion rates (TO_BE_ESTABLISHED)"
+    ],
+    "risks": "Inconclusive results if sample size is inadequate.",
+    "owner_agent": "PERFORMANCE",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Complete tracking instrumentation and submit PEXP-001/PEXP-002 for human public-distribution sign-off.",
+    "reconsider_condition": "Pause if tracking tag outage or SRM is detected."
+  },
+  {
+    "decision_id": "CMO-DEC-004",
+    "decision": "Classify Technical Search (CHAN-TECH-SEARCH) as HYPOTHESIZED_CHANNEL subject to PEXP-003 validation.",
+    "decision_type": "BOUNDED_STRATEGIC_BET",
+    "status": "DESIGN_APPROVED (READY_FOR_HUMAN_APPROVAL)",
+    "rationale": "Search discovery identified technical queries (EVID-SRCH-132D6868); commercial intent requires validation.",
+    "supported_by": [
+      "STRAT-006",
+      "EVID-SRCH-132D6868",
+      "PEXP-003"
+    ],
+    "dependencies": [
+      "Business budget authorization for search test"
+    ],
+    "assumptions": "Search queries represent active builders seeking runtime solutions.",
+    "unknowns": [
+      "Search conversion rate and CPID"
+    ],
+    "risks": "Budget waste if broad match captures non-technical queries.",
+    "owner_agent": "PERFORMANCE",
+    "required_approval": "READY_FOR_HUMAN_APPROVAL",
+    "next_action": "Submit PEXP-003 test budget proposal for human executive review.",
+    "reconsider_condition": "Defer if search intent fails to generate initiated downloads."
+  },
+  {
+    "decision_id": "CMO-DEC-005",
+    "decision": "Defer broad non-technical consumer paid social advertising (CHAN-CONSUMER-PAID).",
+    "decision_type": "DEFERRED_DECISION",
+    "status": "DEFER",
+    "rationale": "Current evidence is strongly developer-oriented and does not establish broad non-technical consumer-market fit.",
+    "supported_by": [
+      "STRAT-008",
+      "EVID-WEB-893338BD",
+      "EVID-FORUM-F119C750"
+    ],
+    "dependencies": [
+      "Consumer GUI development"
+    ],
+    "assumptions": "Consumers require one-click GUI and packaged applications, not CLI daemons.",
+    "unknowns": [
+      "Consumer market size for local AI"
+    ],
+    "risks": "Opportunity cost of delayed consumer expansion (low risk currently).",
+    "owner_agent": "STRATEGIST",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Re-evaluate if non-technical consumer desktop applications are launched.",
+    "reconsider_condition": "Reconsider upon release of consumer GUI bundle."
+  },
+  {
+    "decision_id": "CMO-DEC-006",
+    "decision": "Defer direct enterprise outbound field sales (CHAN-ENTERPRISE-OUTBOUND).",
+    "decision_type": "DEFERRED_DECISION",
+    "status": "DEFER",
+    "rationale": "Enterprise transaction baselines and commercial monetization features are currently UNKNOWN (TRANSACTION_DATA = MISSING).",
+    "supported_by": [
+      "STRAT-009"
+    ],
+    "dependencies": [
+      "Commercial licensing / enterprise tier"
+    ],
+    "assumptions": "Direct field sales requires proven commercial monetization architecture.",
+    "unknowns": [
+      "Enterprise willingness-to-pay and procurement cycles"
+    ],
+    "risks": "Premature sales overhead without validated product-market fit.",
+    "owner_agent": "STRATEGIST",
+    "required_approval": "DESIGN_APPROVED",
+    "next_action": "Conduct Intelligence review on enterprise procurement requirements.",
+    "reconsider_condition": "Reconsider if commercial licensing tier is introduced."
+  },
+  {
+    "decision_id": "CMO-DEC-007",
+    "decision": "Submit formal request for Human Executive Budget & Stop-Loss Policy configuration.",
+    "decision_type": "HUMAN_APPROVAL_REQUIRED",
+    "status": "ESCALATE (READY_FOR_HUMAN_APPROVAL)",
+    "rationale": "Autonomous agents must not invent monetary budgets or financial risk ceilings.",
+    "supported_by": [
+      "Media Allocation Logic",
+      "Governance Charter"
+    ],
+    "dependencies": [
+      "Human Business Owner input"
+    ],
+    "assumptions": "Human stakeholders hold exclusive financial authorization authority.",
+    "unknowns": [
+      "Authorized monthly testing budget"
+    ],
+    "risks": "Execution blocked until financial parameters are supplied.",
+    "owner_agent": "CMO",
+    "required_approval": "READY_FOR_HUMAN_APPROVAL",
+    "next_action": "Present CMO brief to Human Executive with illustrative allocation options.",
+    "reconsider_condition": "Unblock once budget configuration is received."
+  }
+]

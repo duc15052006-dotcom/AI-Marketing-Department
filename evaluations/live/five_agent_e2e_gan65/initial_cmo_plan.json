@@ -1,0 +1,34 @@
+{
+  "task_id": "TASK_E2E_CMO_INIT_001",
+  "product_id": "PROD_FRESH_GAN65_BENCHMARK",
+  "brand_id": "BRAND_FRESH_GAN65_BENCHMARK",
+  "research_questions_for_intelligence": [
+    "1. What is the current market context and adoption driver for 65W GaN chargers among laptop/mobile users?",
+    "2. What are the key competitor offerings (Anker, Ugreen, Baseus) and pricing brackets observable in ecommerce?",
+    "3. What are primary customer pain points with traditional OEM silicon charging bricks (size, heat, multi-device clutter)?",
+    "4. What are observable customer purchase criteria, device compatibility concerns, and trust barriers?"
+  ],
+  "product_spec_boundaries": [
+    "65W maximum power output",
+    "GaN (Gallium Nitride) semiconductor technology",
+    "USB-C interface / connectivity",
+    "Compact portable form factor"
+  ],
+  "unknown_register": [
+    "Exact number of ports (single vs multi-port is UNKNOWN/TO_BE_DETERMINED)",
+    "Supported protocols (PD3.0/PPS/QC is UNKNOWN/TO_BE_DETERMINED)",
+    "Cable inclusion (UNKNOWN/TO_BE_DETERMINED)",
+    "Retail price and margins (UNKNOWN/TO_BE_DETERMINED)",
+    "Exact physical dimensions and weight (UNKNOWN/TO_BE_DETERMINED)",
+    "TRANSACTION_DATA = MISSING",
+    "PRIVATE_TELEMETRY_DATA = MISSING",
+    "CAC = UNKNOWN",
+    "ROAS = UNKNOWN"
+  ],
+  "delegation_to_intelligence": {
+    "owner": "INTELLIGENCE",
+    "objective": "Execute fresh research on 65W GaN charger category, competitor landscape, customer JTBD, and purchase concerns without inventing product specs.",
+    "success_criteria": "Every factual finding must cite valid fresh Evidence IDs; unknown baseline gaps must be preserved."
+  },
+  "raw_cmo_output": {}
+}

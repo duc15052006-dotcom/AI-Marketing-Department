@@ -1,0 +1,40 @@
+{
+  "attribution_hierarchy": [
+    "1. Randomized Controlled Trials / Holdouts (Highest Causal Reliability)",
+    "2. Geo/Time Incrementality & Lift Tests",
+    "3. Strong Quasi-Experimental Designs (Regression Discontinuity / Synthetic Controls)",
+    "4. Multi-Touch Attribution Models (Algorithmic / Rule-based)",
+    "5. Platform-Reported Attribution (Lowest Causal Reliability / Directional Only)"
+  ],
+  "attribution_methods": [
+    {
+      "method_name": "DESCRIPTIVE_ATTRIBUTION",
+      "scope": "First-touch and last-touch referral logging via UTM parameters",
+      "use_case": "Operational routing and channel traffic composition analysis.",
+      "assumptions": "Assumes recorded touchpoint is correlated with visit; does NOT establish causal incrementality."
+    },
+    {
+      "method_name": "PLATFORM_ATTRIBUTION",
+      "scope": "In-platform conversion reporting (e.g. ad network pixel tracking)",
+      "use_case": "Campaign delivery optimization and automated algorithmic pacing.",
+      "assumptions": "Known platform self-attribution bias; must never be reported as incrementality proof."
+    },
+    {
+      "method_name": "EXPERIMENTAL_INCREMENTALITY",
+      "scope": "Holdout cohorts and randomized creative delivery splits",
+      "use_case": "Determining true causal net-new developer acquisition lift.",
+      "assumptions": "Requires stable control group without cross-contamination."
+    },
+    {
+      "method_name": "MODEL_BASED_ATTRIBUTION",
+      "scope": "Marketing Mix Modeling (MMM) when multi-channel spend scale is reached",
+      "use_case": "Macro channel allocation and diminishing returns analysis.",
+      "assumptions": "Requires sufficient time-series variance and spend magnitude; currently UNKNOWN/NOT_APPLICABLE."
+    }
+  ],
+  "causal_discipline_rules": [
+    "Never claim correlation equals causation.",
+    "Never claim platform-reported conversions represent true incremental lift.",
+    "Never assert Multi-Touch Attribution (MTA) represents causal truth."
+  ]
+}

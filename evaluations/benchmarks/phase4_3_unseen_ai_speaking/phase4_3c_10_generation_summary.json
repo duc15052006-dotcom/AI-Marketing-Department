@@ -1,0 +1,142 @@
+{
+  "benchmark_id": "BENCHMARK-PHASE4-3-UNSEEN-AI-SPEAKING-THREE-WAY",
+  "protocol_fingerprint": "462086a31dd80c257ecbabfba12d6249772c3207e86ce379d8d76ea2248ceb0f",
+  "executed_at": "2026-08-19T06:33:11.410378+00:00",
+  "candidates": {
+    "CANDIDATE_A": {
+      "run_id": "RUN-PHASE4-3-V2-BENCH-001",
+      "status": "SUCCESS",
+      "calls": 6,
+      "artifact_hash": "402f852fa12f700f818a690af47b3402dea6f79f3616e758d3f21a08b2425d94",
+      "provider_total_tokens": 29516,
+      "visible_input_tokens": 6263,
+      "visible_output_tokens": 10514,
+      "reasoning_tokens": 0,
+      "latency_ms": 147021.02770000056,
+      "canonical_deliverables_count": 21,
+      "deliverables_breakdown": {
+        "EXECUTIVE_SUMMARY": true,
+        "RESEARCH": true,
+        "SEGMENTATION": true,
+        "STRATEGY": true,
+        "CREATIVE": true,
+        "MEASUREMENT": true,
+        "GOVERNANCE": false
+      },
+      "origins": {
+        "executive_summary": "Stage 6 (Final CMO)",
+        "known_facts": "Stage 6 (Final CMO)",
+        "observations": "Stage 6 (Final CMO)",
+        "inferences": "Stage 6 (Final CMO)",
+        "hypotheses": "Stage 6 (Final CMO)",
+        "unknowns": "Stage 6 (Final CMO)",
+        "customer_segments": "Stage 6 (Final CMO)",
+        "selected_creative_territory": "Stage 5 (Performance)",
+        "measurement_framework": "Stage 5 (Performance)",
+        "experiments": "Stage 5 (Performance)",
+        "attribution_approach": "Stage 5 (Performance)",
+        "creative_territories": "Stage 4 (Creative)",
+        "angles": "Stage 4 (Creative)",
+        "hooks": "Stage 4 (Creative)",
+        "short_form_copy": "Stage 4 (Creative)",
+        "video_script": "Stage 4 (Creative)",
+        "positioning": "Stage 3 (Strategist)",
+        "channel_priorities": "Stage 3 (Strategist)",
+        "deferred_channels": "Stage 3 (Strategist)",
+        "what_not_to_do": "Stage 3 (Strategist)",
+        "value_proposition": "Stage 1 (CMO Initial)"
+      }
+    },
+    "CANDIDATE_B": {
+      "run_id": "RUN-PHASE4-3-V2-BENCH-001-CAND-B-R2",
+      "status": "SUCCESS",
+      "calls": 5,
+      "artifact_hash": "cab444d8e65a974cd4dc498845a5e1b19d50bd5840f6cdfb2ac7d30c5983fd2e",
+      "target_budget": 29516,
+      "target_range": [
+        26564,
+        32468
+      ],
+      "provider_total_tokens": 59382,
+      "resource_parity": "OVER_BUDGET",
+      "latency_ms": 151688.76385688782,
+      "canonical_deliverables_count": 23,
+      "deliverables_breakdown": {
+        "EXECUTIVE_SUMMARY": true,
+        "RESEARCH": true,
+        "SEGMENTATION": true,
+        "STRATEGY": true,
+        "CREATIVE": true,
+        "MEASUREMENT": true,
+        "GOVERNANCE": true
+      },
+      "origins": {
+        "executive_summary": "Pass 5 (Synthesis)",
+        "known_facts": "Pass 5 (Synthesis)",
+        "observations": "Pass 5 (Synthesis)",
+        "inferences": "Pass 5 (Synthesis)",
+        "hypotheses": "Pass 5 (Synthesis)",
+        "unknowns": "Pass 5 (Synthesis)",
+        "customer_segments": "Pass 5 (Synthesis)",
+        "channel_priorities": "Pass 5 (Synthesis)",
+        "deferred_channels": "Pass 5 (Synthesis)",
+        "what_not_to_do": "Pass 5 (Synthesis)",
+        "creative_territories": "Pass 5 (Synthesis)",
+        "positioning": "Pass 4 (Performance)",
+        "value_proposition": "Pass 4 (Performance)",
+        "angles": "Pass 4 (Performance)",
+        "hooks": "Pass 4 (Performance)",
+        "measurement_framework": "Pass 4 (Performance)",
+        "experiments": "Pass 4 (Performance)",
+        "attribution_approach": "Pass 4 (Performance)",
+        "risks": "Pass 4 (Performance)",
+        "selected_creative_territory": "Pass 3 (Creative)",
+        "short_form_copy": "Pass 3 (Creative)",
+        "video_script": "Pass 3 (Creative)",
+        "top_priority_segment": "Pass 2 (Strategy)"
+      }
+    },
+    "CANDIDATE_C": {
+      "run_id": "RUN-PHASE4-3-V2-BENCH-001-CAND-C",
+      "status": "SUCCESS",
+      "calls": 1,
+      "artifact_hash": "068f8db3050fbe0faecbedbf9d66c386f447e9f60f2daca6d6a95b3086f678d3",
+      "provider_total_tokens": 10304,
+      "latency_ms": 50412.05668449402,
+      "canonical_deliverables_count": 12,
+      "deliverables_breakdown": {
+        "EXECUTIVE_SUMMARY": true,
+        "RESEARCH": true,
+        "SEGMENTATION": true,
+        "STRATEGY": true,
+        "CREATIVE": false,
+        "MEASUREMENT": false,
+        "GOVERNANCE": false
+      },
+      "origins": {
+        "executive_summary": "Candidate C One-Shot Model Output",
+        "research_findings": "Candidate C One-Shot Model Output",
+        "positioning": "Candidate C One-Shot Model Output",
+        "value_proposition": "Candidate C One-Shot Model Output",
+        "known_facts": "Candidate C One-Shot Model Output",
+        "observations": "Candidate C One-Shot Model Output",
+        "inferences": "Candidate C One-Shot Model Output",
+        "hypotheses": "Candidate C One-Shot Model Output",
+        "unknowns": "Candidate C One-Shot Model Output",
+        "customer_segments": "Candidate C One-Shot Model Output",
+        "channel_priorities": "Candidate C One-Shot Model Output",
+        "deferred_channels": "Candidate C One-Shot Model Output"
+      }
+    }
+  },
+  "audit": {
+    "A_TO_B_CONTENT_LEAK_COUNT": 0,
+    "A_TO_C_CONTENT_LEAK_COUNT": 0,
+    "B_TO_C_CONTENT_LEAK_COUNT": 0,
+    "V1_REUSE_COUNT": 0,
+    "SIMULATED_ARTIFACT_USED_COUNT": 0,
+    "CONTENT_PATCH_COUNT": 0,
+    "SEMANTIC_REWRITE_COUNT": 0,
+    "FABRICATED_DELIVERABLE_COUNT": 0
+  }
+}

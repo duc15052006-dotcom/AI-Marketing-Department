@@ -1,0 +1,363 @@
+{
+  "blind_commitment_hash": "ca36c886e77e7b72d9646a08dd26b507f01de8145ec6c03a80a1ea0f240b7f26",
+  "blind_summary": {
+    "X": {
+      "weighted_quality_score": 7.31,
+      "dimension_scores": {
+        "research_quality": {
+          "median": 9.0,
+          "raw_scores": [
+            8.5,
+            9.0
+          ],
+          "range": 0.5
+        },
+        "evidence_discipline": {
+          "median": 9.5,
+          "raw_scores": [
+            9.5,
+            9.5
+          ],
+          "range": 0.0
+        },
+        "segmentation_quality": {
+          "median": 9.0,
+          "raw_scores": [
+            8.5,
+            9.0
+          ],
+          "range": 0.5
+        },
+        "positioning_quality": {
+          "median": 8.0,
+          "raw_scores": [
+            7.0,
+            8.0
+          ],
+          "range": 1.0
+        },
+        "channel_strategy": {
+          "median": 9.0,
+          "raw_scores": [
+            8.5,
+            9.0
+          ],
+          "range": 0.5
+        },
+        "creative_quality": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "copy_script_executability": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "performance_funnel_metrics": {
+          "median": 9.5,
+          "raw_scores": [
+            9.5,
+            9.5
+          ],
+          "range": 0.0
+        },
+        "experimentation_rigor": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "attribution_tracking": {
+          "median": 9.5,
+          "raw_scores": [
+            9.0,
+            9.5
+          ],
+          "range": 0.5
+        },
+        "claim_safety_compliance": {
+          "median": 10.0,
+          "raw_scores": [
+            9.8,
+            10.0
+          ],
+          "range": 0.1999999999999993
+        },
+        "governance_human_approval": {
+          "median": 9.5,
+          "raw_scores": [
+            9.0,
+            9.5
+          ],
+          "range": 0.5
+        },
+        "internal_consistency_lineage": {
+          "median": 8.5,
+          "raw_scores": [
+            8.0,
+            8.5
+          ],
+          "range": 0.5
+        },
+        "completeness": {
+          "median": 6.0,
+          "raw_scores": [
+            5.0,
+            6.0
+          ],
+          "range": 1.0
+        }
+      }
+    },
+    "Y": {
+      "weighted_quality_score": 5.235,
+      "dimension_scores": {
+        "research_quality": {
+          "median": 8.5,
+          "raw_scores": [
+            8.0,
+            8.5
+          ],
+          "range": 0.5
+        },
+        "evidence_discipline": {
+          "median": 8.5,
+          "raw_scores": [
+            8.0,
+            8.5
+          ],
+          "range": 0.5
+        },
+        "segmentation_quality": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "positioning_quality": {
+          "median": 5.0,
+          "raw_scores": [
+            4.0,
+            5.0
+          ],
+          "range": 1.0
+        },
+        "channel_strategy": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "creative_quality": {
+          "median": 8.5,
+          "raw_scores": [
+            8.0,
+            8.5
+          ],
+          "range": 0.5
+        },
+        "copy_script_executability": {
+          "median": 9.0,
+          "raw_scores": [
+            8.5,
+            9.0
+          ],
+          "range": 0.5
+        },
+        "performance_funnel_metrics": {
+          "median": 7.5,
+          "raw_scores": [
+            4.0,
+            7.5
+          ],
+          "range": 3.5
+        },
+        "experimentation_rigor": {
+          "median": 2.0,
+          "raw_scores": [
+            2.0,
+            2.0
+          ],
+          "range": 0.0
+        },
+        "attribution_tracking": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "claim_safety_compliance": {
+          "median": 10.0,
+          "raw_scores": [
+            9.5,
+            10.0
+          ],
+          "range": 0.5
+        },
+        "governance_human_approval": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "internal_consistency_lineage": {
+          "median": 4.5,
+          "raw_scores": [
+            4.0,
+            4.5
+          ],
+          "range": 0.5
+        },
+        "completeness": {
+          "median": 4.5,
+          "raw_scores": [
+            4.0,
+            4.5
+          ],
+          "range": 0.5
+        }
+      }
+    },
+    "Z": {
+      "weighted_quality_score": 6.316,
+      "dimension_scores": {
+        "research_quality": {
+          "median": 8.2,
+          "raw_scores": [
+            5.5,
+            8.2
+          ],
+          "range": 2.6999999999999993
+        },
+        "evidence_discipline": {
+          "median": 7.5,
+          "raw_scores": [
+            5.0,
+            7.5
+          ],
+          "range": 2.5
+        },
+        "segmentation_quality": {
+          "median": 7.5,
+          "raw_scores": [
+            4.5,
+            7.5
+          ],
+          "range": 3.0
+        },
+        "positioning_quality": {
+          "median": 8.5,
+          "raw_scores": [
+            6.5,
+            8.5
+          ],
+          "range": 2.0
+        },
+        "channel_strategy": {
+          "median": 8.0,
+          "raw_scores": [
+            5.0,
+            8.0
+          ],
+          "range": 3.0
+        },
+        "creative_quality": {
+          "median": 8.5,
+          "raw_scores": [
+            7.5,
+            8.5
+          ],
+          "range": 1.0
+        },
+        "copy_script_executability": {
+          "median": 7.0,
+          "raw_scores": [
+            7.0,
+            7.0
+          ],
+          "range": 0.0
+        },
+        "performance_funnel_metrics": {
+          "median": 5.0,
+          "raw_scores": [
+            3.0,
+            5.0
+          ],
+          "range": 2.0
+        },
+        "experimentation_rigor": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "attribution_tracking": {
+          "median": 1.0,
+          "raw_scores": [
+            1.0,
+            1.0
+          ],
+          "range": 0.0
+        },
+        "claim_safety_compliance": {
+          "median": 9.5,
+          "raw_scores": [
+            9.5,
+            9.5
+          ],
+          "range": 0.0
+        },
+        "governance_human_approval": {
+          "median": 2.0,
+          "raw_scores": [
+            1.0,
+            2.0
+          ],
+          "range": 1.0
+        },
+        "internal_consistency_lineage": {
+          "median": 7.5,
+          "raw_scores": [
+            3.5,
+            7.5
+          ],
+          "range": 4.0
+        },
+        "completeness": {
+          "median": 5.5,
+          "raw_scores": [
+            3.0,
+            5.5
+          ],
+          "range": 2.5
+        }
+      }
+    }
+  },
+  "pairwise_wins": {
+    "X": 3,
+    "Y": 1,
+    "Z": 2,
+    "TIE": 0
+  },
+  "sealed_at": "2026-08-19T07:36:25.139905+00:00"
+}

@@ -1,0 +1,262 @@
+```json
+{
+  "candidate_scores": {
+    "X": {
+      "research_quality": {
+        "score": 8.5,
+        "rationale": "Excellent technical problem framing. Correctly identifies the tension between Western compliance demands (EVID_01) and developer tool rejection due to false positives (EVID_02). Synthesizes the regional budget constraints ($5k-$15k) perfectly.",
+        "confidence": 0.95
+      },
+      "evidence_discipline": {
+        "score": 9.5,
+        "rationale": "Flawless adherence to the provided evidence. Accurately cites EVID_01, EVID_02, EVID_03, and EVID_04 in context. No hallucinated statistics or unverified market assertions are present.",
+        "confidence": 0.98
+      },
+      "segmentation_quality": {
+        "score": 8.5,
+        "rationale": "Provides a highly actionable three-tier segmentation matrix. Correctly prioritizes Export-Oriented ODCs in Vietnam as the primary target, aligning with the 10-150 developer firmographic profile.",
+        "confidence": 0.9
+      },
+      "positioning_quality": {
+        "score": 8.0,
+        "rationale": "Strong positioning around 'Export-Grade Compliance Enabler' vs. 'Developer Productivity Tool'. Effectively highlights the contrast with Snyk and SonarQube.",
+        "confidence": 0.9
+      },
+      "channel_strategy": {
+        "score": 8.5,
+        "rationale": "Directly maps channel priorities to EVID_04 (word-of-mouth, LinkedIn, GitHub demo PRs). Explicitly defers low-yield channels like GDN and Meta ads to protect the CAC payback target.",
+        "confidence": 0.95
+      },
+      "creative_quality": {
+        "score": 1.0,
+        "rationale": "Critical failure: All creative sections (Creative Territories, Selected Creative Territory, Angles, Hooks) are completely missing from the output.",
+        "confidence": 1.0
+      },
+      "copy_script_executability": {
+        "score": 1.0,
+        "rationale": "Critical failure: Short-form copy and video scripts are completely missing from the output.",
+        "confidence": 1.0
+      },
+      "performance_funnel_metrics": {
+        "score": 9.5,
+        "rationale": "Outstanding PLG funnel model. Integrates the $29/dev/month pricing with the $5k-$15k annual budget (EVID_03) to show realistic ACV ($5,220 to $13,920). Outlines clear conversion targets (22% trial-to-paid) and a <5-month CAC payback period.",
+        "confidence": 0.98
+      },
+      "experimentation_rigor": {
+        "score": 1.0,
+        "rationale": "Critical failure: The 'Experiments' section is completely empty/missing.",
+        "confidence": 1.0
+      },
+      "attribution_tracking": {
+        "score": 9.0,
+        "rationale": "Excellent hybrid attribution architecture. Clearly maps first-touch/last-touch tracking via Segment.io with product telemetry (IDE installs, scan speeds, auto-fix merges) in Mixpanel and Stripe.",
+        "confidence": 0.95
+      },
+      "claim_safety_compliance": {
+        "score": 9.8,
+        "rationale": "Absolute compliance. Explicitly identifies and mitigates all prohibited claims (no 100% zero-day guarantees, no automated SOC 2 certification, no replacement of human auditors).",
+        "confidence": 0.99
+      },
+      "governance_human_approval": {
+        "score": 9.0,
+        "rationale": "Provides a robust Go/Test/Hold/Defer governance matrix and a clear Three-Gate Human Approval Process (Content, Tech, Legal) to prevent compliance slips.",
+        "confidence": 0.95
+      },
+      "internal_consistency_lineage": {
+        "score": 8.0,
+        "rationale": "High internal consistency where content is present. The funnel economics, pricing, and channel strategies align perfectly with the research findings and product capabilities.",
+        "confidence": 0.9
+      },
+      "completeness": {
+        "score": 5.0,
+        "rationale": "Severe completeness issues. Missing 8 major sections including all creative, copy, script, and experimentation deliverables.",
+        "confidence": 1.0
+      }
+    },
+    "Y": {
+      "research_quality": {
+        "score": 8.0,
+        "rationale": "Good executive summary framing the regional ODC compliance pressure and developer tool friction. Accurately captures the competitive gaps of Snyk and SonarQube.",
+        "confidence": 0.9
+      },
+      "evidence_discipline": {
+        "score": 8.5,
+        "rationale": "Accurately lists known facts and market realities. No prohibited claims are made, and the $29/dev/month pricing is correctly integrated.",
+        "confidence": 0.9
+      },
+      "segmentation_quality": {
+        "score": 1.0,
+        "rationale": "Critical failure: Customer Segments and Top Priority Segment sections are completely missing from the output.",
+        "confidence": 1.0
+      },
+      "positioning_quality": {
+        "score": 5.0,
+        "rationale": "Weak execution. The positioning section is messy and simply repeats 'Inference 2' and 'Inference 3' verbatim instead of providing a dedicated positioning strategy.",
+        "confidence": 0.9
+      },
+      "channel_strategy": {
+        "score": 1.0,
+        "rationale": "Critical failure: Channel Priorities and Deferred Channels sections are completely missing from the output.",
+        "confidence": 1.0
+      },
+      "creative_quality": {
+        "score": 8.0,
+        "rationale": "Good creative territories ('The Frictionless Audit' and '90-Second Shield') that directly address the core developer and business pain points.",
+        "confidence": 0.9
+      },
+      "copy_script_executability": {
+        "score": 8.5,
+        "rationale": "Highly executable LinkedIn copy and a detailed, fast-paced video script that highlights the sub-90-second scan speed and syntax-tree verified auto-fixes.",
+        "confidence": 0.9
+      },
+      "performance_funnel_metrics": {
+        "score": 4.0,
+        "rationale": "Defines a solid North Star Metric (Weekly Active Securing Developers - WASD), but fails to provide a full-funnel conversion model, CAC payback calculations, or trial-to-paid targets.",
+        "confidence": 0.85
+      },
+      "experimentation_rigor": {
+        "score": 2.0,
+        "rationale": "Fails to provide actual experiments. The 'Experiments' section simply repeats the North Star Metric text verbatim, indicating a major copy-paste error.",
+        "confidence": 0.95
+      },
+      "attribution_tracking": {
+        "score": 1.0,
+        "rationale": "Critical failure: The Attribution Approach section is completely missing.",
+        "confidence": 1.0
+      },
+      "claim_safety_compliance": {
+        "score": 9.5,
+        "rationale": "Excellent compliance. Explicitly lists prohibited claims under 'What Not To Do' and avoids making any unverified guarantees.",
+        "confidence": 0.95
+      },
+      "governance_human_approval": {
+        "score": 1.0,
+        "rationale": "Critical failure: Missing all governance, human approval, and next actions sections.",
+        "confidence": 1.0
+      },
+      "internal_consistency_lineage": {
+        "score": 4.0,
+        "rationale": "Low internal consistency due to structural errors, missing sections, and repetitive copy-pasting across different headers (e.g., Inferences in Positioning, WASD in Experiments).",
+        "confidence": 0.9
+      },
+      "completeness": {
+        "score": 4.0,
+        "rationale": "Extremely incomplete. Missing 10 major sections, including segments, channels, attribution, and governance.",
+        "confidence": 1.0
+      }
+    },
+    "Z": {
+      "research_quality": {
+        "score": 8.2,
+        "rationale": "Strong executive summary framing SecureCode AI as a 'Contract Unlocker' for SEA ODCs. Good understanding of the business drivers behind security adoption.",
+        "confidence": 0.9
+      },
+      "evidence_discipline": {
+        "score": 7.5,
+        "rationale": "Generally disciplined, but deviates slightly from the ground truth by defining the target company size as '50 to 500 developers' (the verified firmographic profile is 10-150 developers).",
+        "confidence": 0.9
+      },
+      "segmentation_quality": {
+        "score": 7.5,
+        "rationale": "Good description of the primary ODC segment and key pain points, though the company size range (50-500) is slightly off-spec compared to the source data.",
+        "confidence": 0.9
+      },
+      "positioning_quality": {
+        "score": 8.5,
+        "rationale": "Excellent positioning as a 'contract-enabling growth engine' rather than just a developer tool. Strong contrast with legacy tools.",
+        "confidence": 0.9
+      },
+      "channel_strategy": {
+        "score": 8.0,
+        "rationale": "Clear channel prioritization matrix (ABM, DevRel, PLG) with logical deferred channels (OOH, top-down sales to non-ODC conglomerates).",
+        "confidence": 0.9
+      },
+      "creative_quality": {
+        "score": 8.5,
+        "rationale": "Excellent creative territory ('The Contract Unlocker') with highly resonant emotional angles (Loss Aversion, Status/Aspiration, Relief).",
+        "confidence": 0.9
+      },
+      "copy_script_executability": {
+        "score": 7.0,
+        "rationale": "Missing short-form copy, but provides an exceptionally detailed, professional video script table with visual cues, voiceover, and on-screen text overlays.",
+        "confidence": 0.9
+      },
+      "performance_funnel_metrics": {
+        "score": 5.0,
+        "rationale": "Provides a conceptual funnel diagram but lacks concrete metrics, conversion targets, CAC payback periods, or pricing-aligned math.",
+        "confidence": 0.85
+      },
+      "experimentation_rigor": {
+        "score": 1.0,
+        "rationale": "Critical failure: The 'Experiments' section is completely missing.",
+        "confidence": 1.0
+      },
+      "attribution_tracking": {
+        "score": 1.0,
+        "rationale": "Critical failure: The 'Attribution Approach' section is completely missing.",
+        "confidence": 1.0
+      },
+      "claim_safety_compliance": {
+        "score": 9.5,
+        "rationale": "Safe and compliant. Avoids all prohibited claims and emphasizes realistic AI remediation and compliance reporting.",
+        "confidence": 0.95
+      },
+      "governance_human_approval": {
+        "score": 2.0,
+        "rationale": "Extremely weak. Has headers for human approval but no actual content or process defined. Missing Go/Test/Hold/Defer decisions.",
+        "confidence": 0.9
+      },
+      "internal_consistency_lineage": {
+        "score": 7.5,
+        "rationale": "Good consistency across the active sections. The 'Contract Unlocker' theme is maintained from the executive summary through positioning, channels, and creative execution.",
+        "confidence": 0.9
+      },
+      "completeness": {
+        "score": 5.5,
+        "rationale": "Incomplete. Missing 7 major sections, including short-form copy, experiments, attribution, and governance.",
+        "confidence": 1.0
+      }
+    }
+  },
+  "pairwise_comparisons": {
+    "X_vs_Y": {
+      "preferred": "X",
+      "strength": "MODERATE",
+      "reason": "While Candidate X lacks creative copy, its strategic, analytical, and governance sections are of exceptionally high quality. Candidate X's performance funnel is mathematically rigorous, its attribution model is highly technical, and its governance matrix is production-ready. Candidate Y has creative copy but is structurally messy, contains copy-paste errors (repeating WASD in experiments), and lacks segmentation, channels, and attribution entirely."
+    },
+    "X_vs_Z": {
+      "preferred": "Z",
+      "strength": "SLIGHT",
+      "reason": "This is a close matchup of incomplete proposals. Candidate Z is preferred because it provides a much more balanced GTM representation, covering executive strategy, segmentation, channel priorities, creative territories, and a highly professional video script. Candidate X has superior funnel economics and governance but completely lacks the creative and copy execution required for a GTM launch."
+    },
+    "Y_vs_Z": {
+      "preferred": "Z",
+      "strength": "DECISIVE",
+      "reason": "Candidate Z is far superior to Candidate Y. Z has a cohesive, well-structured narrative ('The Contract Unlocker'), actual customer segmentation, and clear channel priorities. Candidate Y suffers from severe structural errors, missing segments/channels, and repetitive copy-pasting under different headers."
+    }
+  },
+  "critical_failure_flags": {
+    "X": {
+      "unsupported_claims": 0,
+      "prohibited_claims": 0,
+      "internal_contradictions": 0,
+      "governance_failures": 1,
+      "notes": "Failed on completeness. Completely omitted all creative, copy, script, and experimentation sections."
+    },
+    "Y": {
+      "unsupported_claims": 0,
+      "prohibited_claims": 0,
+      "internal_contradictions": 1,
+      "governance_failures": 1,
+      "notes": "Severe completeness and structural failures. Missing segments, channels, attribution, and governance. Contains a major copy-paste error in the Experiments section (repeating the North Star Metric text)."
+    },
+    "Z": {
+      "unsupported_claims": 1,
+      "prohibited_claims": 0,
+      "internal_contradictions": 0,
+      "governance_failures": 1,
+      "notes": "Failed on completeness (missing experiments, attribution, and governance). Slightly deviated from ground truth by expanding target company size to 50-500 developers (verified is 10-150)."
+    }
+  }
+}
+```

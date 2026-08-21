@@ -1,0 +1,262 @@
+```json
+{
+  "candidate_scores": {
+    "Z": {
+      "research_quality": {
+        "score": 5.5,
+        "rationale": "The executive summary and known facts show a decent understanding of the ODC market in Vietnam, but the lack of a dedicated research findings section and multiple missing components severely limit the depth of the analysis.",
+        "confidence": 0.9
+      },
+      "evidence_discipline": {
+        "score": 5.0,
+        "rationale": "While the candidate lists some known facts, it fails to explicitly cite the provided evidence IDs (e.g., EVID_01) in a structured manner, and the massive omissions prevent a thorough evaluation of evidence discipline.",
+        "confidence": 0.9
+      },
+      "segmentation_quality": {
+        "score": 4.5,
+        "rationale": "Only the primary segment (ODCs) is defined, and it is duplicated verbatim under the 'Top Priority Segment' header. No secondary or tertiary segments are identified.",
+        "confidence": 0.9
+      },
+      "positioning_quality": {
+        "score": 6.5,
+        "rationale": "The brand narrative is solid, and the ASCII diagram comparing legacy DevSecOps to SecureCode AI is clear and aligned with the product's value proposition.",
+        "confidence": 0.9
+      },
+      "channel_strategy": {
+        "score": 5.0,
+        "rationale": "Provides a basic channel priority diagram and lists two deferred channels, but lacks any strategic depth or execution details.",
+        "confidence": 0.9
+      },
+      "creative_quality": {
+        "score": 7.5,
+        "rationale": "The 'Contract Unlocker' creative territory is highly relevant to the target audience, and the angles and hooks are well-conceived.",
+        "confidence": 0.9
+      },
+      "copy_script_executability": {
+        "score": 7.0,
+        "rationale": "The video script is presented in a highly professional, structured table format with clear visual cues and audio. However, the short-form copy section is completely missing.",
+        "confidence": 0.9
+      },
+      "performance_funnel_metrics": {
+        "score": 3.0,
+        "rationale": "Only a high-level conceptual diagram of the funnel is provided. There are no concrete metrics, conversion benchmarks, or financial calculations.",
+        "confidence": 0.9
+      },
+      "experimentation_rigor": {
+        "score": 1.0,
+        "rationale": "The section is completely missing, and the Hypotheses section is cut off mid-sentence ('To ensure our').",
+        "confidence": 1.0
+      },
+      "attribution_tracking": {
+        "score": 1.0,
+        "rationale": "The section is completely missing.",
+        "confidence": 1.0
+      },
+      "claim_safety_compliance": {
+        "score": 9.5,
+        "rationale": "No prohibited claims are made. The candidate stays within the verified product capabilities.",
+        "confidence": 0.9
+      },
+      "governance_human_approval": {
+        "score": 1.0,
+        "rationale": "The section is completely missing.",
+        "confidence": 1.0
+      },
+      "internal_consistency_lineage": {
+        "score": 3.5,
+        "rationale": "Severe structural errors are present, such as listing 'Key Personas' under the 'Risks' header, alongside multiple truncated or missing sections.",
+        "confidence": 0.9
+      },
+      "completeness": {
+        "score": 3.0,
+        "rationale": "The proposal is highly incomplete, with 11 sections either entirely missing or truncated.",
+        "confidence": 0.9
+      }
+    },
+    "X": {
+      "research_quality": {
+        "score": 9.0,
+        "rationale": "Excellent technical problem framing. The candidate synthesizes the ODC market reality in Vietnam, developer friction with legacy SAST tools, and budget constraints into a highly cohesive strategy.",
+        "confidence": 0.9
+      },
+      "evidence_discipline": {
+        "score": 9.5,
+        "rationale": "Superb discipline. The candidate explicitly maps verified known facts to critical unknowns in a structured table, and correctly cites evidence IDs (EVID_01, EVID_02, EVID_03, EVID_04) throughout the text.",
+        "confidence": 0.9
+      },
+      "segmentation_quality": {
+        "score": 9.0,
+        "rationale": "Clear, actionable segmentation presented in an ASCII diagram. It prioritizes export-oriented ODCs as the primary target and emerging fintechs as the secondary target for the enterprise tier.",
+        "confidence": 0.9
+      },
+      "positioning_quality": {
+        "score": 7.0,
+        "rationale": "The value proposition is sharp, but there is a structural mix-up where experiment parameters (sample size, metrics) are erroneously placed under the 'Positioning' header.",
+        "confidence": 0.9
+      },
+      "channel_strategy": {
+        "score": 9.0,
+        "rationale": "Highly realistic channel strategy that directly leverages the 3.4x higher trial conversion rate from EVID_04. The Go/Test/Hold/Defer matrix is exceptionally well-structured.",
+        "confidence": 0.9
+      },
+      "creative_quality": {
+        "score": 1.0,
+        "rationale": "All creative sections (territories, angles, hooks) are completely missing.",
+        "confidence": 1.0
+      },
+      "copy_script_executability": {
+        "score": 1.0,
+        "rationale": "Both the short-form copy and video script sections are completely missing.",
+        "confidence": 1.0
+      },
+      "performance_funnel_metrics": {
+        "score": 9.5,
+        "rationale": "Outstanding performance funnel model. It calculates specific monthly volumes and ACV ranges based on the $29/dev/month pricing and the $5k-$15k budget constraint, defining a clear PQL metric.",
+        "confidence": 0.9
+      },
+      "experimentation_rigor": {
+        "score": 1.0,
+        "rationale": "The dedicated experiments section is missing, although some experimental parameters were misplaced under the Positioning section.",
+        "confidence": 1.0
+      },
+      "attribution_tracking": {
+        "score": 9.5,
+        "rationale": "Excellent hybrid attribution and telemetry architecture diagram. It clearly maps traffic sources to product telemetry and data warehousing tools.",
+        "confidence": 0.9
+      },
+      "claim_safety_compliance": {
+        "score": 10.0,
+        "rationale": "Absolute compliance. The candidate explicitly lists the prohibited claims as a high-impact risk and mitigates them with an automated copy-linting process.",
+        "confidence": 0.9
+      },
+      "governance_human_approval": {
+        "score": 9.5,
+        "rationale": "Highly detailed governance framework. Features a clear Go/Test/Hold/Defer matrix and a Three-Gate Human Approval Process diagram for claim compliance.",
+        "confidence": 0.9
+      },
+      "internal_consistency_lineage": {
+        "score": 8.5,
+        "rationale": "Strong internal consistency. The pricing, budget alignment, and channel strategies flow logically from the research findings, despite the missing creative sections.",
+        "confidence": 0.9
+      },
+      "completeness": {
+        "score": 6.0,
+        "rationale": "While the strategic, financial, and governance sections are exceptionally complete, the total omission of creative assets and experiments reduces the overall completeness score.",
+        "confidence": 0.9
+      }
+    },
+    "Y": {
+      "research_quality": {
+        "score": 8.5,
+        "rationale": "Strong technical problem framing. The candidate accurately identifies the 'pincer movement' facing ODCs and the developer friction caused by legacy SAST tools.",
+        "confidence": 0.9
+      },
+      "evidence_discipline": {
+        "score": 8.0,
+        "rationale": "Good adherence to the provided facts and figures, though it does not cite the evidence IDs as systematically as Candidate X.",
+        "confidence": 0.9
+      },
+      "segmentation_quality": {
+        "score": 1.0,
+        "rationale": "The customer segments and top priority segment sections are completely missing.",
+        "confidence": 1.0
+      },
+      "positioning_quality": {
+        "score": 4.0,
+        "rationale": "The positioning section is weak and suffers from a structural error, repeating Inferences 2 and 3 verbatim instead of defining a distinct positioning framework.",
+        "confidence": 0.9
+      },
+      "channel_strategy": {
+        "score": 1.0,
+        "rationale": "The channel priorities and deferred channels sections are completely missing.",
+        "confidence": 1.0
+      },
+      "creative_quality": {
+        "score": 8.5,
+        "rationale": "Excellent creative territories ('90-Second Shield' and 'The Frictionless Audit') that directly address the core pain points of developers and CTOs.",
+        "confidence": 0.9
+      },
+      "copy_script_executability": {
+        "score": 9.0,
+        "rationale": "Highly executable LinkedIn copy and a detailed, production-ready video script with clear visual and audio cues.",
+        "confidence": 0.9
+      },
+      "performance_funnel_metrics": {
+        "score": 7.5,
+        "rationale": "Defines an excellent North Star Metric (Weekly Active Securing Developers - WASD) with a clear flow diagram, but lacks the full-funnel conversion benchmarks and financial modeling found in X.",
+        "confidence": 0.9
+      },
+      "experimentation_rigor": {
+        "score": 2.0,
+        "rationale": "Severe structural error: the Experiments section simply repeats the Measurement Framework section verbatim.",
+        "confidence": 0.9
+      },
+      "attribution_tracking": {
+        "score": 1.0,
+        "rationale": "The section is completely missing.",
+        "confidence": 1.0
+      },
+      "claim_safety_compliance": {
+        "score": 10.0,
+        "rationale": "Absolute compliance. The candidate explicitly lists the prohibited claims under 'WHAT NOT TO DO' to protect brand credibility.",
+        "confidence": 0.9
+      },
+      "governance_human_approval": {
+        "score": 1.0,
+        "rationale": "The section is completely missing.",
+        "confidence": 1.0
+      },
+      "internal_consistency_lineage": {
+        "score": 4.5,
+        "rationale": "Low internal consistency due to multiple copy-paste repetitions (Positioning repeats Inferences, Experiments repeats Measurement, Risks repeats Unknowns).",
+        "confidence": 0.9
+      },
+      "completeness": {
+        "score": 4.5,
+        "rationale": "The proposal has major gaps, missing key strategic sections like segments, channels, attribution, and governance, alongside several repetitive sections.",
+        "confidence": 0.9
+      }
+    }
+  },
+  "pairwise_comparisons": {
+    "X_vs_Y": {
+      "preferred": "X",
+      "strength": "DECISIVE",
+      "reason": "Candidate X is a vastly superior strategic document. It features exceptional financial modeling, a highly detailed PLG funnel, a robust hybrid attribution architecture, and a clear governance framework. Candidate Y has strong creative copy and video scripts, but suffers from severe structural repetitions (copy-pasting sections verbatim under different headers) and completely lacks segmentation, channel strategy, and governance."
+    },
+    "X_vs_Z": {
+      "preferred": "X",
+      "strength": "DECISIVE",
+      "reason": "Candidate X dominates Candidate Z across almost every strategic dimension. Candidate Z is highly incomplete, has a truncated hypotheses section, and contains a major structural error where 'Key Personas' are listed under the 'Risks' header."
+    },
+    "Y_vs_Z": {
+      "preferred": "Y",
+      "strength": "MODERATE",
+      "reason": "While both candidates suffer from missing sections and structural errors, Candidate Y is preferred because its creative assets (LinkedIn copy, video script) are fully realized and its North Star Metric (WASD) is highly actionable. Candidate Z has too many omissions and a broken Risks section."
+    }
+  },
+  "critical_failure_flags": {
+    "X": {
+      "unsupported_claims": 0,
+      "prohibited_claims": 0,
+      "internal_contradictions": 0,
+      "governance_failures": 0,
+      "notes": "Minor structural error where experiment metrics and sample sizes are placed under the 'Positioning' header. Otherwise, an exceptionally strong and compliant proposal."
+    },
+    "Y": {
+      "unsupported_claims": 0,
+      "prohibited_claims": 0,
+      "internal_contradictions": 2,
+      "governance_failures": 1,
+      "notes": "Severe structural repetitions: the Positioning section repeats Inferences, the Experiments section repeats the Measurement Framework, and the Risks section repeats the Unknowns. Missing key governance and channel sections."
+    },
+    "Z": {
+      "unsupported_claims": 0,
+      "prohibited_claims": 0,
+      "internal_contradictions": 1,
+      "governance_failures": 1,
+      "notes": "The Hypotheses section is truncated mid-sentence. The Risks section contains 'Key Personas' instead of actual risk mitigations. Highly incomplete."
+    }
+  }
+}
+```

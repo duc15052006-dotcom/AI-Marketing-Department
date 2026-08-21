@@ -1,0 +1,66 @@
+{
+  "benchmark_id": "PHASE4_3_UNSEEN_AI_ENGLISH_APP",
+  "product_id": "PROD_UNSEEN_AI_SPEAK_VN",
+  "evidence_items": [
+    {
+      "evidence_id": "EVID-SPEAK-01",
+      "category": "CATEGORY_RESEARCH",
+      "epistemic_tier": "OBSERVATION",
+      "summary": "Regular active speaking practice and repeated language use are commonly associated with language-learning development.",
+      "caveats": [
+        "CATEGORY/GENERAL evidence only.",
+        "Does NOT prove a quantified outcome or specific learning rate for our product."
+      ]
+    },
+    {
+      "evidence_id": "EVID-SPEAK-02",
+      "category": "USER_INTERVIEW_SAMPLE_STUDENTS",
+      "epistemic_tier": "OBSERVATION",
+      "summary": "Qualitative interviews with 12 Vietnamese university students found: embarrassment when speaking English in front of others, difficulty finding convenient speaking partners, preference for private practice before real conversations, and interest in short practice sessions.",
+      "sample_limitations": {
+        "n": 12,
+        "type": "Qualitative exploratory interviews",
+        "representation": "Not representative of all Vietnamese university students"
+      }
+    },
+    {
+      "evidence_id": "EVID-SPEAK-03",
+      "category": "USER_INTERVIEW_SAMPLE_OFFICE_WORKERS",
+      "epistemic_tier": "OBSERVATION",
+      "summary": "Qualitative interviews with 8 early-career office workers found English speaking anxiety around job interviews, meetings, presentations, and conversations with international colleagues. Several expressed interest in practicing realistic workplace scenarios privately.",
+      "sample_limitations": {
+        "n": 8,
+        "type": "Qualitative exploratory interviews",
+        "representation": "Not nationally representative of Vietnamese office workers"
+      }
+    },
+    {
+      "evidence_id": "EVID-SPEAK-04",
+      "category": "COMPETITOR_OBSERVATION",
+      "epistemic_tier": "OBSERVATION",
+      "summary": "Competing English-learning applications in the market advertise various features including pronunciation scoring, free trials, IELTS preparation, human tutoring, and personalized study plans.",
+      "caveats": [
+        "COMPETITOR_CAPABILITY != OUR_PRODUCT_CAPABILITY",
+        "None of these features may be attributed to our product without verified product evidence."
+      ]
+    },
+    {
+      "evidence_id": "EVID-SPEAK-05",
+      "category": "CUSTOMER_DESIRE",
+      "epistemic_tier": "OBSERVATION",
+      "summary": "Users in the bounded research samples expressed desires for confidence, clearer pronunciation, greater speaking fluency, and job interview readiness.",
+      "caveats": [
+        "CUSTOMER_DESIRE != VERIFIED_PRODUCT_OUTCOME"
+      ]
+    },
+    {
+      "evidence_id": "EVID-SPEAK-06",
+      "category": "BUSINESS_UNKNOWN_REGISTER",
+      "epistemic_tier": "UNKNOWN",
+      "summary": "The following business and operational parameters have NOT been established: retail subscription price, free trial policy, refund policy, baseline CAC, LTV, target ROAS, target CPA, launch marketing budget, conversion rate baseline, retention baseline, churn rate, gross margin, experiment sample size requirements, minimum detectable effect (MDE), and approved statistical confidence threshold.",
+      "caveats": [
+        "Must be preserved as TO_BE_ESTABLISHED or PROPOSED_FOR_TEST without fabricating authoritative thresholds."
+      ]
+    }
+  ]
+}

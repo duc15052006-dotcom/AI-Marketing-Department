@@ -1,0 +1,109 @@
+{
+  "package_id": "CRTV-GAN65-001",
+  "task_id": "TASK_E2E_CRTV_001",
+  "territories": [
+    {
+      "territory_id": "TERRITORY-01",
+      "name": "Pocket-Sized Power & Bag Consolidation (LEAD)",
+      "concept": "Visualizing the stark contrast between heavy OEM laptop bricks and a single compact GaN charger.",
+      "status": "SELECTED_LEAD"
+    },
+    {
+      "territory_id": "TERRITORY-02",
+      "name": "The Modern Coffee Shop Workspace",
+      "concept": "Seamless mobile working in Vietnamese urban coffee shops without hunting for multiple wall outlets.",
+      "status": "ALTERNATIVE"
+    },
+    {
+      "territory_id": "TERRITORY-03",
+      "name": "Engineered Thermal Safety & Reliability",
+      "concept": "Category-level GaN efficiency addressing commuter thermal anxiety and laptop power requirements (CREATIVE_INTERPRETATION).",
+      "status": "ALTERNATIVE"
+    }
+  ],
+  "lead_territory": "TERRITORY-01",
+  "copy_assets": [
+    {
+      "asset_id": "COPY-SF-01",
+      "format": "SHORT_FORM_SOCIAL",
+      "hook": "Still carrying a 500g power brick for your laptop?",
+      "body": "Upgrade to 65W GaN. One pocket-sized charger for compatible laptops and phones, designed for lighter everyday carry.",
+      "cta": "Explore 65W GaN Charger",
+      "claim_lineage": [
+        "EVID-GAN65-01",
+        "EVID-GAN65-03"
+      ]
+    },
+    {
+      "asset_id": "COPY-SF-02",
+      "format": "SHORT_FORM_SOCIAL",
+      "hook": "Why carry two chargers when one 65W GaN adapter can power your compatible laptop and phone?",
+      "body": "High-efficiency Gallium Nitride tech delivers 65W USB-C charging in a compact design built for daily commute (for compatible devices).",
+      "cta": "Check Device Compatibility",
+      "claim_lineage": [
+        "EVID-GAN65-01",
+        "EVID-GAN65-02"
+      ]
+    },
+    {
+      "asset_id": "COPY-HERO-01",
+      "format": "LANDING_PAGE_HERO",
+      "headline": "65W Fast Charging for Compatible Laptops. Pocket-Sized Form Factor.",
+      "subheadline": "Designed to replace bulky OEM silicon bricks with compact GaN technology for compatible USB-C laptops and smartphones.",
+      "primary_cta": "View Specifications & Compatibility",
+      "claim_lineage": [
+        "EVID-GAN65-01",
+        "EVID-GAN65-02",
+        "EVID-GAN65-03"
+      ]
+    }
+  ],
+  "video_script": {
+    "script_id": "SCRIPT-SF-01",
+    "duration_seconds": 32.0,
+    "scenes": [
+      {
+        "scene": 1,
+        "timing": "0-4s",
+        "visual": "Commuter opens backpack, pulls out huge heavy OEM charger with tangled cables (CREATIVE_INTERPRETATION).",
+        "audio": "Tired of carrying a heavy brick just to power your laptop?"
+      },
+      {
+        "scene": 2,
+        "timing": "4-12s",
+        "visual": "Side-by-side scale comparison: bulky OEM brick vs sleek compact 65W GaN charger.",
+        "audio": "This 65W GaN charger delivers 65W power for compatible USB-C laptops at a fraction of the size."
+      },
+      {
+        "scene": 3,
+        "timing": "12-24s",
+        "visual": "Single USB-C cable plugged into laptop, fast charging indicator appears.",
+        "audio": "High-efficiency GaN technology powers your compatible laptop and smartphone in a sleek, portable form."
+      },
+      {
+        "scene": 4,
+        "timing": "24-32s",
+        "visual": "Charger slips effortlessly into jeans pocket. End card with compatibility guide CTA.",
+        "audio": "Lighten your daily carry. Check your laptop compatibility today."
+      }
+    ]
+  },
+  "variants": [
+    {
+      "variant_id": "VAR-A",
+      "focus": "OEM Brick Weight Hook",
+      "asset_ref": "COPY-SF-01"
+    },
+    {
+      "variant_id": "VAR-B",
+      "focus": "2-in-1 Laptop+Phone Hook",
+      "asset_ref": "COPY-SF-02"
+    },
+    {
+      "variant_id": "VAR-C",
+      "focus": "Device Compatibility CTA",
+      "asset_ref": "COPY-HERO-01"
+    }
+  ],
+  "raw_output": {}
+}

@@ -1,0 +1,60 @@
+{
+  "primary_channels": [
+    {
+      "channel_id": "CHAN-DEV-COMMUNITY",
+      "channel_name": "Technical Developer Communities & Hacker News / Reddit",
+      "rationale": "High concentration of active open-weight model practitioners seeking CLI tooling (EVID-FORUM-F119C750).",
+      "evidence_dependency": [
+        "EVID-FORUM-F119C750"
+      ],
+      "status": "GO",
+      "measurement_requirement": "First-party referral traffic and documentation engagement depth."
+    }
+  ],
+  "secondary_channels": [
+    {
+      "channel_id": "CHAN-DEV-SOCIAL",
+      "channel_name": "Developer-Focused Social & Creator Demonstrations",
+      "rationale": "Visual demonstration of CLI setup and port 11434 REST API in short-form video (EVID-YT-3A9BE9D4).",
+      "evidence_dependency": [
+        "EVID-YT-3A9BE9D4"
+      ],
+      "status": "GO",
+      "measurement_requirement": "3-second hook retention and landing page click rate."
+    }
+  ],
+  "experimental_channels": [
+    {
+      "channel_id": "CHAN-TECH-SEARCH",
+      "channel_name": "Technical Search Capture ('run llama locally', 'offline llm runner')",
+      "rationale": "Search discovery identified technical queries; demand volume and conversion rate require validation (EVID-SRCH-132D6868).",
+      "evidence_dependency": [
+        "EVID-SRCH-132D6868"
+      ],
+      "status": "TEST (HYPOTHESIZED_CHANNEL)",
+      "measurement_requirement": "Controlled 21-day keyword search capture test to establish search install intent."
+    }
+  ],
+  "deferred_channels": [
+    {
+      "channel_id": "CHAN-CONSUMER-PAID",
+      "channel_name": "Broad Non-Technical Consumer Paid Social Ads",
+      "rationale": "Current evidence is strongly developer-oriented and does not establish broad non-technical consumer-market fit.",
+      "evidence_dependency": [
+        "EVID-WEB-893338BD",
+        "EVID-FORUM-F119C750"
+      ],
+      "status": "HOLD",
+      "measurement_requirement": "Deferred pending consumer-friendly GUI release.",
+      "classification": "EVIDENCE_LIMITED_STRATEGIC_DECISION"
+    },
+    {
+      "channel_id": "CHAN-ENTERPRISE-OUTBOUND",
+      "channel_name": "Direct Enterprise Field Outbound Sales",
+      "rationale": "Enterprise transaction baselines and monetization features are currently UNKNOWN (TRANSACTION_DATA = MISSING).",
+      "evidence_dependency": [],
+      "status": "HOLD",
+      "measurement_requirement": "Deferred pending enterprise compliance tier validation."
+    }
+  ]
+}

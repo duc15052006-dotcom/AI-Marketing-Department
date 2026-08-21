@@ -1,0 +1,45 @@
+```json
+{
+  "candidate_scores": {
+    "research_quality": {
+      "score": 3.0,
+      "rationale": "The candidate frames the problem using some qualitative evidence, but the core research findings section is completely missing."
+    },
+    "evidence_discipline": {
+      "score": 4.0,
+      "rationale": "While the candidate correctly references a few evidence codes, the severe truncation prevents any comprehensive evaluation of evidence discipline."
+    },
+    "segmentation_quality": {
+      "score": 3.0,
+      "rationale": "A partial segmentation matrix is introduced but is heavily truncated, and the top priority segment is completely missing."
+    },
+    "positioning_quality": {
+      "score": 0.0,
+      "rationale": "The positioning and value proposition sections are entirely missing from the candidate's output."
+    },
+    "channel_strategy": {
+      "score": 0.0,
+      "rationale": "The channel priorities and deferred channels sections are completely omitted."
+    },
+    "creative_quality": {
+      "score": 0.0,
+      "rationale": "Creative territories, angles, and hooks are entirely missing from the submission."
+    },
+    "copy_script_executability": {
+      "score": 0.0,
+      "rationale": "No short-form copy or video scripts are provided in the candidate's response."
+    },
+    "performance_funnel_metrics": {
+      "score": 0.0,
+      "rationale": "The measurement framework and performance funnel metrics sections are completely absent."
+    },
+    "experimentation_rigor": {
+      "score": 0.0,
+      "rationale": "The experiments section is completely omitted, leaving no hypotheses or test designs to evaluate."
+    },
+    "attribution_tracking": {
+      "score": 1.0,
+      "rationale": "The attribution section is missing, with only a brief mention of Segment and Conversions API in the human approval section."
+    },
+    "claim_safety_compliance": {
+      

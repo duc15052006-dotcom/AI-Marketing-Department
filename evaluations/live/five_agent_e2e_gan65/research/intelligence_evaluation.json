@@ -1,0 +1,10 @@
+{
+  "stage": "INTELLIGENCE",
+  "eval_decision": "PASS",
+  "source_fabrication_count": 0,
+  "metric_fabrication_count": 0,
+  "product_spec_fabrication_count": 0,
+  "product_isolation_preserved": true,
+  "unknowns_preserved": true,
+  "citations_valid": true
+}
