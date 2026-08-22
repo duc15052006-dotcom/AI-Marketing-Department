@@ -786,6 +786,30 @@ class FiveAgentDepartmentRuntime:
         "undetermined",
     )
 
+    _PLANNING_OR_CONDITIONAL_PERFORMANCE_PATTERN = re.compile(
+        r"\b(?:target|threshold|ngưỡng|mục\s+tiêu|goal|if\b|whether|will\s+consider|means\s+|aims?\s+to|should\s+test|plan\s+to|propos|kế\s+hoạch|dự\s+kiến|to\s+be\s+tested)\b",
+        re.IGNORECASE,
+    )
+
+    _OBSERVED_PERFORMANCE_RESULT_PATTERNS = (
+        # Winner / victory assertions
+        re.compile(r"\b(?:winners?|won|chiến\s+thắng|trúng\s+chiến\s+dịch)\b", re.IGNORECASE),
+        # Experiment success / validation assertions
+        re.compile(r"\b(?:experiment|test|thử\s+nghiệm)\s+(?:succeeded|validated|proved|thành\s+công)\b", re.IGNORECASE),
+        re.compile(r"\b(?:validated|xác\s+thực|chứng\s+minh)\s+(?:the\s+hypothesis|giả\s+thuyết|variant\s+[a-z0-9]|biến\s+thể\s+[a-z0-9])\b", re.IGNORECASE),
+        # Outperformance assertions
+        re.compile(r"\b(?:outperformed|vượt\s+trội)\s+(?:control|đối\s+chứng)\b", re.IGNORECASE),
+        # Measured post-test / pilot empirical statements
+        re.compile(r"\b(?:after\s+the\s+test|post-test|measured\s+(?:conversion|ctr|cvr|metric|rate|result)|results?\s+from\s+the\s+(?:pilot|test|experiment)|sau\s+thử\s+nghiệm|kết\s+quả\s+(?:pilot|thử\s+nghiệm|đo\s+lường))\b", re.IGNORECASE),
+        re.compile(r"\b(?:post-test\s+metric|measured\s+result|measured\s+rate|pilot\s+data)\s+(?:was|showed|shows|đạt|cho\s+thấy|materially)\b", re.IGNORECASE),
+        # Observed metric / uplift assertions
+        re.compile(r"\b(?:observed|ghi\s+nhận|đo\s+lường\s+được)\s+(?:[+\-]?\d+\s*%\s*(?:ctr|cvr|conversion|roas|cpc|cpa|lift|uplift)|(?:uplift|lift|increase|tăng\s+trưởng)\s+(?:was|đạt|là)?\s*[+\-]?\d+\s*%)\b", re.IGNORECASE),
+        re.compile(r"\b(?:variant\s+[a-z0-9]|biến\s+thể\s+[a-z0-9]|campaign|chiến\s+dịch)\s+(?:outperformed|increased|improved|boosted|achieved|vượt\s+trội|tăng|đạt)\s+(?:control|đối\s+chứng|(?:ctr|cvr|conversion|roas|lift|uplift)\s+(?:by\s+)?[+\-]?\d+\s*%|[+\-]?\d+\s*%\s*(?:ctr|cvr|conversion|roas|lift|uplift)|(?:a\s+)?[+\-]?\d+\s*%\s*(?:conversion|ctr|cvr|lift|uplift))", re.IGNORECASE),
+        re.compile(r"\b(?:ctr|cvr|conversion\s+rate|roas)\s+(?:improved|increased|rose|boosted|tăng|cải\s+thiện)\s+(?:from\s+\d+[%a-z0-9.]*\s+to\s+\d+[%a-z0-9.]*|by\s+[+\-]?\d+\s*%|[+\-]?\d+\s*%)", re.IGNORECASE),
+        re.compile(r"\b[+\-]?\d+\s*%\s*(?:ctr|cvr|conversion)\s+(?:increase|lift|uplift|tăng\s+trưởng)\b", re.IGNORECASE),
+        re.compile(r"\b(?:achieved|attained|đạt)\s+(?:a\s+)?[+\-]?\d+\s*%\s*(?:conversion|ctr|cvr|lift|uplift|tăng\s+trưởng)\b", re.IGNORECASE),
+    )
+
     _DEPLOYABLE_EVIDENCE_TIERS = ("VERIFIED_SOURCE", "SOURCE_BACKED_OBSERVATION")
 
     # ------------------------------------------------------------------
@@ -950,6 +974,36 @@ class FiveAgentDepartmentRuntime:
         return any(marker in corpus for marker in cls._INCONCLUSIVE_MARKERS)
 
     @classmethod
+    def _scan_phantom_performance_claims(
+        cls,
+        text: str,
+        execution_state: str,
+        eval_status: str,
+        eval_origin: str,
+    ) -> List[str]:
+        """Scan prose for empirical performance result/winner claims when no qualifying observed result exists."""
+        if not text or not isinstance(text, str):
+            return []
+        reasons: List[str] = []
+        for sentence in re.split(r"(?<=[.!?\n])\s+", text):
+            clean = sentence.strip()
+            if not clean or len(clean) < 3:
+                continue
+            is_conditional = bool(cls._PLANNING_OR_CONDITIONAL_PERFORMANCE_PATTERN.search(clean))
+            for pat in cls._OBSERVED_PERFORMANCE_RESULT_PATTERNS:
+                if pat.search(clean):
+                    # If it has planning/conditional markers and is not an explicit past-tense winner/validation statement, preserve planning
+                    if is_conditional and not re.search(r"\b(?:won|winner|succeeded|validated|after\s+the\s+test|post-test|results\s+from\s+the)\b", clean, re.IGNORECASE):
+                        continue
+                    reasons.append(
+                        f"PHANTOM_WINNER: observed performance result or winner claimed ('{clean[:120]}') "
+                        f"while experiment_execution_state={execution_state}, evaluation_status={eval_status}, "
+                        f"data_origin={eval_origin}; no qualifying REAL evidence exists in this run."
+                    )
+                    break
+        return reasons
+
+    @classmethod
     def _scan_unsupported_product_claims(
         cls,
         corpus_text: str,
@@ -1038,7 +1092,7 @@ class FiveAgentDepartmentRuntime:
                 "insufficient-evidence result; deployment cannot be authorized."
             )
 
-        # COLLAB-06: structural (prose-independent) performance state.
+        # COLLAB-06 / GOV-02: structural (prose-independent) performance state.
         perf_handoff = (context.working_state.get("stage_handoffs", {}) or {}).get("performance", {}) or {}
         if isinstance(perf_handoff, dict):
             if perf_handoff.get("performance_inconclusive"):
@@ -1048,14 +1102,25 @@ class FiveAgentDepartmentRuntime:
                     "INCONCLUSIVE flag; prose cannot override it."
                 )
             execution_state = str(perf_handoff.get("experiment_execution_state", "EXPERIMENT_PROPOSED")).upper()
-            if execution_state != "RESULT_OBSERVED" and re.search(
-                r"\bwinners?\b|chiến thắng|trúng chiến dịch", final_text or "", re.IGNORECASE
-            ):
-                blocked += 1
-                blocking_reasons.append(
-                    f"PHANTOM_WINNER: winner declared while experiment_execution_state="
-                    f"{execution_state}; no observed result exists in this run."
+            eval_status = str(perf_handoff.get("evaluation_status", "NOT_EVALUATED")).upper()
+            eval_origin = str(perf_handoff.get("evaluation_data_origin", "NO_DATA")).upper()
+
+            has_valid_observed_result = (
+                execution_state == "RESULT_OBSERVED"
+                and eval_status in ("SUPPORTED", "NOT_SUPPORTED")
+                and eval_origin == "REAL"
+            )
+
+            if not has_valid_observed_result:
+                phantom_reasons = self._scan_phantom_performance_claims(
+                    final_text or "",
+                    execution_state=execution_state,
+                    eval_status=eval_status,
+                    eval_origin=eval_origin,
                 )
+                if phantom_reasons:
+                    blocked += len(phantom_reasons)
+                    blocking_reasons.extend(phantom_reasons)
 
         provenance_index = context.working_state.get("provenance_index", {}) or {}
         creative_text_parts = [

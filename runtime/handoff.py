@@ -195,19 +195,35 @@ def build_performance_evaluation(
     resolved: List[str] = []
     modes = set()
     tiers = set()
+    has_qualifying_empirical_receipt = False
+    _NON_EMPIRICAL_METRIC_CAPABILITIES = {"kpi_calculation", "plan_generation", "calculator"}
+
     for ref in [str(m).upper() for m in (evaluation_payload.get("metric_refs") or [])]:
         entry = provenance_index.get(ref)
         if entry is None:
             continue
-        resolved.append(ref)
         if isinstance(entry, dict):
-            tiers.add(str(entry.get("epistemic_tier", "")).upper())
+            tier = str(entry.get("epistemic_tier", "")).upper()
             metadata = entry.get("metadata") or {}
-            modes.add(str((metadata or {}).get("execution_mode", "")).upper())
+            mode = str((metadata or {}).get("execution_mode", "")).upper()
+            status = str((metadata or {}).get("status", "")).upper()
+            cap = str((metadata or {}).get("capability_id", "")).lower()
         else:
-            tiers.add(str(getattr(entry, "epistemic_tier", "")).upper().replace("EPISTEMICTIER.", ""))
+            tier = str(getattr(entry, "epistemic_tier", "")).upper().replace("EPISTEMICTIER.", "")
             metadata = getattr(entry, "metadata", {}) or {}
-            modes.add(str((metadata or {}).get("execution_mode", "")).upper())
+            mode = str((metadata or {}).get("execution_mode", "")).upper()
+            status = str((metadata or {}).get("status", "")).upper()
+            cap = str((metadata or {}).get("capability_id", "")).lower()
+
+        if status in ("ERROR", "TIMEOUT", "FAILED", "BLOCKED"):
+            result["notes"].append(f"metric_ref '{ref}' dropped: receipt status is {status}.")
+            continue
+
+        resolved.append(ref)
+        tiers.add(tier)
+        modes.add(mode)
+        if mode == "REAL" and tier in _DEPLOYABLE_TIERS and cap not in _NON_EMPIRICAL_METRIC_CAPABILITIES:
+            has_qualifying_empirical_receipt = True
 
     result["metric_refs"] = resolved
 
@@ -221,7 +237,11 @@ def build_performance_evaluation(
         else:
             result["data_origin"] = "UNVERIFIED"
 
-    strong_result_allowed = result["data_origin"] == "REAL" and bool(resolved)
+    strong_result_allowed = (
+        result["data_origin"] == "REAL"
+        and bool(resolved)
+        and has_qualifying_empirical_receipt
+    )
 
     if requested in ("SUPPORTED", "NOT_SUPPORTED"):
         if strong_result_allowed:
@@ -230,7 +250,7 @@ def build_performance_evaluation(
         else:
             result["notes"].append(
                 f"Requested {requested} rejected: requires citable REAL deployable-tier "
-                f"metric evidence; data_origin={result['data_origin']}."
+                f"empirical metric evidence; data_origin={result['data_origin']}."
             )
     elif requested == "INCONCLUSIVE":
         result["evaluation_status"] = "INCONCLUSIVE"
