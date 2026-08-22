@@ -65,6 +65,187 @@ _PAYLOAD_BUCKETS = {
 
 _DEPLOYABLE_TIERS = ("VERIFIED_SOURCE", "SOURCE_BACKED_OBSERVATION")
 
+# ---------------------------------------------------------------------------
+# COLLAB-06 — Creative → Performance true-handoff vocabulary.
+# ---------------------------------------------------------------------------
+
+EVALUATION_STATUSES = ("NOT_EVALUATED", "INCONCLUSIVE", "SUPPORTED", "NOT_SUPPORTED")
+
+EXPERIMENT_EXECUTION_STATES = (
+    "EXPERIMENT_PROPOSED",
+    "EXPERIMENT_CONFIGURED",
+    "EXPERIMENT_EXECUTED",
+    "RESULT_OBSERVED",
+)
+
+DATA_ORIGINS = ("REAL", "MOCK", "SANDBOX", "UNVERIFIED", "NO_DATA")
+
+
+class CreativeSpec(BaseModel):
+    """Truthful structured representation of the Creative stage's work.
+
+    Every content field may be None/[] (NOT_PROVIDED). creative_id is a
+    SYSTEM identifier (DETERMINISTIC_COMPUTED) for lineage only — it never
+    implies an experiment executed or assets were published.
+    """
+    spec_version: str = "1.0"
+    creative_id: str = ""
+    concept_name: Optional[str] = None
+    angle: Optional[str] = None
+    hook: Optional[str] = None
+    offer: Optional[str] = None
+    cta: Optional[str] = None
+    proof_points: List[str] = Field(default_factory=list)
+    claims: List[Dict[str, Any]] = Field(default_factory=list)
+    hypotheses: List[Dict[str, Any]] = Field(default_factory=list)
+    recommendations: List[Dict[str, Any]] = Field(default_factory=list)
+    evidence_refs: List[str] = Field(default_factory=list)
+    asset_receipts: List[Dict[str, Any]] = Field(default_factory=list)
+    constraints: List[str] = Field(default_factory=list)
+    source_stage: str = "CREATIVE"
+    source_agent: str = "creative"
+    field_origins: Dict[str, str] = Field(default_factory=dict)
+
+
+def _opt_str(raw: Any, key: str) -> Optional[str]:
+    value = raw.get(key) if isinstance(raw, dict) else None
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def build_creative_spec(
+    context: Any,
+    handoff_dump: Dict[str, Any],
+    spec_payload: Any,
+    asset_receipts: List[Dict[str, Any]],
+) -> CreativeSpec:
+    """Build the CreativeSpec from validated handoff items + optional
+    machine-supplied execution fields. Missing content stays None/[] —
+    never fabricated; creative_id is the ONLY generated value."""
+    raw = spec_payload if isinstance(spec_payload, dict) else {}
+
+    claims = list(handoff_dump.get("claims") or [])
+    hypotheses = list(handoff_dump.get("hypotheses") or [])
+    recommendations = list(handoff_dump.get("recommendations") or [])
+
+    proof_points = [
+        str(p).strip() for p in (raw.get("proof_points") or []) if str(p).strip()
+    ] if isinstance(raw.get("proof_points") or [], list) else []
+
+    field_origins = {"creative_id": "DETERMINISTIC_COMPUTED"}
+    for key in ("concept_name", "angle", "hook", "offer", "cta"):
+        field_origins[key] = "AGENT_DERIVED" if _opt_str(raw, key) else "NOT_PROVIDED"
+    field_origins["proof_points"] = "AGENT_DERIVED" if proof_points else "NOT_PROVIDED"
+
+    evidence_refs = sorted({
+        ref
+        for bucket in (claims, hypotheses, recommendations)
+        for item in bucket
+        for ref in (item.get("evidence_refs") or [])
+    })
+
+    return CreativeSpec(
+        creative_id=f"CREATIVE-{context.run_id}",
+        concept_name=_opt_str(raw, "concept_name"),
+        angle=_opt_str(raw, "angle"),
+        hook=_opt_str(raw, "hook"),
+        offer=_opt_str(raw, "offer"),
+        cta=_opt_str(raw, "cta"),
+        proof_points=proof_points,
+        claims=claims,
+        hypotheses=hypotheses,
+        recommendations=recommendations,
+        evidence_refs=evidence_refs,
+        asset_receipts=list(asset_receipts or []),
+        constraints=list(context.constraints),
+        field_origins=field_origins,
+    )
+
+
+def build_performance_evaluation(
+    perf_handoff_dump: Dict[str, Any],
+    evaluation_payload: Any,
+    provenance_index: Dict[str, Any],
+    valid_hypothesis_ids: List[str],
+) -> Dict[str, Any]:
+    """Deterministic performance evaluation summary.
+
+    Defaults are truthful: nothing was measured in-run, so the baseline is
+    NOT_EVALUATED / NO_DATA / EXPERIMENT_PROPOSED. The model may claim
+    SUPPORTED / NOT_SUPPORTED ONLY by citing metric refs that resolve to
+    REAL deployable-tier evidence; MOCK/SANDBOX/absent citations force the
+    truthful default and record a rejection note. A cited hypothesis_ref is
+    kept only when it matches an actual Creative hypothesis item id.
+    """
+    result: Dict[str, Any] = {
+        "evaluation_status": "INCONCLUSIVE" if perf_handoff_dump.get("performance_inconclusive") else "NOT_EVALUATED",
+        "data_origin": "NO_DATA",
+        "hypothesis_ref": None,
+        "metric_refs": [],
+        "experiment_execution_state": "EXPERIMENT_PROPOSED",
+        "notes": [],
+    }
+
+    if not isinstance(evaluation_payload, dict):
+        return result
+
+    requested = str(evaluation_payload.get("evaluation_status") or "").upper()
+
+    resolved: List[str] = []
+    modes = set()
+    tiers = set()
+    for ref in [str(m).upper() for m in (evaluation_payload.get("metric_refs") or [])]:
+        entry = provenance_index.get(ref)
+        if entry is None:
+            continue
+        resolved.append(ref)
+        if isinstance(entry, dict):
+            tiers.add(str(entry.get("epistemic_tier", "")).upper())
+            metadata = entry.get("metadata") or {}
+            modes.add(str((metadata or {}).get("execution_mode", "")).upper())
+        else:
+            tiers.add(str(getattr(entry, "epistemic_tier", "")).upper().replace("EPISTEMICTIER.", ""))
+            metadata = getattr(entry, "metadata", {}) or {}
+            modes.add(str((metadata or {}).get("execution_mode", "")).upper())
+
+    result["metric_refs"] = resolved
+
+    if resolved:
+        if modes <= {"REAL"} and tiers and tiers <= set(_DEPLOYABLE_TIERS):
+            result["data_origin"] = "REAL"
+        elif "MOCK" in modes:
+            result["data_origin"] = "MOCK"
+        elif "SANDBOX" in modes:
+            result["data_origin"] = "SANDBOX"
+        else:
+            result["data_origin"] = "UNVERIFIED"
+
+    strong_result_allowed = result["data_origin"] == "REAL" and bool(resolved)
+
+    if requested in ("SUPPORTED", "NOT_SUPPORTED"):
+        if strong_result_allowed:
+            result["evaluation_status"] = requested
+            result["experiment_execution_state"] = "RESULT_OBSERVED"
+        else:
+            result["notes"].append(
+                f"Requested {requested} rejected: requires citable REAL deployable-tier "
+                f"metric evidence; data_origin={result['data_origin']}."
+            )
+    elif requested == "INCONCLUSIVE":
+        result["evaluation_status"] = "INCONCLUSIVE"
+    # requested == NOT_EVALUATED (or unknown) keeps the truthful default.
+
+    hyp_ref = evaluation_payload.get("hypothesis_ref")
+    if isinstance(hyp_ref, str) and hyp_ref.strip():
+        candidate = hyp_ref.strip()
+        if candidate in valid_hypothesis_ids:
+            result["hypothesis_ref"] = candidate
+        else:
+            result["notes"].append(f"hypothesis_ref '{candidate}' dropped: no matching Creative hypothesis item.")
+
+    return result
+
 
 class EpistemicItem(BaseModel):
     """One typed epistemic statement travelling between stages."""
@@ -100,6 +281,12 @@ class StageHandoff(BaseModel):
     unresolved_questions: List[str] = Field(default_factory=list)
     delegation: Dict[str, Any] = Field(default_factory=dict)   # CMO initial only
     performance_inconclusive: Optional[bool] = None             # Performance only
+    creative_spec: Optional[Dict[str, Any]] = None              # Creative/Performance lineage (COLLAB-06)
+    evaluation_status: Optional[str] = None                     # Performance only (COLLAB-06)
+    evaluation_data_origin: Optional[str] = None                # REAL | MOCK | SANDBOX | UNVERIFIED | NO_DATA
+    evaluation_hypothesis_ref: Optional[str] = None
+    metric_refs: List[str] = Field(default_factory=list)
+    experiment_execution_state: str = "EXPERIMENT_PROPOSED"
     failures: List[str] = Field(default_factory=list)
     structured_parse_status: str = "NOT_ATTEMPTED"              # OK | EMPTY | MALFORMED | ABSENT | NOT_ATTEMPTED
 
@@ -319,6 +506,53 @@ def render_handoff_sections(stage_handoffs: Dict[str, Any]) -> str:
         if lines:
             lines.append("")
         lines.append("=== PERFORMANCE STATUS: INCONCLUSIVE (STRUCTURAL — NOT OVERRIDABLE BY PROSE) ===")
+
+    # COLLAB-06: structural Creative reference + Performance evaluation.
+    creative_specs = [
+        d.get("creative_spec") for d in stage_handoffs.values()
+        if isinstance(d, dict) and d.get("creative_spec")
+    ]
+    if creative_specs:
+        if lines:
+            lines.append("")
+        lines.append("=== CREATIVE SPEC (STRUCTURAL REFERENCE — DATA ONLY) ===")
+        spec = creative_specs[-1]
+        origins = spec.get("field_origins") or {}
+        lines.append(f"creative_id: {spec.get('creative_id', '')} [DETERMINISTIC_COMPUTED]")
+        for key in ("concept_name", "angle", "hook", "offer", "cta"):
+            value = spec.get(key)
+            rendered = value if value else f"NOT_PROVIDED [{origins.get(key, 'NOT_PROVIDED')}]"
+            lines.append(f"{key}: {rendered}")
+        proof = spec.get("proof_points") or []
+        lines.append("proof_points: " + ("; ".join(proof) if proof else "NOT_PROVIDED"))
+        for bucket in ("claims", "hypotheses", "recommendations"):
+            items = spec.get(bucket) or []
+            if items:
+                lines.append(f"{bucket}: " + "; ".join(
+                    f"{i.get('item_id', '')}[{i.get('verification', 'OPEN')}] {i.get('text', '')}"
+                    for i in items
+                ))
+        for receipt in spec.get("asset_receipts") or []:
+            lines.append(
+                f"asset_receipt: {receipt.get('execution_id', '')} cap={receipt.get('capability_id', '')} "
+                f"status={receipt.get('status', '')} mode={receipt.get('execution_mode', '')}"
+            )
+
+    perf_evals = [
+        d for d in stage_handoffs.values()
+        if isinstance(d, dict) and d.get("evaluation_status")
+    ]
+    if perf_evals:
+        if lines:
+            lines.append("")
+        lines.append("=== PERFORMANCE EVALUATION (STRUCTURAL) ===")
+        evaluation = perf_evals[-1]
+        lines.append(f"evaluation_status: {evaluation.get('evaluation_status')}")
+        lines.append(f"data_origin: {evaluation.get('evaluation_data_origin')}")
+        lines.append(f"experiment_execution_state: {evaluation.get('experiment_execution_state')}")
+        lines.append(f"hypothesis_ref: {evaluation.get('evaluation_hypothesis_ref') or 'NONE'}")
+        if evaluation.get("metric_refs"):
+            lines.append(f"metric_refs: {', '.join(evaluation['metric_refs'])}")
 
     delegations = [
         d.get("delegation") for d in stage_handoffs.values()

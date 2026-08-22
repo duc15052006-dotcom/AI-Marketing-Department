@@ -15,7 +15,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from governance.access_matrix import AgentAccessMatrix
 from governance.claim_safety import FinalClaimAuditGateResult, ValidationDecision
@@ -42,6 +42,8 @@ from runtime.context import (
 from runtime.context_compiler import ContextCompiler
 from runtime.handoff import (
     HANDOFF_PROMPT_INSTRUCTION,
+    build_creative_spec,
+    build_performance_evaluation,
     build_stage_handoff,
     extract_handoff_payload,
     render_handoff_sections,
@@ -349,7 +351,7 @@ class FiveAgentDepartmentRuntime:
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
-        output = self._finalize_stage_handoff(
+        output, _payload, _parse_status = self._finalize_stage_handoff(
             context, "cmo_initial", "cmo", llm_output, output, delegation=output.get("delegation_plan"),
         )
         context.stage_outputs["cmo_initial"] = output
@@ -440,7 +442,7 @@ class FiveAgentDepartmentRuntime:
             "search_receipt_id": search_receipt.execution_id,
             "citations": [c.citation_id for c in k_res.citations],
         }
-        output = self._finalize_stage_handoff(context, "intelligence", "intelligence", llm_findings, output)
+        output, _payload, _parse_status = self._finalize_stage_handoff(context, "intelligence", "intelligence", llm_findings, output)
         context.stage_outputs["intelligence"] = output
         context.create_checkpoint()
         return output
@@ -527,7 +529,7 @@ class FiveAgentDepartmentRuntime:
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
-        output = self._finalize_stage_handoff(context, "strategist", "strategist", llm_strategy, output)
+        output, _payload, _parse_status = self._finalize_stage_handoff(context, "strategist", "strategist", llm_strategy, output)
         context.stage_outputs["strategist"] = output
         context.create_checkpoint()
         return output
@@ -629,7 +631,14 @@ class FiveAgentDepartmentRuntime:
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
-        output = self._finalize_stage_handoff(context, "creative", "creative", llm_creative, output)
+        # COLLAB-06: expose the real asset receipt to the CreativeSpec builder.
+        output["_img_receipt_dump"] = {
+            "execution_id": img_receipt.execution_id,
+            "capability_id": img_receipt.capability_id,
+            "status": img_receipt.status.value,
+            "execution_mode": img_receipt.execution_mode.value,
+        }
+        output, _payload, _parse_status = self._finalize_stage_handoff(context, "creative", "creative", llm_creative, output)
         context.stage_outputs["creative"] = output
         context.create_checkpoint()
         return output
@@ -692,9 +701,16 @@ class FiveAgentDepartmentRuntime:
             "Mirror the language of the user objective."
         )
         strat_pos = context.stage_outputs.get("strategist", {}).get("positioning", "")
-        concept = context.stage_outputs.get("creative", {}).get("concept_name") or ""
+        # COLLAB-06: Performance evaluates the ACTUAL creative work, not a
+        # synthetic/absent concept_name.
+        creative_synthesis = context.stage_outputs.get("creative", {}).get("creative_synthesis", "") or ""
         evidence_section = grounded_pkg.render_prompt_section()
-        user_prompt = f"Objective: {context.objective}\nStrategy: {strat_pos}\nCreative Assets: {concept}\n\n{evidence_section}".strip()
+        user_prompt = (
+            f"Objective: {context.objective}\n"
+            f"Strategy: {strat_pos}\n"
+            f"Creative Synthesis (authoritative, from Creative this run): {creative_synthesis}\n\n"
+            f"{evidence_section}"
+        ).strip()
         user_prompt = self._append_governance_block(context, user_prompt)
         llm_perf, err = self._call_agent_llm("performance", sys_prompt, user_prompt)
 
@@ -730,7 +746,7 @@ class FiveAgentDepartmentRuntime:
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
-        output = self._finalize_stage_handoff(context, "performance", "performance", llm_perf, output)
+        output, _payload, _parse_status = self._finalize_stage_handoff(context, "performance", "performance", llm_perf, output)
         context.stage_outputs["performance"] = output
         context.create_checkpoint()
         return output
@@ -831,10 +847,11 @@ class FiveAgentDepartmentRuntime:
         raw_output_text: str,
         output: Dict[str, Any],
         delegation: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], str]:
         """Extract/validate the machine handoff from a stage's raw response and
         register it structurally. Fail-safe: malformed/missing payload leaves
-        every epistemic bucket honestly empty; raw text is never modified."""
+        every epistemic bucket honestly empty; raw text is never modified.
+        Returns (output, payload, parse_status)."""
         parse_status, payload = extract_handoff_payload(raw_output_text or "")
         inconclusive = (
             self._detect_performance_inconclusive(output) if stage_key == "performance" else None
@@ -850,9 +867,52 @@ class FiveAgentDepartmentRuntime:
             performance_inconclusive=inconclusive,
             failures=[f for f in context.risk_flags if stage_key.upper() in f],
         )
-        context.working_state.setdefault("stage_handoffs", {})[stage_key] = handoff.model_dump()
-        output["handoff"] = handoff.model_dump()
-        return output
+        handoff_dump = handoff.model_dump()
+        context.working_state.setdefault("stage_handoffs", {})[stage_key] = handoff_dump
+        output["handoff"] = handoff_dump
+
+        # COLLAB-06: CreativeSpec for the creative stage (reuses validated
+        # handoff items; optional machine fields only; nothing fabricated).
+        if stage_key == "creative":
+            spec_payload = payload.get("creative_spec") if isinstance(payload, dict) else None
+            spec = build_creative_spec(
+                context=context,
+                handoff_dump=handoff_dump,
+                spec_payload=spec_payload,
+                asset_receipts=[{
+                    "execution_id": r.get("execution_id", ""),
+                    "capability_id": r.get("capability_id", ""),
+                    "status": r.get("status", ""),
+                    "execution_mode": r.get("execution_mode", ""),
+                } for r in [output.get("_img_receipt_dump") or {}] if r],
+            )
+            spec_dump = spec.model_dump()
+            handoff_dump["creative_spec"] = spec_dump
+            output["creative_spec"] = spec_dump
+            context.working_state["creative_spec"] = spec_dump
+            output.pop("_img_receipt_dump", None)
+
+        # COLLAB-06: deterministic Performance evaluation summary.
+        if stage_key == "performance":
+            evaluation_payload = payload.get("evaluation") if isinstance(payload, dict) else None
+            creative_hypothesis_ids = [
+                h.get("item_id", "")
+                for h in (context.working_state.get("creative_spec", {}) or {}).get("hypotheses", [])
+            ]
+            evaluation = build_performance_evaluation(
+                perf_handoff_dump=handoff_dump,
+                evaluation_payload=evaluation_payload,
+                provenance_index=context.working_state.get("provenance_index", {}) or {},
+                valid_hypothesis_ids=creative_hypothesis_ids,
+            )
+            handoff_dump["evaluation_status"] = evaluation["evaluation_status"]
+            handoff_dump["evaluation_data_origin"] = evaluation["data_origin"]
+            handoff_dump["evaluation_hypothesis_ref"] = evaluation["hypothesis_ref"]
+            handoff_dump["metric_refs"] = evaluation["metric_refs"]
+            handoff_dump["experiment_execution_state"] = evaluation["experiment_execution_state"]
+            output["evaluation"] = evaluation
+
+        return output, payload, parse_status
 
     @classmethod
     def _detect_constraint_violations(cls, context: RuntimeContext, final_text: str) -> List[str]:
@@ -977,6 +1037,25 @@ class FiveAgentDepartmentRuntime:
                 "PERFORMANCE_INCONCLUSIVE: Performance reported an inconclusive/"
                 "insufficient-evidence result; deployment cannot be authorized."
             )
+
+        # COLLAB-06: structural (prose-independent) performance state.
+        perf_handoff = (context.working_state.get("stage_handoffs", {}) or {}).get("performance", {}) or {}
+        if isinstance(perf_handoff, dict):
+            if perf_handoff.get("performance_inconclusive"):
+                blocked += 1
+                blocking_reasons.append(
+                    "PERFORMANCE_INCONCLUSIVE_STRUCTURAL: Performance handoff carries an "
+                    "INCONCLUSIVE flag; prose cannot override it."
+                )
+            execution_state = str(perf_handoff.get("experiment_execution_state", "EXPERIMENT_PROPOSED")).upper()
+            if execution_state != "RESULT_OBSERVED" and re.search(
+                r"\bwinners?\b|chiến thắng|trúng chiến dịch", final_text or "", re.IGNORECASE
+            ):
+                blocked += 1
+                blocking_reasons.append(
+                    f"PHANTOM_WINNER: winner declared while experiment_execution_state="
+                    f"{execution_state}; no observed result exists in this run."
+                )
 
         provenance_index = context.working_state.get("provenance_index", {}) or {}
         creative_text_parts = [
@@ -1150,7 +1229,7 @@ class FiveAgentDepartmentRuntime:
             },
             "master_gtm_plan_markdown": llm_report,
         }
-        output = self._finalize_stage_handoff(context, "final_cmo", "cmo", llm_report, output)
+        output, _payload, _parse_status = self._finalize_stage_handoff(context, "final_cmo", "cmo", llm_report, output)
         context.stage_outputs["final_cmo"] = output
         context.create_checkpoint()
         return output
