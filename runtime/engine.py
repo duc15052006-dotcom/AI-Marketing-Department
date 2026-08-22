@@ -761,18 +761,64 @@ class FiveAgentDepartmentRuntime:
     # The LLM is not the authorization authority.
     # ------------------------------------------------------------------
 
-    _FACTUAL_CLAIM_PATTERN = re.compile(
-        r"(clinically\s+(?:proven|tested|validated)|chứng\s+minh\s+lâm\s+sàng|được\s+chứng\s+minh|"
-        r"proven\s+results|dermatologist|bác\s+sĩ\s+da\s+liễu|"
-        r"\d{1,3}\s*%\s*(?:of|của)\s+[a-zà-ỹ]+|"
-        r"money[-\s]?back\s+guarantee|cam\s+kết\s+hoàn\s+tiền)",
-        re.IGNORECASE,
+    _FACTUAL_CLAIM_PATTERNS = (
+        # 1. Quantified / Multipliers / Metrics / Percentages / Population counts
+        re.compile(r"\b(?:\d+(?:\.\d+)?\s*[xX]|\d+(?:\.\d+)?\s*(?:times?|fold))\s+(?:longer|faster|better|more|higher|cheaper|smaller|quieter|durable|lasting)\b", re.IGNORECASE),
+        re.compile(r"\b(?:gấp|gap)\s+\d+(?:\.\d+)?\s*(?:lần|lan)\b", re.IGNORECASE),
+        re.compile(r"\b(?:twice|3x|4x|5x|10x)\s+(?:as\s+\w+|more|faster|longer|better|greater)\b", re.IGNORECASE),
+        re.compile(r"\b(?:save|tiết\s+kiệm|tiet\s+kiem|giảm|giam|discount|off)\s+\d{1,3}\s*%", re.IGNORECASE),
+        re.compile(r"\b\d{1,3}\s*%\s*(?:savings?|tiết\s+kiệm|tiet\s+kiem|off|discount|giảm|giam)", re.IGNORECASE),
+        re.compile(r"\b(?:reduce|cắt\s+giảm|cat\s+giam|tăng|tang|increase|boost|improve|cải\s+thiện|cai\s+thien)\s+(?:cpa|cac|cpc|conversion|ctr|cvr|roas|cost|chi\s+phí|chi\s+phi|sales|revenue|doanh\s+thu|bounce\s+rate|churn)\s+(?:by\s+)?\d{1,3}\s*%", re.IGNORECASE),
+        re.compile(r"\b\d+\s*(?:out\s+of|\/)\s*\d+\s*(?:users?|customers?|people|consumers?|khách\s+hàng|khach\s+hang|người\s+dùng|nguoi\s+dung)\b", re.IGNORECASE),
+        re.compile(r"\b\d{1,3}\s*%\s*(?:of\s+(?:users?|customers?|people|consumers?|businesses?|mothers?|dermatologists?)|của\s+(?:khách\s+hàng|khach\s+hang|người\s+dùng|nguoi\s+dung))", re.IGNORECASE),
+        re.compile(r"\b\d+(?:[,\.]\d+)?\s*(?:million|triệu|trieu|thousand|nghìn|nghin|k|K)\s+(?:units?|devices?|users?|customers?|downloads?|businesses?|sản\s+phẩm|san\s+pham|khách\s+hàng|khach\s+hang|doanh\s+nghiệp|doanh\s+nghiep)\s*(?:sold|active|using|trusted|đã\s+bán|da\s+ban|tin\s+dùng|tin\s+dung|sử\s+dụng|su\s+dung)?\b", re.IGNORECASE),
+        re.compile(r"\b(?:used\s+by|tin\s+dùng\s+bởi|trusted\s+by)\s+\d+(?:,\d{3})+\b", re.IGNORECASE),
+
+        # 2. Ranking & Superlatives
+        re.compile(r"(?:(?<!\w)#\s*\d+|\b(?:no\.?\s*\d+|số\s*\d+|so\s*\d+|top\s*\d+)\b)", re.IGNORECASE),
+        re.compile(r"\b(?:rated|ranked|xếp\s+hạng|danh\s+gia)\s+(?:#\s*1|no\.?\s*1|số\s*1|so\s*1|top\s*\d+)\b", re.IGNORECASE),
+        re.compile(r"\b(?:best[-\s]?selling|bán\s+chạy\s+nhất|ban\s+chay\s+nhat|fastest\s+charger|sạc\s+nhanh\s+nhất|sac\s+nhanh\s+nhat|most\s+trusted|được\s+tin\s+dùng\s+nhất|duoc\s+tin\s+dung\s+nhat|market\s+leader|dẫn\s+đầu\s+thị\s+trường|dan\s+dau\s+thi\s+truong|highest\s+rated|được\s+đánh\s+giá\s+cao\s+nhất)\b", re.IGNORECASE),
+
+        # 3. Comparative facts
+        re.compile(r"\b(?:lasts?|durable|faster|better|cheaper|quieter|more\s+durable)\s+than\s+(?:every|all|any|our|the)?\s*competitors?\b", re.IGNORECASE),
+        re.compile(r"\b(?:không\s+đối\s+thủ\s+nào|khong\s+doi\s+thu\s+nao|no\s+competitor)\s+(?:bền\s+bằng|ben\s+bang|sánh\s+bằng|bằng|matches|beats|exceeds|is\s+more)\b", re.IGNORECASE),
+        re.compile(r"\b(?:twice|3x|5x)\s+as\s+\w+\s+as\s+(?:model\s+\w+|competitor|iphone|samsung)\b", re.IGNORECASE),
+
+        # 4. Material / Hardware Specs
+        re.compile(r"\b(?:aerospace[-\s]?grade\s+titanium|hợp\s+kim\s+titan\s+hàng\s+không|khung\s+titan\s+hàng\s+không|khung\s+titan\s+hang\s+khong|grade\s+5\s+titanium)\b", re.IGNORECASE),
+        re.compile(r"\b(?:IP6[78]|IP\d{2})\s*(?:certified|compliant|waterproof|chuẩn|chứng\s+nhận|đạt\s+chuẩn|dat\s+chuan)\b", re.IGNORECASE),
+        re.compile(r"\b\d{3,5}\s*mAh\s*(?:battery|pin)?\b", re.IGNORECASE),
+        re.compile(r"\b(?:supports?|hỗ\s+trợ|ho\s+tro)\s+\d{2,3}\s*W\s*(?:pd\s+charging|fast\s+charging|sạc\s+nhanh|sac\s+nhanh)\b", re.IGNORECASE),
+
+        # 5. Certification / Clinical Authority
+        re.compile(r"\b(?:clinically\s+(?:proven|tested|validated)|chứng\s+minh\s+lâm\s+sàng|chung\s+minh\s+lam\s+sang|được\s+chứng\s+minh|duoc\s+chung\s+minh|proven\s+results)\b", re.IGNORECASE),
+        re.compile(r"\b(?:dermatologist\s+(?:tested|approved|recommended)|bác\s+sĩ\s+da\s+liễu\s+(?:khuyên\s+dùng|chứng\s+nhận)|recommended\s+by\s+dermatologists?)\b", re.IGNORECASE),
+        re.compile(r"\b(?:FDA|USDA\s+Organic|CE|ISO\s*\d+)\s*(?:approved|certified|chứng\s+nhận|đạt\s+chuẩn|dat\s+chuan)\b", re.IGNORECASE),
+
+        # 6. Price / Savings / Guarantees
+        re.compile(r"\b(?:money[-\s]?back\s+guarantee|cam\s+kết\s+hoàn\s+tiền|cam\s+ket\s+hoan\s+tien|hoàn\s+tiền\s+100%\s+trong\s+\d+\s*ngày|hoan\s+tien\s+100%\s+trong\s+\d+\s*ngay|30[-\s]?day\s+money[-\s]?back)\b", re.IGNORECASE),
+        re.compile(r"\b(?:bảo\s+hành|bao\s+hanh|warranty)\s*(?:chính\s+hãng|trọn\s+đời|lifetime|\d+\s*(?:tháng|thang|năm|nam|ngày|ngay|months?|years?))\b", re.IGNORECASE),
+        re.compile(r"\b(?:lifetime\s+warranty|24[-\s]?month\s+warranty|12[-\s]?month\s+warranty)\b", re.IGNORECASE),
+        re.compile(r"\b(?:only|chỉ\s+với|chi\s+voi)\s*(?:\$\s*\d+|\d+\s*USD|\d+\s*(?:triệu|tr|k|K|đ|VND))\b", re.IGNORECASE),
+
+        # 7. Market Statistics
+        re.compile(r"\b\d+\s*%\s*(?:of\s+customers|of\s+users|khách\s+hàng|người\s+dùng)\s+(?:prefer|choose|tin\s+dùng|lựa\s+chọn)\b", re.IGNORECASE),
     )
 
     _HYPOTHESIS_MARKERS = (
-        "hypothesis", "giả thuyết", "concept", "ý tưởng", "idea", "suggestion",
-        "đề xuất", "placeholder", "to be tested", "cần kiểm chứng", "unverified",
-        "chưa xác minh", "mock", "simulated", "creative direction", "not a factual claim",
+        "hypothesis", "giả thuyết", "gia thuyet", "concept", "ý tưởng", "y tuong",
+        "idea", "suggestion", "đề xuất", "de xuat", "placeholder", "to be tested",
+        "cần kiểm chứng", "can kiem chung", "unverified", "chưa xác minh", "chua xac minh",
+        "mock", "simulated", "creative direction", "not a factual claim",
+        "we hypothesize", "hypothesize that", "propose testing", "we should test",
+        "cần thử nghiệm", "can thu nghiem", "might improve", "may improve",
+    )
+
+    _PLANNING_MARKERS = (
+        "target", "mục tiêu", "muc tieu", "goal", "aims to", "aim to",
+        "plan to", "kế hoạch", "ke hoach", "dự kiến", "du kien",
+        "propose", "proposing", "expected savings may reach", "may reach",
+        "might reach", "if we", "whether", "would consider", "planning",
     )
 
     _SOURCE_CITATION_PATTERN = re.compile(
@@ -1004,6 +1050,24 @@ class FiveAgentDepartmentRuntime:
         return reasons
 
     @classmethod
+    def _is_material_factual_claim(cls, sentence: str) -> bool:
+        """Check if a sentence matches any material factual claim pattern."""
+        for pat in cls._FACTUAL_CLAIM_PATTERNS:
+            if pat.search(sentence):
+                return True
+        return False
+
+    @classmethod
+    def _is_planning_or_hypothesis(cls, sentence: str) -> bool:
+        """Check if a sentence is explicitly framed as hypothesis or planning."""
+        lowered = sentence.lower()
+        if any(m in lowered for m in cls._HYPOTHESIS_MARKERS):
+            return True
+        if any(m in lowered for m in cls._PLANNING_MARKERS):
+            return True
+        return False
+
+    @classmethod
     def _scan_unsupported_product_claims(
         cls,
         corpus_text: str,
@@ -1022,19 +1086,20 @@ class FiveAgentDepartmentRuntime:
         claim_actions: Dict[str, str] = {}
 
         for sentence in re.split(r"(?<=[.!?\n])\s+", corpus_text or ""):
-            if not sentence.strip():
+            clean_sentence = sentence.strip()
+            if not clean_sentence or len(clean_sentence) < 3:
                 continue
-            match = cls._FACTUAL_CLAIM_PATTERN.search(sentence)
-            if not match:
+
+            if not cls._is_material_factual_claim(clean_sentence):
                 continue
+
             total += 1
             label = f"claim_{total}"
-            lowered = sentence.lower()
 
             # Evidence check FIRST: a cited source with insufficient tier is an
             # evidence failure and must block even if wording contains
             # hypothesis-like markers (e.g., a source id containing "mock").
-            citation = cls._SOURCE_CITATION_PATTERN.search(sentence)
+            citation = cls._SOURCE_CITATION_PATTERN.search(clean_sentence)
             cited_id = citation.group(1).upper() if citation else None
             evidence_item = provenance_index.get(cited_id) if cited_id else None
             tier = ""
@@ -1052,13 +1117,13 @@ class FiveAgentDepartmentRuntime:
                 blocked += 1
                 claim_actions[label] = "BLOCK_PUBLICATION"
                 blocking_reasons.append(
-                    f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{sentence.strip()[:140]}' "
+                    f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
                     f"cites source '{cited_id}' whose tier '{tier or 'NONE'}' cannot "
                     f"authorize deployment."
                 )
                 continue
 
-            if any(marker in lowered for marker in cls._HYPOTHESIS_MARKERS):
+            if cls._is_planning_or_hypothesis(clean_sentence):
                 hypotheses += 1
                 claim_actions[label] = "PRESERVE_HYPOTHESIS"
                 continue
@@ -1066,7 +1131,7 @@ class FiveAgentDepartmentRuntime:
             blocked += 1
             claim_actions[label] = "BLOCK_PUBLICATION"
             blocking_reasons.append(
-                f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{sentence.strip()[:140]}' "
+                f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
                 f"lacks a citable verified/live-tool source (tier found: {tier or 'NONE'})."
             )
 
@@ -1121,6 +1186,27 @@ class FiveAgentDepartmentRuntime:
                 if phantom_reasons:
                     blocked += len(phantom_reasons)
                     blocking_reasons.extend(phantom_reasons)
+
+        # Structured claim checks from handoffs
+        stage_handoffs = context.working_state.get("stage_handoffs", {}) or {}
+        for s_key, s_handoff in stage_handoffs.items():
+            if isinstance(s_handoff, dict):
+                s_claims = s_handoff.get("claims") or s_handoff.get("material_claims") or []
+                if isinstance(s_claims, list):
+                    for c_item in s_claims:
+                        if isinstance(c_item, dict):
+                            c_class = str(c_item.get("claim_class", "")).upper().replace("CLAIMCLASS.", "")
+                            c_usage = str(c_item.get("allowed_usage", "")).upper().replace("ALLOWEDUSAGE.", "")
+                            c_support = str(c_item.get("support_status", "")).upper().replace("SUPPORTSTATUS.", "")
+                            c_id = c_item.get("claim_id", "STRUCTURED_CLAIM")
+                            c_text = c_item.get("claim_text", "")
+
+                            if (c_class in ("VERIFIED_PRODUCT_FACT", "BUSINESS_FACT") or c_usage == "PUBLIC_CLAIM") and c_support in ("UNSUPPORTED", "UNKNOWN", ""):
+                                blocked += 1
+                                blocking_reasons.append(
+                                    f"UNSUPPORTED_STRUCTURED_CLAIM [{c_id}]: '{c_text[:140]}' is structured as {c_class}/{c_usage} but support_status is {c_support or 'UNSUPPORTED'}."
+                                )
+                                claim_actions[c_id] = "BLOCK_PUBLICATION"
 
         provenance_index = context.working_state.get("provenance_index", {}) or {}
         creative_text_parts = [
