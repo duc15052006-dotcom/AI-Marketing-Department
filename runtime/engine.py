@@ -11,12 +11,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from governance.access_matrix import AgentAccessMatrix
+from governance.claim_safety import FinalClaimAuditGateResult, ValidationDecision
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
 from integrations.models.gateway import UniversalModelGateway
 from knowledge.models import KnowledgeCitation
@@ -562,6 +564,191 @@ class FiveAgentDepartmentRuntime:
         context.create_checkpoint()
         return output
 
+    # ------------------------------------------------------------------
+    # Final CMO fail-closed authorization policy (COLLAB-02).
+    #
+    # Deterministic infrastructure gate reusing the repository's existing
+    # claim-safety vocabulary (FinalClaimAuditGateResult /
+    # APPROVED | APPROVED_WITH_CONDITIONS | BLOCKED). This is POLICY, not a
+    # sixth agent: it never calls a model and never generates content.
+    # The LLM is not the authorization authority.
+    # ------------------------------------------------------------------
+
+    _FACTUAL_CLAIM_PATTERN = re.compile(
+        r"(clinically\s+(?:proven|tested|validated)|chứng\s+minh\s+lâm\s+sàng|được\s+chứng\s+minh|"
+        r"proven\s+results|dermatologist|bác\s+sĩ\s+da\s+liễu|"
+        r"\d{1,3}\s*%\s*(?:of|của)\s+[a-zà-ỹ]+|"
+        r"money[-\s]?back\s+guarantee|cam\s+kết\s+hoàn\s+tiền)",
+        re.IGNORECASE,
+    )
+
+    _HYPOTHESIS_MARKERS = (
+        "hypothesis", "giả thuyết", "concept", "ý tưởng", "idea", "suggestion",
+        "đề xuất", "placeholder", "to be tested", "cần kiểm chứng", "unverified",
+        "chưa xác minh", "mock", "simulated", "creative direction", "not a factual claim",
+    )
+
+    _SOURCE_CITATION_PATTERN = re.compile(
+        r"(?:source|nguồn|evidence|receipt)\s*[:#=]?\s*([A-Za-z][A-Za-z0-9\-_]+)",
+        re.IGNORECASE,
+    )
+
+    _INCONCLUSIVE_MARKERS = (
+        "inconclusive", "không thể kết luận", "không kết luận", "insufficient evidence",
+        "dữ liệu không đủ", "chưa đủ dữ liệu", "no winner", "no causal conclusion",
+        "undetermined",
+    )
+
+    _DEPLOYABLE_EVIDENCE_TIERS = ("VERIFIED_SOURCE", "SOURCE_BACKED_OBSERVATION")
+
+    @classmethod
+    def _detect_performance_inconclusive(cls, perf_out: Dict[str, Any]) -> bool:
+        """Deterministic INCONCLUSIVE detection from the Performance stage output."""
+        if not isinstance(perf_out, dict):
+            return False
+        corpus_parts = [
+            perf_out.get("funnel_kpi") or "",
+            json.dumps(perf_out.get("experiment_blueprint") or {}, ensure_ascii=False),
+        ]
+        corpus = " ".join(str(p) for p in corpus_parts).lower()
+        return any(marker in corpus for marker in cls._INCONCLUSIVE_MARKERS)
+
+    @classmethod
+    def _scan_unsupported_product_claims(
+        cls,
+        corpus_text: str,
+        provenance_index: Dict[str, Any],
+    ) -> tuple[int, int, int, List[str], Dict[str, str]]:
+        """Scan free text for factual/product claims lacking verified support.
+
+        Creative propositions (hypotheses, ideas, placeholders) are preserved
+        and never blocked. A factual-pattern claim passes ONLY when it cites a
+        source id present in the provenance index whose epistemic tier is
+        VERIFIED_SOURCE or SOURCE_BACKED_OBSERVATION (mock/sandbox/failed
+        receipts can never satisfy this requirement).
+        """
+        total = supported = hypotheses = blocked = 0
+        blocking_reasons: List[str] = []
+        claim_actions: Dict[str, str] = {}
+
+        for sentence in re.split(r"(?<=[.!?\n])\s+", corpus_text or ""):
+            if not sentence.strip():
+                continue
+            match = cls._FACTUAL_CLAIM_PATTERN.search(sentence)
+            if not match:
+                continue
+            total += 1
+            label = f"claim_{total}"
+            lowered = sentence.lower()
+
+            # Evidence check FIRST: a cited source with insufficient tier is an
+            # evidence failure and must block even if wording contains
+            # hypothesis-like markers (e.g., a source id containing "mock").
+            citation = cls._SOURCE_CITATION_PATTERN.search(sentence)
+            cited_id = citation.group(1).upper() if citation else None
+            evidence_item = provenance_index.get(cited_id) if cited_id else None
+            tier = ""
+            if isinstance(evidence_item, dict):
+                tier = str(evidence_item.get("epistemic_tier", "")).upper()
+            elif evidence_item is not None:
+                tier = str(getattr(evidence_item, "epistemic_tier", "")).upper().replace("EPISTEMICTIER.", "")
+
+            if tier in cls._DEPLOYABLE_EVIDENCE_TIERS:
+                supported += 1
+                claim_actions[label] = "AUTHORIZE"
+                continue
+
+            if cited_id:
+                blocked += 1
+                claim_actions[label] = "BLOCK_PUBLICATION"
+                blocking_reasons.append(
+                    f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{sentence.strip()[:140]}' "
+                    f"cites source '{cited_id}' whose tier '{tier or 'NONE'}' cannot "
+                    f"authorize deployment."
+                )
+                continue
+
+            if any(marker in lowered for marker in cls._HYPOTHESIS_MARKERS):
+                hypotheses += 1
+                claim_actions[label] = "PRESERVE_HYPOTHESIS"
+                continue
+
+            blocked += 1
+            claim_actions[label] = "BLOCK_PUBLICATION"
+            blocking_reasons.append(
+                f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{sentence.strip()[:140]}' "
+                f"lacks a citable verified/live-tool source (tier found: {tier or 'NONE'})."
+            )
+
+        return total, supported, hypotheses, blocking_reasons, claim_actions
+
+    def _evaluate_final_authorization(
+        self,
+        context: RuntimeContext,
+        perf_out: Dict[str, Any],
+        crtv_out: Dict[str, Any],
+        final_text: str,
+    ) -> FinalClaimAuditGateResult:
+        """Fail-closed pre-deployment audit for the Final CMO output."""
+        blocking_reasons: List[str] = []
+        claim_actions: Dict[str, str] = {}
+        blocked = 0
+
+        if self._detect_performance_inconclusive(perf_out):
+            blocked += 1
+            claim_actions["performance"] = "HOLD"
+            blocking_reasons.append(
+                "PERFORMANCE_INCONCLUSIVE: Performance reported an inconclusive/"
+                "insufficient-evidence result; deployment cannot be authorized."
+            )
+
+        provenance_index = context.working_state.get("provenance_index", {}) or {}
+        creative_text_parts = [
+            str(crtv_out.get("creative_synthesis") or ""),
+            final_text,
+        ]
+        corpus = " ".join(part for part in creative_text_parts if part)
+        total, supported, hypotheses, claim_reasons, claim_actions_scan = (
+            self._scan_unsupported_product_claims(corpus, provenance_index)
+        )
+        blocking_reasons.extend(claim_reasons)
+        claim_actions.update(claim_actions_scan)
+        blocked += len(claim_reasons)
+
+        if blocked > 0:
+            authorization_status = "BLOCKED"
+        elif hypotheses > 0:
+            authorization_status = "APPROVED_WITH_CONDITIONS"
+        else:
+            authorization_status = "APPROVED"
+
+        return FinalClaimAuditGateResult(
+            total_claims=total,
+            supported_claims=supported,
+            unknown_claims=0,
+            hypotheses_count=hypotheses,
+            blocked_claims=blocked,
+            human_input_required_count=0,
+            authorization_status=authorization_status,
+            blocking_reasons=blocking_reasons,
+            claim_actions=claim_actions,
+        )
+
+    @staticmethod
+    def _fail_closed_audit(reason_code: str, detail: str) -> FinalClaimAuditGateResult:
+        """Deterministic fail-closed audit result for gate errors / missing audits."""
+        return FinalClaimAuditGateResult(
+            total_claims=0,
+            supported_claims=0,
+            unknown_claims=0,
+            hypotheses_count=0,
+            blocked_claims=1,
+            human_input_required_count=0,
+            authorization_status="BLOCKED",
+            blocking_reasons=[f"{reason_code}: {detail}"],
+            claim_actions={"audit": "FAIL_CLOSED"},
+        )
+
     def execute_stage_final_cmo(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 6: Governed Final CMO Synthesis & Master GTM Plan."""
         context.current_stage = RuntimeStage.FINAL_CMO
@@ -647,11 +834,33 @@ class FiveAgentDepartmentRuntime:
         if not llm_report.strip().startswith("#"):
             llm_report = f"# BÁO CÁO CHIẾN LƯỢC GTM — {context.objective}\n\n{llm_report}"
 
+        # ------------------------------------------------------------------
+        # COLLAB-02: Fail-closed authorization gate (runs exactly once).
+        # The Final CMO LLM is NOT the authorization authority. Any gate
+        # error, missing audit result, Performance INCONCLUSIVE, or
+        # unsupported product claim blocks deployment. Raw LLM output is
+        # preserved verbatim regardless of the decision.
+        # ------------------------------------------------------------------
+        try:
+            audit_res = self._evaluate_final_authorization(context, perf_out, crtv_out, llm_report)
+        except Exception as audit_err:
+            audit_res = self._fail_closed_audit("AUDIT_GATE_ERROR", str(audit_err))
+        if audit_res is None:
+            audit_res = self._fail_closed_audit("MISSING_AUDIT_RESULT", "Authorization audit produced no result.")
+
+        approved_for_deployment = audit_res.authorization_status in ("APPROVED", "APPROVED_WITH_CONDITIONS")
+        if not approved_for_deployment:
+            context.status = RuntimeStatus.FAILED
+            joined_reasons = "; ".join(audit_res.blocking_reasons)[:400]
+            context.risk_flags.append(f"FINAL_CMO_NOT_AUTHORIZED: {joined_reasons}")
+
         output = {
             "stage": "FINAL_CMO",
             "agent": "cmo",
-            "status": "READY_FOR_DEPLOYMENT",
-            "approval_status": "APPROVED",
+            "status": "READY_FOR_DEPLOYMENT" if approved_for_deployment else "NOT_READY",
+            "approval_status": audit_res.authorization_status,
+            "reason": "" if approved_for_deployment else "; ".join(audit_res.blocking_reasons)[:300],
+            "claim_audit": audit_res.model_dump(),
             "master_gtm_plan": {
                 "objective": context.objective,
                 "strategy": strat_out,
