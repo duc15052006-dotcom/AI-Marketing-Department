@@ -67,6 +67,7 @@ class DepartmentRunArtifact(BaseModel):
     final_cmo_output: Dict[str, Any] = Field(default_factory=dict)
     lineage_summary: Dict[str, Any] = Field(default_factory=dict)
     binding_constraints: List[str] = Field(default_factory=list, description="Structural user/business restrictions in force for this run (COLLAB-03)")
+    epistemic_handoffs: Dict[str, Any] = Field(default_factory=dict, description="Per-stage structured epistemic handoffs (COLLAB-05)")
     errors: List[str] = Field(default_factory=list)
     final_artifact_hash: str = Field(default="")
 

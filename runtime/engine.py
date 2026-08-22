@@ -40,6 +40,12 @@ from runtime.context import (
     RuntimeStatus,
 )
 from runtime.context_compiler import ContextCompiler
+from runtime.handoff import (
+    HANDOFF_PROMPT_INSTRUCTION,
+    build_stage_handoff,
+    extract_handoff_payload,
+    render_handoff_sections,
+)
 from runtime.knowledge_builder import KnowledgeContextBuilder
 from runtime.lineage import LineageInspector
 from runtime.memory_builder import MemoryContextBuilder
@@ -217,11 +223,15 @@ class FiveAgentDepartmentRuntime:
         timeout_seconds: Optional[float] = None,
     ) -> tuple[Optional[str], Optional[str]]:
         """Helper to invoke UniversalModelGateway for an agent stage.
-        
+
         Returns (content, error_detail). If successful, error_detail is None.
         """
         if not self.model_gateway:
             return None, "NO_MODEL_GATEWAY"
+
+        # COLLAB-05: every stage may append the optional machine handoff block
+        # to the SAME single response (no second agent, no second model call).
+        system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
 
         req = ModelRequest(
             messages=[
@@ -330,13 +340,18 @@ class FiveAgentDepartmentRuntime:
             "status": "COMPLETED",
             "strategic_intent": llm_output,
             "delegation_plan": {
-                "intelligence_focus": f"Investigate market landscape, customer pain points, and competitors for {context.objective}",
-                "strategist_focus": f"Define ICP segments, value proposition, and positioning hierarchy for {context.objective}",
-                "creative_focus": f"Develop creative angles, high-converting hooks, and ad copy for {context.objective}",
-                "performance_focus": f"Establish CAC/ROAS targets, channel mix, and experiment roadmap for {context.objective}",
+                # COLLAB-05: directives reference the objective without
+                # re-quoting it (single-occurrence contract in prompts).
+                "intelligence_focus": "Investigate market landscape, customer pain points, and competitors for the stated objective",
+                "strategist_focus": "Define ICP segments, value proposition, and positioning hierarchy for the stated objective",
+                "creative_focus": "Develop creative angles, high-converting hooks, and ad copy for the stated objective",
+                "performance_focus": "Establish CAC/ROAS targets, channel mix, and experiment roadmap for the stated objective",
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
+        output = self._finalize_stage_handoff(
+            context, "cmo_initial", "cmo", llm_output, output, delegation=output.get("delegation_plan"),
+        )
         context.stage_outputs["cmo_initial"] = output
         context.create_checkpoint()
         return output
@@ -425,6 +440,7 @@ class FiveAgentDepartmentRuntime:
             "search_receipt_id": search_receipt.execution_id,
             "citations": [c.citation_id for c in k_res.citations],
         }
+        output = self._finalize_stage_handoff(context, "intelligence", "intelligence", llm_findings, output)
         context.stage_outputs["intelligence"] = output
         context.create_checkpoint()
         return output
@@ -511,6 +527,7 @@ class FiveAgentDepartmentRuntime:
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
+        output = self._finalize_stage_handoff(context, "strategist", "strategist", llm_strategy, output)
         context.stage_outputs["strategist"] = output
         context.create_checkpoint()
         return output
@@ -612,6 +629,7 @@ class FiveAgentDepartmentRuntime:
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
+        output = self._finalize_stage_handoff(context, "creative", "creative", llm_creative, output)
         context.stage_outputs["creative"] = output
         context.create_checkpoint()
         return output
@@ -712,6 +730,7 @@ class FiveAgentDepartmentRuntime:
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
+        output = self._finalize_stage_handoff(context, "performance", "performance", llm_perf, output)
         context.stage_outputs["performance"] = output
         context.create_checkpoint()
         return output
@@ -795,11 +814,45 @@ class FiveAgentDepartmentRuntime:
         return "\n".join(lines)
 
     def _append_governance_block(self, context: RuntimeContext, user_prompt: str) -> str:
-        """Attach the shared governance block to a stage prompt (single call site per stage)."""
+        """Attach the shared governance block plus upstream structured handoff
+        sections to a stage prompt (single insertion point per stage)."""
         block = self._render_governance_block(context)
-        if not block:
+        upstream = render_handoff_sections(context.working_state.get("stage_handoffs", {}))
+        parts = [p for p in (block, upstream) if p]
+        if not parts:
             return user_prompt
-        return f"{user_prompt}\n\n{block}"
+        return f"{user_prompt}\n\n" + "\n\n".join(parts)
+
+    def _finalize_stage_handoff(
+        self,
+        context: RuntimeContext,
+        stage_key: str,
+        agent_id: str,
+        raw_output_text: str,
+        output: Dict[str, Any],
+        delegation: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Extract/validate the machine handoff from a stage's raw response and
+        register it structurally. Fail-safe: malformed/missing payload leaves
+        every epistemic bucket honestly empty; raw text is never modified."""
+        parse_status, payload = extract_handoff_payload(raw_output_text or "")
+        inconclusive = (
+            self._detect_performance_inconclusive(output) if stage_key == "performance" else None
+        )
+        handoff = build_stage_handoff(
+            context=context,
+            source_stage=stage_key.upper(),
+            source_agent=agent_id,
+            payload=payload if parse_status == "OK" else None,
+            parse_status=parse_status,
+            provenance_index=context.working_state.get("provenance_index", {}) or {},
+            delegation=delegation,
+            performance_inconclusive=inconclusive,
+            failures=[f for f in context.risk_flags if stage_key.upper() in f],
+        )
+        context.working_state.setdefault("stage_handoffs", {})[stage_key] = handoff.model_dump()
+        output["handoff"] = handoff.model_dump()
+        return output
 
     @classmethod
     def _detect_constraint_violations(cls, context: RuntimeContext, final_text: str) -> List[str]:
@@ -1097,6 +1150,7 @@ class FiveAgentDepartmentRuntime:
             },
             "master_gtm_plan_markdown": llm_report,
         }
+        output = self._finalize_stage_handoff(context, "final_cmo", "cmo", llm_report, output)
         context.stage_outputs["final_cmo"] = output
         context.create_checkpoint()
         return output
@@ -1187,6 +1241,7 @@ class FiveAgentDepartmentRuntime:
             final_cmo_output=context.stage_outputs.get("final_cmo", {}),
             lineage_summary={"citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()]},
             binding_constraints=list(context.constraints),
+            epistemic_handoffs=dict(context.working_state.get("stage_handoffs", {})),
             errors=context.risk_flags,
         )
         artifact.final_artifact_hash = artifact.compute_artifact_hash()
