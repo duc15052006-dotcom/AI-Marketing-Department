@@ -6,19 +6,47 @@ Classifies incoming chat messages into distinct operational routes:
 - MARKETING_WORKFLOW: Complex marketing work triggering the Five-Agent Department runtime.
 - SYSTEM_COMMAND: Slash commands or system-level administrative actions.
 
-Deterministic heuristic routing is evaluated first (zero LLM overhead).
-Ambiguous cases fallback to lightweight model classification via UniversalModelGateway.
+Routing order:
+1. High-confidence deterministic gates first (zero LLM overhead):
+   slash commands, greetings/identity/QA, attachment+marketing/doc keywords,
+   document keywords, explicit marketing keywords (accent-insensitive via
+   Vietnamese diacritic folding of the MATCHING layer only - raw user text is
+   never mutated).
+2. Ambiguous / noisy input falls through to lightweight semantic model
+   classification via UniversalModelGateway. There is NO short-message cutoff
+   before classification: SHORT_GENERAL_QUERY survives only as the final
+   fail-safe fallback when no gateway is available or classification fails.
+3. Attachment turns may be escalated to MARKETING_WORKFLOW by semantic
+   classification; otherwise they fall back safely to DOCUMENT_ANALYSIS.
+
+Raw user text is preserved verbatim end to end.
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from integrations.models.base import ModelMessage, ModelRequest, ModelRole
 from integrations.models.gateway import UniversalModelGateway
+
+_VIETNAMESE_FOLD_MAP = str.maketrans({"\u0111": "d", "\u0110": "D"})
+
+
+def fold_vietnamese(text: str) -> str:
+    """Accent-fold text for MATCHING ONLY.
+
+    Strips Vietnamese diacritics (NFD decomposition + combining-mark removal)
+    and maps đ/Đ -> d/D so that e.g. "Phân tích thị trường" matches the same
+    keywords as "phan tich thi truong". Never used to rewrite user input.
+    """
+    if not text:
+        return text
+    decomposed = unicodedata.normalize("NFD", text.translate(_VIETNAMESE_FOLD_MAP))
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
 class ConversationIntent(str, Enum):
@@ -94,6 +122,40 @@ class ConversationRouter:
             re.IGNORECASE,
         )
 
+        # Accent-insensitive companions built from the SAME keyword sources.
+        # Matching-layer folding only; raw user text is never modified.
+        self._marketing_explicit_pattern_folded = re.compile(
+            fold_vietnamese(self._marketing_explicit_pattern.pattern), re.IGNORECASE
+        )
+        self._doc_keywords_folded = re.compile(
+            fold_vietnamese(self._doc_keywords.pattern), re.IGNORECASE
+        )
+
+    def _matches_marketing_explicit(self, text: str) -> bool:
+        """Explicit marketing match, tolerant to missing Vietnamese diacritics."""
+        if self._marketing_explicit_pattern.search(text):
+            return True
+        return bool(self._marketing_explicit_pattern_folded.search(fold_vietnamese(text)))
+
+    def _matches_doc_keywords(self, text: str) -> bool:
+        """Document-keyword match, tolerant to missing Vietnamese diacritics."""
+        if self._doc_keywords.search(text):
+            return True
+        return bool(self._doc_keywords_folded.search(fold_vietnamese(text)))
+
+    def _try_semantic_classification(self, text: str) -> Optional[ConversationIntent]:
+        """Single-attempt semantic classification; None when unavailable/failed.
+
+        No retries, no recursion. Exceptions are swallowed exactly as before so
+        downstream fail-safe fallbacks stay in control.
+        """
+        if self.model_gateway is None:
+            return None
+        try:
+            return self._classify_via_model(text)
+        except Exception:
+            return None
+
     def route(
         self,
         message: str,
@@ -140,22 +202,41 @@ class ConversationRouter:
         if has_attachments:
             # If user explicitly requests full marketing workflow on document:
             # e.g., "Đọc tài liệu này và xây chiến lược marketing"
-            if self._marketing_explicit_pattern.search(text):
+            if self._matches_marketing_explicit(text):
                 return RoutingDecision(
                     intent=ConversationIntent.MARKETING_WORKFLOW,
                     confidence=0.92,
                     reason_code="DOC_AUGMENTED_MARKETING_WORKFLOW",
                     metadata={"has_attachments": True},
                 )
-            # Default for attachment queries or summary requests:
+            # High-confidence explicit document request on the attachment:
+            if self._matches_doc_keywords(text):
+                return RoutingDecision(
+                    intent=ConversationIntent.DOCUMENT_ANALYSIS,
+                    confidence=0.95,
+                    reason_code="ATTACHMENT_DOCUMENT_ANALYSIS",
+                    metadata={"has_attachments": True},
+                )
+            # Ambiguous/noisy attachment text: let semantic classification
+            # decide (it may legitimately escalate to MARKETING_WORKFLOW).
+            llm_intent = self._try_semantic_classification(text)
+            if llm_intent == ConversationIntent.MARKETING_WORKFLOW:
+                return RoutingDecision(
+                    intent=ConversationIntent.MARKETING_WORKFLOW,
+                    confidence=0.80,
+                    reason_code="MODEL_CLASSIFICATION",
+                    metadata={"has_attachments": True},
+                )
+            # Semantic classifier unavailable/failed/answered DOC or GENERAL:
+            # attachment present, so safe document-analysis fallback.
             return RoutingDecision(
                 intent=ConversationIntent.DOCUMENT_ANALYSIS,
-                confidence=0.95,
+                confidence=0.90,
                 reason_code="ATTACHMENT_DOCUMENT_ANALYSIS",
-                metadata={"has_attachments": True},
+                metadata={"has_attachments": True, "semantic_fallback": True},
             )
 
-        if self._doc_keywords.search(text):
+        if self._matches_doc_keywords(text):
             return RoutingDecision(
                 intent=ConversationIntent.DOCUMENT_ANALYSIS,
                 confidence=0.90,
@@ -163,15 +244,25 @@ class ConversationRouter:
             )
 
         # 4. Explicit Marketing Workflow Triggers
-        if self._marketing_explicit_pattern.search(text):
+        if self._matches_marketing_explicit(text):
             return RoutingDecision(
                 intent=ConversationIntent.MARKETING_WORKFLOW,
                 confidence=0.95,
                 reason_code="DETERMINISTIC_MARKETING_KEYWORD",
             )
 
-        # 5. Short Queries & General Conversational Fallback
-        # Short phrases (< 8 words) without explicit marketing triggers are general chat
+        # 5. Semantic classification for ALL ambiguous/unmatched input.
+        # NOTE: no short-message cutoff here anymore - SHORT_GENERAL_QUERY is
+        # only a FINAL fail-safe fallback below, never a preemptive return.
+        llm_intent = self._try_semantic_classification(text)
+        if llm_intent is not None:
+            return RoutingDecision(
+                intent=llm_intent,
+                confidence=0.80,
+                reason_code="MODEL_CLASSIFICATION",
+            )
+
+        # 6. Fail-safe deterministic fallback (semantic path unavailable/failed)
         word_count = len(text.split())
         if word_count < 8:
             return RoutingDecision(
@@ -179,19 +270,6 @@ class ConversationRouter:
                 confidence=0.85,
                 reason_code="SHORT_GENERAL_QUERY",
             )
-
-        # 6. Fallback or Lightweight LLM Classification for Ambiguous Cases
-        if self.model_gateway is not None:
-            try:
-                llm_intent = self._classify_via_model(text)
-                if llm_intent:
-                    return RoutingDecision(
-                        intent=llm_intent,
-                        confidence=0.80,
-                        reason_code="MODEL_CLASSIFICATION",
-                    )
-            except Exception:
-                pass
 
         # Default fallback is GENERAL_CONVERSATION
         return RoutingDecision(
