@@ -73,7 +73,7 @@ from memory.repository import LocalMemoryRepository
 from runtime.artifacts import DepartmentRunArtifact
 from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, RuntimeStatus
 from runtime.context_compiler import ContextCompiler
-from runtime.engine import FiveAgentDepartmentRuntime
+from runtime.engine import FiveAgentDepartmentRuntime, extract_explicit_user_constraints
 from runtime.queue import ResourceLimiter, RunManager
 from tools.capabilities import CapabilityRegistry, RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
@@ -292,6 +292,8 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                     chat_id=chat_id,
                     project_id=session.optional_project_id,
+                    # COLLAB-03: explicit user restrictions travel structurally
+                    constraints=extract_explicit_user_constraints(user_text),
                 )
                 APP_BACKEND.runtime._active_contexts[ctx.run_id] = ctx
                 # Execute Supervised Five-Agent Flow

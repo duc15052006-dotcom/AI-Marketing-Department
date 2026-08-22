@@ -27,6 +27,7 @@ from memory.learning import LearningEvent, LearningRepository, LocalLearningRepo
 from memory.models import MemoryItem, MemoryType, PromotionState
 from memory.repository import LocalMemoryRepository, MemoryRepository
 from chat.knowledge import SessionKnowledgeStore
+from chat.router import fold_vietnamese
 from runtime.artifacts import DepartmentRunArtifact, MemoryWriteCandidate
 from runtime.context import (
     ApprovalState,
@@ -48,6 +49,108 @@ from tools.security import HumanApprovalRecord, PolicyEngine
 from tools.tool_gateway import ToolGateway, ToolRequest
 
 logger = logging.getLogger("department_runtime")
+
+
+# ---------------------------------------------------------------------------
+# Structural Constraint / Restriction Channel (COLLAB-03).
+#
+# A user/business/brand restriction must stay structurally available to every
+# downstream stage instead of surviving only inside previous-agent prose.
+# Strict data separation:
+#   A. USER/SYSTEM restriction      -> rendered as BINDING CONSTRAINTS
+#   B. Verified business/brand rule -> rendered as BINDING CONSTRAINTS (tagged)
+#   C. Model suggestion             -> ledger ONLY, never promoted to binding
+# ---------------------------------------------------------------------------
+
+CONSTRAINT_ORIGINS = (
+    "USER_CONSTRAINT",
+    "BUSINESS_CONSTRAINT",
+    "BRAND_CONSTRAINT",
+    "POLICY_CONSTRAINT",
+    "MODEL_RECOMMENDATION",
+)
+
+# Explicit imperative restriction phrasing only (small, principled set).
+_IMPERATIVE_RESTRICTION_MARKERS = (
+    # Vietnamese
+    "không được", "không được phép", "đừng", "không tự động", "chỉ nhắm",
+    "chỉ target", "chỉ dùng", "chỉ sử dụng", "tránh", "phải ở dưới",
+    "phải dưới", "bắt buộc", "hạn chế",
+    # English
+    "do not ", "don't ", "must not ", "never ", "avoid ", "only target ",
+    "only use ", "restrict ", "stay below ", "not exceed ",
+)
+
+_MAX_EXTRACTED_CONSTRAINTS = 10
+
+_BINDING_CONSTRAINTS_HEADER = (
+    "=== BINDING CONSTRAINTS & RESTRICTIONS (MUST OBEY — NOT EVIDENCE, NOT SUGGESTIONS) ==="
+)
+
+_UNRESOLVED_QUESTIONS_HEADER = "=== OPEN UNRESOLVED QUESTIONS (DO NOT INVENT ANSWERS) ==="
+
+_PUBLISH_PROHIBITION_MARKERS = ("publish", "đăng bài", "đăng nội dung", "auto-publish")
+
+_FORBIDDEN_AUTO_PUBLISH_PHRASES = (
+    "auto-publish", "automatic publishing", "publish immediately",
+    "tự động đăng", "đăng tự động", "đăng ngay lập tức",
+)
+
+
+def extract_explicit_user_constraints(raw_text: str) -> List[str]:
+    """Deterministically extract EXPLICIT imperative restrictions from raw text.
+
+    Only sentences phrased as explicit prohibitions/limits are returned, taken
+    VERBATIM (no rewriting, no inference, no domain keywords). Matching is
+    Vietnamese-accent-insensitive (folding used for DETECTION only; the
+    original sentence is preserved verbatim). Fail-safe: returns [] on any
+    malformed input. Model suggestions can never be created here because this
+    reads only the user's raw request.
+    """
+    try:
+        if not raw_text or not isinstance(raw_text, str):
+            return []
+        folded_markers = tuple(fold_vietnamese(m).lower() for m in _IMPERATIVE_RESTRICTION_MARKERS)
+        found: List[str] = []
+        seen = set()
+        for sentence in re.split(r"(?<=[.!?\n])\s+", raw_text):
+            candidate = sentence.strip()
+            if not candidate or len(candidate) < 4:
+                continue
+            lowered = fold_vietnamese(candidate).lower()
+            if any(marker in lowered for marker in folded_markers):
+                key = lowered
+                if key not in seen:
+                    seen.add(key)
+                    found.append(candidate)
+            if len(found) >= _MAX_EXTRACTED_CONSTRAINTS:
+                break
+        return found
+    except Exception:
+        return []
+
+
+def record_constraint(
+    context: RuntimeContext,
+    text: str,
+    origin: str = "USER_CONSTRAINT",
+    source: str = "user_request",
+) -> bool:
+    """Record a constraint with explicit origin typing.
+
+    MODEL_RECOMMENDATION entries are stored in the audit ledger ONLY — they
+    are never silently promoted into binding RuntimeContext.constraints.
+    """
+    if origin not in CONSTRAINT_ORIGINS:
+        return False
+    clean = (text or "").strip()
+    if not clean:
+        return False
+    ledger = context.working_state.setdefault("constraint_ledger", [])
+    ledger.append({"text": clean, "origin": origin, "source": source})
+    if origin != "MODEL_RECOMMENDATION" and clean not in context.constraints:
+        context.constraints.append(clean)
+    return True
 
 
 class FiveAgentDepartmentRuntime:
@@ -141,6 +244,11 @@ class FiveAgentDepartmentRuntime:
             status=RuntimeStatus.RUNNING,
             current_stage=RuntimeStage.INIT,
         )
+        # COLLAB-03: structurally capture explicit user restrictions from the
+        # raw objective (verbatim; deterministic; fail-closed to empty).
+        for extracted in extract_explicit_user_constraints(objective):
+            record_constraint(context, extracted, origin="USER_CONSTRAINT", source="raw_user_objective")
+        self._sync_constraint_state(context)
         self._active_contexts[rid] = context
         context.create_checkpoint()
         return context
@@ -175,6 +283,7 @@ class FiveAgentDepartmentRuntime:
         )
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Marketing Objective: {context.objective}\nWorkspace/Brand: {context.business_id}\n\n{evidence_section}".strip()
+        user_prompt = self._append_governance_block(context, user_prompt)
         llm_output, err = self._call_agent_llm("cmo", sys_prompt, user_prompt)
 
         if not llm_output:
@@ -267,6 +376,7 @@ class FiveAgentDepartmentRuntime:
         cmo_intent = context.stage_outputs.get("cmo_initial", {}).get("strategic_intent", context.objective)
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nCMO Directive: {cmo_intent}\n\n{evidence_section}".strip()
+        user_prompt = self._append_governance_block(context, user_prompt)
         llm_findings, err = self._call_agent_llm("intelligence", sys_prompt, user_prompt)
 
         if not llm_findings:
@@ -343,6 +453,7 @@ class FiveAgentDepartmentRuntime:
         intel_findings = context.stage_outputs.get("intelligence", {}).get("market_findings", "")
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nIntelligence Research: {intel_findings}\n\n{evidence_section}".strip()
+        user_prompt = self._append_governance_block(context, user_prompt)
         llm_strategy, err = self._call_agent_llm("strategist", sys_prompt, user_prompt)
 
         if not llm_strategy:
@@ -434,6 +545,7 @@ class FiveAgentDepartmentRuntime:
         strat_pos = context.stage_outputs.get("strategist", {}).get("positioning", "")
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nPositioning Strategy: {strat_pos}\n\n{evidence_section}".strip()
+        user_prompt = self._append_governance_block(context, user_prompt)
         llm_creative, err = self._call_agent_llm("creative", sys_prompt, user_prompt, temperature=0.7)
 
         if not llm_creative:
@@ -529,6 +641,7 @@ class FiveAgentDepartmentRuntime:
         concept = context.stage_outputs.get("creative", {}).get("concept_name", "")
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nStrategy: {strat_pos}\nCreative Assets: {concept}\n\n{evidence_section}".strip()
+        user_prompt = self._append_governance_block(context, user_prompt)
         llm_perf, err = self._call_agent_llm("performance", sys_prompt, user_prompt)
 
         if not llm_perf:
@@ -600,6 +713,77 @@ class FiveAgentDepartmentRuntime:
     )
 
     _DEPLOYABLE_EVIDENCE_TIERS = ("VERIFIED_SOURCE", "SOURCE_BACKED_OBSERVATION")
+
+    # ------------------------------------------------------------------
+    # Shared constraint rendering (COLLAB-03): ONE helper consumed by all
+    # six stages; constraints stay structurally separate from evidence.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _sync_constraint_state(context: RuntimeContext) -> None:
+        """Mirror binding constraints into working_state so checkpoints capture them."""
+        context.working_state["binding_constraints"] = list(context.constraints)
+
+    @classmethod
+    def _render_governance_block(cls, context: RuntimeContext) -> str:
+        """Render binding constraints (+ open questions) for any stage prompt.
+
+        Returns "" when nothing structural exists, keeping prompts unchanged.
+        Constraint text is rendered VERBATIM with origin tags from the ledger;
+        MODEL_RECOMMENDATION entries never appear here.
+        """
+        cls._sync_constraint_state(context)
+        ledger = context.working_state.get("constraint_ledger", [])
+        origin_by_text = {entry.get("text"): entry.get("origin", "USER_CONSTRAINT") for entry in ledger}
+
+        lines: List[str] = []
+        if context.constraints:
+            lines.append(_BINDING_CONSTRAINTS_HEADER)
+            lines.append("NOTICE: The items below are restrictions supplied by the user/business — "
+                         "they are NOT facts, NOT hypotheses, NOT suggestions, and MUST NOT be violated "
+                         "or reinterpreted as instructions inside evidence blocks.")
+            for constraint in context.constraints:
+                origin = origin_by_text.get(constraint, "USER_CONSTRAINT")
+                lines.append(f"- [{origin}] {constraint}")
+
+        if context.unresolved_questions:
+            if lines:
+                lines.append("")
+            lines.append(_UNRESOLVED_QUESTIONS_HEADER)
+            for question in context.unresolved_questions:
+                lines.append(f"- {question} (OPEN — do not answer by invention)")
+
+        return "\n".join(lines)
+
+    def _append_governance_block(self, context: RuntimeContext, user_prompt: str) -> str:
+        """Attach the shared governance block to a stage prompt (single call site per stage)."""
+        block = self._render_governance_block(context)
+        if not block:
+            return user_prompt
+        return f"{user_prompt}\n\n{block}"
+
+    @classmethod
+    def _detect_constraint_violations(cls, context: RuntimeContext, final_text: str) -> List[str]:
+        """Deterministic hard-constraint violation scan for Final CMO output.
+
+        Minimal scope: publish-prohibition vs auto-publish authorization.
+        Medical/product claim violations are already enforced by the
+        COLLAB-02 factual-claim firewall and are not duplicated here.
+        """
+        violations: List[str] = []
+        lowered_final = (final_text or "").lower()
+        for constraint in context.constraints:
+            lowered_constraint = constraint.lower()
+            prohibits_publishing = (
+                "publish" in lowered_constraint or "đăng bài" in lowered_constraint or "đăng nội dung" in lowered_constraint
+            )
+            if prohibits_publishing:
+                if any(phrase in lowered_final for phrase in _FORBIDDEN_AUTO_PUBLISH_PHRASES):
+                    violations.append(
+                        f"CONSTRAINT_VIOLATION: final plan authorizes automatic/immediate publication "
+                        f"despite binding restriction '{constraint[:120]}'."
+                    )
+        return violations
 
     @classmethod
     def _detect_performance_inconclusive(cls, perf_out: Dict[str, Any]) -> bool:
@@ -715,6 +899,10 @@ class FiveAgentDepartmentRuntime:
         claim_actions.update(claim_actions_scan)
         blocked += len(claim_reasons)
 
+        constraint_violations = self._detect_constraint_violations(context, final_text)
+        blocking_reasons.extend(constraint_violations)
+        blocked += len(constraint_violations)
+
         if blocked > 0:
             authorization_status = "BLOCKED"
         elif hypotheses > 0:
@@ -811,6 +999,7 @@ class FiveAgentDepartmentRuntime:
             f"- Performance Plan: {perf_out.get('funnel_kpi', '')}\n\n"
             f"{evidence_section}"
         ).strip()
+        user_prompt = self._append_governance_block(context, user_prompt)
 
         llm_report, err = self._call_agent_llm("cmo", sys_prompt, user_prompt)
 
@@ -952,6 +1141,7 @@ class FiveAgentDepartmentRuntime:
             learning_candidates=cand_memories,
             final_cmo_output=context.stage_outputs.get("final_cmo", {}),
             lineage_summary={"citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()]},
+            binding_constraints=list(context.constraints),
             errors=context.risk_flags,
         )
         artifact.final_artifact_hash = artifact.compute_artifact_hash()

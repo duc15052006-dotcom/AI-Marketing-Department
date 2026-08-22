@@ -47,7 +47,11 @@ from knowledge.repository import LocalKnowledgeRepository
 from memory.repository import LocalMemoryRepository
 from runtime.context import EpistemicTier, RuntimeContext, RuntimeStage, RuntimeStatus
 from runtime.context_compiler import ContextCompiler
-from runtime.engine import FiveAgentDepartmentRuntime
+from runtime.engine import (
+    FiveAgentDepartmentRuntime,
+    extract_explicit_user_constraints,
+    record_constraint,
+)
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 
 
@@ -554,6 +558,223 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
             "execute_stage_performance",      # agent 5
             "execute_stage_final_cmo",        # agent 1 (final pass) - NOT a sixth agent
         })
+
+
+class TestConstraintPropagation(unittest.TestCase):
+    """COLLAB-03 — structural constraint/restriction channel contracts."""
+
+    CONSTRAINT_A = "Khong duoc noi san pham chua mun (medical claims prohibited)."
+    CONSTRAINT_B = "Ngan sach phai o duoi 10 trieu VND."
+
+    def _runtime(self, gateway):
+        return FiveAgentDepartmentRuntime(
+            model_gateway=gateway,
+            knowledge_repo=LocalKnowledgeRepository(),
+            memory_repo=LocalMemoryRepository(),
+        )
+
+    def _seeded_context(self, rt, objective="quang cao my pham"):
+        ctx = rt.start_run(objective=objective, business_id="BIZ_AUDIT", chat_id="CHAT-A")
+        record_constraint(ctx, self.CONSTRAINT_A, origin="USER_CONSTRAINT", source="user_request")
+        return ctx
+
+    def _prompts(self, gw, label):
+        return [user for (lbl, _s, user) in gw.calls if lbl == label]
+
+    def _run_all_stages(self, rt, ctx):
+        rt.execute_stage_cmo_initial(ctx)
+        rt.execute_stage_intelligence(ctx)
+        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_creative(ctx)
+        rt.execute_stage_performance(ctx)
+
+    # 1-6. constraint reaches every stage structurally
+    def test_01_to_06_constraint_reaches_all_six_stages(self):
+        gw = ScriptedAgentGateway()
+        rt = self._runtime(gw)
+        ctx = self._seeded_context(rt)
+        self._run_all_stages(rt, ctx)
+        rt.execute_stage_final_cmo(ctx)
+
+        for label in ("cmo_initial", "intelligence", "strategist", "creative", "performance", "final_cmo"):
+            prompts = "\n".join(self._prompts(gw, label))
+            self.assertIn(
+                self.CONSTRAINT_A, prompts,
+                f"stage {label} must receive the binding constraint structurally",
+            )
+            self.assertIn("BINDING CONSTRAINTS & RESTRICTIONS", prompts,
+                          f"stage {label} must label constraints as binding restrictions")
+
+    # 7. verbatim preservation
+    def test_07_constraint_text_verbatim_unchanged(self):
+        gw = ScriptedAgentGateway()
+        rt = self._runtime(gw)
+        ctx = self._seeded_context(rt)
+        creative_prompts_before = len(self._prompts(gw, "creative"))
+        rt.execute_stage_cmo_initial(ctx)
+        rt.execute_stage_intelligence(ctx)
+        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_creative(ctx)
+        joined = "\n".join(self._prompts(gw, "creative")[creative_prompts_before:])
+        self.assertIn("- [USER_CONSTRAINT] " + self.CONSTRAINT_A, joined)
+
+    # 8. multiple constraints stable order + artifact persistence
+    def test_08_multiple_constraints_stable_order_and_artifact(self):
+        gw = ScriptedAgentGateway()
+        rt = self._runtime(gw)
+        ctx = self._seeded_context(rt)
+        record_constraint(ctx, self.CONSTRAINT_B, origin="BUSINESS_CONSTRAINT", source="brand_policy")
+        self._run_all_stages(rt, ctx)
+        cmo_final = rt.execute_stage_final_cmo(ctx)
+        artifact = rt.complete_run(ctx)
+
+        final_prompt = self._prompts(gw, "final_cmo")[-1]
+        pos_a = final_prompt.find(self.CONSTRAINT_A)
+        pos_b = final_prompt.find(self.CONSTRAINT_B)
+        self.assertGreaterEqual(pos_a, 0)
+        self.assertGreater(pos_b, pos_a, "constraint order must be stable")
+        self.assertEqual(artifact.binding_constraints, [self.CONSTRAINT_A, self.CONSTRAINT_B])
+
+    # 9/10. constraints are NOT facts / NOT evidence
+    def test_09_10_constraints_separate_from_facts_and_evidence(self):
+        repo = LocalKnowledgeRepository()
+        mem_repo = LocalMemoryRepository()
+        docs_before = len(repo.list_documents(scope="SCOPE_BIZ_AUDIT"))
+        mems_before = len(mem_repo.list_memories())
+
+        gw = ScriptedAgentGateway()
+        rt = FiveAgentDepartmentRuntime(
+            model_gateway=gw, knowledge_repo=repo, memory_repo=mem_repo,
+        )
+        ctx = self._seeded_context(rt)
+        pkg = rt.context_compiler.compile_grounded_package("creative", ctx)
+
+        constraint_evidence = [
+            i for i in pkg.evidence_items if self.CONSTRAINT_A in i.content
+        ]
+        self.assertEqual(constraint_evidence, [], "constraints must never become evidence items")
+        self.assertEqual(len(repo.list_documents(scope="SCOPE_BIZ_AUDIT")), docs_before)
+        self.assertEqual(len(mem_repo.list_memories()), mems_before)
+
+    # 11. model recommendation never promoted
+    def test_11_model_recommendation_not_promoted_to_binding(self):
+        gw = ScriptedAgentGateway()
+        rt = self._runtime(gw)
+        ctx = self._seeded_context(rt)
+        ok = record_constraint(ctx, "Maybe avoid aggressive language.", origin="MODEL_RECOMMENDATION", source="cmo_llm")
+        self.assertTrue(ok)
+
+        self.assertNotIn("Maybe avoid aggressive language.", ctx.constraints)
+        block = rt._render_governance_block(ctx)
+        self.assertNotIn("Maybe avoid aggressive language.", block)
+        ledger = ctx.working_state["constraint_ledger"]
+        self.assertTrue(any(e["origin"] == "MODEL_RECOMMENDATION" for e in ledger),
+                        "recommendation stays in audit ledger only")
+
+    # 12/13. isolation
+    def test_12_13_no_cross_brand_or_cross_chat_leakage(self):
+        gw = ScriptedAgentGateway()
+        rt = self._runtime(gw)
+        ctx_a = rt.start_run(objective="brand A campaign", business_id="BIZ_BRAND_A", chat_id="CHAT-A")
+        record_constraint(ctx_a, self.CONSTRAINT_A)
+        ctx_b = rt.start_run(objective="brand B campaign", business_id="BIZ_BRAND_B", chat_id="CHAT-B")
+
+        self.assertEqual(ctx_b.constraints, [])
+        block_b = rt._render_governance_block(ctx_b)
+        self.assertNotIn("chua mun", block_b)
+        self.assertNotIn(self.CONSTRAINT_A, block_b)
+
+    # 14. checkpoint persistence of constraints
+    def test_14_constraints_survive_checkpoint_snapshot(self):
+        gw = ScriptedAgentGateway()
+        rt = self._runtime(gw)
+        ctx = self._seeded_context(rt)
+        rt.execute_stage_cmo_initial(ctx)
+        last = ctx.checkpoints[-1]
+        self.assertEqual(last.working_state_snapshot.get("binding_constraints"), [self.CONSTRAINT_A])
+
+    # 15. Final approval cannot ignore hard restrictions
+    def test_15_final_cannot_ignore_hard_restriction_medical(self):
+        gw = ScriptedAgentGateway(replies={
+            "creative": "HOOK: 'Clinically proven to cure acne!'",
+            "final_cmo": "# PLAN\nClinically proven to improve skin.",
+        })
+        rt = self._runtime(gw)
+        ctx = self._seeded_context(rt)  # medical claims prohibited
+        self._run_all_stages(rt, ctx)
+        final_out = rt.execute_stage_final_cmo(ctx)
+        self.assertEqual(final_out["approval_status"], "BLOCKED")
+        self.assertEqual(final_out["status"], "NOT_READY")
+
+    def test_15b_final_cannot_ignore_publish_prohibition(self):
+        gw = ScriptedAgentGateway(replies={
+            "final_cmo": "# PLAN\nDeploy now and auto-publish the campaign immediately.",
+        })
+        rt = self._runtime(gw)
+        ctx = rt.start_run(objective="campaign thoi trang", business_id="BIZ_AUDIT")
+        record_constraint(ctx, "Do not publish before approval.", origin="POLICY_CONSTRAINT", source="policy")
+        self._run_all_stages(rt, ctx)
+        final_out = rt.execute_stage_final_cmo(ctx)
+
+        self.assertEqual(final_out["approval_status"], "BLOCKED")
+        reasons = " ".join(final_out["claim_audit"]["blocking_reasons"])
+        self.assertIn("CONSTRAINT_VIOLATION", reasons)
+        self.assertTrue(any(r.startswith("FINAL_CMO_NOT_AUTHORIZED: ") for r in ctx.risk_flags))
+
+    # 16. five-agent invariant
+    def test_16_five_agent_invariant_intact(self):
+        from governance.access_matrix import PERMANENT_FIVE_AGENTS
+        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "strategist", "creative", "performance"})
+        rt = self._runtime(ScriptedAgentGateway())
+        stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}
+        self.assertEqual(len(stage_methods), 6)
+
+
+class TestProductionConstraintPath(unittest.TestCase):
+    """PART 10 — no-producer false-green guard.
+
+    Constraints must flow through the REAL production population path:
+    raw user text -> deterministic extractor -> RuntimeContext/start_run ->
+    downstream stage prompts. No manual ctx.constraints seeding allowed here.
+    """
+
+    USER_TEXT = (
+        "Lap chien luoc quang cao cho my pham sinh hoc. "
+        "Khong duoc noi san pham chua mun. "
+        "Chi target khach hang Viet Nam."
+    )
+
+    def test_extractor_produces_explicit_restrictions_only(self):
+        extracted = extract_explicit_user_constraints(self.USER_TEXT)
+        self.assertEqual(len(extracted), 2, f"expected exactly the two imperative restrictions, got {extracted}")
+        self.assertIn("Khong duoc noi san pham chua mun.", extracted[0])
+        self.assertTrue(extracted[1].startswith("Chi target khach hang Viet Nam"))
+        # benign marketing sentence must NOT be misread as a restriction
+        benign = extract_explicit_user_constraints("Phân tích thị trường và lập campaign TikTok với ngân sách 30 triệu.")
+        self.assertEqual(benign, [])
+
+    def test_production_path_reaches_creative_structurally(self):
+        gw = ScriptedAgentGateway()
+        rt = FiveAgentDepartmentRuntime(
+            model_gateway=gw,
+            knowledge_repo=LocalKnowledgeRepository(),
+            memory_repo=LocalMemoryRepository(),
+        )
+        # EXACT production entry semantics (start_run performs what server.py
+        # does via extract_explicit_user_constraints at construction).
+        ctx = rt.start_run(objective=self.USER_TEXT, business_id="BIZ_AD_HOC_EXPLORATION", chat_id="CHAT-PROD")
+        self.assertGreaterEqual(len(ctx.constraints), 2, "producer must populate constraints")
+
+        rt.execute_stage_cmo_initial(ctx)
+        rt.execute_stage_intelligence(ctx)
+        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_creative(ctx)
+
+        creative_prompt = [u for (l, _s, u) in gw.calls if l == "creative"][-1]
+        self.assertIn("Khong duoc noi san pham chua mun.", creative_prompt)
+        self.assertIn("[USER_CONSTRAINT]", creative_prompt)
+        # raw user text untouched
+        self.assertIn("Lap chien luoc quang cao cho my pham sinh hoc", ctx.objective)
 
 
 if __name__ == "__main__":
