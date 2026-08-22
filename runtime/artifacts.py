@@ -9,11 +9,34 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional
 from memory.models import MemoryItem, MemoryType, PromotionState
 from runtime.context import RuntimeStatus
 from schemas.base import BaseModel, Field
 from tools.receipts import ExecutionReceipt
+
+
+def _normalize_for_hashing(obj: Any) -> Any:
+    """Recursively normalize enums, pydantic models, dataclasses, dicts, lists for deterministic hashing."""
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, Enum):
+        return obj.value
+    if hasattr(obj, "model_dump") and callable(obj.model_dump):
+        return _normalize_for_hashing(obj.model_dump())
+    if hasattr(obj, "to_dict") and callable(obj.to_dict):
+        return _normalize_for_hashing(obj.to_dict())
+    if hasattr(obj, "__dataclass_fields__"):
+        from dataclasses import asdict
+        return _normalize_for_hashing(asdict(obj))
+    if isinstance(obj, dict):
+        return {str(k): _normalize_for_hashing(v) for k, v in sorted(obj.items(), key=lambda item: str(item[0]))}
+    if isinstance(obj, (list, tuple)):
+        return [_normalize_for_hashing(item) for item in obj]
+    if isinstance(obj, set):
+        return sorted([_normalize_for_hashing(item) for item in obj], key=lambda x: str(x))
+    return str(obj)
 
 
 class MemoryWriteCandidate(BaseModel):
@@ -71,12 +94,69 @@ class DepartmentRunArtifact(BaseModel):
     errors: List[str] = Field(default_factory=list)
     final_artifact_hash: str = Field(default="")
 
+    def _receipt_integrity_representation(self, r: Any) -> Dict[str, Any]:
+        """Extract canonical immutable integrity fields for an ExecutionReceipt."""
+        if hasattr(r, "model_dump") and callable(r.model_dump):
+            dump = r.model_dump()
+            return {
+                "execution_id": str(dump.get("execution_id", "")),
+                "run_id": str(dump.get("run_id", "")),
+                "agent_id": str(dump.get("agent_id", "")),
+                "capability_id": str(dump.get("capability_id", "")),
+                "provider": str(dump.get("provider", "")),
+                "request_hash": str(dump.get("request_hash", "")),
+                "execution_mode": _normalize_for_hashing(dump.get("execution_mode", "")),
+                "status": _normalize_for_hashing(dump.get("status", "")),
+                "error_class": dump.get("error_class"),
+                "result_hash": str(dump.get("result_hash", "")),
+            }
+        elif isinstance(r, dict):
+            return {
+                "execution_id": str(r.get("execution_id", "")),
+                "run_id": str(r.get("run_id", "")),
+                "agent_id": str(r.get("agent_id", "")),
+                "capability_id": str(r.get("capability_id", "")),
+                "provider": str(r.get("provider", "")),
+                "request_hash": str(r.get("request_hash", "")),
+                "execution_mode": _normalize_for_hashing(r.get("execution_mode", "")),
+                "status": _normalize_for_hashing(r.get("status", "")),
+                "error_class": r.get("error_class"),
+                "result_hash": str(r.get("result_hash", "")),
+            }
+        return {
+            "execution_id": str(getattr(r, "execution_id", str(r))),
+            "execution_mode": _normalize_for_hashing(getattr(r, "execution_mode", "")),
+            "status": _normalize_for_hashing(getattr(r, "status", "")),
+            "capability_id": str(getattr(r, "capability_id", "")),
+            "provider": str(getattr(r, "provider", "")),
+            "request_hash": str(getattr(r, "request_hash", "")),
+            "result_hash": str(getattr(r, "result_hash", "")),
+        }
+
+    def _integrity_payload(self) -> Dict[str, Any]:
+        """Construct the authoritative integrity payload representing all business, epistemic, and governance state."""
+        return {
+            "run_id": self.run_id,
+            "objective": self.objective,
+            "status": self.status.value if hasattr(self.status, "value") else str(self.status),
+            "agent_outputs": _normalize_for_hashing(self.agent_outputs),
+            "final_cmo_output": _normalize_for_hashing(self.final_cmo_output),
+            "binding_constraints": _normalize_for_hashing(self.binding_constraints),
+            "epistemic_handoffs": _normalize_for_hashing(self.epistemic_handoffs),
+            "execution_receipts": [
+                self._receipt_integrity_representation(r)
+                for r in self.execution_receipts
+            ],
+            "errors": _normalize_for_hashing(self.errors),
+        }
+
     def compute_artifact_hash(self) -> str:
         """Compute authoritative SHA-256 fingerprint of the complete run artifact."""
-        raw = (
-            f"{self.run_id}:{self.objective}:{self.status.value}:"
-            f"{json.dumps(self.agent_outputs, sort_keys=True, ensure_ascii=False)}:"
-            f"{json.dumps([r.execution_id for r in self.execution_receipts])}:"
-            f"{json.dumps(self.final_cmo_output, sort_keys=True, ensure_ascii=False)}"
+        payload = self._integrity_payload()
+        canonical_raw = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
         )
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return hashlib.sha256(canonical_raw.encode("utf-8")).hexdigest()
