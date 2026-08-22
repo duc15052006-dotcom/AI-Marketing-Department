@@ -300,9 +300,15 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         learnings = self.learning_repo.list_learnings()
         self.assertEqual(len(learnings), 0)
 
-        # Confirm Candidate Memory was recorded without auto-promotion
+        # COLLAB-04: fabricated template memories (fixed decision/experiment
+        # strings with fixed confidences) were removed. At most ONE factual
+        # bookkeeping record may exist, always CANDIDATE-tier, never
+        # auto-promoted learning.
         saved_mems = self.memory_repo.list_memories(run_id=ctx.run_id)
-        self.assertGreaterEqual(len(saved_mems), 2)
+        self.assertLessEqual(len(saved_mems), 1)
+        for mem in saved_mems:
+            self.assertNotIn("improves CVR", mem.content)
+            self.assertEqual(mem.context.get("record_type"), "RUN_DECISION_BOOKKEEPING")
 
     def test_fail_fast_exact_model_call_count_when_intelligence_fails(self) -> None:
         """Verify fail-fast behavior stops subsequent model inferences and records exact call count."""

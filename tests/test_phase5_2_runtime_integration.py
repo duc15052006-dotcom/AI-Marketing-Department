@@ -174,9 +174,10 @@ class TestPhase52RuntimeIntegration(unittest.TestCase):
         self.assertTrue(len(artifact.final_artifact_hash) == 64)
         self.assertEqual(len(artifact.agent_outputs), 6)  # cmo_initial, intel, strat, crtv, perf, final_cmo
 
-        # Verify Memory Writeback (Candidate Memory only, zero raw auto-promoted)
+        # Verify Memory Writeback (COLLAB-04: fabricated templates removed;
+        # at most ONE factual bookkeeping candidate, zero auto-promoted learning)
         saved_mems = self.memory_repo.list_memories(run_id=ctx.run_id)
-        self.assertGreaterEqual(len(saved_mems), 2)
+        self.assertLessEqual(len(saved_mems), 1)
         for m in saved_mems:
             self.assertIn(m.promotion_level, (PromotionState.RAW_OBSERVATION, PromotionState.CANDIDATE_MEMORY))
             self.assertNotEqual(m.promotion_level, PromotionState.PROMOTED_LEARNING)

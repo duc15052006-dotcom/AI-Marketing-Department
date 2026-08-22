@@ -777,5 +777,148 @@ class TestProductionConstraintPath(unittest.TestCase):
         self.assertIn("Lap chien luoc quang cao cho my pham sinh hoc", ctx.objective)
 
 
+class TestDataOriginIntegrity(unittest.TestCase):
+    """COLLAB-04 — no fabricated/hardcoded agent outputs anywhere."""
+
+    def _runtime(self, gateway):
+        return FiveAgentDepartmentRuntime(
+            model_gateway=gateway,
+            knowledge_repo=LocalKnowledgeRepository(),
+            memory_repo=LocalMemoryRepository(),
+        )
+
+    def _full_run(self, replies=None, fail_stages=()):
+        gw = ScriptedAgentGateway(replies=replies, fail_stages=fail_stages)
+        rt = self._runtime(gw)
+        ctx = rt.start_run(objective="demo objective", business_id="BIZ_AUDIT")
+        rt.execute_stage_cmo_initial(ctx)
+        rt.execute_stage_intelligence(ctx)
+        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_creative(ctx)
+        rt.execute_stage_performance(ctx)
+        final_out = rt.execute_stage_final_cmo(ctx)
+        artifact = rt.complete_run(ctx)
+        return gw, rt, ctx, final_out, artifact
+
+    # 1/2. strategist structured fields absent when model did not produce them
+    def test_01_02_strategist_fields_empty_without_model_content(self):
+        gw, rt, ctx, final_out, artifact = self._full_run(replies={
+            "strategist": "POSITIONING: premium eco segment only.",
+        })
+        strat = ctx.stage_outputs["strategist"]
+        self.assertEqual(strat["target_segments"], [])
+        self.assertEqual(strat["value_propositions"], [])
+        llm_text = "premium eco segment only"
+        for vp in strat["value_propositions"]:
+            self.assertIn(vp.split()[0].lower(), llm_text)
+        self.assertEqual(strat["field_origins"]["value_propositions"], "NOT_PROVIDED")
+        self.assertNotIn("Verified customer outcomes", str(ctx.stage_outputs))
+
+    def test_02b_strategist_agent_derived_positioning_preserved(self):
+        gw, rt, ctx, final_out, artifact = self._full_run(replies={
+            "strategist": "POSITIONING X: beachhead la sinh vien urban.",
+        })
+        self.assertEqual(ctx.stage_outputs["strategist"]["positioning"], "POSITIONING X: beachhead la sinh vien urban.")
+        self.assertEqual(ctx.stage_outputs["strategist"]["field_origins"]["positioning"], "AGENT_DERIVED")
+
+    # 3/4. creative concept/headlines not fabricated
+    def test_03_04_creative_concept_and_headlines_absent(self):
+        gw, rt, ctx, final_out, artifact = self._full_run()
+        creative = ctx.stage_outputs["creative"]
+        self.assertIsNone(creative["concept_name"])
+        self.assertEqual(creative["copy_headlines"], [])
+        self.assertEqual(creative["field_origins"]["concept_name"], "NOT_PROVIDED")
+        self.assertNotIn("Direct Response & Brand Affinity Concept", str(ctx.stage_outputs))
+        self.assertNotIn("Direct Response", artifact.final_cmo_output["master_gtm_plan_markdown"])
+
+    # 5. performance blueprint not invented
+    def test_05_performance_blueprint_not_invented(self):
+        gw, rt, ctx, final_out, artifact = self._full_run()
+        perf = ctx.stage_outputs["performance"]
+        self.assertEqual(perf["experiment_blueprint"], {})
+        self.assertEqual(perf["field_origins"]["experiment_blueprint"], "NOT_PROVIDED")
+        self.assertNotIn("Optimized creative hooks", str(ctx.stage_outputs))
+
+    # 6. master plan does not upgrade template values
+    def test_06_master_plan_preserves_absent_as_absent(self):
+        gw, rt, ctx, final_out, artifact = self._full_run()
+        plan = final_out["master_gtm_plan"]
+        self.assertEqual(plan["strategy"]["value_propositions"], [])
+        self.assertIsNone(plan["creative"]["concept_name"])
+        self.assertEqual(plan["performance"]["experiment_blueprint"], {})
+        self.assertEqual(plan["strategy"]["field_origins"]["positioning"], "AGENT_DERIVED")
+
+    # 7/8/9. memory safety
+    def test_07_08_09_candidate_memory_factual_or_zero(self):
+        import re as _re
+        # a) approved happy path: exactly one factual bookkeeping record
+        gw, rt, ctx, final_out, artifact = self._full_run()
+        cands = artifact.learning_candidates
+        self.assertLessEqual(len(cands), 1)
+        if cands:
+            c = cands[0]
+            content_l = c.content.lower()
+            self.assertNotIn("succeed", content_l)
+            self.assertNotIn("winning", content_l)
+            self.assertNotIn("verified customer", content_l)
+            self.assertNotIn("improves cvr", content_l)
+            self.assertEqual(c.confidence, 0.5)
+            self.assertLess(c.confidence, 0.60, "bookkeeping confidence must stay below verification threshold")
+            self.assertEqual(c.context.get("record_type"), "RUN_DECISION_BOOKKEEPING")
+
+        # b) blocked run: zero candidates
+        gw2, rt2, ctx2, fo2, art2 = self._full_run(replies={
+            "final_cmo": "# P\nClinically proven results.",
+        })
+        self.assertEqual(art2.learning_candidates, [])
+
+    # 10. empty structured fields do not crash downstream
+    def test_10_downstream_tolerates_empty_structured_fields(self):
+        gw, rt, ctx, final_out, artifact = self._full_run()
+        perf_prompt = [u for (l, _s, u) in gw.calls if l == "performance"][-1]
+        self.assertNotIn("Creative Assets: None", perf_prompt)
+        self.assertEqual(final_out["status"] in ("READY_FOR_DEPLOYMENT", "NOT_READY"), True)
+        self.assertTrue(artifact.final_artifact_hash)
+
+    # 11. genuinely agent-derived values remain preserved verbatim
+    def test_11_agent_derived_values_preserved(self):
+        replies = {
+            "intelligence": "FINDINGS: competitor price cut 10%.",
+            "strategist": "POSITIONING Y: value-first messaging.",
+            "creative": "HOOKS: three scroll-stopper angles.",
+            "performance": "KPI TREE: CAC guardrail 120k VND.",
+        }
+        gw, rt, ctx, final_out, artifact = self._full_run(replies=replies)
+        self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"], replies["intelligence"])
+        self.assertEqual(ctx.stage_outputs["strategist"]["positioning"], replies["strategist"])
+        self.assertEqual(ctx.stage_outputs["creative"]["creative_synthesis"], replies["creative"])
+        self.assertEqual(ctx.stage_outputs["performance"]["funnel_kpi"], replies["performance"])
+
+    # 12/13/14. invariants
+    def test_12_five_agent_invariant_intact(self):
+        from governance.access_matrix import PERMANENT_FIVE_AGENTS
+        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "strategist", "creative", "performance"})
+
+    def test_13_collab02_approval_safety_intact(self):
+        gw, rt, ctx, final_out, artifact = self._full_run(replies={
+            "performance": "RESULT: INCONCLUSIVE. Insufficient evidence.",
+        })
+        self.assertEqual(final_out["approval_status"], "BLOCKED")
+        self.assertEqual(final_out["status"], "NOT_READY")
+
+    def test_14_collab03_constraints_intact(self):
+        gw = ScriptedAgentGateway()
+        rt = self._runtime(gw)
+        ctx = rt.start_run(objective="quang cao my pham", business_id="BIZ_AUDIT")
+        record_constraint(ctx, "Khong duoc noi san pham chua mun.", origin="USER_CONSTRAINT")
+        rt.execute_stage_cmo_initial(ctx)
+        rt.execute_stage_intelligence(ctx)
+        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_creative(ctx)
+        creative_prompt = [u for (l, _s, u) in gw.calls if l == "creative"][-1]
+        self.assertIn("BINDING CONSTRAINTS & RESTRICTIONS", creative_prompt)
+        self.assertIn("Khong duoc noi san pham chua mun.", creative_prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

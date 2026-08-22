@@ -83,6 +83,28 @@ _IMPERATIVE_RESTRICTION_MARKERS = (
 
 _MAX_EXTRACTED_CONSTRAINTS = 10
 
+# ---------------------------------------------------------------------------
+# Value-origin contract (COLLAB-04): every structured stage-output field must
+# truthfully declare where its value came from.
+#   AGENT_DERIVED          - taken verbatim from actual model output
+#   DETERMINISTIC_COMPUTED - computed from validated inputs by this runtime
+#   TEMPLATE_UNVALIDATED   - static scaffolding (must never ship as conclusion)
+#   NOT_PROVIDED           - the agent did not produce this; field stays empty
+# A NOT_PROVIDED / empty value ALWAYS outranks a fabricated one.
+# ---------------------------------------------------------------------------
+VALUE_ORIGINS = (
+    "AGENT_DERIVED",
+    "DETERMINISTIC_COMPUTED",
+    "TEMPLATE_UNVALIDATED",
+    "NOT_PROVIDED",
+)
+
+# System bookkeeping confidence for CANDIDATE-tier run records.
+# Semantics: 'unassessed bookkeeping entry' — NOT model certainty and NOT
+# evidence strength. Deliberately below the 0.60 memory-verification
+# threshold so such records can never auto-justify promotion.
+CANDIDATE_BOOKKEEPING_CONFIDENCE = 0.5
+
 _BINDING_CONSTRAINTS_HEADER = (
     "=== BINDING CONSTRAINTS & RESTRICTIONS (MUST OBEY — NOT EVIDENCE, NOT SUGGESTIONS) ==="
 )
@@ -478,8 +500,15 @@ class FiveAgentDepartmentRuntime:
             "agent": "strategist",
             "status": "COMPLETED",
             "positioning": llm_strategy,
-            "target_segments": ["Primary High-Intent Decision Makers", "Growth-Oriented Adopters"],
-            "value_propositions": ["Differentiated performance", "Verified customer outcomes"],
+            # COLLAB-04: no structured segment/proposition parser contract
+            # exists; fields stay honestly empty instead of fabricated.
+            "target_segments": [],
+            "value_propositions": [],
+            "field_origins": {
+                "positioning": "AGENT_DERIVED",
+                "target_segments": "NOT_PROVIDED",
+                "value_propositions": "NOT_PROVIDED",
+            },
             "citations": [c.citation_id for c in k_res.citations],
         }
         context.stage_outputs["strategist"] = output
@@ -570,10 +599,17 @@ class FiveAgentDepartmentRuntime:
             "stage": "CREATIVE",
             "agent": "creative",
             "status": "COMPLETED",
-            "concept_name": "Direct Response & Brand Affinity Concept",
+            # COLLAB-04: creative_synthesis is the authoritative artifact.
+            # concept_name/headlines stay absent unless actually produced.
+            "concept_name": None,
             "visual_asset_receipt": img_receipt.execution_id,
             "creative_synthesis": llm_creative,
-            "copy_headlines": [llm_creative],
+            "copy_headlines": [],
+            "field_origins": {
+                "creative_synthesis": "AGENT_DERIVED",
+                "concept_name": "NOT_PROVIDED",
+                "copy_headlines": "NOT_PROVIDED",
+            },
             "citations": [c.citation_id for c in k_res.citations],
         }
         context.stage_outputs["creative"] = output
@@ -638,7 +674,7 @@ class FiveAgentDepartmentRuntime:
             "Mirror the language of the user objective."
         )
         strat_pos = context.stage_outputs.get("strategist", {}).get("positioning", "")
-        concept = context.stage_outputs.get("creative", {}).get("concept_name", "")
+        concept = context.stage_outputs.get("creative", {}).get("concept_name") or ""
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nStrategy: {strat_pos}\nCreative Assets: {concept}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
@@ -666,11 +702,14 @@ class FiveAgentDepartmentRuntime:
             "agent": "performance",
             "status": "COMPLETED",
             "funnel_kpi": llm_perf,
-            "experiment_blueprint": {
-                "hypothesis": f"Optimized creative hooks and segmented targeting improve CVR for {context.objective}",
-                "metric": "cvr_step_1",
-            },
+            # COLLAB-04: no structured experiment was actually produced;
+            # blueprint stays empty instead of an invented hypothesis/metric.
+            "experiment_blueprint": {},
             "calc_receipt_id": calc_receipt.execution_id,
+            "field_origins": {
+                "funnel_kpi": "AGENT_DERIVED",
+                "experiment_blueprint": "NOT_PROVIDED",
+            },
             "citations": [c.citation_id for c in k_res.citations],
         }
         context.stage_outputs["performance"] = output
@@ -1091,27 +1130,33 @@ class FiveAgentDepartmentRuntime:
             context.status = RuntimeStatus.COMPLETED
         completed_at = datetime.now(timezone.utc)
 
-        # 1. Propose Memory Candidates only if run completed successfully
+        # 1. Propose Memory Candidates only if run completed successfully.
+        # COLLAB-04: template memories removed. Exactly ONE factual
+        # decision-bookkeeping record is written, and ONLY when the run truly
+        # reached deployment-ready state. No success language, no invented
+        # experiments, no fabricated confidence (bookkeeping value only).
         cand_memories: List[MemoryWriteCandidate] = []
         if context.status == RuntimeStatus.COMPLETED:
-            cand_memories = [
-                MemoryWriteCandidate(
-                    memory_type=MemoryType.DECISION_MEMORY,
-                    agent_source="cmo",
-                    content=f"Approved strategic direction for objective: {context.objective}",
-                    context={"business_id": context.business_id, "campaign_id": context.campaign_id},
-                    confidence=0.75,
-                    target_initial_state=PromotionState.CANDIDATE_MEMORY,
-                ),
-                MemoryWriteCandidate(
-                    memory_type=MemoryType.EXPERIMENT_MEMORY,
-                    agent_source="performance",
-                    content=f"Hypothesis: Targeted messaging improves CVR for {context.objective}.",
-                    context={"metric": "cvr_step_1"},
-                    confidence=0.70,
-                    target_initial_state=PromotionState.CANDIDATE_MEMORY,
-                ),
-            ]
+            final_out = context.stage_outputs.get("final_cmo", {})
+            if final_out.get("status") == "READY_FOR_DEPLOYMENT":
+                cand_memories = [
+                    MemoryWriteCandidate(
+                        memory_type=MemoryType.DECISION_MEMORY,
+                        agent_source="cmo",
+                        content=(
+                            f"GTM plan reached deployment-ready state for objective: {context.objective}"
+                        ),
+                        context={
+                            "record_type": "RUN_DECISION_BOOKKEEPING",
+                            "approval_status": final_out.get("approval_status"),
+                            "business_id": context.business_id,
+                            "campaign_id": context.campaign_id,
+                        },
+                        evidence_refs=list(context.execution_receipt_refs),
+                        confidence=CANDIDATE_BOOKKEEPING_CONFIDENCE,
+                        target_initial_state=PromotionState.CANDIDATE_MEMORY,
+                    ),
+                ]
 
             # Write to Memory Repository without automatic promotion
             for cand in cand_memories:
