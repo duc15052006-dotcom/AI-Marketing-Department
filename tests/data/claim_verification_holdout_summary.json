@@ -1,0 +1,18 @@
+{
+  "benchmark_phase": "CLAIM-BENCH-02",
+  "timestamp": "2026-08-22T15:06:48.514394+00:00",
+  "frozen_thresholds": {
+    "tau_entailment": 0.9,
+    "tau_contradiction": 0.7
+  },
+  "holdout_total_cases": 100,
+  "nli_cases": 87,
+  "pre_run_corrections": 0,
+  "primary_model": "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
+  "primary_backend": "pytorch_cpu",
+  "onnx_status": "NOT_TESTED",
+  "quantized_onnx_status": "NOT_TESTED",
+  "cuda_status": "NOT_TESTED",
+  "cuda_reason": "torch.cuda.is_available()=False. The benchmark venv installed torch+cpu. A CUDA-enabled PyTorch build would be needed to test GPU.",
+  "smaller_model_status": "TESTED"
+}

@@ -1,0 +1,28 @@
+{
+  "benchmark_phase": "CLAIM-BENCH-02",
+  "backend": "cuda_rtx3050",
+  "profile": {
+    "device": "NVIDIA GeForce RTX 3050 Laptop GPU",
+    "sequential_1_claim_ms": {
+      "mean": 58.51,
+      "p50": 38.05,
+      "p95": 68.4
+    },
+    "sequential_5_claims_ms": {
+      "mean": 300.84,
+      "per_claim_mean": 60.17
+    },
+    "sequential_10_claims_ms": {
+      "mean": 377.73,
+      "per_claim_mean": 37.77
+    },
+    "batched_5_claims_ms": {
+      "mean": 47.81,
+      "per_claim_mean": 9.56
+    },
+    "batched_10_claims_ms": {
+      "mean": 42.49,
+      "per_claim_mean": 4.25
+    }
+  }
+}
