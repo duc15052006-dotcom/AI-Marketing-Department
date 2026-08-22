@@ -29,6 +29,12 @@ from memory.repository import LocalMemoryRepository, MemoryRepository
 from chat.knowledge import SessionKnowledgeStore
 from chat.router import fold_vietnamese
 from runtime.artifacts import DepartmentRunArtifact, MemoryWriteCandidate
+from runtime.claim_verification import (
+    BaseClaimVerifier,
+    ClaimVerificationResult,
+    VerificationVerdict,
+    audit_deterministic_claim_guards,
+)
 from runtime.context import (
     ApprovalState,
     EpistemicTier,
@@ -195,6 +201,7 @@ class FiveAgentDepartmentRuntime:
         learning_repo: Optional[LearningRepository] = None,
         session_knowledge: Optional[SessionKnowledgeStore] = None,
         context_compiler: Optional[ContextCompiler] = None,
+        claim_verifier: Optional[BaseClaimVerifier] = None,
     ) -> None:
         self.model_gateway = model_gateway or UniversalModelGateway(free_only_mode=True)
         self.tool_gateway = tool_gateway or ToolGateway()
@@ -202,6 +209,7 @@ class FiveAgentDepartmentRuntime:
         self.memory_repo = memory_repo or LocalMemoryRepository()
         self.learning_repo = learning_repo or LocalLearningRepository()
         self.session_knowledge = session_knowledge or SessionKnowledgeStore()
+        self.claim_verifier = claim_verifier
 
         self.knowledge_builder = KnowledgeContextBuilder(self.knowledge_repo)
         self.memory_builder = MemoryContextBuilder(self.memory_repo)
@@ -215,6 +223,13 @@ class FiveAgentDepartmentRuntime:
         self._active_contexts: Dict[str, RuntimeContext] = {}
         self._completed_runs: Dict[str, DepartmentRunArtifact] = {}
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
+
+    def _get_claim_verifier(self) -> BaseClaimVerifier:
+        """Lazy resolver for claim verifier instance."""
+        if self.claim_verifier is None:
+            from runtime.claim_verification import MultilingualNLIClaimVerifier
+            self.claim_verifier = MultilingualNLIClaimVerifier()
+        return self.claim_verifier
 
     def _call_agent_llm(
         self,
@@ -763,7 +778,7 @@ class FiveAgentDepartmentRuntime:
 
     _FACTUAL_CLAIM_PATTERNS = (
         # 1. Quantified / Multipliers / Metrics / Percentages / Population counts
-        re.compile(r"\b(?:\d+(?:\.\d+)?\s*[xX]|\d+(?:\.\d+)?\s*(?:times?|fold))\s+(?:longer|faster|better|more|higher|cheaper|smaller|quieter|durable|lasting)\b", re.IGNORECASE),
+        re.compile(r"\b(?:\d+(?:\.\d+)?\s*[xX]|\d+(?:\.\d+)?\s*(?:times?|fold))\s+(?:longer|faster|better|more|higher|cheaper|smaller|quieter|durable|lasting|roi|growth|revenue|profit|sales|efficiency)\b", re.IGNORECASE),
         re.compile(r"\b(?:gấp|gap)\s+\d+(?:\.\d+)?\s*(?:lần|lan)\b", re.IGNORECASE),
         re.compile(r"\b(?:twice|3x|4x|5x|10x)\s+(?:as\s+\w+|more|faster|longer|better|greater)\b", re.IGNORECASE),
         re.compile(r"\b(?:save|tiết\s+kiệm|tiet\s+kiem|giảm|giam|discount|off)\s+\d{1,3}\s*%", re.IGNORECASE),
@@ -1072,18 +1087,28 @@ class FiveAgentDepartmentRuntime:
         cls,
         corpus_text: str,
         provenance_index: Dict[str, Any],
+        context: Optional[RuntimeContext] = None,
+        claim_verifier: Optional[BaseClaimVerifier] = None,
+        knowledge_repo: Optional[Any] = None,
     ) -> tuple[int, int, int, List[str], Dict[str, str]]:
         """Scan free text for factual/product claims lacking verified support.
 
-        Creative propositions (hypotheses, ideas, placeholders) are preserved
-        and never blocked. A factual-pattern claim passes ONLY when it cites a
-        source id present in the provenance index whose epistemic tier is
-        VERIFIED_SOURCE or SOURCE_BACKED_OBSERVATION (mock/sandbox/failed
-        receipts can never satisfy this requirement).
+        Enforces semantic claim ↔ evidence binding:
+        1. Identifies atomic factual claim assertions.
+        2. Resolves cited source id and validates epistemic tier (VERIFIED_SOURCE / SOURCE_BACKED_OBSERVATION).
+        3. Retrieves exact evidence content and validates security/geographic scope.
+        4. Runs deterministic pre-guards (numeric, currency, SKU, temporal, execution state).
+        5. Executes semantic verification (NLI or injected verifier).
+        6. Preserves planning and hypotheses without blocking.
         """
         total = supported = hypotheses = blocked = 0
         blocking_reasons: List[str] = []
         claim_actions: Dict[str, str] = {}
+
+        verifier = claim_verifier
+        if verifier is None:
+            from runtime.claim_verification import MultilingualNLIClaimVerifier
+            verifier = MultilingualNLIClaimVerifier()
 
         for sentence in re.split(r"(?<=[.!?\n])\s+", corpus_text or ""):
             clean_sentence = sentence.strip()
@@ -1101,26 +1126,133 @@ class FiveAgentDepartmentRuntime:
             # hypothesis-like markers (e.g., a source id containing "mock").
             citation = cls._SOURCE_CITATION_PATTERN.search(clean_sentence)
             cited_id = citation.group(1).upper() if citation else None
-            evidence_item = provenance_index.get(cited_id) if cited_id else None
+            atomic_claim = re.sub(r"\s*\(?\s*(?:source|nguồn|evidence|receipt)\s*[:#=]?\s*[A-Za-z][A-Za-z0-9\-_]+\s*\)?", "", clean_sentence, flags=re.IGNORECASE).strip().rstrip(".").strip()
             tier = ""
-            if isinstance(evidence_item, dict):
-                tier = str(evidence_item.get("epistemic_tier", "")).upper()
-            elif evidence_item is not None:
-                tier = str(getattr(evidence_item, "epistemic_tier", "")).upper().replace("EPISTEMICTIER.", "")
-
-            if tier in cls._DEPLOYABLE_EVIDENCE_TIERS:
-                supported += 1
-                claim_actions[label] = "AUTHORIZE"
-                continue
 
             if cited_id:
-                blocked += 1
-                claim_actions[label] = "BLOCK_PUBLICATION"
-                blocking_reasons.append(
-                    f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
-                    f"cites source '{cited_id}' whose tier '{tier or 'NONE'}' cannot "
-                    f"authorize deployment."
+                evidence_item = provenance_index.get(cited_id)
+                doc = None
+                if (evidence_item is None or (isinstance(evidence_item, dict) and not evidence_item.get("content")) or (not isinstance(evidence_item, dict) and not getattr(evidence_item, "content", ""))) and knowledge_repo is not None:
+                    if hasattr(knowledge_repo, "get_document"):
+                        doc = knowledge_repo.get_document(cited_id)
+                    if not doc and hasattr(knowledge_repo, "list_documents"):
+                        docs = knowledge_repo.list_documents()
+                        for d in docs:
+                            if getattr(d, "source_id", "") == cited_id or getattr(d, "knowledge_id", "") == cited_id:
+                                doc = d
+                                break
+
+                if evidence_item is None and doc is None:
+                    blocked += 1
+                    claim_actions[label] = "BLOCK_PUBLICATION"
+                    blocking_reasons.append(
+                        f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
+                        f"cites unresolved source '{cited_id}' not found in provenance index or knowledge repository."
+                    )
+                    continue
+
+                tier = ""
+                if isinstance(evidence_item, dict):
+                    tier = str(evidence_item.get("epistemic_tier", "")).upper()
+                elif evidence_item is not None:
+                    tier = str(getattr(evidence_item, "epistemic_tier", "")).upper().replace("EPISTEMICTIER.", "")
+                elif doc is not None:
+                    auth = str(getattr(doc, "authority_level", "")).upper()
+                    tier = "VERIFIED_SOURCE" if any(t in auth for t in ("TIER_1", "TIER_2", "CANONICAL", "VERIFIED_RESEARCH")) else "UNVERIFIED_SOURCE"
+
+                if tier not in cls._DEPLOYABLE_EVIDENCE_TIERS:
+                    blocked += 1
+                    claim_actions[label] = "BLOCK_PUBLICATION"
+                    blocking_reasons.append(
+                        f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
+                        f"cites source '{cited_id}' whose tier '{tier or 'NONE'}' cannot "
+                        f"authorize deployment."
+                    )
+                    continue
+
+                evidence_text = ""
+                if isinstance(evidence_item, dict):
+                    evidence_text = str(evidence_item.get("content", ""))
+                elif evidence_item is not None:
+                    evidence_text = str(getattr(evidence_item, "content", ""))
+                if not evidence_text and doc is not None:
+                    evidence_text = str(getattr(doc, "content", ""))
+
+                if not evidence_text or not evidence_text.strip():
+                    blocked += 1
+                    claim_actions[label] = "BLOCK_PUBLICATION"
+                    blocking_reasons.append(
+                        f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
+                        f"cites source '{cited_id}' but no verifiable evidence text is available (EVIDENCE_CONTENT_UNAVAILABLE)."
+                    )
+                    continue
+
+                # Scope & provenance verification
+                scope = ""
+                source_type = ""
+                metadata: Dict[str, Any] = {}
+                if isinstance(evidence_item, dict):
+                    scope = str(evidence_item.get("scope", "GLOBAL"))
+                    source_type = str(evidence_item.get("source_type", "DOCUMENT"))
+                    metadata = evidence_item.get("metadata", {}) or {}
+                elif evidence_item is not None:
+                    scope = str(getattr(evidence_item, "scope", "GLOBAL"))
+                    source_type = str(getattr(evidence_item, "source_type", "DOCUMENT"))
+                    metadata = getattr(evidence_item, "metadata", {}) or {}
+                elif doc is not None:
+                    scope = str(getattr(doc, "scope", "GLOBAL"))
+                    source_type = str(getattr(doc, "source_type", "DOCUMENT"))
+                    metadata = getattr(doc, "metadata", {}) or {}
+
+                source_meta: Dict[str, Any] = {
+                    **metadata,
+                    "source_id": cited_id,
+                    "scope": scope,
+                    "epistemic_tier": tier,
+                    "source_type": str(source_type),
+                }
+
+                claim_meta: Dict[str, Any] = {"claim_text": atomic_claim}
+                if context is not None:
+                    claim_meta["tenant_id"] = context.business_id
+                    claim_meta["run_id"] = context.run_id
+                    source_meta["tenant_id"] = source_meta.get("tenant_id") or context.business_id
+
+                    # Pre-verify scope boundary
+                    if scope and scope != "GLOBAL" and context.business_id:
+                        biz = context.business_id
+                        expected_scope = f"SCOPE_{biz}" if not biz.startswith("SCOPE_") else biz
+                        if scope != expected_scope and scope != biz:
+                            blocked += 1
+                            claim_actions[label] = "BLOCK_PUBLICATION"
+                            blocking_reasons.append(
+                                f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
+                                f"failed scope isolation (SCOPE_VIOLATION: source scope '{scope}' does not match current run scope '{expected_scope}')."
+                            )
+                            continue
+
+                # Execute Semantic Claim ↔ Evidence Binding (guards + NLI)
+                ver_res = verifier.verify_claim(
+                    claim_text=atomic_claim,
+                    evidence_text=evidence_text,
+                    claim_metadata=claim_meta,
+                    source_metadata=source_meta,
                 )
+
+                if context is not None and isinstance(context.working_state, dict):
+                    ledger = context.working_state.setdefault("claim_verification_ledger", [])
+                    ledger.append(ver_res.dict() if hasattr(ver_res, "dict") else ver_res)
+
+                if ver_res.verdict == VerificationVerdict.SUPPORTED:
+                    supported += 1
+                    claim_actions[label] = "AUTHORIZE"
+                else:
+                    blocked += 1
+                    claim_actions[label] = "BLOCK_PUBLICATION"
+                    blocking_reasons.append(
+                        f"UNSUPPORTED_PRODUCT_CLAIM [{label}]: '{clean_sentence[:140]}' "
+                        f"failed semantic evidence binding (SEMANTIC_MISMATCH: {ver_res.reason})."
+                    )
                 continue
 
             if cls._is_planning_or_hypothesis(clean_sentence):
@@ -1215,7 +1347,13 @@ class FiveAgentDepartmentRuntime:
         ]
         corpus = " ".join(part for part in creative_text_parts if part)
         total, supported, hypotheses, claim_reasons, claim_actions_scan = (
-            self._scan_unsupported_product_claims(corpus, provenance_index)
+            self._scan_unsupported_product_claims(
+                corpus_text=corpus,
+                provenance_index=provenance_index,
+                context=context,
+                claim_verifier=self._get_claim_verifier(),
+                knowledge_repo=self.knowledge_repo,
+            )
         )
         blocking_reasons.extend(claim_reasons)
         claim_actions.update(claim_actions_scan)
@@ -1472,6 +1610,7 @@ class FiveAgentDepartmentRuntime:
             lineage_summary={"citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()]},
             binding_constraints=list(context.constraints),
             epistemic_handoffs=dict(context.working_state.get("stage_handoffs", {})),
+            claim_verification_ledger=list(context.working_state.get("claim_verification_ledger", [])),
             errors=context.risk_flags,
         )
         artifact.final_artifact_hash = artifact.compute_artifact_hash()

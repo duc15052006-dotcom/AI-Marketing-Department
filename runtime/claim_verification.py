@@ -17,6 +17,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
+import hashlib
+import json
 import logging
 import math
 import re
@@ -77,18 +79,47 @@ class SemanticScores(BaseModel):
     raw_latency_ms: float = 0.0
 
 
+def compute_evidence_content_hash(evidence_text: str) -> str:
+    """Compute deterministic SHA-256 over exact UTF-8 evidence string."""
+    return hashlib.sha256((evidence_text or "").encode("utf-8")).hexdigest()
+
+
+def compute_provenance_context_hash(claim_meta: Optional[Dict[str, Any]], source_meta: Optional[Dict[str, Any]]) -> str:
+    """Compute bounded SHA-256 over scope and execution provenance metadata."""
+    cm = claim_meta or {}
+    sm = source_meta or {}
+    canonical_dict = {
+        "claim_tenant_id": str(cm.get("tenant_id") or cm.get("brand_id") or ""),
+        "claim_chat_id": str(cm.get("chat_id") or ""),
+        "claim_run_id": str(cm.get("run_id") or ""),
+        "source_tenant_id": str(sm.get("tenant_id") or sm.get("brand_id") or ""),
+        "source_chat_id": str(sm.get("chat_id") or ""),
+        "source_run_id": str(sm.get("run_id") or ""),
+        "source_id": str(sm.get("source_id") or sm.get("execution_id") or ""),
+        "source_scope": str(sm.get("scope") or ""),
+        "execution_mode": str(sm.get("execution_mode") or ""),
+        "status": str(sm.get("status") or ""),
+        "epistemic_tier": str(sm.get("epistemic_tier") or ""),
+    }
+    raw = json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 class ClaimVerificationResult(BaseModel):
     """Immutable result of a single claim verification attempt."""
     claim_text: str
     source_id: Optional[str] = None
     evidence_refs: List[str] = Field(default_factory=list)
+    evidence_content_hash: Optional[str] = None
     verdict: VerificationVerdict = VerificationVerdict.INCONCLUSIVE
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     reason: str = ""
     model_id: Optional[str] = None
+    model_revision: Optional[str] = None
     backend: Optional[str] = None
     deterministic_findings: Optional[DeterministicFindings] = None
     semantic_scores: Optional[SemanticScores] = None
+    provenance_context_hash: Optional[str] = None
     epistemic_type_preserved: Optional[str] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -163,8 +194,8 @@ def extract_currency_codes(text: str) -> Set[str]:
 
 
 def extract_explicit_skus(text: str) -> Set[str]:
-    """Extract alphanumeric model numbers and SKU codes (e.g., VD-500, PRO-X9)."""
-    sku_pattern = r'\b([A-Z]{2,}[-\s]?\d{2,}[A-Z]?\d*)\b'
+    """Extract alphanumeric model numbers and SKU codes (e.g., VD-500, PRO-X9, LITE-V2)."""
+    sku_pattern = r'\b([A-Z]{2,}[-\s]?[A-Z0-9]*\d+[A-Z0-9]*)\b'
     return set(re.findall(sku_pattern, text))
 
 
@@ -552,6 +583,9 @@ class MultilingualNLIClaimVerifier(BaseClaimVerifier):
             source_metadata=source_meta,
         )
 
+        ev_hash = compute_evidence_content_hash(evidence_text)
+        prov_hash = compute_provenance_context_hash(claim_meta, source_meta)
+
         if not guard_findings.passed:
             g_name = str(guard_findings.guard_name)
             verdict = VerificationVerdict.INCONCLUSIVE
@@ -566,10 +600,15 @@ class MultilingualNLIClaimVerifier(BaseClaimVerifier):
                 claim_text=claim_text,
                 source_id=source_id,
                 evidence_refs=evidence_refs,
+                evidence_content_hash=ev_hash,
                 verdict=verdict,
                 confidence=1.0,
                 reason=f"Blocked by deterministic guard: {guard_findings.reason}",
+                model_id=self.model_id,
+                model_revision=self.model_revision,
+                backend=f"pytorch_{self._active_device}",
                 deterministic_findings=guard_findings,
+                provenance_context_hash=prov_hash,
                 epistemic_type_preserved=guard_findings.extracted_claim_values.get("claim_class"),
             )
 
@@ -581,10 +620,15 @@ class MultilingualNLIClaimVerifier(BaseClaimVerifier):
                     claim_text=claim_text,
                     source_id=source_id,
                     evidence_refs=evidence_refs,
+                    evidence_content_hash=ev_hash,
                     verdict=VerificationVerdict.INCONCLUSIVE,
                     confidence=0.0,
                     reason="NLI verifier backend unavailable (model load failure). Fails closed.",
+                    model_id=self.model_id,
+                    model_revision=self.model_revision,
+                    backend=f"pytorch_{self._active_device}",
                     deterministic_findings=guard_findings,
+                    provenance_context_hash=prov_hash,
                 )
 
         # 3. Model Inference (Fail-closed)
@@ -646,13 +690,16 @@ class MultilingualNLIClaimVerifier(BaseClaimVerifier):
                 claim_text=claim_text,
                 source_id=source_id,
                 evidence_refs=evidence_refs,
+                evidence_content_hash=ev_hash,
                 verdict=verdict,
                 confidence=round(confidence, 4),
                 reason=reason,
                 model_id=self.model_id,
+                model_revision=self.model_revision,
                 backend=f"pytorch_{self._active_device}",
                 deterministic_findings=guard_findings,
                 semantic_scores=semantic_scores,
+                provenance_context_hash=prov_hash,
             )
 
         except Exception as e:
@@ -661,10 +708,15 @@ class MultilingualNLIClaimVerifier(BaseClaimVerifier):
                 claim_text=claim_text,
                 source_id=source_id,
                 evidence_refs=evidence_refs,
+                evidence_content_hash=ev_hash,
                 verdict=VerificationVerdict.INCONCLUSIVE,
                 confidence=0.0,
                 reason=f"Inference failure ({type(e).__name__}: {str(e)}). Fails closed.",
+                model_id=self.model_id,
+                model_revision=self.model_revision,
+                backend=f"pytorch_{self._active_device}",
                 deterministic_findings=guard_findings,
+                provenance_context_hash=prov_hash,
             )
 
     def verify_batch(
@@ -847,6 +899,8 @@ class MockClaimVerifier(BaseClaimVerifier):
         simulate_exception: bool = False,
         tau_entailment: float = PROVISIONAL_TAU_ENTAILMENT,
         tau_contradiction: float = PROVISIONAL_TAU_CONTRADICTION,
+        model_id: str = "mock-verifier-v1",
+        model_revision: str = "mock-revision-v1",
     ) -> None:
         self.forced_semantic_scores = forced_semantic_scores or {}
         self.default_semantic_scores = default_semantic_scores or SemanticScores(
@@ -856,6 +910,8 @@ class MockClaimVerifier(BaseClaimVerifier):
         self.simulate_exception = simulate_exception
         self.tau_entailment = tau_entailment
         self.tau_contradiction = tau_contradiction
+        self.model_id = model_id
+        self.model_revision = model_revision
 
     def verify_claim(
         self,
@@ -867,13 +923,20 @@ class MockClaimVerifier(BaseClaimVerifier):
         claim_meta = claim_metadata or {}
         source_meta = source_metadata or {}
         source_id = source_meta.get("source_id")
+        ev_hash = compute_evidence_content_hash(evidence_text)
+        prov_hash = compute_provenance_context_hash(claim_meta, source_meta)
 
         if self.simulate_exception:
             return ClaimVerificationResult(
                 claim_text=claim_text,
                 source_id=source_id,
+                evidence_content_hash=ev_hash,
                 verdict=VerificationVerdict.INCONCLUSIVE,
                 reason="Simulated inference exception. Fails closed.",
+                model_id=self.model_id,
+                model_revision=self.model_revision,
+                backend="mock",
+                provenance_context_hash=prov_hash,
             )
 
         # Deterministic Guard
@@ -898,10 +961,15 @@ class MockClaimVerifier(BaseClaimVerifier):
                 claim_text=claim_text,
                 source_id=source_id,
                 evidence_refs=[str(source_id)] if source_id else [],
+                evidence_content_hash=ev_hash,
                 verdict=verdict,
                 confidence=1.0,
                 reason=f"Blocked by deterministic guard: {guard_findings.reason}",
+                model_id=self.model_id,
+                model_revision=self.model_revision,
+                backend="mock",
                 deterministic_findings=guard_findings,
+                provenance_context_hash=prov_hash,
                 epistemic_type_preserved=guard_findings.extracted_claim_values.get("claim_class"),
             )
 
@@ -909,10 +977,16 @@ class MockClaimVerifier(BaseClaimVerifier):
             return ClaimVerificationResult(
                 claim_text=claim_text,
                 source_id=source_id,
+                evidence_refs=[str(source_id)] if source_id else [],
+                evidence_content_hash=ev_hash,
                 verdict=VerificationVerdict.INCONCLUSIVE,
                 confidence=0.0,
                 reason="Simulated model load failure. Fails closed.",
+                model_id=self.model_id,
+                model_revision=self.model_revision,
+                backend="mock",
                 deterministic_findings=guard_findings,
+                provenance_context_hash=prov_hash,
             )
 
         scores = self.forced_semantic_scores.get((evidence_text, claim_text), self.default_semantic_scores)
@@ -934,11 +1008,14 @@ class MockClaimVerifier(BaseClaimVerifier):
             claim_text=claim_text,
             source_id=source_id,
             evidence_refs=[str(source_id)] if source_id else [],
+            evidence_content_hash=ev_hash,
             verdict=verdict,
             confidence=conf,
             reason=reason,
-            model_id="mock-verifier-v1",
+            model_id=self.model_id,
+            model_revision=self.model_revision,
             backend="mock",
             deterministic_findings=guard_findings,
             semantic_scores=scores,
+            provenance_context_hash=prov_hash,
         )

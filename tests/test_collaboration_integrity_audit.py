@@ -390,11 +390,13 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
 class TestFinalCmoApprovalGateSafety(unittest.TestCase):
     """COLLAB-02 safety contracts for the active Final CMO authorization gate."""
 
-    def _runtime_with_repo(self, gateway, knowledge_repo=None):
+    def _runtime_with_repo(self, gateway, knowledge_repo=None, claim_verifier=None):
+        from runtime.claim_verification import MockClaimVerifier
         rt = FiveAgentDepartmentRuntime(
             model_gateway=gateway,
             knowledge_repo=knowledge_repo or LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
+            claim_verifier=claim_verifier or MockClaimVerifier(),
         )
         return rt
 

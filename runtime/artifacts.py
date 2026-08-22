@@ -91,6 +91,7 @@ class DepartmentRunArtifact(BaseModel):
     lineage_summary: Dict[str, Any] = Field(default_factory=dict)
     binding_constraints: List[str] = Field(default_factory=list, description="Structural user/business restrictions in force for this run (COLLAB-03)")
     epistemic_handoffs: Dict[str, Any] = Field(default_factory=dict, description="Per-stage structured epistemic handoffs (COLLAB-05)")
+    claim_verification_ledger: List[Any] = Field(default_factory=list, description="Authoritative sealed claim verification audit records (CLAIM-04)")
     errors: List[str] = Field(default_factory=list)
     final_artifact_hash: str = Field(default="")
 
@@ -133,6 +134,68 @@ class DepartmentRunArtifact(BaseModel):
             "result_hash": str(getattr(r, "result_hash", "")),
         }
 
+    def _claim_verification_integrity_representation(self, c: Any) -> Dict[str, Any]:
+        """Extract canonical bounded immutable integrity fields for a claim verification record."""
+        if hasattr(c, "model_dump") and callable(c.model_dump):
+            d = c.model_dump()
+        elif hasattr(c, "dict") and callable(c.dict):
+            d = c.dict()
+        elif isinstance(c, dict):
+            d = c
+        else:
+            d = {}
+
+        df = d.get("deterministic_findings")
+        df_dict = None
+        if isinstance(df, dict):
+            df_dict = {
+                "guard_name": str(df.get("guard_name") or ""),
+                "passed": bool(df.get("passed", True)),
+                "reason": str(df.get("reason") or ""),
+                "extracted_claim_values": _normalize_for_hashing(df.get("extracted_claim_values") or {}),
+                "extracted_evidence_values": _normalize_for_hashing(df.get("extracted_evidence_values") or {}),
+            }
+        elif hasattr(df, "guard_name"):
+            df_dict = {
+                "guard_name": str(getattr(df, "guard_name", "") or ""),
+                "passed": bool(getattr(df, "passed", True)),
+                "reason": str(getattr(df, "reason", "") or ""),
+                "extracted_claim_values": _normalize_for_hashing(getattr(df, "extracted_claim_values", {})),
+                "extracted_evidence_values": _normalize_for_hashing(getattr(df, "extracted_evidence_values", {})),
+            }
+
+        ss = d.get("semantic_scores")
+        ss_dict = None
+        if isinstance(ss, dict):
+            ss_dict = {
+                "p_entailment": round(float(ss.get("p_entailment", 0.0)), 6),
+                "p_neutral": round(float(ss.get("p_neutral", 0.0)), 6),
+                "p_contradiction": round(float(ss.get("p_contradiction", 0.0)), 6),
+                "argmax_label": str(ss.get("argmax_label") or ""),
+            }
+        elif hasattr(ss, "p_entailment"):
+            ss_dict = {
+                "p_entailment": round(float(getattr(ss, "p_entailment", 0.0)), 6),
+                "p_neutral": round(float(getattr(ss, "p_neutral", 0.0)), 6),
+                "p_contradiction": round(float(getattr(ss, "p_contradiction", 0.0)), 6),
+                "argmax_label": str(getattr(ss, "argmax_label", "") or ""),
+            }
+
+        return {
+            "claim_text": str(d.get("claim_text", "")),
+            "source_id": str(d.get("source_id", "")),
+            "evidence_refs": _normalize_for_hashing(d.get("evidence_refs") or []),
+            "evidence_content_hash": str(d.get("evidence_content_hash") or ""),
+            "verdict": _normalize_for_hashing(d.get("verdict", "")),
+            "reason": str(d.get("reason", "")),
+            "model_id": str(d.get("model_id", "")),
+            "model_revision": str(d.get("model_revision", "")),
+            "backend": str(d.get("backend", "")),
+            "deterministic_findings": df_dict,
+            "semantic_scores": ss_dict,
+            "provenance_context_hash": str(d.get("provenance_context_hash") or ""),
+        }
+
     def _integrity_payload(self) -> Dict[str, Any]:
         """Construct the authoritative integrity payload representing all business, epistemic, and governance state."""
         return {
@@ -143,6 +206,10 @@ class DepartmentRunArtifact(BaseModel):
             "final_cmo_output": _normalize_for_hashing(self.final_cmo_output),
             "binding_constraints": _normalize_for_hashing(self.binding_constraints),
             "epistemic_handoffs": _normalize_for_hashing(self.epistemic_handoffs),
+            "claim_verification_ledger": [
+                self._claim_verification_integrity_representation(c)
+                for c in self.claim_verification_ledger
+            ],
             "execution_receipts": [
                 self._receipt_integrity_representation(r)
                 for r in self.execution_receipts

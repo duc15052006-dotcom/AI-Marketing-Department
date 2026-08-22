@@ -227,11 +227,14 @@ class TestMaterialFactualClaimCoverage(unittest.TestCase):
                 "source_id": "SRC_BATTERY_01",
                 "epistemic_tier": "VERIFIED_SOURCE",
                 "source_type": "TIER_1_CANONICAL_GROUND_TRUTH",
+                "content": "Laboratory tests prove battery lasts 3x longer than previous models.",
             }
         }
+        from runtime.claim_verification import MockClaimVerifier
         total, supported, hyp, reasons, actions = self.engine_cls._scan_unsupported_product_claims(
             "Battery lasts 3x longer (Source: SRC_BATTERY_01) in laboratory tests.",
             provenance_index=prov_index,
+            claim_verifier=MockClaimVerifier(),
         )
         self.assertEqual(total, 1)
         self.assertEqual(supported, 1)
