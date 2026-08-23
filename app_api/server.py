@@ -24,13 +24,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 def get_secure_session_token() -> str:
-    """Generate or retrieve a cryptographically strong API session token (>=256 bits entropy)."""
-    env_token = os.environ.get("APP_API_TOKEN", "").strip()
-    if env_token:
-        weak_passwords = {"123", "password", "test", "admin", "secret", "123456", "12345678", "testserver"}
-        if len(env_token) >= 32 and env_token.lower() not in weak_passwords:
-            return env_token
-        logger.warning("Weak or insecure APP_API_TOKEN supplied in environment; discarding and generating 256-bit runtime session token.")
+    """Generate a cryptographically fresh API session token (>=256 bits entropy) per process launch."""
     return secrets.token_urlsafe(32)
 
 
@@ -40,10 +34,6 @@ GLOBAL_API_SESSION_TOKEN: str = get_secure_session_token()
 ALLOWED_LOCAL_ORIGINS: Set[str] = {
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:8765",
-    "http://127.0.0.1:8765",
-    "http://tauri.localhost",
-    "tauri://localhost",
 }
 
 PRODUCTION_ALLOWED_HOSTNAMES: Set[str] = {
@@ -167,7 +157,13 @@ from runtime.engine import FiveAgentDepartmentRuntime, extract_explicit_user_con
 from runtime.queue import ResourceLimiter, RunManager
 from tools.capabilities import CapabilityRegistry, RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
-from tools.security import HumanApprovalRecord, PolicyEngine
+from tools.security import (
+    HumanApprovalRecord,
+    PendingApprovalRecord,
+    PendingApprovalStatus,
+    PolicyEngine,
+    compute_request_fingerprint,
+)
 from tools.tool_gateway import ToolGateway, ToolRequest
 from workspace.business import BusinessRegistry, BusinessWorkspace
 from workspace.operator import OperatorWorkspace
@@ -663,19 +659,70 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         # 9. Approvals
         elif path == "/api/approvals":
             pending = []
+            seen_pending_ids = set()
+            for p in APP_BACKEND.tool_gateway.policy_engine.list_pending_approvals(status=PendingApprovalStatus.PENDING):
+                seen_pending_ids.add(p.pending_approval_id)
+                pending.append(
+                    {
+                        "pending_approval_id": p.pending_approval_id,
+                        "run_id": p.run_id,
+                        "business_id": p.business_id,
+                        "capability_id": p.capability_id,
+                        "action_type": p.capability_id,
+                        "parameters": p.parameters,
+                        "request_fingerprint": p.request_fingerprint,
+                        "created_at": p.created_at,
+                        "expires_at": p.expires_at,
+                        "status": p.status.value,
+                        "risk_level": p.risk_level.value if hasattr(p.risk_level, "value") else str(p.risk_level),
+                    }
+                )
             for rid, ctx in APP_BACKEND.runtime._active_contexts.items():
                 if ctx.status == RuntimeStatus.WAITING_FOR_APPROVAL:
-                    pending.append(
-                        {
-                            "run_id": rid,
-                            "business_id": ctx.business_id,
-                            "objective": ctx.objective,
-                            "pending_since": ctx.created_at.isoformat(),
-                            "action_type": "social_publishing",
-                            "risk_level": "CRITICAL",
-                        }
-                    )
+                    # Check if already listed via PolicyEngine
+                    if not any(item.get("run_id") == rid for item in pending):
+                        pending.append(
+                            {
+                                "pending_approval_id": f"PENDING-{rid}",
+                                "run_id": rid,
+                                "business_id": ctx.business_id,
+                                "objective": ctx.objective,
+                                "pending_since": ctx.created_at.isoformat(),
+                                "action_type": "social_publishing",
+                                "capability_id": "social_publishing",
+                                "risk_level": "CRITICAL",
+                                "status": "PENDING",
+                            }
+                        )
             self._send_json(pending)
+            return
+
+        elif path.startswith("/api/approvals/"):
+            target_id = path.split("/")[-1]
+            policy = APP_BACKEND.tool_gateway.policy_engine
+            p = policy.get_pending_approval(target_id)
+            if not p:
+                pendings_for_run = policy.list_pending_approvals(run_id=target_id, status=PendingApprovalStatus.PENDING)
+                if pendings_for_run:
+                    p = pendings_for_run[0]
+            if p:
+                self._send_json(
+                    {
+                        "pending_approval_id": p.pending_approval_id,
+                        "run_id": p.run_id,
+                        "business_id": p.business_id,
+                        "capability_id": p.capability_id,
+                        "action_type": p.capability_id,
+                        "parameters": p.parameters,
+                        "request_fingerprint": p.request_fingerprint,
+                        "created_at": p.created_at,
+                        "expires_at": p.expires_at,
+                        "status": p.status.value,
+                        "risk_level": p.risk_level.value if hasattr(p.risk_level, "value") else str(p.risk_level),
+                    }
+                )
+            else:
+                self._send_json({"error": "PENDING_APPROVAL_NOT_FOUND", "message": "Pending approval record not found"}, 404)
             return
 
         # 10. Activity Receipts
@@ -1109,54 +1156,152 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
         # 10. Approvals
         elif path in ("/api/approvals/create", "/api/approvals/issue"):
-            cap_id = body.get("capability_id", "social_publishing")
-            run_id = body.get("run_id", "")
-            biz_id = body.get("business_id")
-            params = body.get("parameters", {})
-            approved_by = body.get("approved_by", "Executive Operator")
-            ttl = int(body.get("ttl_seconds", 300))
-            record = APP_BACKEND.tool_gateway.policy_engine.create_server_approval(
-                capability_id=cap_id,
-                parameters=params,
-                run_id=run_id,
-                business_id=biz_id,
-                approved_by=approved_by,
-                ttl_seconds=ttl,
-            )
+            # Direct client manufacture of human approval authority is strictly forbidden.
+            # Actions requiring human approval must be proposed by deterministic runtime/policy as pending approvals.
             self._send_json(
                 {
-                    "success": True,
-                    "approval_token": record.approval_token,
-                    "request_fingerprint": record.request_fingerprint,
-                    "expires_at": record.expires_at,
-                    "capability_id": record.capability_id,
-                    "run_id": record.run_id,
+                    "error": "DIRECT_APPROVAL_FORBIDDEN",
+                    "message": "Direct creation of approval authority is forbidden. Actions must originate as server-side pending proposals.",
                 },
-                201,
+                403,
             )
             return
 
         elif path.endswith("/approve") and "/api/approvals/" in path:
-            run_id = path.split("/")[-2]
-            token = body.get("approval_token")
+            target_id = path.split("/")[-2]
             approved_by = body.get("approved_by", "Executive Operator")
-            action_type = body.get("action_type", "social_publishing")
-            parameters = body.get("parameters")
-            ok = APP_BACKEND.workspace.approve_gated_action(
-                run_id=run_id,
-                approval_token=token,
-                action_type=action_type,
+
+            policy = APP_BACKEND.tool_gateway.policy_engine
+            # Look up pending approval either by pending_approval_id or by run_id
+            pending = policy.get_pending_approval(target_id)
+            if not pending:
+                pendings_for_run = policy.list_pending_approvals(run_id=target_id, status=PendingApprovalStatus.PENDING)
+                if pendings_for_run:
+                    pending = pendings_for_run[0]
+
+            if not pending:
+                self._send_json(
+                    {
+                        "error": "PENDING_APPROVAL_NOT_FOUND",
+                        "message": f"No pending action found matching identifier '{target_id}'",
+                    },
+                    404,
+                )
+                return
+
+            # Prevent caller from tampering with or overriding server-side pending action parameters
+            if "capability_id" in body and body["capability_id"] and body["capability_id"] != pending.capability_id:
+                self._send_json(
+                    {
+                        "error": "APPROVAL_TAMPERING_REJECTED",
+                        "message": "Cannot alter capability_id during approval",
+                    },
+                    400,
+                )
+                return
+            if "parameters" in body and body["parameters"] is not None:
+                provided_fp = compute_request_fingerprint(
+                    capability_id=pending.capability_id,
+                    parameters=body["parameters"],
+                    run_id=pending.run_id,
+                    business_id=pending.business_id,
+                )
+                if provided_fp != pending.request_fingerprint:
+                    self._send_json(
+                        {
+                            "error": "APPROVAL_TAMPERING_REJECTED",
+                            "message": "Cannot alter action parameters during approval",
+                        },
+                        400,
+                    )
+                    return
+            if "run_id" in body and body["run_id"] and body["run_id"] != pending.run_id:
+                self._send_json(
+                    {
+                        "error": "APPROVAL_TAMPERING_REJECTED",
+                        "message": "Cannot alter run_id during approval",
+                    },
+                    400,
+                )
+                return
+            if "business_id" in body and body["business_id"] and body["business_id"] != pending.business_id:
+                self._send_json(
+                    {
+                        "error": "APPROVAL_TAMPERING_REJECTED",
+                        "message": "Cannot alter business_id during approval",
+                    },
+                    400,
+                )
+                return
+
+            ok, record, msg = policy.approve_pending_action(
+                pending_approval_id=pending.pending_approval_id,
                 approved_by=approved_by,
-                parameters=parameters,
             )
-            self._send_json({"success": ok, "status": "APPROVED" if ok else "FAILED"})
+            if not ok or not record:
+                self._send_json(
+                    {
+                        "error": msg,
+                        "message": f"Failed to approve pending action: {msg}",
+                    },
+                    400,
+                )
+                return
+
+            # If an active run context exists and was waiting for approval, resume it
+            if pending.run_id in APP_BACKEND.runtime._active_contexts:
+                ctx = APP_BACKEND.runtime._active_contexts[pending.run_id]
+                ctx.approval_refs.append(record.approval_token)
+                APP_BACKEND.runtime.request_publish_action(ctx, platform="linkedin", approval_token=record.approval_token)
+
+            self._send_json(
+                {
+                    "success": True,
+                    "status": "APPROVED",
+                    "pending_approval_id": pending.pending_approval_id,
+                    "approval_token": record.approval_token,
+                    "capability_id": record.capability_id,
+                    "run_id": record.run_id,
+                },
+                200,
+            )
             return
 
         elif path.endswith("/reject") and "/api/approvals/" in path:
-            run_id = path.split("/")[-2]
+            target_id = path.split("/")[-2]
             reason = body.get("reason", "Rejected by operator")
-            ok = APP_BACKEND.workspace.reject_gated_action(run_id=run_id, reason=reason)
-            self._send_json({"success": ok, "status": "REJECTED"})
+            policy = APP_BACKEND.tool_gateway.policy_engine
+            pending = policy.get_pending_approval(target_id)
+            if not pending:
+                pendings_for_run = policy.list_pending_approvals(run_id=target_id, status=PendingApprovalStatus.PENDING)
+                if pendings_for_run:
+                    pending = pendings_for_run[0]
+
+            if not pending:
+                self._send_json(
+                    {
+                        "error": "PENDING_APPROVAL_NOT_FOUND",
+                        "message": f"No pending action found matching identifier '{target_id}'",
+                    },
+                    404,
+                )
+                return
+
+            ok, msg = policy.reject_pending_action(pending.pending_approval_id, reason=reason)
+            if not ok:
+                self._send_json(
+                    {
+                        "error": msg,
+                        "message": f"Failed to reject pending action: {msg}",
+                    },
+                    400,
+                )
+                return
+
+            if pending.run_id in APP_BACKEND.runtime._active_contexts:
+                APP_BACKEND.workspace.reject_gated_action(run_id=pending.run_id, reason=reason)
+
+            self._send_json({"success": True, "status": "REJECTED", "pending_approval_id": pending.pending_approval_id})
             return
 
         # 11. Analytics Ingestion

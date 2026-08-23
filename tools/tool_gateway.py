@@ -151,6 +151,17 @@ class ToolGateway:
             completed_time = datetime.now(timezone.utc)
             status = ExecutionStatus.APPROVAL_REQUIRED if decision.requires_human_approval else ExecutionStatus.BLOCKED
             err_class = decision.error_code or ("HUMAN_APPROVAL_REQUIRED" if decision.requires_human_approval else "PERMISSION_DENIED")
+            appr_ref = request.approval_token
+            if decision.requires_human_approval and not appr_ref:
+                pending_rec = self.policy_engine.create_pending_approval(
+                    capability_id=request.capability_id,
+                    parameters=request.parameters,
+                    run_id=request.run_id,
+                    scope="",
+                    risk_level=cap.risk_level,
+                )
+                appr_ref = pending_rec.pending_approval_id
+
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
                 agent_id=request.agent_id,
@@ -162,7 +173,7 @@ class ToolGateway:
                 status=status,
                 error_class=err_class,
                 error_message=decision.reason,
-                approval_reference=request.approval_token,
+                approval_reference=appr_ref,
             )
             return self.receipt_repository.save_receipt(receipt)
 

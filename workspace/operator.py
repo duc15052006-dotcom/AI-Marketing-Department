@@ -22,7 +22,7 @@ from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, Runtime
 from runtime.engine import FiveAgentDepartmentRuntime
 from tools.capabilities import RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionStatus
-from tools.security import HumanApprovalRecord, PolicyEngine, compute_request_fingerprint
+from tools.security import HumanApprovalRecord, PendingApprovalStatus, PolicyEngine, compute_request_fingerprint
 from tools.tool_gateway import ToolGateway
 from workspace.business import BusinessRegistry, BusinessWorkspace
 
@@ -105,53 +105,37 @@ class OperatorWorkspace:
         self,
         run_id: str,
         approval_token: Optional[str] = None,
+        pending_approval_id: Optional[str] = None,
         action_type: str = "social_publishing",
         approved_by: str = "Executive Operator",
         parameters: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """Register human approval record and resume a paused/waiting run."""
+        """Approve server-originated pending action and resume a paused/waiting run."""
         ctx = self.runtime._active_contexts.get(run_id)
         if not ctx:
             return False
 
-        publish_params = parameters or {"platform": "linkedin", "content": "Campaign Go-To-Market Plan"}
+        policy = self.runtime.tool_gateway.policy_engine
+        tok_to_use: Optional[str] = None
 
-        if approval_token:
-            if approval_token not in self.runtime.tool_gateway.policy_engine._approved_tokens:
-                fp = compute_request_fingerprint(
-                    capability_id=action_type,
-                    parameters=publish_params,
-                    run_id=ctx.run_id,
-                    business_id=ctx.business_id,
-                )
-                record = HumanApprovalRecord(
-                    approval_token=approval_token,
-                    action_type=action_type,
-                    capability_id=action_type,
-                    run_id=ctx.run_id,
-                    business_id=ctx.business_id,
-                    request_fingerprint=fp,
-                    approved_by=approved_by,
-                    approved_at=datetime.now(timezone.utc).isoformat(),
-                    created_at=datetime.now(timezone.utc).isoformat(),
-                    expires_at=datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + 300, tz=timezone.utc).isoformat(),
-                    scope=ctx.business_id,
-                    risk_level=RiskLevel.CRITICAL,
-                    consumed=False,
-                )
-                self.runtime.tool_gateway.policy_engine.register_approval(record)
+        if approval_token and policy.get_approval(approval_token):
+            rec = policy.get_approval(approval_token)
+            if rec.consumed or rec.claimed:
+                return False
             tok_to_use = approval_token
+        elif pending_approval_id:
+            ok, record, msg = policy.approve_pending_action(pending_approval_id, approved_by=approved_by)
+            if not ok or not record:
+                return False
+            tok_to_use = record.approval_token
         else:
-            record = self.runtime.tool_gateway.policy_engine.create_server_approval(
-                capability_id=action_type,
-                parameters=publish_params,
-                run_id=ctx.run_id,
-                business_id=ctx.business_id,
-                approved_by=approved_by,
-                ttl_seconds=300,
-                risk_level=RiskLevel.CRITICAL,
-                scope=ctx.business_id,
-            )
+            pendings = policy.list_pending_approvals(run_id=run_id, status=PendingApprovalStatus.PENDING)
+            if not pendings:
+                return False
+            target_pending = pendings[0]
+            ok, record, msg = policy.approve_pending_action(target_pending.pending_approval_id, approved_by=approved_by)
+            if not ok or not record:
+                return False
             tok_to_use = record.approval_token
 
         ctx.approval_refs.append(tok_to_use)
@@ -221,9 +205,8 @@ class OperatorWorkspace:
         self.runtime.execute_stage_final_cmo(ctx)
 
         # Gated publishing step
+        self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=None)
         if auto_approve_token:
-            self.approve_gated_action(ctx.run_id, approval_token=auto_approve_token)
-        else:
-            self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=None)
+            self.approve_gated_action(ctx.run_id, approved_by="Supervisor Auto-Approve")
 
         return self.runtime.complete_run(ctx)

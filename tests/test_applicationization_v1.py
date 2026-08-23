@@ -21,8 +21,44 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from app_api.server import APP_BACKEND, DepartmentAPIHandler, GLOBAL_API_SESSION_TOKEN
+from app_api import server as app_server
+from app_api.server import APP_BACKEND, DepartmentAPIHandler
 from governance.access_matrix import AgentAccessMatrix, PERMANENT_FIVE_AGENTS
+from integrations.models.base import ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
+from integrations.models.gateway import UniversalModelGateway
+
+
+class ScriptedAppGateway(UniversalModelGateway):
+    """Deterministic script-based model gateway for applicationization tests."""
+
+    def __init__(self) -> None:
+        super().__init__(free_only_mode=True)
+
+    def generate(self, request: ModelRequest) -> ModelResponse:
+        system_content = next((m.content for m in request.messages if m.role == ModelRole.SYSTEM), "")
+        sys_low = system_content.lower()
+        if "final governed" in sys_low or "master gtm" in sys_low:
+            content = "Final governed GTM campaign plan for Acme Health."
+        elif "initial strategic brief" in sys_low or "cmo_initial" in sys_low:
+            content = "Initial strategic brief for Acme Health."
+        elif "intelligence" in sys_low:
+            content = "Intelligence report: market landscape analyzed."
+        elif "strategist" in sys_low:
+            content = "Strategy formulated for Acme Health GTM."
+        elif "creative" in sys_low:
+            content = "Creative concepts and messaging created."
+        elif "performance" in sys_low:
+            content = "Performance media plan and KPIs defined."
+        else:
+            content = "Deterministic mock stage response."
+
+        return ModelResponse(
+            request_id=request.request_id,
+            provider="scripted_mock",
+            model_name="scripted",
+            status=ModelResponseStatus.SUCCESS,
+            content=content,
+        )
 
 
 class TestApplicationizationV1(unittest.TestCase):
@@ -30,6 +66,8 @@ class TestApplicationizationV1(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        cls._orig_gateway = APP_BACKEND.runtime.model_gateway
+        APP_BACKEND.runtime.model_gateway = ScriptedAppGateway()
         # Start test HTTP server on port 8799
         cls.port = 8799
         cls.server = ThreadingHTTPServer(("127.0.0.1", cls.port), DepartmentAPIHandler)
@@ -39,12 +77,13 @@ class TestApplicationizationV1(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        APP_BACKEND.runtime.model_gateway = cls._orig_gateway
         cls.server.shutdown()
         cls.server.server_close()
 
     def _api_get(self, path: str) -> Tuple[int, Any]:
         url = f"http://127.0.0.1:{self.port}{path}"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {GLOBAL_API_SESSION_TOKEN}"}, method="GET")
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {app_server.GLOBAL_API_SESSION_TOKEN}"}, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=120.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -60,7 +99,7 @@ class TestApplicationizationV1(unittest.TestCase):
             data=body,
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {GLOBAL_API_SESSION_TOKEN}",
+                "Authorization": f"Bearer {app_server.GLOBAL_API_SESSION_TOKEN}",
             },
             method="POST",
         )

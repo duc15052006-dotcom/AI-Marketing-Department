@@ -633,7 +633,7 @@ class TestProdSec01APITrustBoundary(unittest.TestCase):
         self.assertNotEqual(headers.get("Access-Control-Allow-Origin"), "*")
 
     def test_approval_creation_endpoint_requires_api_auth(self):
-        """Approval creation endpoint requires API auth."""
+        """Direct approval creation endpoint requires API auth and forbids unvetted intent manufacture."""
         # Unauthenticated
         code, _headers, data = self._request(
             "POST",
@@ -642,16 +642,16 @@ class TestProdSec01APITrustBoundary(unittest.TestCase):
         )
         self.assertEqual(code, 401)
 
-        # Authenticated
+        # Authenticated direct approval manufacture attempt is strictly forbidden
         code2, _headers2, data2 = self._request(
             "POST",
             "/api/approvals/create",
             payload={"capability_id": "social_publishing", "run_id": "RUN-SEC-099"},
             headers={"Authorization": f"Bearer {GLOBAL_API_SESSION_TOKEN}"},
         )
-        self.assertEqual(code2, 201)
-        self.assertTrue(data2.get("success"))
-        self.assertTrue(data2.get("approval_token").startswith("appr_"))
+        self.assertEqual(code2, 403)
+        self.assertEqual(data2.get("error"), "DIRECT_APPROVAL_FORBIDDEN")
+        self.assertNotIn("approval_token", data2)
 
 
 if __name__ == "__main__":
