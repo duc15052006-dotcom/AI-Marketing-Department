@@ -237,10 +237,18 @@ def audit_deterministic_claim_guards(
     claim_meta = claim_metadata or {}
     source_meta = source_metadata or {}
 
-    # 1. Execution State Guard (MOCK, SANDBOX, ERROR, TIMEOUT, BLOCKED, APPROVAL_REQUIRED)
+    # 1. Execution State & Evidence Role Guard (MOCK, SANDBOX, ERROR, TIMEOUT, BLOCKED, APPROVAL_REQUIRED, ACTION/GENERATIVE)
     exec_status = str(source_meta.get("status", "")).upper()
     exec_mode = str(source_meta.get("execution_mode", "")).upper()
+    ev_role = str(source_meta.get("evidence_role", "")).upper()
     evidence_str = str(evidence_text)
+
+    if ev_role in ("ACTION", "GENERATIVE", "NONE", "COMPUTATION"):
+        return DeterministicFindings(
+            guard_name="EVIDENCE_ROLE_NOT_ELIGIBLE",
+            passed=False,
+            reason=f"Evidence source has evidence role '{ev_role}' which cannot authorize factual public claims.",
+        )
 
     if exec_mode in ("MOCK", "SANDBOX") or "MOCK" in evidence_str or "SANDBOX" in evidence_str:
         return DeterministicFindings(

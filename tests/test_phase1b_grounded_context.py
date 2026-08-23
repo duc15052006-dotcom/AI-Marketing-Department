@@ -588,12 +588,12 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
         # Stage 1 CMO received attachment + knowledge + memory
         self.assertGreater(forensics_rows[0]["evidence_count"], 0)
-        # Stage 2 Intelligence received tool evidence
+        # Stage 2 Intelligence received observation tool evidence (web_search)
         self.assertGreater(forensics_rows[1]["tool_count"], 0)
-        # Stage 4 Creative received image tool evidence
-        self.assertGreater(forensics_rows[3]["tool_count"], 0)
-        # Stage 5 Performance received kpi tool evidence
-        self.assertGreater(forensics_rows[4]["tool_count"], 0)
+        # Stage 4 Creative (GENERATIVE) and Stage 5 Performance (COMPUTATION) produce non-observation receipts
+        # which must NOT compile into EvidenceItems
+        self.assertEqual(forensics_rows[3]["tool_count"], 0)
+        self.assertEqual(forensics_rows[4]["tool_count"], 0)
 
     # -------------------------------------------------------------------------
     # PART 21: Final Closure Gate Verifications
@@ -724,7 +724,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
         self.knowledge_repo.save_document(doc)
 
         ctx = self.runtime.start_run(
-            objective="Evaluate UNIQUE_PRODUCT_FACT_74291 in GTM",
+            objective="Evaluate product differentiators in GTM",
             business_id="BIZ_DUP",
         )
 
@@ -738,10 +738,10 @@ class TestPhase1BGroundContext(unittest.TestCase):
         self.assertEqual(len(self.mock_adapter.captured_requests), 6)
         for idx, req in enumerate(self.mock_adapter.captured_requests):
             user_msg = next((m.content for m in req.messages if m.role == ModelRole.USER), "")
-            # In each stage, the evidence block is rendered once for that stage's compiler run.
+            # In each stage, the evidence block is rendered once for that stage's compiler run without recursive duplication.
             count = user_msg.count("UNIQUE_PRODUCT_FACT_74291")
-            self.assertLessEqual(
-                count, 2,  # 1 in objective + 1 in evidence block = exactly 2; never 4, 8, 16...
+            self.assertEqual(
+                count, 1,  # Exactly 1 in knowledge doc evidence block; never 2, 4, 8...
                 f"Stage {idx} contained {count} occurrences, indicating recursive duplication!",
             )
 

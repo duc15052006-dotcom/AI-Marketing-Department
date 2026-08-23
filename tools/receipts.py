@@ -70,7 +70,7 @@ class ExecutionReceipt(BaseModel):
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: ExecutionStatus = Field(default=ExecutionStatus.SUCCESS)
-    execution_mode: ExecutionMode = Field(default=ExecutionMode.REAL)
+    execution_mode: ExecutionMode = Field(default=ExecutionMode.MOCK)
     error_class: Optional[str] = Field(default=None, description="Normalized error category if failed")
     error_message: Optional[str] = Field(default=None)
     cost_or_token_usage: Dict[str, Any] = Field(default_factory=dict)

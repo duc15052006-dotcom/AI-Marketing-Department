@@ -10,6 +10,7 @@ import time
 from typing import Any, Dict, List, Optional
 from schemas.base import BaseModel, Field
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.receipts import ExecutionMode
 
 
 class CampaignMetric(BaseModel):
@@ -90,52 +91,59 @@ class RealAnalyticsConnector(BaseCapabilityAdapter):
         if cap == "analytics_retrieval":
             metrics = self._metrics_store.get(campaign_id, [])
             if not metrics:
-                # Return standard baseline if unpopulated
-                metric_data = {
-                    "campaign_id": campaign_id,
-                    "impressions": 100000,
-                    "clicks": 3200,
-                    "conversions": 140,
-                    "spend": 4500.0,
-                    "revenue": 15750.0,
-                    "ctr": 0.032,
-                    "cpc": 1.406,
-                    "cvr": 0.04375,
-                    "cpa": 32.14,
-                    "roas": 3.50,
-                }
-            else:
-                tot_imp = sum(m.impressions for m in metrics)
-                tot_clk = sum(m.clicks for m in metrics)
-                tot_conv = sum(m.conversions for m in metrics)
-                tot_spd = sum(m.spend for m in metrics)
-                tot_rev = sum(m.revenue for m in metrics)
-                metric_data = {
-                    "campaign_id": campaign_id,
-                    "impressions": tot_imp,
-                    "clicks": tot_clk,
-                    "conversions": tot_conv,
-                    "spend": tot_spd,
-                    "revenue": tot_rev,
-                    "ctr": (tot_clk / tot_imp) if tot_imp > 0 else 0.0,
-                    "cpc": (tot_spd / tot_clk) if tot_clk > 0 else 0.0,
-                    "cvr": (tot_conv / tot_clk) if tot_clk > 0 else 0.0,
-                    "cpa": (tot_spd / tot_conv) if tot_conv > 0 else 0.0,
-                    "roas": (tot_rev / tot_spd) if tot_spd > 0 else 0.0,
-                }
+                return AdapterResult(
+                    success=False,
+                    error_code="NO_DATA",
+                    error_message=f"No campaign telemetry ingested for '{campaign_id}'.",
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
+                )
+            tot_imp = sum(m.impressions for m in metrics)
+            tot_clk = sum(m.clicks for m in metrics)
+            tot_conv = sum(m.conversions for m in metrics)
+            tot_spd = sum(m.spend for m in metrics)
+            tot_rev = sum(m.revenue for m in metrics)
+            metric_data = {
+                "campaign_id": campaign_id,
+                "impressions": tot_imp,
+                "clicks": tot_clk,
+                "conversions": tot_conv,
+                "spend": tot_spd,
+                "revenue": tot_rev,
+                "ctr": (tot_clk / tot_imp) if tot_imp > 0 else 0.0,
+                "cpc": (tot_spd / tot_clk) if tot_clk > 0 else 0.0,
+                "cvr": (tot_conv / tot_clk) if tot_clk > 0 else 0.0,
+                "cpa": (tot_spd / tot_conv) if tot_conv > 0 else 0.0,
+                "roas": (tot_rev / tot_spd) if tot_spd > 0 else 0.0,
+            }
 
             return AdapterResult(
                 success=True,
                 data=metric_data,
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                execution_mode=ExecutionMode.REAL,
             )
 
         elif cap == "kpi_calculation":
             metric_name = parameters.get("metric_name", "roas")
-            spend = float(parameters.get("spend", 1000.0))
-            revenue = float(parameters.get("revenue", 3500.0))
-            clicks = int(parameters.get("clicks", 500))
-            conversions = int(parameters.get("conversions", 25))
+            spend_raw = parameters.get("spend")
+            revenue_raw = parameters.get("revenue")
+            clicks_raw = parameters.get("clicks")
+            conversions_raw = parameters.get("conversions")
+
+            if spend_raw is None or (revenue_raw is None and clicks_raw is None and conversions_raw is None):
+                return AdapterResult(
+                    success=False,
+                    error_code="MISSING_INPUTS",
+                    error_message="Explicit inputs (e.g. 'spend', 'revenue') are required for KPI calculation.",
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
+                )
+
+            spend = float(spend_raw)
+            revenue = float(revenue_raw) if revenue_raw is not None else 0.0
+            clicks = int(clicks_raw) if clicks_raw is not None else 0
+            conversions = int(conversions_raw) if conversions_raw is not None else 0
 
             calc_result = {
                 "metric": metric_name,
@@ -148,6 +156,7 @@ class RealAnalyticsConnector(BaseCapabilityAdapter):
                 success=True,
                 data=calc_result,
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                execution_mode=ExecutionMode.MOCK,
             )
 
         elif cap in ("attribution_data_access", "experiment_result_analysis"):
@@ -160,6 +169,7 @@ class RealAnalyticsConnector(BaseCapabilityAdapter):
                     "p_value": 0.008,
                 },
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                execution_mode=ExecutionMode.MOCK,
             )
 
         return AdapterResult(
@@ -167,4 +177,5 @@ class RealAnalyticsConnector(BaseCapabilityAdapter):
             error_code="UNSUPPORTED_CAPABILITY",
             error_message=f"Capability '{capability_id}' not handled by RealAnalyticsConnector.",
             latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )

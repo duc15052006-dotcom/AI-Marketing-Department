@@ -99,16 +99,16 @@ class DepartmentAppBackend:
             receipt_repository=self.receipt_repo,
         )
 
-        # Register real local connectors
+        # Register real local connectors with capability provider aliases
         self.web_conn = RealWebConnector()
         self.file_conn = RealFileConnector()
         self.analytics_conn = RealAnalyticsConnector()
         self.publish_conn = SandboxPublishingConnector()
 
-        self.tool_gateway.register_adapter(self.web_conn)
-        self.tool_gateway.register_adapter(self.file_conn)
-        self.tool_gateway.register_adapter(self.analytics_conn)
-        self.tool_gateway.register_adapter(self.publish_conn)
+        self.tool_gateway.register_adapter(self.web_conn, aliases=["http_adapter", "search_adapter"])
+        self.tool_gateway.register_adapter(self.file_conn, aliases=["file_io_adapter", "db_storage_adapter", "export_adapter"])
+        self.tool_gateway.register_adapter(self.analytics_conn, aliases=["analytics_adapter", "kpi_calc_adapter", "attribution_adapter", "stats_analysis_adapter", "data_retrieval_adapter"])
+        self.tool_gateway.register_adapter(self.publish_conn, aliases=["social_publish_adapter", "schedule_adapter", "ad_platform_adapter"])
 
         self.knowledge_repo = LocalKnowledgeRepository()
         self.memory_repo = LocalMemoryRepository()

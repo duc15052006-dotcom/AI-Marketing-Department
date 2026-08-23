@@ -72,8 +72,21 @@ def build_rt(gateway):
     )
 
 
-def run(gateway, objective="demo objective", business_id="BIZ_AUDIT"):
+def run(gateway, objective="demo objective", business_id="BIZ_AUDIT", real_adapter=False):
     rt = build_rt(gateway)
+    if real_adapter:
+        from tools.adapters import AdapterResult, BaseCapabilityAdapter
+        from tools.receipts import ExecutionMode
+
+        class RealTestAdapter(BaseCapabilityAdapter):
+            @property
+            def adapter_name(self):
+                return "real_test_search"
+
+            def execute(self, capability_id, parameters, timeout_seconds=15.0):
+                return AdapterResult(success=True, data={"result": "real observation"}, execution_mode=ExecutionMode.REAL)
+
+        rt.tool_gateway.register_adapter(RealTestAdapter(), aliases=["search_adapter", "image_gen_adapter"])
     ctx = rt.start_run(objective=objective, business_id=business_id)
     rt.execute_stage_cmo_initial(ctx)
     rt.execute_stage_intelligence(ctx)
@@ -117,7 +130,7 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
                 "hypotheses": [{"text": "Hook H2 tang CTR"}],
             },
         }})
-        rt, ctx, perf_out, final_out, artifact = run(gw)
+        rt, ctx, perf_out, final_out, artifact = run(gw, real_adapter=True)
 
         spec = ctx.working_state["creative_spec"]
         self.assertEqual(len(spec["claims"]), 1)

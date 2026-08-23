@@ -31,7 +31,7 @@ from tools.adapters import (
     SearchAdapter,
 )
 from tools.capabilities import CapabilityDescriptor, CapabilityRegistry
-from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
+from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import PolicyDecision, PolicyEngine
 
 logger = logging.getLogger("tool_gateway")
@@ -68,10 +68,18 @@ class ToolGateway:
         self._adapters: Dict[str, BaseCapabilityAdapter] = {}
         self._register_default_adapters()
 
-    def register_adapter(self, adapter: BaseCapabilityAdapter) -> None:
-        """Register a provider adapter."""
+    def register_adapter(self, adapter: BaseCapabilityAdapter, aliases: Optional[List[str]] = None) -> None:
+        """Register a provider adapter and optional capability provider aliases."""
         self._adapters[adapter.adapter_name.lower()] = adapter
-        logger.info(f"Registered tool adapter: {adapter.adapter_name}")
+        if aliases:
+            for alias in aliases:
+                self._adapters[alias.lower()] = adapter
+        logger.info(f"Registered tool adapter: {adapter.adapter_name} (aliases: {aliases or []})")
+
+    def bind_adapter_alias(self, alias: str, adapter: BaseCapabilityAdapter) -> None:
+        """Explicitly bind a capability provider alias to an adapter instance."""
+        self._adapters[alias.lower()] = adapter
+        logger.info(f"Bound tool adapter alias '{alias}' to adapter: {adapter.adapter_name}")
 
     def get_adapter(self, adapter_name: str) -> Optional[BaseCapabilityAdapter]:
         """Retrieve registered adapter by name."""
@@ -200,6 +208,7 @@ class ToolGateway:
 
         # 5. Assemble Receipt
         if adapter_res and adapter_res.success:
+            mode = getattr(adapter_res, "execution_mode", ExecutionMode.MOCK) or ExecutionMode.MOCK
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
                 agent_id=request.agent_id,
@@ -209,6 +218,7 @@ class ToolGateway:
                 started_at=start_time,
                 completed_at=completed_time,
                 status=ExecutionStatus.SUCCESS,
+                execution_mode=mode,
                 data=adapter_res.data,
                 cost_or_token_usage=adapter_res.cost_or_tokens,
                 artifact_references=adapter_res.artifact_refs,
@@ -227,6 +237,7 @@ class ToolGateway:
                 started_at=start_time,
                 completed_at=completed_time,
                 status=status,
+                execution_mode=ExecutionMode.MOCK,
                 error_class=err_code,
                 error_message=err_msg,
                 cost_or_token_usage=adapter_res.cost_or_tokens if adapter_res else {},

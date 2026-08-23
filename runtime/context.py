@@ -109,11 +109,16 @@ class EvidenceItem(BaseModel):
             if not ("VERIFIED_MEMORY" in prom or "PROMOTED_LEARNING" in prom):
                 self.epistemic_tier = EpistemicTier.CANDIDATE_MEMORY
 
-        # SOURCE_BACKED_OBSERVATION requires execution_mode == REAL and not MOCK/SANDBOX
+        # SOURCE_BACKED_OBSERVATION requires execution_mode == REAL and not MOCK/SANDBOX, plus OBSERVATION evidence role
         if self.epistemic_tier == EpistemicTier.SOURCE_BACKED_OBSERVATION:
             mode = str(self.metadata.get("execution_mode", "REAL")).upper()
             if mode in ("MOCK", "SANDBOX", "SIMULATED"):
                 self.epistemic_tier = EpistemicTier.MOCK_OR_SANDBOX
+            ev_role = str(self.metadata.get("evidence_role", "")).upper()
+            if ev_role and ev_role not in ("OBSERVATION", "OBSERVATION_SOURCE"):
+                # Non-observation items cannot have SOURCE_BACKED_OBSERVATION tier.
+                # Fail-closed downgrade to UNVERIFIED_SOURCE (never MOCK_OR_SANDBOX if real execution)
+                self.epistemic_tier = EpistemicTier.UNVERIFIED_SOURCE
 
 
 class GroundedContextPackage(BaseModel):

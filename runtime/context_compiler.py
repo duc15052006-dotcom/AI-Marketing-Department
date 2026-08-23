@@ -19,6 +19,7 @@ from memory.models import MemoryItem, PromotionState
 from memory.promotion import MemoryPromotionEngine
 from memory.repository import LocalMemoryRepository, MemoryRepository
 from runtime.context import EpistemicTier, EvidenceItem, GroundedContextPackage, RuntimeContext
+from tools.capabilities import CapabilityRegistry, EvidenceRole
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 
 
@@ -56,10 +57,12 @@ class ContextCompiler:
         session_knowledge: Optional[SessionKnowledgeStore] = None,
         knowledge_repo: Optional[KnowledgeRepository] = None,
         memory_repo: Optional[MemoryRepository] = None,
+        capability_registry: Optional[CapabilityRegistry] = None,
     ) -> None:
         self.session_knowledge = session_knowledge or SessionKnowledgeStore()
         self.knowledge_repo = knowledge_repo or LocalKnowledgeRepository()
         self.memory_repo = memory_repo or LocalMemoryRepository()
+        self.capability_registry = capability_registry or CapabilityRegistry()
 
     def compile_grounded_package(
         self,
@@ -190,29 +193,52 @@ class ContextCompiler:
                 )
 
         # ---------------------------------------------------------------------
-        # 4. ToolGateway Execution Results — Preserving REAL vs MOCK/SANDBOX
+        # 4. ToolGateway Execution Results — Preserving REAL vs MOCK/SANDBOX & EvidenceRole
         # ---------------------------------------------------------------------
         if tool_receipts:
             for receipt in tool_receipts:
                 if receipt.status != ExecutionStatus.SUCCESS:
-                    # Failed tool execution does NOT produce factual evidence
+                    # Failed / blocked / timeout tool execution does NOT produce factual evidence
                     continue
 
-                mode = getattr(receipt, "execution_mode", ExecutionMode.REAL)
-                is_mock_or_sandbox = (mode in (ExecutionMode.MOCK, ExecutionMode.SANDBOX) or str(mode).upper() in ("MOCK", "SANDBOX", "EXECUTIONMODE.MOCK", "EXECUTIONMODE.SANDBOX"))
+                mode = getattr(receipt, "execution_mode", ExecutionMode.MOCK)
+                is_real = (mode == ExecutionMode.REAL or str(mode).upper() in ("REAL", "EXECUTIONMODE.REAL"))
 
-                if is_mock_or_sandbox:
-                    tier = EpistemicTier.MOCK_OR_SANDBOX
-                    title_prefix = f"Simulated Tool Output ({mode.value if hasattr(mode, 'value') else mode})"
-                else:
+                # Capability evidence role lookup
+                cap = self.capability_registry.get_capability(receipt.capability_id) if self.capability_registry else None
+                evidence_role = getattr(cap, "evidence_role", EvidenceRole.NONE) if cap else EvidenceRole.NONE
+                if isinstance(evidence_role, str):
+                    try:
+                        evidence_role = EvidenceRole(evidence_role.upper())
+                    except ValueError:
+                        evidence_role = EvidenceRole.NONE
+
+                # Only OBSERVATION role capabilities can produce EvidenceItems
+                if evidence_role != EvidenceRole.OBSERVATION:
+                    # ACTION, COMPUTATION, GENERATIVE, NONE receipts do NOT create EvidenceItems.
+                    # They remain immutably preserved in ExecutionReceiptRepository, RuntimeContext.execution_receipt_refs,
+                    # lineage_inspector, and DepartmentRunArtifact.execution_receipts with their truthful execution_mode.
+                    continue
+
+                # For OBSERVATION capabilities:
+                if is_real:
                     tier = EpistemicTier.SOURCE_BACKED_OBSERVATION
                     title_prefix = f"Live Tool Observation ({receipt.capability_id})"
-
-                # Format actual result content
-                if isinstance(receipt.output, (dict, list)):
-                    formatted_content = json.dumps(receipt.output, indent=2, ensure_ascii=False)
                 else:
-                    formatted_content = str(receipt.output)
+                    # MOCK or SANDBOX observation (e.g. simulated web_search)
+                    tier = EpistemicTier.MOCK_OR_SANDBOX
+                    title_prefix = f"Simulated Tool Output ({mode.value if hasattr(mode, 'value') else mode})"
+
+                # Format actual result content (consume receipt.output or receipt.data)
+                payload = receipt.output if receipt.output is not None else receipt.data
+                if isinstance(payload, (dict, list)):
+                    formatted_content = json.dumps(payload, indent=2, ensure_ascii=False)
+                elif payload is not None:
+                    formatted_content = str(payload)
+                else:
+                    formatted_content = "{}"
+
+                res_hash = getattr(receipt, "result_hash", "") or (receipt.calculate_result_hash() if hasattr(receipt, "calculate_result_hash") else "")
 
                 sid = f"TOOL-{run_prefix}-{item_counter:03d}"
                 item_counter += 1
@@ -228,9 +254,13 @@ class ContextCompiler:
                         included_length=len(formatted_content),
                         metadata={
                             "receipt_id": receipt.execution_id,
+                            "run_id": getattr(receipt, "run_id", ctx.run_id),
                             "capability_id": receipt.capability_id,
-                            "execution_mode": mode.value if hasattr(mode, "value") else str(mode),
+                            "evidence_role": evidence_role.value if hasattr(evidence_role, "value") else str(evidence_role),
                             "provider": receipt.provider,
+                            "execution_mode": mode.value if hasattr(mode, "value") else str(mode),
+                            "status": receipt.status.value if hasattr(receipt.status, "value") else str(receipt.status),
+                            "result_hash": res_hash,
                         },
                     )
                 )

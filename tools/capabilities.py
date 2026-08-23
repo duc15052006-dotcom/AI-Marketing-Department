@@ -23,6 +23,15 @@ class CapabilityCategory(str, Enum):
     FILE_DATA = "FILE_DATA"
 
 
+class EvidenceRole(str, Enum):
+    """Epistemic evidence eligibility role for a capability."""
+    OBSERVATION = "OBSERVATION"
+    COMPUTATION = "COMPUTATION"
+    ACTION = "ACTION"
+    GENERATIVE = "GENERATIVE"
+    NONE = "NONE"
+
+
 class RiskLevel(str, Enum):
     """Operational and business risk level for a capability."""
     LOW = "LOW"
@@ -53,6 +62,7 @@ class CapabilityDescriptor(BaseModel):
     capability_id: str = Field(..., description="Unique capability identifier, e.g. 'web_search'")
     name: str = Field(..., description="Human-readable capability name")
     category: CapabilityCategory = Field(..., description="Category: OBSERVE | CREATE | PUBLISH | ANALYZE | FILE_DATA")
+    evidence_role: EvidenceRole = Field(default=EvidenceRole.NONE, description="Epistemic evidence eligibility role")
     description: str = Field(..., description="Detailed description of what the capability does")
     input_schema: Dict[str, Any] = Field(default_factory=dict, description="Expected input parameters JSON schema")
     output_schema: Dict[str, Any] = Field(default_factory=dict, description="Expected output result JSON schema")
@@ -115,6 +125,7 @@ class CapabilityRegistry:
                 capability_id="web_search",
                 name="Web Search",
                 category=CapabilityCategory.OBSERVE,
+                evidence_role=EvidenceRole.OBSERVATION,
                 description="Search public web for qualitative market research, industry trends, and competitor signals.",
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
@@ -129,6 +140,7 @@ class CapabilityRegistry:
                 capability_id="read_page",
                 name="Read Webpage Content",
                 category=CapabilityCategory.OBSERVE,
+                evidence_role=EvidenceRole.OBSERVATION,
                 description="Fetch and extract readable plain text and structured headings from a public URL.",
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
@@ -143,6 +155,7 @@ class CapabilityRegistry:
                 capability_id="structured_data_retrieval",
                 name="Structured Data Retrieval",
                 category=CapabilityCategory.OBSERVE,
+                evidence_role=EvidenceRole.OBSERVATION,
                 description="Query structured external product feeds, schema.org JSON-LD, or OpenGraph datasets.",
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
@@ -159,6 +172,7 @@ class CapabilityRegistry:
                 capability_id="text_generation_support",
                 name="Text Generation Support",
                 category=CapabilityCategory.CREATE,
+                evidence_role=EvidenceRole.GENERATIVE,
                 description="Local drafting and copy refinement for ad copy, headlines, and scripts.",
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.LOW,
@@ -173,6 +187,7 @@ class CapabilityRegistry:
                 capability_id="image_generation",
                 name="Image Generation",
                 category=CapabilityCategory.CREATE,
+                evidence_role=EvidenceRole.GENERATIVE,
                 description="Generate candidate visual assets, storyboards, or concept mockups.",
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.MEDIUM,
@@ -187,6 +202,7 @@ class CapabilityRegistry:
                 capability_id="image_editing",
                 name="Image Editing & Formatting",
                 category=CapabilityCategory.CREATE,
+                evidence_role=EvidenceRole.GENERATIVE,
                 description="Crop, resize, composite, or color-adjust visual creative assets.",
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.LOW,
@@ -201,6 +217,7 @@ class CapabilityRegistry:
                 capability_id="video_generation",
                 name="Video Generation",
                 category=CapabilityCategory.CREATE,
+                evidence_role=EvidenceRole.GENERATIVE,
                 description="Synthesize video sequences or animated creative assets from storyboards.",
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.MEDIUM,
@@ -215,6 +232,7 @@ class CapabilityRegistry:
                 capability_id="video_editing_rendering",
                 name="Video Editing & Rendering",
                 category=CapabilityCategory.CREATE,
+                evidence_role=EvidenceRole.GENERATIVE,
                 description="Assemble cuts, transitions, captions, and audio tracks for video campaigns.",
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.LOW,
@@ -231,6 +249,7 @@ class CapabilityRegistry:
                 capability_id="social_publishing",
                 name="Social Media Publishing",
                 category=CapabilityCategory.PUBLISH,
+                evidence_role=EvidenceRole.ACTION,
                 description="Publish authorized marketing assets directly to live platform accounts.",
                 required_permissions=[PermissionLevel.PUBLISH, PermissionLevel.EXTERNAL_WRITE],
                 risk_level=RiskLevel.CRITICAL,
@@ -245,6 +264,7 @@ class CapabilityRegistry:
                 capability_id="content_scheduling",
                 name="Content Scheduling",
                 category=CapabilityCategory.PUBLISH,
+                evidence_role=EvidenceRole.ACTION,
                 description="Queue and schedule campaign releases on platform calendars.",
                 required_permissions=[PermissionLevel.PUBLISH],
                 risk_level=RiskLevel.HIGH,
@@ -259,6 +279,7 @@ class CapabilityRegistry:
                 capability_id="platform_operations",
                 name="Platform Operations & Budget Allocation",
                 category=CapabilityCategory.PUBLISH,
+                evidence_role=EvidenceRole.ACTION,
                 description="Modify ad campaign status, adjust live spend caps, or launch campaigns.",
                 required_permissions=[PermissionLevel.FINANCIAL_OR_HIGH_RISK, PermissionLevel.EXTERNAL_WRITE],
                 risk_level=RiskLevel.CRITICAL,
@@ -275,6 +296,7 @@ class CapabilityRegistry:
                 capability_id="analytics_retrieval",
                 name="Analytics Retrieval",
                 category=CapabilityCategory.ANALYZE,
+                evidence_role=EvidenceRole.OBSERVATION,
                 description="Fetch aggregated traffic, conversion, and performance telemetry.",
                 required_permissions=[PermissionLevel.READ_ONLY, PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
@@ -289,6 +311,7 @@ class CapabilityRegistry:
                 capability_id="kpi_calculation",
                 name="KPI & Conversion Calculation",
                 category=CapabilityCategory.ANALYZE,
+                evidence_role=EvidenceRole.COMPUTATION,
                 description="Compute ROAS, CAC, conversion velocities, and funnel metrics.",
                 required_permissions=[PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
@@ -303,6 +326,7 @@ class CapabilityRegistry:
                 capability_id="attribution_data_access",
                 name="Attribution Data Access",
                 category=CapabilityCategory.ANALYZE,
+                evidence_role=EvidenceRole.OBSERVATION,
                 description="Access touchpoint sequences and attribution model weights.",
                 required_permissions=[PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
@@ -317,6 +341,7 @@ class CapabilityRegistry:
                 capability_id="experiment_result_analysis",
                 name="Experiment Result Analysis",
                 category=CapabilityCategory.ANALYZE,
+                evidence_role=EvidenceRole.COMPUTATION,
                 description="Calculate statistical significance, sample sizes, and p-values for A/B tests.",
                 required_permissions=[PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
@@ -333,6 +358,7 @@ class CapabilityRegistry:
                 capability_id="file_read",
                 name="File Read",
                 category=CapabilityCategory.FILE_DATA,
+                evidence_role=EvidenceRole.OBSERVATION,
                 description="Read local workspace files, research notes, and creative assets.",
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
@@ -347,6 +373,7 @@ class CapabilityRegistry:
                 capability_id="file_write",
                 name="File Write",
                 category=CapabilityCategory.FILE_DATA,
+                evidence_role=EvidenceRole.ACTION,
                 description="Save generated artifacts, reports, and working documents to disk.",
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.LOW,
@@ -361,6 +388,7 @@ class CapabilityRegistry:
                 capability_id="structured_storage_query",
                 name="Structured Storage Query",
                 category=CapabilityCategory.FILE_DATA,
+                evidence_role=EvidenceRole.OBSERVATION,
                 description="Execute queries against local SQLite or structured JSON data stores.",
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
@@ -375,6 +403,7 @@ class CapabilityRegistry:
                 capability_id="data_export",
                 name="Data Export",
                 category=CapabilityCategory.FILE_DATA,
+                evidence_role=EvidenceRole.ACTION,
                 description="Export reports and creative packages to CSV, PDF, or JSON bundles.",
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.LOW,

@@ -86,8 +86,21 @@ def build_runtime(gateway):
     )
 
 
-def run_pipeline(gateway, objective="demo objective", business_id="BIZ_AUDIT"):
+def run_pipeline(gateway, objective="demo objective", business_id="BIZ_AUDIT", real_adapter=False):
     rt = build_runtime(gateway)
+    if real_adapter:
+        from tools.adapters import AdapterResult, BaseCapabilityAdapter
+        from tools.receipts import ExecutionMode
+
+        class RealTestAdapter(BaseCapabilityAdapter):
+            @property
+            def adapter_name(self):
+                return "real_test_search"
+
+            def execute(self, capability_id, parameters, timeout_seconds=15.0):
+                return AdapterResult(success=True, data={"result": "real observation"}, execution_mode=ExecutionMode.REAL)
+
+        rt.tool_gateway.register_adapter(RealTestAdapter(), aliases=["search_adapter", "image_gen_adapter"])
     ctx = rt.start_run(objective=objective, business_id=business_id)
     rt.execute_stage_cmo_initial(ctx)
     rt.execute_stage_intelligence(ctx)
@@ -174,7 +187,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
                 }
             ),
         })
-        rt, ctx, final_out, artifact = run_pipeline(gw)
+        rt, ctx, final_out, artifact = run_pipeline(gw, real_adapter=True)
         facts = ctx.stage_outputs["intelligence"]["handoff"]["facts"]
         self.assertEqual(len(facts), 1)
         self.assertEqual(facts[0]["verification"], "SOURCE_BACKED")
@@ -222,7 +235,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
                 }
             ),
         })
-        rt, ctx, final_out, artifact = run_pipeline(gw)
+        rt, ctx, final_out, artifact = run_pipeline(gw, real_adapter=True)
         claims = ctx.stage_outputs["creative"]["handoff"]["claims"]
         self.assertEqual(claims[0]["source_ids"], ["SRC-LAB-1"])
         self.assertEqual(claims[0]["evidence_refs"], ["TOOL-RUN-DEPT-001"])

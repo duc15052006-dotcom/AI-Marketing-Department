@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.receipts import ExecutionMode
 
 
 class RealWebConnector(BaseCapabilityAdapter):
@@ -82,6 +83,7 @@ class RealWebConnector(BaseCapabilityAdapter):
                         "extracted_text": clean_text[:4000],
                     },
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.REAL,
                 )
             except urllib.error.HTTPError as e:
                 return AdapterResult(
@@ -89,6 +91,7 @@ class RealWebConnector(BaseCapabilityAdapter):
                     error_code=f"HTTP_{e.code}",
                     error_message=f"HTTP request failed with status {e.code}: {e.reason}",
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
             except Exception as e:
                 return AdapterResult(
@@ -96,6 +99,7 @@ class RealWebConnector(BaseCapabilityAdapter):
                     error_code="NETWORK_ERROR",
                     error_message=str(e),
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
 
         elif cap == "web_search":
@@ -106,19 +110,21 @@ class RealWebConnector(BaseCapabilityAdapter):
                     error_code="INVALID_PARAMETERS",
                     error_message="Missing query parameter.",
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
-            # Simulated grounded observation search
+            # Simulated search mock (live search backend unconfigured in local sandbox)
             results = [
                 {
                     "title": f"Industry Research: {query}",
-                    "snippet": f"Verified market telemetry and analysis for '{query}'.",
-                    "url": f"https://verified-research.example.com/topic?q={urllib.parse.quote(query)}",
+                    "snippet": f"Simulated market telemetry and analysis for '{query}'.",
+                    "url": f"https://mock-search.example.com/topic?q={urllib.parse.quote(query)}",
                 }
             ]
             return AdapterResult(
                 success=True,
                 data={"query": query, "results": results, "count": len(results)},
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                execution_mode=ExecutionMode.MOCK,
             )
 
         return AdapterResult(
@@ -126,4 +132,5 @@ class RealWebConnector(BaseCapabilityAdapter):
             error_code="UNSUPPORTED_CAPABILITY",
             error_message=f"Capability '{capability_id}' not handled by RealWebConnector.",
             latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )

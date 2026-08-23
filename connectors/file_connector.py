@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.receipts import ExecutionMode
 
 
 class RealFileConnector(BaseCapabilityAdapter):
@@ -47,6 +48,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     error_code="FILE_NOT_FOUND",
                     error_message=f"File not found: {path_str}",
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
             try:
                 content = target_path.read_text(encoding="utf-8")
@@ -55,6 +57,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     data={"path": str(path_str), "content": content, "size_bytes": len(content)},
                     artifact_refs=[str(path_str)],
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.REAL,
                 )
             except Exception as e:
                 return AdapterResult(
@@ -62,6 +65,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     error_code="READ_ERROR",
                     error_message=str(e),
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
 
         elif cap in ("file_write", "write_file", "data_export"):
@@ -78,6 +82,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     data={"path": str(path_str), "status": "WRITTEN", "bytes_written": len(str(content))},
                     artifact_refs=[str(path_str)],
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.REAL,
                 )
             except Exception as e:
                 return AdapterResult(
@@ -85,6 +90,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     error_code="WRITE_ERROR",
                     error_message=str(e),
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
 
         elif cap == "structured_storage_query":
@@ -95,6 +101,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     error_code="DATASET_NOT_FOUND",
                     error_message=f"Dataset not found at {path_str}",
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
             try:
                 if target_path.suffix.lower() == ".json":
@@ -112,6 +119,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     data={"dataset": path_str, "row_count": len(rows), "rows": rows[:100]},
                     artifact_refs=[str(path_str)],
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.REAL,
                 )
             except Exception as e:
                 return AdapterResult(
@@ -119,6 +127,7 @@ class RealFileConnector(BaseCapabilityAdapter):
                     error_code="QUERY_ERROR",
                     error_message=str(e),
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
 
         return AdapterResult(
@@ -126,4 +135,5 @@ class RealFileConnector(BaseCapabilityAdapter):
             error_code="UNSUPPORTED_CAPABILITY",
             error_message=f"Capability '{capability_id}' is not supported by RealFileConnector.",
             latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )

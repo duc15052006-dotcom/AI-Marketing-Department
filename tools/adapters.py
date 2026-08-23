@@ -10,6 +10,7 @@ import abc
 import time
 from typing import Any, Dict, Optional
 from schemas.base import BaseModel, Field
+from tools.receipts import ExecutionMode
 
 
 class AdapterResult(BaseModel):
@@ -21,6 +22,7 @@ class AdapterResult(BaseModel):
     cost_or_tokens: Dict[str, Any] = Field(default_factory=dict)
     artifact_refs: list[str] = Field(default_factory=list)
     latency_ms: float = 0.0
+    execution_mode: ExecutionMode = Field(default=ExecutionMode.MOCK)
 
 
 class BaseCapabilityAdapter(abc.ABC):
@@ -63,6 +65,7 @@ class SearchAdapter(BaseCapabilityAdapter):
             success=True,
             data={"query": query, "results": results, "result_count": len(results)},
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )
 
 
@@ -82,6 +85,7 @@ class HttpAdapter(BaseCapabilityAdapter):
                 error_code="INVALID_PARAMETERS",
                 error_message="Missing required parameter 'url'.",
                 latency_ms=(time.perf_counter() - start) * 1000.0,
+                execution_mode=ExecutionMode.MOCK,
             )
         return AdapterResult(
             success=True,
@@ -92,6 +96,7 @@ class HttpAdapter(BaseCapabilityAdapter):
                 "headings": ["Overview", "Key Findings"],
             },
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )
 
 
@@ -109,6 +114,7 @@ class CreativeTextAdapter(BaseCapabilityAdapter):
             success=True,
             data={"generated_copy": f"Drafted copy for: {prompt[:60]}...", "word_count": 42},
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )
 
 
@@ -131,6 +137,7 @@ class MediaCreationAdapter(BaseCapabilityAdapter):
             data={"asset_id": artifact_id, "asset_type": asset_type, "status": "RENDERED", "format": "png" if asset_type == "image" else "mp4"},
             artifact_refs=[artifact_id],
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )
 
 
@@ -151,6 +158,7 @@ class PublishingAdapter(BaseCapabilityAdapter):
             success=True,
             data={"publish_id": f"PUB-{int(time.time())}", "platform": platform, "status": "PUBLISHED_OR_QUEUED"},
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.SANDBOX,
         )
 
 
@@ -177,6 +185,7 @@ class AnalyticsAdapter(BaseCapabilityAdapter):
                 "p_value": 0.012,
             },
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )
 
 
@@ -196,6 +205,7 @@ class FileStorageAdapter(BaseCapabilityAdapter):
             data={"path": path, "action": action, "bytes_processed": 1024},
             artifact_refs=[path],
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )
 
 
@@ -235,6 +245,7 @@ class MockToolAdapter(BaseCapabilityAdapter):
                     error_code="TIMEOUT",
                     error_message=f"Execution exceeded timeout limit of {timeout_seconds}s.",
                     latency_ms=timeout_seconds * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
                 )
 
         if self._current_attempts <= self._fail_attempts or self._should_fail:
@@ -243,10 +254,12 @@ class MockToolAdapter(BaseCapabilityAdapter):
                 error_code=self._error_code,
                 error_message=self._error_message,
                 latency_ms=(time.perf_counter() - start) * 1000.0,
+                execution_mode=ExecutionMode.MOCK,
             )
 
         return AdapterResult(
             success=True,
             data={"mock_output": "SUCCESS_PAYLOAD", "attempts": self._current_attempts},
             latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
         )

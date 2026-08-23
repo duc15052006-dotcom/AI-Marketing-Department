@@ -10,6 +10,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.receipts import ExecutionMode
 
 
 class SandboxPublishingConnector(BaseCapabilityAdapter):
@@ -50,4 +51,5 @@ class SandboxPublishingConnector(BaseCapabilityAdapter):
             },
             artifact_refs=[post_id],
             latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            execution_mode=ExecutionMode.SANDBOX,
         )
