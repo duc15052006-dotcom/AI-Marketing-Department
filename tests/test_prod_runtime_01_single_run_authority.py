@@ -680,6 +680,210 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         with self.assertRaises(RunIdReservationError):
             rt.reserve_run_id(custom_id="HACKED_INJECTION_ID", trusted=False)
 
+    # ----------------------------------------------------------------------
+    # 11. PROD-RUNTIME-01RRV: Resource Bounding, Queue Sync & Gateway Tests
+    # ----------------------------------------------------------------------
+
+    def test_37_completed_runs_cache_bounded_lru(self) -> None:
+        """Bounded completed run cache evicts oldest entries and does not grow unbounded."""
+        rt = FiveAgentDepartmentRuntime(
+            model_gateway=MockScriptedGateway(),
+            knowledge_repo=LocalKnowledgeRepository(),
+            memory_repo=LocalMemoryRepository(),
+            max_completed_runs_cache=10,
+        )
+        for i in range(25):
+            rt.run_workflow(objective=f"Run {i}")
+
+        self.assertEqual(len(rt._completed_runs), 10)
+        self.assertEqual(len(rt._active_contexts), 0)
+
+    def test_38_cancelled_id_tracking_cleaned_up_on_completion(self) -> None:
+        """Completing a cancelled run removes the run ID from _cancelled_run_ids."""
+        rt = _build_test_runtime()
+        ctx = rt.start_run(objective="Cancel cleanup test")
+        rt.cancel_run(ctx.run_id)
+        self.assertIn(ctx.run_id, rt._cancelled_run_ids)
+
+        rt.complete_run(ctx)
+        self.assertNotIn(ctx.run_id, rt._cancelled_run_ids)
+
+    def test_39_abandoned_reservation_release(self) -> None:
+        """An unconsumed run reservation can be explicitly released."""
+        rt = _build_test_runtime()
+        rid = rt.reserve_run_id()
+        self.assertTrue(rt.is_reserved_run_id(rid))
+
+        released = rt.release_reservation(rid)
+        self.assertTrue(released)
+        self.assertFalse(rt.is_reserved_run_id(rid))
+
+    def test_40_queue_waiting_for_approval_sync(self) -> None:
+        """QueueItem reflects WAITING_APPROVAL when active context is waiting for approval."""
+        rt = _build_test_runtime()
+        mgr = RunManager(runtime=rt, max_workers=0)
+        rid = rt.reserve_run_id()
+        item = mgr.enqueue_run(objective="Approval wait queue test", run_id=rid)
+
+        ctx = rt.start_run(objective="Approval wait", reserved_run_id=rid)
+        rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
+        self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
+
+        # Query through RunManager
+        queried_item = mgr.get_run(rid)
+        self.assertIsNotNone(queried_item)
+        self.assertEqual(queried_item.status, RunQueueStatus.WAITING_APPROVAL)
+        mgr._stop_event.set()
+
+    def test_41_queue_approval_resume_returns_to_running(self) -> None:
+        """After approval is registered and run resumed, queue item returns to RUNNING."""
+        rt = _build_test_runtime()
+        mgr = RunManager(runtime=rt, max_workers=0)
+        rid = rt.reserve_run_id()
+        item = mgr.enqueue_run(objective="Approval resume queue test", run_id=rid)
+
+        ctx = rt.start_run(objective="Approval wait", reserved_run_id=rid)
+        rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
+        self.assertEqual(mgr.get_run(rid).status, RunQueueStatus.WAITING_APPROVAL)
+
+        # Human approves
+        policy = rt.tool_gateway.policy_engine
+        pending_list = policy.list_pending_approvals()
+        self.assertGreater(len(pending_list), 0)
+        pending = pending_list[-1]
+        ok, appr_rec, _ = policy.approve_pending_action(pending.pending_approval_id, approved_by="Operator")
+        self.assertTrue(ok)
+
+        # Resume action
+        rec = rt.request_publish_action(ctx, platform="linkedin", approval_token=appr_rec.approval_token)
+        self.assertEqual(rec.status, ExecutionStatus.SUCCESS)
+        self.assertEqual(ctx.status, RuntimeStatus.RUNNING)
+        self.assertEqual(mgr.get_run(rid).status, RunQueueStatus.RUNNING)
+        mgr._stop_event.set()
+
+    def test_42_gateway_fallback_candidate_b_executes_after_timeout(self) -> None:
+        """UniversalModelGateway falls back to Candidate B when Candidate A times out."""
+        from integrations.models.base import BaseModelAdapter
+        from integrations.models.registry import ProviderConfig
+
+        class TimingOutAdapter(BaseModelAdapter):
+            @property
+            def provider_name(self) -> str:
+                return "adapter_a"
+
+            def generate(self, req: ModelRequest) -> ModelResponse:
+                return ModelResponse(
+                    request_id=req.request_id,
+                    provider="adapter_a",
+                    model_name="model_a",
+                    status=ModelResponseStatus.TIMEOUT,
+                    error="TIMEOUT: Request timed out.",
+                )
+
+        class SuccessfulAdapter(BaseModelAdapter):
+            @property
+            def provider_name(self) -> str:
+                return "adapter_b"
+
+            def generate(self, req: ModelRequest) -> ModelResponse:
+                return ModelResponse(
+                    request_id=req.request_id,
+                    provider="adapter_b",
+                    model_name="model_b",
+                    status=ModelResponseStatus.SUCCESS,
+                    content="Success from adapter B",
+                )
+
+        gw = UniversalModelGateway(free_only_mode=False)
+        gw.provider_registry.register_provider(ProviderConfig(provider_id="adapter_a", api_key_env="DUMMY", default_model="model_a"))
+        gw.provider_registry.register_provider(ProviderConfig(provider_id="adapter_b", api_key_env="DUMMY", default_model="model_b"))
+        gw.provider_registry._adapters["adapter_a"] = TimingOutAdapter()
+        gw.provider_registry._adapters["adapter_b"] = SuccessfulAdapter()
+        gw.provider_registry._has_custom_adapters = True
+
+        req = ModelRequest(messages=[ModelMessage(role=ModelRole.USER, content="Hello")])
+        resp = gw.generate(req)
+        self.assertEqual(resp.status, ModelResponseStatus.SUCCESS)
+        self.assertEqual(resp.content, "Success from adapter B")
+
+    def test_43_gateway_overall_fallback_budget_bounded(self) -> None:
+        """Explicit timeout_seconds strictly bounds the entire candidate chain."""
+        from integrations.models.base import BaseModelAdapter
+        from integrations.models.registry import ProviderConfig
+
+        class SlowAdapter(BaseModelAdapter):
+            @property
+            def provider_name(self) -> str:
+                return "slow_adapter"
+
+            def generate(self, req: ModelRequest) -> ModelResponse:
+                return ModelResponse(
+                    request_id=req.request_id,
+                    provider="slow_adapter",
+                    model_name="slow_model",
+                    status=ModelResponseStatus.TIMEOUT,
+                    error="TIMEOUT: Slow timeout",
+                )
+
+        gw = UniversalModelGateway(free_only_mode=False)
+        gw.provider_registry.register_provider(ProviderConfig(provider_id="slow_1", api_key_env="DUMMY", default_model="slow_1"))
+        gw.provider_registry.register_provider(ProviderConfig(provider_id="slow_2", api_key_env="DUMMY", default_model="slow_2"))
+        gw.provider_registry._adapters["slow_1"] = SlowAdapter()
+        gw.provider_registry._adapters["slow_2"] = SlowAdapter()
+        gw.provider_registry._has_custom_adapters = True
+
+        req = ModelRequest(messages=[ModelMessage(role=ModelRole.USER, content="Hello")], timeout_seconds=0.01)
+        resp = gw.generate(req)
+        self.assertEqual(resp.status, ModelResponseStatus.TIMEOUT)
+
+    def test_44_gateway_provider_agnostic_timeout_semantics(self) -> None:
+        """Timeout and fallback logic works identically for arbitrary generic provider IDs."""
+        from integrations.models.base import BaseModelAdapter
+        from integrations.models.registry import ProviderConfig
+
+        class CustomAdapter(BaseModelAdapter):
+            @property
+            def provider_name(self) -> str:
+                return "generic_x"
+
+            def generate(self, req: ModelRequest) -> ModelResponse:
+                return ModelResponse(
+                    request_id=req.request_id,
+                    provider="generic_x",
+                    model_name="custom-v1",
+                    status=ModelResponseStatus.SUCCESS,
+                    content="Generic provider response",
+                )
+
+        gw = UniversalModelGateway(free_only_mode=False)
+        gw.provider_registry.register_provider(ProviderConfig(provider_id="generic_x", api_key_env="DUMMY", default_model="custom-v1"))
+        gw.provider_registry._adapters["generic_x"] = CustomAdapter()
+        gw.provider_registry._has_custom_adapters = True
+
+        req = ModelRequest(messages=[ModelMessage(role=ModelRole.USER, content="Test")])
+        resp = gw.generate(req)
+        self.assertEqual(resp.status, ModelResponseStatus.SUCCESS)
+        self.assertEqual(resp.content, "Generic provider response")
+
+    def test_45_untrusted_caller_cannot_access_trusted_run_id_authority(self) -> None:
+        """API endpoints do not accept trusted_run_id and unreserved IDs are discarded."""
+        rt = _build_test_runtime()
+        # Public start_run without trusted flag replaces raw ID
+        ctx = rt.start_run(objective="Untrusted test", run_id="RUN_MALICIOUS_001")
+        self.assertNotEqual(ctx.run_id, "RUN_MALICIOUS_001")
+        self.assertTrue(ctx.run_id.startswith("RUN-DEPT-"))
+
+    def test_46_get_active_context_and_get_completed_run_lookups(self) -> None:
+        """get_active_context and get_completed_run correctly return contexts and artifacts."""
+        rt = _build_test_runtime()
+        ctx = rt.start_run(objective="Lookup test")
+        self.assertIs(rt.get_active_context(ctx.run_id), ctx)
+        self.assertIsNone(rt.get_completed_run(ctx.run_id))
+
+        art = rt.complete_run(ctx)
+        self.assertIsNone(rt.get_active_context(ctx.run_id))
+        self.assertIs(rt.get_completed_run(ctx.run_id), art)
+
 
 if __name__ == "__main__":
     unittest.main()

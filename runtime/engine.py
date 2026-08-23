@@ -8,10 +8,12 @@ Permanent Logical Agent Count = 5. Zero Agent 6.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import hashlib
 import json
 import logging
 import re
+import secrets
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -205,6 +207,7 @@ class FiveAgentDepartmentRuntime:
         session_knowledge: Optional[SessionKnowledgeStore] = None,
         context_compiler: Optional[ContextCompiler] = None,
         claim_verifier: Optional[BaseClaimVerifier] = None,
+        max_completed_runs_cache: int = 1000,
     ) -> None:
         self.model_gateway = model_gateway or UniversalModelGateway(free_only_mode=True)
         self.tool_gateway = tool_gateway or ToolGateway()
@@ -213,6 +216,7 @@ class FiveAgentDepartmentRuntime:
         self.learning_repo = learning_repo or LocalLearningRepository()
         self.session_knowledge = session_knowledge or SessionKnowledgeStore()
         self.claim_verifier = claim_verifier
+        self.max_completed_runs_cache = max_completed_runs_cache
 
         self.knowledge_builder = KnowledgeContextBuilder(self.knowledge_repo)
         self.memory_builder = MemoryContextBuilder(self.memory_repo)
@@ -225,7 +229,7 @@ class FiveAgentDepartmentRuntime:
 
         self._lock = threading.Lock()
         self._active_contexts: Dict[str, RuntimeContext] = {}
-        self._completed_runs: Dict[str, DepartmentRunArtifact] = {}
+        self._completed_runs: OrderedDict[str, DepartmentRunArtifact] = OrderedDict()
         self._reserved_run_ids: Set[str] = set()
         self._cancelled_run_ids: Set[str] = set()
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
@@ -238,7 +242,7 @@ class FiveAgentDepartmentRuntime:
                     raise RunIdReservationError("UNTRUSTED_CUSTOM_RUN_ID: Custom run IDs are restricted to trusted callers.")
                 rid = custom_id
             else:
-                rid = f"RUN-DEPT-{uuid.uuid4().hex.upper()}"
+                rid = f"RUN-DEPT-{secrets.token_hex(16).upper()}"
 
             if rid in self._active_contexts or rid in self._completed_runs or rid in self._reserved_run_ids:
                 raise RunIdAlreadyExistsError(f"RUN_ID_ALREADY_EXISTS: Run ID '{rid}' already exists in active, completed, or reserved registry.")
@@ -250,6 +254,24 @@ class FiveAgentDepartmentRuntime:
         """Check if a run ID is currently reserved and unconsumed."""
         with self._lock:
             return run_id in self._reserved_run_ids
+
+    def release_reservation(self, run_id: str) -> bool:
+        """Release an unconsumed run ID reservation."""
+        with self._lock:
+            if run_id in self._reserved_run_ids:
+                self._reserved_run_ids.remove(run_id)
+                return True
+            return False
+
+    def get_active_context(self, run_id: str) -> Optional[RuntimeContext]:
+        """Retrieve an active, in-flight, or paused RuntimeContext."""
+        with self._lock:
+            return self._active_contexts.get(run_id)
+
+    def get_completed_run(self, run_id: str) -> Optional[DepartmentRunArtifact]:
+        """Retrieve a completed run artifact from the bounded cache."""
+        with self._lock:
+            return self._completed_runs.get(run_id)
 
     def cancel_run(self, run_id: str) -> bool:
         """Mark an active run as CANCELLED to prevent subsequent stage execution."""
@@ -337,7 +359,7 @@ class FiveAgentDepartmentRuntime:
             elif trusted_run_id:
                 rid = trusted_run_id
             else:
-                rid = f"RUN-DEPT-{uuid.uuid4().hex.upper()}"
+                rid = f"RUN-DEPT-{secrets.token_hex(16).upper()}"
 
             if rid in self._active_contexts or rid in self._completed_runs:
                 raise RunIdAlreadyExistsError(f"RUN_ID_ALREADY_EXISTS: Run ID '{rid}' already exists in active or completed runs.")
@@ -1693,10 +1715,13 @@ class FiveAgentDepartmentRuntime:
             artifact.final_artifact_hash = artifact.compute_artifact_hash()
 
             self._completed_runs[context.run_id] = artifact
+            while len(self._completed_runs) > self.max_completed_runs_cache:
+                self._completed_runs.popitem(last=False)
 
             # Active context cleanup: remove terminal runs (COMPLETED, FAILED, CANCELLED) from active registry
             if context.status in (RuntimeStatus.COMPLETED, RuntimeStatus.FAILED, RuntimeStatus.CANCELLED):
                 self._active_contexts.pop(context.run_id, None)
+                self._cancelled_run_ids.discard(context.run_id)
 
             return artifact
 

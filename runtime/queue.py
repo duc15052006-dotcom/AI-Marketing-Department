@@ -201,19 +201,35 @@ class RunManager:
         self._queue.put(item)
         return item
 
+    def _sync_item_status(self, item: QueueItem) -> None:
+        if item.status in (RunQueueStatus.QUEUED, RunQueueStatus.RUNNING, RunQueueStatus.WAITING_APPROVAL, RunQueueStatus.PAUSED):
+            ctx = self.runtime.get_active_context(item.run_id) if hasattr(self.runtime, "get_active_context") else self.runtime._active_contexts.get(item.run_id)
+            if ctx:
+                if ctx.status == RuntimeStatus.WAITING_FOR_APPROVAL:
+                    item.status = RunQueueStatus.WAITING_APPROVAL
+                elif ctx.status == RuntimeStatus.RUNNING:
+                    item.status = RunQueueStatus.RUNNING
+                elif ctx.status == RuntimeStatus.PAUSED:
+                    item.status = RunQueueStatus.PAUSED
+
     def get_run(self, run_id: str) -> Optional[QueueItem]:
         with self._lock:
-            return self._items.get(run_id)
+            item = self._items.get(run_id)
+            if item:
+                self._sync_item_status(item)
+            return item
 
     def list_runs(self) -> List[QueueItem]:
         with self._lock:
+            for item in self._items.values():
+                self._sync_item_status(item)
             return list(self._items.values())
 
     def cancel_run(self, run_id: str) -> bool:
         with self._lock:
             item = self._items.get(run_id)
             if item:
-                if item.status in (RunQueueStatus.QUEUED, RunQueueStatus.RUNNING, RunQueueStatus.PAUSED):
+                if item.status in (RunQueueStatus.QUEUED, RunQueueStatus.RUNNING, RunQueueStatus.WAITING_APPROVAL, RunQueueStatus.PAUSED):
                     item.status = RunQueueStatus.CANCELLED
                     self.runtime.cancel_run(run_id)
                     return True
@@ -249,6 +265,8 @@ class RunManager:
                     if ctx.status == RuntimeStatus.CANCELLED or item.status == RunQueueStatus.CANCELLED:
                         item.status = RunQueueStatus.CANCELLED
                         item.error = "RUN_CANCELLED"
+                    elif ctx.status == RuntimeStatus.WAITING_FOR_APPROVAL:
+                        item.status = RunQueueStatus.WAITING_APPROVAL
                     elif ctx.status == RuntimeStatus.FAILED or cmo_final.get("status") == "FAILED":
                         item.status = RunQueueStatus.FAILED
                         item.error = cmo_final.get("reason") or "RUN_FAILED"
