@@ -1287,8 +1287,25 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "NOT_FOUND"}, 404)
 
 
-def run_server(port: Optional[int] = None, host: Optional[str] = None) -> None:
+def run_server(
+    port: Optional[int] = None,
+    host: Optional[str] = None,
+    emit_bootstrap: bool = False,
+) -> None:
     """Launch localhost-only Department Application API server."""
+    # CLI Argument Parsing Support
+    if port is None:
+        for i, arg in enumerate(sys.argv):
+            if arg == "--port" and i + 1 < len(sys.argv):
+                try:
+                    port = int(sys.argv[i + 1])
+                except ValueError:
+                    pass
+    if host is None:
+        for i, arg in enumerate(sys.argv):
+            if arg == "--host" and i + 1 < len(sys.argv):
+                host = sys.argv[i + 1]
+
     from config.authority import get_runtime_config
     runtime = get_runtime_config()
     target_host = host if host is not None else runtime.api_host
@@ -1298,6 +1315,22 @@ def run_server(port: Optional[int] = None, host: Optional[str] = None) -> None:
     valid_port = parse_int(target_port, default=8765, min_val=1, max_val=65535, setting_name="API_PORT")
     server_address = (valid_host, valid_port)
     httpd = ThreadingHTTPServer(server_address, DepartmentAPIHandler)
+
+    # Secure Launcher/Desktop UI Bootstrap Handshake (PROD-UIAUTH-01)
+    should_emit_bootstrap = (
+        emit_bootstrap
+        or "--emit-bootstrap" in sys.argv
+        or os.environ.get("EMIT_UIAUTH_BOOTSTRAP") == "1"
+    )
+    if should_emit_bootstrap:
+        bootstrap_data = {
+            "token": GLOBAL_API_SESSION_TOKEN,
+            "host": valid_host,
+            "port": valid_port,
+        }
+        # Single-line framed output flushed directly to captured parent pipe
+        print(f"UIAUTH_BOOTSTRAP_V1:{json.dumps(bootstrap_data)}", flush=True)
+
     logger.info(f"AI Marketing Department API running at http://{valid_host}:{valid_port}")
     try:
         httpd.serve_forever()

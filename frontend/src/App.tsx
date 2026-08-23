@@ -36,8 +36,9 @@ import {
   PendingApprovalItem,
   ExecutionReceiptItem,
 } from './types/index.ts';
+import { apiFetch } from './api/client.ts';
 
-const API_BASE = 'http://127.0.0.1:8765';
+const API_BASE = '';
 
 interface ChatAttachmentItem {
   attachment_id?: string;
@@ -129,10 +130,10 @@ export default function App() {
 
   const fetchCoreData = async () => {
     try {
-      const resHealth = await fetch(`${API_BASE}/api/system/health`);
+      const resHealth = await apiFetch(`${API_BASE}/api/system/health`);
       if (resHealth.ok) setConnectorHealth(await resHealth.json());
 
-      const resChats = await fetch(`${API_BASE}/api/chat/sessions`);
+      const resChats = await apiFetch(`${API_BASE}/api/chat/sessions`);
       if (resChats.ok) {
         const list: ChatSessionItem[] = await resChats.json();
         setChatSessions(list);
@@ -145,16 +146,16 @@ export default function App() {
         }
       }
 
-      const resProj = await fetch(`${API_BASE}/api/projects`);
+      const resProj = await apiFetch(`${API_BASE}/api/projects`);
       if (resProj.ok) setProjects(await resProj.json());
 
-      const resBiz = await fetch(`${API_BASE}/api/workspaces`);
+      const resBiz = await apiFetch(`${API_BASE}/api/workspaces`);
       if (resBiz.ok) setWorkspaces(await resBiz.json());
 
-      const resAppr = await fetch(`${API_BASE}/api/approvals`);
+      const resAppr = await apiFetch(`${API_BASE}/api/approvals`);
       if (resAppr.ok) setPendingApprovals(await resAppr.json());
 
-      const resRec = await fetch(`${API_BASE}/api/activity/receipts`);
+      const resRec = await apiFetch(`${API_BASE}/api/activity/receipts`);
       if (resRec.ok) setReceipts(await resRec.json());
     } catch (e) {
       console.warn('Local API fetch warning:', e);
@@ -227,7 +228,7 @@ export default function App() {
   const handleRenameChat = async (chatId: string, newTitle: string) => {
     if (!newTitle.trim()) return;
     try {
-      await fetch(`${API_BASE}/api/chat/sessions/${chatId}`, {
+      await apiFetch(`${API_BASE}/api/chat/sessions/${chatId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: newTitle.trim() }),
@@ -243,7 +244,7 @@ export default function App() {
 
   const handleArchiveChat = async (chatId: string) => {
     try {
-      await fetch(`${API_BASE}/api/chat/sessions/${chatId}`, {
+      await apiFetch(`${API_BASE}/api/chat/sessions/${chatId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'ARCHIVED' }),
@@ -258,7 +259,7 @@ export default function App() {
 
   const handleDeleteChat = async (chatId: string) => {
     try {
-      await fetch(`${API_BASE}/api/chat/sessions/${chatId}`, {
+      await apiFetch(`${API_BASE}/api/chat/sessions/${chatId}`, {
         method: 'DELETE',
       });
     } catch (e) {
@@ -371,7 +372,7 @@ export default function App() {
       setTimeout(() => scrollToBottom(true), 50);
 
       try {
-        const res = await fetch(`${API_BASE}/api/chat/sessions/first_turn`, {
+        const res = await apiFetch(`${API_BASE}/api/chat/sessions/first_turn`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -452,7 +453,7 @@ export default function App() {
       setTimeout(() => scrollToBottom(true), 50);
 
       try {
-        const res = await fetch(`${API_BASE}/api/chat/sessions/${targetChatId}/messages`, {
+        const res = await apiFetch(`${API_BASE}/api/chat/sessions/${targetChatId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -551,7 +552,7 @@ export default function App() {
     );
 
     try {
-      const res = await fetch(`${API_BASE}/api/chat/sessions/${activeChatId}/messages/${msgId}/edit`, {
+      const res = await apiFetch(`${API_BASE}/api/chat/sessions/${activeChatId}/messages/${msgId}/edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newContent, auto_execute: true }),
@@ -593,7 +594,7 @@ export default function App() {
         ? `${API_BASE}/api/chat/sessions/${activeChatId}/messages/${msgId}/regenerate`
         : `${API_BASE}/api/chat/sessions/${activeChatId}/regenerate`;
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto_execute: true }),
@@ -632,7 +633,7 @@ export default function App() {
     setAgentProgress('Retrying request...');
 
     try {
-      const res = await fetch(`${API_BASE}/api/chat/sessions/${activeChatId}/retry`, {
+      const res = await apiFetch(`${API_BASE}/api/chat/sessions/${activeChatId}/retry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto_execute: true }),
