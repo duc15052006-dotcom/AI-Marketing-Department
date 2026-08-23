@@ -955,12 +955,12 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt1 = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
-        ctx1 = rt1.start_run(objective="GTM Campaign", business_id="BIZ_TEST", run_id="RUN_FIXED_001")
+        ctx1 = rt1.start_run(objective="GTM Campaign", business_id="BIZ_TEST", trusted_run_id="RUN_FIXED_001")
         rt1._evaluate_final_authorization(context=ctx1, perf_out={}, crtv_out={}, final_text="5000mAh battery (Source: SRC_BATTERY_SPEC).")
         art1 = rt1.complete_run(ctx1)
 
         rt2 = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
-        ctx2 = rt2.start_run(objective="GTM Campaign", business_id="BIZ_TEST", run_id="RUN_FIXED_001")
+        ctx2 = rt2.start_run(objective="GTM Campaign", business_id="BIZ_TEST", trusted_run_id="RUN_FIXED_001")
         rt2._evaluate_final_authorization(context=ctx2, perf_out={}, crtv_out={}, final_text="5000mAh battery (Source: SRC_BATTERY_SPEC).")
         art2 = rt2.complete_run(ctx2)
 

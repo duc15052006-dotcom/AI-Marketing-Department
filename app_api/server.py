@@ -394,23 +394,13 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
             # Route C: Full Supervised Five-Agent Marketing Workflow
             else:
-                ctx = RuntimeContext(
+                ctx, cmo_final, artifact = APP_BACKEND.runtime.run_workflow(
                     objective=user_text,
                     business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                     chat_id=chat_id,
                     project_id=session.optional_project_id,
-                    # COLLAB-03: explicit user restrictions travel structurally
                     constraints=extract_explicit_user_constraints(user_text),
                 )
-                APP_BACKEND.runtime._active_contexts[ctx.run_id] = ctx
-                # Execute Supervised Five-Agent Flow
-                cmo_init = APP_BACKEND.runtime.execute_stage_cmo_initial(ctx)
-                intel_out = APP_BACKEND.runtime.execute_stage_intelligence(ctx)
-                strat_out = APP_BACKEND.runtime.execute_stage_strategist(ctx)
-                crtv_out = APP_BACKEND.runtime.execute_stage_creative(ctx)
-                perf_out = APP_BACKEND.runtime.execute_stage_performance(ctx)
-                cmo_final = APP_BACKEND.runtime.execute_stage_final_cmo(ctx)
-                artifact = APP_BACKEND.runtime.complete_run(ctx)
 
                 is_failed = (artifact.status == RuntimeStatus.FAILED) or (cmo_final.get("status") == "FAILED")
                 status_val = "ERROR" if is_failed else "COMPLETED"
@@ -1114,9 +1104,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             proj_id = body.get("project_id")
             chat_id = body.get("chat_id")
             auto_tok = body.get("auto_approve_token")
-            run_id = f"RUN-Q-{uuid.uuid4().hex[:8].upper()}"
             item = APP_BACKEND.run_manager.enqueue_run(
-                run_id=run_id,
                 objective=obj,
                 business_id=biz_id,
                 project_id=proj_id,

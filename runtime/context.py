@@ -15,6 +15,16 @@ from typing import Any, Dict, List, Optional
 from schemas.base import BaseModel, Field
 
 
+class RunIdAlreadyExistsError(RuntimeError):
+    """Raised when a run_id collides with an existing active or historical run."""
+    pass
+
+
+class RunIdReservationError(ValueError):
+    """Raised when an unreserved or invalid run_id is passed to a reserved entrypoint."""
+    pass
+
+
 class RuntimeStatus(str, Enum):
     """Lifecycle status of a department runtime execution."""
     CREATED = "CREATED"

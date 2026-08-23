@@ -172,15 +172,24 @@ class RunManager:
 
     def enqueue_run(
         self,
-        run_id: str,
         objective: str,
+        run_id: Optional[str] = None,
         business_id: Optional[str] = None,
         project_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         auto_approve_token: Optional[str] = None,
     ) -> QueueItem:
+        if run_id:
+            if not self.runtime.is_reserved_run_id(run_id):
+                # Auto-reserve if trusted/valid format
+                rid = self.runtime.reserve_run_id(custom_id=run_id, trusted=True)
+            else:
+                rid = run_id
+        else:
+            rid = self.runtime.reserve_run_id()
+
         item = QueueItem(
-            run_id=run_id,
+            run_id=rid,
             objective=objective,
             business_id=business_id,
             project_id=project_id,
@@ -188,7 +197,7 @@ class RunManager:
             auto_approve_token=auto_approve_token,
         )
         with self._lock:
-            self._items[run_id] = item
+            self._items[rid] = item
         self._queue.put(item)
         return item
 
@@ -206,6 +215,7 @@ class RunManager:
             if item:
                 if item.status in (RunQueueStatus.QUEUED, RunQueueStatus.RUNNING, RunQueueStatus.PAUSED):
                     item.status = RunQueueStatus.CANCELLED
+                    self.runtime.cancel_run(run_id)
                     return True
         return False
 
@@ -224,32 +234,26 @@ class RunManager:
                 item.started_at = datetime.now(timezone.utc)
 
             try:
-                # Execute Supervised Campaign through Department Runtime
-                ctx = RuntimeContext(
+                # Execute Supervised Campaign through Canonical Department Runtime Entrypoint
+                ctx = self.runtime.start_run(
                     objective=item.objective,
                     business_id=item.business_id or "BIZ_AD_HOC_EXPLORATION",
+                    project_id=item.project_id,
+                    chat_id=item.chat_id,
+                    reserved_run_id=item.run_id,
                 )
-                self.runtime._active_contexts[ctx.run_id] = ctx
-                item.run_id = ctx.run_id
+                ctx, cmo_final, artifact = self.runtime.execute_run(ctx)
 
-                # 1. CMO
-                self.runtime.execute_stage_cmo_initial(ctx)
-                # 2. Intelligence
-                self.runtime.execute_stage_intelligence(ctx)
-                # 3. Strategist
-                self.runtime.execute_stage_strategist(ctx)
-                # 4. Creative
-                self.runtime.execute_stage_creative(ctx)
-                # 5. Performance
-                self.runtime.execute_stage_performance(ctx)
-                # 6. Final CMO
-                self.runtime.execute_stage_final_cmo(ctx)
-
-                # Finalize
-                artifact = self.runtime.complete_run(ctx)
                 with self._lock:
                     item.artifact = artifact
-                    item.status = RunQueueStatus.COMPLETED
+                    if ctx.status == RuntimeStatus.CANCELLED or item.status == RunQueueStatus.CANCELLED:
+                        item.status = RunQueueStatus.CANCELLED
+                        item.error = "RUN_CANCELLED"
+                    elif ctx.status == RuntimeStatus.FAILED or cmo_final.get("status") == "FAILED":
+                        item.status = RunQueueStatus.FAILED
+                        item.error = cmo_final.get("reason") or "RUN_FAILED"
+                    else:
+                        item.status = RunQueueStatus.COMPLETED
                     item.completed_at = datetime.now(timezone.utc)
             except Exception as e:
                 with self._lock:

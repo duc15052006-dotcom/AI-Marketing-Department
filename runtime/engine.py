@@ -12,10 +12,11 @@ import hashlib
 import json
 import logging
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from governance.access_matrix import AgentAccessMatrix
 from governance.claim_safety import FinalClaimAuditGateResult, ValidationDecision
@@ -41,6 +42,8 @@ from runtime.context import (
     EvidenceItem,
     ExecutionCheckpoint,
     GroundedContextPackage,
+    RunIdAlreadyExistsError,
+    RunIdReservationError,
     RuntimeContext,
     RuntimeStage,
     RuntimeStatus,
@@ -220,9 +223,52 @@ class FiveAgentDepartmentRuntime:
         )
         self.lineage_inspector = LineageInspector()
 
+        self._lock = threading.Lock()
         self._active_contexts: Dict[str, RuntimeContext] = {}
         self._completed_runs: Dict[str, DepartmentRunArtifact] = {}
+        self._reserved_run_ids: Set[str] = set()
+        self._cancelled_run_ids: Set[str] = set()
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
+
+    def reserve_run_id(self, custom_id: Optional[str] = None, trusted: bool = False) -> str:
+        """Reserve an authoritative run ID before execution begins."""
+        with self._lock:
+            if custom_id:
+                if not trusted:
+                    raise RunIdReservationError("UNTRUSTED_CUSTOM_RUN_ID: Custom run IDs are restricted to trusted callers.")
+                rid = custom_id
+            else:
+                rid = f"RUN-DEPT-{uuid.uuid4().hex.upper()}"
+
+            if rid in self._active_contexts or rid in self._completed_runs or rid in self._reserved_run_ids:
+                raise RunIdAlreadyExistsError(f"RUN_ID_ALREADY_EXISTS: Run ID '{rid}' already exists in active, completed, or reserved registry.")
+
+            self._reserved_run_ids.add(rid)
+            return rid
+
+    def is_reserved_run_id(self, run_id: str) -> bool:
+        """Check if a run ID is currently reserved and unconsumed."""
+        with self._lock:
+            return run_id in self._reserved_run_ids
+
+    def cancel_run(self, run_id: str) -> bool:
+        """Mark an active run as CANCELLED to prevent subsequent stage execution."""
+        with self._lock:
+            self._cancelled_run_ids.add(run_id)
+            if run_id in self._active_contexts:
+                ctx = self._active_contexts[run_id]
+                ctx.status = RuntimeStatus.CANCELLED
+                ctx.create_checkpoint()
+                return True
+            return False
+
+    def is_cancelled(self, run_id: str) -> bool:
+        """Check if a run has been requested for cancellation."""
+        with self._lock:
+            if run_id in self._cancelled_run_ids:
+                return True
+            ctx = self._active_contexts.get(run_id)
+            return bool(ctx and ctx.status == RuntimeStatus.CANCELLED)
 
     def _get_claim_verifier(self) -> BaseClaimVerifier:
         """Lazy resolver for claim verifier instance."""
@@ -277,30 +323,44 @@ class FiveAgentDepartmentRuntime:
         campaign_id: str = "CAMP_001",
         user_id: str = "USER_001",
         run_id: Optional[str] = None,
+        reserved_run_id: Optional[str] = None,
+        trusted_run_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
     ) -> RuntimeContext:
-        """Initialize a new supervised department run."""
-        rid = run_id or f"RUN-DEPT-{uuid.uuid4().hex[:8].upper()}"
-        context = RuntimeContext(
-            run_id=rid,
-            objective=objective,
-            business_id=business_id,
-            campaign_id=campaign_id,
-            user_id=user_id,
-            chat_id=chat_id,
-            project_id=project_id,
-            status=RuntimeStatus.RUNNING,
-            current_stage=RuntimeStage.INIT,
-        )
-        # COLLAB-03: structurally capture explicit user restrictions from the
-        # raw objective (verbatim; deterministic; fail-closed to empty).
-        for extracted in extract_explicit_user_constraints(objective):
-            record_constraint(context, extracted, origin="USER_CONSTRAINT", source="raw_user_objective")
-        self._sync_constraint_state(context)
-        self._active_contexts[rid] = context
-        context.create_checkpoint()
-        return context
+        """Initialize a new supervised department run under authoritative runtime ownership."""
+        with self._lock:
+            target_id = reserved_run_id or run_id
+            if target_id and target_id in self._reserved_run_ids:
+                self._reserved_run_ids.remove(target_id)
+                rid = target_id
+            elif trusted_run_id:
+                rid = trusted_run_id
+            else:
+                rid = f"RUN-DEPT-{uuid.uuid4().hex.upper()}"
+
+            if rid in self._active_contexts or rid in self._completed_runs:
+                raise RunIdAlreadyExistsError(f"RUN_ID_ALREADY_EXISTS: Run ID '{rid}' already exists in active or completed runs.")
+
+            context = RuntimeContext(
+                run_id=rid,
+                objective=objective,
+                business_id=business_id,
+                campaign_id=campaign_id,
+                user_id=user_id,
+                chat_id=chat_id,
+                project_id=project_id,
+                status=RuntimeStatus.RUNNING,
+                current_stage=RuntimeStage.INIT,
+            )
+            # COLLAB-03: structurally capture explicit user restrictions from the
+            # raw objective (verbatim; deterministic; fail-closed to empty).
+            for extracted in extract_explicit_user_constraints(objective):
+                record_constraint(context, extracted, origin="USER_CONSTRAINT", source="raw_user_objective")
+            self._sync_constraint_state(context)
+            self._active_contexts[rid] = context
+            context.create_checkpoint()
+            return context
 
     def execute_stage_cmo_initial(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 1: Initial CMO Strategic Framing and Task Decomposition."""
@@ -1548,8 +1608,13 @@ class FiveAgentDepartmentRuntime:
     def complete_run(self, context: RuntimeContext) -> DepartmentRunArtifact:
         """Finalize the supervised run, record candidate memories and produce sealed artifact."""
         context.current_stage = RuntimeStage.COMPLETED
-        if context.status != RuntimeStatus.FAILED:
-            context.status = RuntimeStatus.COMPLETED
+        if context.status not in (RuntimeStatus.FAILED, RuntimeStatus.CANCELLED):
+            if context.stage_outputs.get("final_cmo", {}).get("status") == "CANCELLED":
+                context.status = RuntimeStatus.CANCELLED
+            elif context.stage_outputs.get("final_cmo", {}).get("status") == "FAILED":
+                context.status = RuntimeStatus.FAILED
+            else:
+                context.status = RuntimeStatus.COMPLETED
         completed_at = datetime.now(timezone.utc)
 
         # 1. Propose Memory Candidates only if run completed successfully.
@@ -1592,28 +1657,179 @@ class FiveAgentDepartmentRuntime:
         receipts = [self.tool_gateway.receipt_repository.get_receipt(r_id) for r_id in context.execution_receipt_refs]
         valid_receipts = [r for r in receipts if r is not None]
 
-        artifact = DepartmentRunArtifact(
-            run_id=context.run_id,
-            objective=context.objective,
-            started_at=context.created_at,
-            completed_at=completed_at,
-            status=context.status,
-            agent_outputs=context.stage_outputs,
-            knowledge_used=context.knowledge_refs,
-            memory_used=context.memory_refs,
-            capabilities_used=[r.capability_id for r in valid_receipts],
-            execution_receipts=valid_receipts,
-            approvals=[],
-            artifacts=context.artifact_refs,
-            learning_candidates=cand_memories,
-            final_cmo_output=context.stage_outputs.get("final_cmo", {}),
-            lineage_summary={"citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()]},
-            binding_constraints=list(context.constraints),
-            epistemic_handoffs=dict(context.working_state.get("stage_handoffs", {})),
-            claim_verification_ledger=list(context.working_state.get("claim_verification_ledger", [])),
-            errors=context.risk_flags,
-        )
-        artifact.final_artifact_hash = artifact.compute_artifact_hash()
+        # Enforce terminal immutability: CANCELLED or FAILED statuses are preserved
+        with self._lock:
+            if context.status not in (RuntimeStatus.COMPLETED, RuntimeStatus.FAILED, RuntimeStatus.CANCELLED):
+                if context.stage_outputs.get("final_cmo", {}).get("status") == "CANCELLED":
+                    context.status = RuntimeStatus.CANCELLED
+                elif context.stage_outputs.get("final_cmo", {}).get("status") == "FAILED":
+                    context.status = RuntimeStatus.FAILED
+                elif context.stage_outputs.get("final_cmo", {}).get("status") == "READY_FOR_DEPLOYMENT":
+                    context.status = RuntimeStatus.COMPLETED
+                else:
+                    context.status = RuntimeStatus.COMPLETED
 
-        self._completed_runs[context.run_id] = artifact
-        return artifact
+            artifact = DepartmentRunArtifact(
+                run_id=context.run_id,
+                objective=context.objective,
+                started_at=context.created_at,
+                completed_at=completed_at,
+                status=context.status,
+                agent_outputs=context.stage_outputs,
+                knowledge_used=context.knowledge_refs,
+                memory_used=context.memory_refs,
+                capabilities_used=[r.capability_id for r in valid_receipts],
+                execution_receipts=valid_receipts,
+                approvals=[],
+                artifacts=context.artifact_refs,
+                learning_candidates=cand_memories,
+                final_cmo_output=context.stage_outputs.get("final_cmo", {}),
+                lineage_summary={"citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()]},
+                binding_constraints=list(context.constraints),
+                epistemic_handoffs=dict(context.working_state.get("stage_handoffs", {})),
+                claim_verification_ledger=list(context.working_state.get("claim_verification_ledger", [])),
+                errors=context.risk_flags,
+            )
+            artifact.final_artifact_hash = artifact.compute_artifact_hash()
+
+            self._completed_runs[context.run_id] = artifact
+
+            # Active context cleanup: remove terminal runs (COMPLETED, FAILED, CANCELLED) from active registry
+            if context.status in (RuntimeStatus.COMPLETED, RuntimeStatus.FAILED, RuntimeStatus.CANCELLED):
+                self._active_contexts.pop(context.run_id, None)
+
+            return artifact
+
+    def execute_run(self, context: RuntimeContext) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
+        """Canonical 6-stage supervised execution for an initialized RuntimeContext.
+
+        Enforces:
+        1. Context belongs to this runtime and is registered in active contexts.
+        2. Strict 6-stage execution invariant with cooperative cancellation checks:
+           CMO_INITIAL -> INTELLIGENCE -> STRATEGIST -> CREATIVE -> PERFORMANCE -> FINAL_CMO
+        3. Exception and failure ownership: unhandled errors mark context FAILED and do not skip to complete.
+        4. Final CMO is the same CMO second pass (never Agent 6).
+        5. Final sealed DepartmentRunArtifact generated via complete_run(context).
+        """
+        with self._lock:
+            if context.run_id not in self._active_contexts and context.run_id not in self._completed_runs:
+                self._active_contexts[context.run_id] = context
+
+        def _check_cancellation() -> bool:
+            if self.is_cancelled(context.run_id) or context.status == RuntimeStatus.CANCELLED:
+                context.status = RuntimeStatus.CANCELLED
+                return True
+            return False
+
+        if _check_cancellation():
+            cmo_final = {
+                "stage": "FINAL_CMO",
+                "agent": "cmo",
+                "status": "CANCELLED",
+                "approval_status": "CANCELLED",
+                "reason": "RUN_CANCELLED_BY_OPERATOR",
+                "master_gtm_plan": {},
+                "master_gtm_plan_markdown": "# BÁO CÁO HỦY BỎ — FIVE-AGENT DEPARTMENT\n\nTiến trình thực thi đã bị hủy bởi người vận hành.",
+            }
+            context.stage_outputs["final_cmo"] = cmo_final
+            context.create_checkpoint()
+            artifact = self.complete_run(context)
+            return context, cmo_final, artifact
+
+        try:
+            # Stage 1: CMO Initial
+            cmo_init = self.execute_stage_cmo_initial(context)
+            if _check_cancellation():
+                raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
+
+            # Stage 2: Intelligence
+            if context.status != RuntimeStatus.FAILED:
+                intel_out = self.execute_stage_intelligence(context)
+            if _check_cancellation():
+                raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
+
+            # Stage 3: Strategist
+            if context.status != RuntimeStatus.FAILED:
+                strat_out = self.execute_stage_strategist(context)
+            if _check_cancellation():
+                raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
+
+            # Stage 4: Creative
+            if context.status != RuntimeStatus.FAILED:
+                crtv_out = self.execute_stage_creative(context)
+            if _check_cancellation():
+                raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
+
+            # Stage 5: Performance
+            if context.status != RuntimeStatus.FAILED:
+                perf_out = self.execute_stage_performance(context)
+            if _check_cancellation():
+                raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
+
+            # Stage 6: Final CMO (Governed Synthesis & Master GTM Plan)
+            cmo_final = self.execute_stage_final_cmo(context)
+
+        except Exception as exc:
+            if str(exc) == "RUN_CANCELLED_BY_OPERATOR" or _check_cancellation():
+                context.status = RuntimeStatus.CANCELLED
+                cmo_final = {
+                    "stage": "FINAL_CMO",
+                    "agent": "cmo",
+                    "status": "CANCELLED",
+                    "approval_status": "CANCELLED",
+                    "reason": "RUN_CANCELLED_BY_OPERATOR",
+                    "master_gtm_plan": {},
+                    "master_gtm_plan_markdown": "# BÁO CÁO HỦY BỎ — FIVE-AGENT DEPARTMENT\n\nTiến trình thực thi đã bị hủy bởi người vận hành.",
+                }
+                context.stage_outputs["final_cmo"] = cmo_final
+                context.create_checkpoint()
+            else:
+                logger.exception(f"Unhandled exception during run {context.run_id}: {exc}")
+                context.status = RuntimeStatus.FAILED
+                context.risk_flags.append(f"UNHANDLED_RUNTIME_EXCEPTION: {str(exc)}")
+                cmo_final = {
+                    "stage": "FINAL_CMO",
+                    "agent": "cmo",
+                    "status": "FAILED",
+                    "approval_status": "NOT_EVALUATED",
+                    "reason": f"UNHANDLED_RUNTIME_EXCEPTION: {str(exc)}",
+                    "master_gtm_plan": {},
+                    "master_gtm_plan_markdown": f"# BÁO CÁO PHÊ DUYỆT THẤT BẠI — FIVE-AGENT DEPARTMENT\n\n**Trạng thái phê duyệt**: KHÔNG ĐƯỢC PHÊ DUYỆT (UNHANDLED_RUNTIME_EXCEPTION)\n\nLỗi hệ thống trong quá trình thực thi pipeline: {str(exc)}",
+                }
+                context.stage_outputs["final_cmo"] = cmo_final
+                context.create_checkpoint()
+
+        artifact = self.complete_run(context)
+        return context, cmo_final, artifact
+
+    def run_workflow(
+        self,
+        objective: str,
+        business_id: str = "BIZ_001",
+        campaign_id: str = "CAMP_001",
+        user_id: str = "USER_001",
+        run_id: Optional[str] = None,
+        reserved_run_id: Optional[str] = None,
+        trusted_run_id: Optional[str] = None,
+        chat_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        constraints: Optional[List[str]] = None,
+    ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
+        """Convenience canonical entrypoint: start_run + execute_run."""
+        context = self.start_run(
+            objective=objective,
+            business_id=business_id,
+            campaign_id=campaign_id,
+            user_id=user_id,
+            run_id=run_id,
+            reserved_run_id=reserved_run_id,
+            trusted_run_id=trusted_run_id,
+            chat_id=chat_id,
+            project_id=project_id,
+        )
+        if constraints:
+            for c in constraints:
+                if c not in context.constraints:
+                    context.constraints.append(c)
+            self._sync_constraint_state(context)
+        return self.execute_run(context)

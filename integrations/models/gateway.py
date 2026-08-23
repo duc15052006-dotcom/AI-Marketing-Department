@@ -192,11 +192,8 @@ class UniversalModelGateway:
 
         if norm_req.timeout_seconds is not None:
             total_timeout = norm_req.timeout_seconds
-        elif self.config_service:
-            total_timeout = self.config_service.get_timeout(candidates[0][0])
         else:
-            cfg = self.provider_registry.get_config(candidates[0][0])
-            total_timeout = cfg.timeout_seconds if cfg and cfg.timeout_seconds else 30.0
+            total_timeout = 180.0
         last_error_resp: Optional[ModelResponse] = None
         attempt_count = 0
 
@@ -254,11 +251,12 @@ class UniversalModelGateway:
                 if strict_model_pin:
                     return last_error_resp
 
-
             # 3. Construct Request Copy with Targeted Model and Remaining Timeout Budget
+            cand_cfg_timeout = self.config_service.get_timeout(cand_provider) if self.config_service else 30.0
+            adapter_timeout = min(cand_cfg_timeout, remaining_timeout) if norm_req.timeout_seconds is None else remaining_timeout
             req_copy = normalize_model_request(norm_req)
             req_copy.model_name = cand_model
-            req_copy.timeout_seconds = max(remaining_timeout, 0.001)
+            req_copy.timeout_seconds = max(adapter_timeout, 0.001)
 
             # 4. Execute Invocation
             try:
