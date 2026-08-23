@@ -30,7 +30,7 @@ from tools.adapters import (
     PublishingAdapter,
     SearchAdapter,
 )
-from tools.capabilities import CapabilityDescriptor, CapabilityRegistry
+from tools.capabilities import CapabilityCategory, CapabilityDescriptor, CapabilityRegistry, PermissionLevel, RiskLevel
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import PolicyDecision, PolicyEngine
 
@@ -144,6 +144,8 @@ class ToolGateway:
             agent_id=request.agent_id,
             capability=cap,
             approval_token=request.approval_token,
+            run_id=request.run_id,
+            parameters=request.parameters,
         )
         if not decision.allowed:
             completed_time = datetime.now(timezone.utc)
@@ -182,32 +184,70 @@ class ToolGateway:
             )
             return self.receipt_repository.save_receipt(receipt)
 
-        # 4. Execute Invocation with Timeout & Retries
+        # 4. Atomic One-Shot Approval Claim for Consequential Actions
+        is_consequential = bool(
+            request.approval_token
+            and (
+                cap.human_approval_required
+                or cap.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
+                or cap.category == CapabilityCategory.PUBLISH
+                or PermissionLevel.FINANCIAL_OR_HIGH_RISK in cap.required_permissions
+                or PermissionLevel.PUBLISH in cap.required_permissions
+                or PermissionLevel.EXTERNAL_WRITE in cap.required_permissions
+            )
+        )
+
+        if is_consequential:
+            claimed = self.policy_engine.claim_approval(request.approval_token)
+            if not claimed:
+                completed_time = datetime.now(timezone.utc)
+                receipt = ExecutionReceipt(
+                    run_id=request.run_id,
+                    agent_id=request.agent_id,
+                    capability_id=request.capability_id,
+                    provider=adapter.adapter_name,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    completed_at=completed_time,
+                    status=ExecutionStatus.APPROVAL_REQUIRED,
+                    error_class="APPROVAL_ALREADY_CLAIMED",
+                    error_message="APPROVAL_ALREADY_CLAIMED: Approval token has already been claimed or consumed for execution.",
+                    approval_reference=request.approval_token,
+                )
+                return self.receipt_repository.save_receipt(receipt)
+
+        # 5. Execute Invocation with Timeout & Retries
         timeout = request.timeout_seconds or cap.timeout_policy
         max_retries = cap.retry_policy.get("max_retries", 0)
         retryable_errors = set(cap.retry_policy.get("retryable_errors", []))
 
         adapter_res = None
-        for attempt in range(max_retries + 1):
-            try:
-                adapter_res = adapter.execute(
-                    capability_id=cap.capability_id,
-                    parameters=request.parameters,
-                    timeout_seconds=timeout,
-                )
-            except Exception as e:
-                adapter_res = None
-                last_exc = e
+        last_exc = None
+        try:
+            for attempt in range(max_retries + 1):
+                try:
+                    adapter_res = adapter.execute(
+                        capability_id=cap.capability_id,
+                        parameters=request.parameters,
+                        timeout_seconds=timeout,
+                    )
+                except Exception as e:
+                    adapter_res = None
+                    last_exc = e
 
-            if adapter_res and adapter_res.success:
-                break
-            if adapter_res and adapter_res.error_code not in retryable_errors:
-                break
+                if adapter_res and adapter_res.success:
+                    break
+                if adapter_res and adapter_res.error_code not in retryable_errors:
+                    break
+        finally:
+            if is_consequential:
+                self.policy_engine.consume_approval(request.approval_token)
 
         completed_time = datetime.now(timezone.utc)
 
-        # 5. Assemble Receipt
+        # 6. Assemble Receipt
         if adapter_res and adapter_res.success:
+
             mode = getattr(adapter_res, "execution_mode", ExecutionMode.MOCK) or ExecutionMode.MOCK
             receipt = ExecutionReceipt(
                 run_id=request.run_id,

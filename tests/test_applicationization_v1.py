@@ -21,7 +21,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from app_api.server import APP_BACKEND, DepartmentAPIHandler
+from app_api.server import APP_BACKEND, DepartmentAPIHandler, GLOBAL_API_SESSION_TOKEN
 from governance.access_matrix import AgentAccessMatrix, PERMANENT_FIVE_AGENTS
 
 
@@ -44,7 +44,7 @@ class TestApplicationizationV1(unittest.TestCase):
 
     def _api_get(self, path: str) -> Tuple[int, Any]:
         url = f"http://127.0.0.1:{self.port}{path}"
-        req = urllib.request.Request(url, method="GET")
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {GLOBAL_API_SESSION_TOKEN}"}, method="GET")
         try:
             with urllib.request.urlopen(req, timeout=120.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -55,7 +55,15 @@ class TestApplicationizationV1(unittest.TestCase):
     def _api_post(self, path: str, payload: Dict[str, Any]) -> Tuple[int, Any]:
         url = f"http://127.0.0.1:{self.port}{path}"
         body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {GLOBAL_API_SESSION_TOKEN}",
+            },
+            method="POST",
+        )
         try:
             with urllib.request.urlopen(req, timeout=120.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))

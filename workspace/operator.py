@@ -22,7 +22,7 @@ from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, Runtime
 from runtime.engine import FiveAgentDepartmentRuntime
 from tools.capabilities import RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionStatus
-from tools.security import HumanApprovalRecord, PolicyEngine
+from tools.security import HumanApprovalRecord, PolicyEngine, compute_request_fingerprint
 from tools.tool_gateway import ToolGateway
 from workspace.business import BusinessRegistry, BusinessWorkspace
 
@@ -104,28 +104,60 @@ class OperatorWorkspace:
     def approve_gated_action(
         self,
         run_id: str,
-        approval_token: str,
+        approval_token: Optional[str] = None,
         action_type: str = "social_publishing",
         approved_by: str = "Executive Operator",
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """Register human approval token and resume a paused/waiting run."""
+        """Register human approval record and resume a paused/waiting run."""
         ctx = self.runtime._active_contexts.get(run_id)
         if not ctx:
             return False
 
-        record = HumanApprovalRecord(
-            approval_token=approval_token,
-            action_type=action_type,
-            approved_by=approved_by,
-            approved_at=datetime.now(timezone.utc).isoformat(),
-            scope=ctx.business_id,
-            risk_level=RiskLevel.CRITICAL,
-        )
-        self.runtime.tool_gateway.policy_engine.register_approval(record)
-        ctx.approval_refs.append(approval_token)
+        publish_params = parameters or {"platform": "linkedin", "content": "Campaign Go-To-Market Plan"}
+
+        if approval_token:
+            if approval_token not in self.runtime.tool_gateway.policy_engine._approved_tokens:
+                fp = compute_request_fingerprint(
+                    capability_id=action_type,
+                    parameters=publish_params,
+                    run_id=ctx.run_id,
+                    business_id=ctx.business_id,
+                )
+                record = HumanApprovalRecord(
+                    approval_token=approval_token,
+                    action_type=action_type,
+                    capability_id=action_type,
+                    run_id=ctx.run_id,
+                    business_id=ctx.business_id,
+                    request_fingerprint=fp,
+                    approved_by=approved_by,
+                    approved_at=datetime.now(timezone.utc).isoformat(),
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                    expires_at=datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + 300, tz=timezone.utc).isoformat(),
+                    scope=ctx.business_id,
+                    risk_level=RiskLevel.CRITICAL,
+                    consumed=False,
+                )
+                self.runtime.tool_gateway.policy_engine.register_approval(record)
+            tok_to_use = approval_token
+        else:
+            record = self.runtime.tool_gateway.policy_engine.create_server_approval(
+                capability_id=action_type,
+                parameters=publish_params,
+                run_id=ctx.run_id,
+                business_id=ctx.business_id,
+                approved_by=approved_by,
+                ttl_seconds=300,
+                risk_level=RiskLevel.CRITICAL,
+                scope=ctx.business_id,
+            )
+            tok_to_use = record.approval_token
+
+        ctx.approval_refs.append(tok_to_use)
 
         # Resume publishing execution
-        receipt = self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=approval_token)
+        receipt = self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=tok_to_use)
         return receipt.status == ExecutionStatus.SUCCESS
 
     # 5. Reject Gated Action

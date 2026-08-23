@@ -7,18 +7,108 @@ Zero secret exposure to frontend.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
+import os
+import secrets
 import sys
 import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+def get_secure_session_token() -> str:
+    """Generate or retrieve a cryptographically strong API session token (>=256 bits entropy)."""
+    env_token = os.environ.get("APP_API_TOKEN", "").strip()
+    if env_token:
+        weak_passwords = {"123", "password", "test", "admin", "secret", "123456", "12345678", "testserver"}
+        if len(env_token) >= 32 and env_token.lower() not in weak_passwords:
+            return env_token
+        logger.warning("Weak or insecure APP_API_TOKEN supplied in environment; discarding and generating 256-bit runtime session token.")
+    return secrets.token_urlsafe(32)
+
+
+# Process-lifetime Local API Session Token (256-bit cryptographic entropy)
+GLOBAL_API_SESSION_TOKEN: str = get_secure_session_token()
+
+ALLOWED_LOCAL_ORIGINS: Set[str] = {
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8765",
+    "http://127.0.0.1:8765",
+    "http://tauri.localhost",
+    "tauri://localhost",
+}
+
+PRODUCTION_ALLOWED_HOSTNAMES: Set[str] = {
+    "127.0.0.1",
+    "localhost",
+    "::1",
+}
+
+
+def parse_and_validate_host(
+    host_header: Optional[str],
+    allowed_hostnames: Optional[Set[str]] = None,
+    allow_testserver: bool = False,
+) -> bool:
+    """Structurally parse and validate Host header against loopback whitelist.
+
+    Rejects:
+    - Subdomains/suffixes (e.g. localhost.attacker.com, 127.0.0.1.evil.com)
+    - Prefix hacks
+    - 'testserver' in production (unless explicitly permitted via allow_testserver=True)
+    - Malformed IPv6 hostnames
+    """
+    if not host_header:
+        return False
+    host_raw = host_header.strip()
+    if not host_raw:
+        return False
+
+    target_allowed = allowed_hostnames or PRODUCTION_ALLOWED_HOSTNAMES
+
+    if host_raw.startswith("["):
+        # Bracketed IPv6: [::1] or [::1]:8765
+        bracket_end = host_raw.find("]")
+        if bracket_end == -1:
+            return False
+        hostname = host_raw[1:bracket_end].lower()
+        port_part = host_raw[bracket_end + 1:]
+        if port_part:
+            if not port_part.startswith(":"):
+                return False
+            port_num = port_part[1:]
+            if not port_num.isdigit():
+                return False
+    elif ":" in host_raw:
+        # IPv4 or name with port: 127.0.0.1:8765 or localhost:8765
+        parts = host_raw.split(":")
+        if len(parts) != 2:
+            return False
+        hostname = parts[0].strip().lower()
+        port_num = parts[1].strip()
+        if not port_num.isdigit():
+            return False
+    else:
+        # Hostname without port: 127.0.0.1 or localhost
+        hostname = host_raw.lower()
+
+    if hostname == "testserver":
+        return allow_testserver
+
+    return hostname in target_allowed
+
+
+PUBLIC_LOCAL_HEALTH_PATHS: Set[str] = {
+    "/api/health",
+}
 
 # Automatic Environment Loading (.env and Windows Registry fallback)
 for env_candidate in [REPO_ROOT / ".env", Path.home() / ".env", REPO_ROOT / "config" / ".env"]:
@@ -183,18 +273,67 @@ APP_BACKEND = DepartmentAppBackend()
 class DepartmentAPIHandler(BaseHTTPRequestHandler):
     """Localhost HTTP request dispatcher for React / Tauri desktop UI."""
 
+    allow_testserver_for_testing: bool = False
+
+    def _is_valid_host(self, host_header: Optional[str]) -> bool:
+        return parse_and_validate_host(
+            host_header=host_header,
+            allowed_hostnames=PRODUCTION_ALLOWED_HOSTNAMES,
+            allow_testserver=self.allow_testserver_for_testing,
+        )
+
+    def _is_allowed_origin(self, origin_header: Optional[str]) -> bool:
+        if not origin_header:
+            return True
+        clean_origin = origin_header.strip().rstrip("/")
+        return any(clean_origin == allowed.rstrip("/") for allowed in ALLOWED_LOCAL_ORIGINS)
+
+    def _is_authenticated(self) -> bool:
+        auth_header = self.headers.get("Authorization", "")
+        token = ""
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        if not token:
+            token = self.headers.get("X-API-Token", "").strip()
+        if not token:
+            return False
+        return hmac.compare_digest(token, GLOBAL_API_SESSION_TOKEN)
+
     def _set_cors_and_json(self, status_code: int = 200, length: Optional[int] = None) -> None:
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         if length is not None:
             self.send_header("Content-Length", str(length))
         self.send_header("Connection", "close")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+        origin = self.headers.get("Origin")
+        if origin:
+            clean_origin = origin.strip().rstrip("/")
+            if any(clean_origin == allowed.rstrip("/") for allowed in ALLOWED_LOCAL_ORIGINS):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Credentials", "true")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Token")
         self.end_headers()
 
     def do_OPTIONS(self) -> None:
+        host = self.headers.get("Host", "")
+        if not self._is_valid_host(host):
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        origin = self.headers.get("Origin")
+        if origin:
+            clean_origin = origin.strip().rstrip("/")
+            if not any(clean_origin == allowed.rstrip("/") for allowed in ALLOWED_LOCAL_ORIGINS):
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b'{"error":"FORBIDDEN_ORIGIN"}')
+                return
+
         self._set_cors_and_json(204)
 
     def _read_body_json(self) -> Dict[str, Any]:
@@ -353,12 +492,26 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             )
 
     def do_GET(self) -> None:
+        host = self.headers.get("Host", "")
+        if not self._is_valid_host(host):
+            self._send_json({"error": "INVALID_HOST", "message": "Host header is invalid or untrusted"}, 400)
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
         query = urllib.parse.parse_qs(parsed.query)
 
-        # 1. System Status & Health
-        if path == "/api/system/status":
+        if path not in PUBLIC_LOCAL_HEALTH_PATHS and not self._is_authenticated():
+            self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
+            return
+
+        # 1. Minimal Public Health Check (Zero secret or operational leakage)
+        if path == "/api/health":
+            self._send_json({"status": "ok", "service": "AI Marketing Department API"})
+            return
+
+        # 2. System Status & Health
+        elif path == "/api/system/status":
             self._send_json(
                 {
                     "app_name": "AI Marketing Department",
@@ -548,7 +701,38 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
         self._send_json({"error": "NOT_FOUND"}, 404)
 
+    def do_PUT(self) -> None:
+        host = self.headers.get("Host", "")
+        if not self._is_valid_host(host):
+            self._send_json({"error": "INVALID_HOST", "message": "Host header is invalid or untrusted"}, 400)
+            return
+
+        origin = self.headers.get("Origin")
+        if not self._is_allowed_origin(origin):
+            self._send_json({"error": "FORBIDDEN_ORIGIN", "message": "Untrusted cross-origin request rejected"}, 403)
+            return
+
+        if not self._is_authenticated():
+            self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
+            return
+
+        self._send_json({"error": "NOT_FOUND"}, 404)
+
     def do_PATCH(self) -> None:
+        host = self.headers.get("Host", "")
+        if not self._is_valid_host(host):
+            self._send_json({"error": "INVALID_HOST", "message": "Host header is invalid or untrusted"}, 400)
+            return
+
+        origin = self.headers.get("Origin")
+        if not self._is_allowed_origin(origin):
+            self._send_json({"error": "FORBIDDEN_ORIGIN", "message": "Untrusted cross-origin request rejected"}, 403)
+            return
+
+        if not self._is_authenticated():
+            self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
         body = self._read_body_json()
@@ -577,6 +761,20 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "NOT_FOUND"}, 404)
 
     def do_DELETE(self) -> None:
+        host = self.headers.get("Host", "")
+        if not self._is_valid_host(host):
+            self._send_json({"error": "INVALID_HOST", "message": "Host header is invalid or untrusted"}, 400)
+            return
+
+        origin = self.headers.get("Origin")
+        if not self._is_allowed_origin(origin):
+            self._send_json({"error": "FORBIDDEN_ORIGIN", "message": "Untrusted cross-origin request rejected"}, 403)
+            return
+
+        if not self._is_authenticated():
+            self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
 
@@ -592,6 +790,20 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "NOT_FOUND"}, 404)
 
     def do_POST(self) -> None:
+        host = self.headers.get("Host", "")
+        if not self._is_valid_host(host):
+            self._send_json({"error": "INVALID_HOST", "message": "Host header is invalid or untrusted"}, 400)
+            return
+
+        origin = self.headers.get("Origin")
+        if not self._is_allowed_origin(origin):
+            self._send_json({"error": "FORBIDDEN_ORIGIN", "message": "Untrusted cross-origin request rejected"}, 403)
+            return
+
+        if not self._is_authenticated():
+            self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
         body = self._read_body_json()
@@ -896,11 +1108,48 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             return
 
         # 10. Approvals
+        elif path in ("/api/approvals/create", "/api/approvals/issue"):
+            cap_id = body.get("capability_id", "social_publishing")
+            run_id = body.get("run_id", "")
+            biz_id = body.get("business_id")
+            params = body.get("parameters", {})
+            approved_by = body.get("approved_by", "Executive Operator")
+            ttl = int(body.get("ttl_seconds", 300))
+            record = APP_BACKEND.tool_gateway.policy_engine.create_server_approval(
+                capability_id=cap_id,
+                parameters=params,
+                run_id=run_id,
+                business_id=biz_id,
+                approved_by=approved_by,
+                ttl_seconds=ttl,
+            )
+            self._send_json(
+                {
+                    "success": True,
+                    "approval_token": record.approval_token,
+                    "request_fingerprint": record.request_fingerprint,
+                    "expires_at": record.expires_at,
+                    "capability_id": record.capability_id,
+                    "run_id": record.run_id,
+                },
+                201,
+            )
+            return
+
         elif path.endswith("/approve") and "/api/approvals/" in path:
             run_id = path.split("/")[-2]
-            token = body.get("approval_token", f"AUTH-TOKEN-{datetime.now().strftime('%Y%m%d%H%M%S')}")
-            ok = APP_BACKEND.workspace.approve_gated_action(run_id=run_id, approval_token=token)
-            self._send_json({"success": ok, "status": "APPROVED", "token": token})
+            token = body.get("approval_token")
+            approved_by = body.get("approved_by", "Executive Operator")
+            action_type = body.get("action_type", "social_publishing")
+            parameters = body.get("parameters")
+            ok = APP_BACKEND.workspace.approve_gated_action(
+                run_id=run_id,
+                approval_token=token,
+                action_type=action_type,
+                approved_by=approved_by,
+                parameters=parameters,
+            )
+            self._send_json({"success": ok, "status": "APPROVED" if ok else "FAILED"})
             return
 
         elif path.endswith("/reject") and "/api/approvals/" in path:
