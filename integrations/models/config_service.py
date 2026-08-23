@@ -136,20 +136,13 @@ class ProviderConfigService:
             except Exception as e:
                 logger.debug(f"Config file read note: {e}")
 
-        # 3. Development .env fallback
+        # 3. Development .env fallback (deterministic REPO_ROOT / .env, no user home directory search)
+        from config.env_loader import load_env_file
         proj_root = Path(__file__).resolve().parent.parent.parent
-        for env_path in [self._config_dir / ".env", proj_root / ".env", Path.home() / ".env"]:
+        for env_path in [self._config_dir / ".env", proj_root / ".env"]:
             if env_path.is_file():
                 try:
-                    with open(env_path, "r", encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if line and not line.startswith("#") and "=" in line:
-                                k, v = line.split("=", 1)
-                                k = k.strip()
-                                v = v.strip().strip("'\"")
-                                if k and k not in os.environ:
-                                    os.environ[k] = v
+                    load_env_file(env_path, override=False)
                 except Exception as e:
                     logger.debug(f"Env file read note: {e}")
 

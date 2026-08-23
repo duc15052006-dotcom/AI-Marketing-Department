@@ -100,37 +100,9 @@ PUBLIC_LOCAL_HEALTH_PATHS: Set[str] = {
     "/api/health",
 }
 
-# Automatic Environment Loading (.env and Windows Registry fallback)
-for env_candidate in [REPO_ROOT / ".env", Path.home() / ".env", REPO_ROOT / "config" / ".env"]:
-    if env_candidate.exists() and env_candidate.is_file():
-        try:
-            with open(env_candidate, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        k = k.strip()
-                        v = v.strip().strip('"').strip("'")
-                        if k and k not in os.environ:
-                            os.environ[k] = v
-        except Exception:
-            pass
-
-if sys.platform == "win32":
-    try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
-            i = 0
-            while True:
-                try:
-                    name, val, _ = winreg.EnumValue(key, i)
-                    if name not in os.environ:
-                        os.environ[name] = str(val)
-                    i += 1
-                except OSError:
-                    break
-    except Exception:
-        pass
+# Automatic Environment Loading (Deterministic REPO_ROOT / .env, no home directory search)
+from config.env_loader import load_env_file
+load_env_file(REPO_ROOT / ".env", override=False)
 
 from chat.engine import ChatConversationEngine
 from chat.knowledge import SessionKnowledgeStore
@@ -1317,9 +1289,12 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
 def run_server(port: int = 8765, host: str = "127.0.0.1") -> None:
     """Launch localhost-only Department Application API server."""
-    server_address = (host, port)
+    from config.env_loader import parse_int, validate_loopback_host
+    valid_host = validate_loopback_host(host, setting_name="API_HOST")
+    valid_port = parse_int(port, default=8765, min_val=1, max_val=65535, setting_name="API_PORT")
+    server_address = (valid_host, valid_port)
     httpd = ThreadingHTTPServer(server_address, DepartmentAPIHandler)
-    logger.info(f"AI Marketing Department API running at http://{host}:{port}")
+    logger.info(f"AI Marketing Department API running at http://{valid_host}:{valid_port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
