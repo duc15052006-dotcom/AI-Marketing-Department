@@ -751,6 +751,69 @@ class TestProdUIAuth01SecureBootstrap(unittest.TestCase):
         self.assertNotIn("token", pending.parameters)
         self.assertNotIn("bearer", pending.parameters)
 
+    # ==========================================================================
+    # 8. PowerShell Launcher Bootstrap Parser Tests
+    # ==========================================================================
+
+    def _run_powershell_bootstrap_parser(self, lines: List[str]) -> Dict[str, any]:
+        """Runs the PowerShell Parse-BootstrapLines function directly via powershell."""
+        ps_script = (REPO_ROOT / "run_app.ps1").read_text(encoding="utf-8")
+        start_idx = ps_script.find("function Parse-BootstrapLines")
+        end_idx = ps_script.find("# 1. Start Python Localhost API")
+        if start_idx == -1 or end_idx == -1:
+            raise ValueError("Could not find Parse-BootstrapLines in run_app.ps1")
+        func_def = ps_script[start_idx:end_idx].strip()
+
+        lines_json = json.dumps(lines).replace('"', '`"')
+        test_script = f"""
+{func_def}
+$inputLines = "{lines_json}" | ConvertFrom-Json
+$res = Parse-BootstrapLines -Lines $inputLines
+$res | ConvertTo-Json -Compress
+"""
+        proc = subprocess.run(["powershell", "-NoProfile", "-Command", test_script], capture_output=True, text=True, check=True)
+        return json.loads(proc.stdout.strip())
+
+    def test_30_powershell_parser_accepts_valid_single_frame(self) -> None:
+        """PowerShell bootstrap parser accepts exactly one valid UIAUTH_BOOTSTRAP_V1 frame."""
+        valid_frame = 'UIAUTH_BOOTSTRAP_V1:{"token":"' + ("A" * 40) + '","host":"127.0.0.1","port":8765}'
+        res = self._run_powershell_bootstrap_parser([valid_frame])
+        self.assertTrue(res["Success"])
+        self.assertEqual(res["Host"], "127.0.0.1")
+        self.assertEqual(res["Port"], 8765)
+        self.assertEqual(res["Token"], "A" * 40)
+
+    def test_31_powershell_parser_rejects_duplicate_valid_frames(self) -> None:
+        """PowerShell bootstrap parser fails closed if duplicate valid frames are received."""
+        frame1 = 'UIAUTH_BOOTSTRAP_V1:{"token":"' + ("A" * 40) + '","host":"127.0.0.1","port":8765}'
+        frame2 = 'UIAUTH_BOOTSTRAP_V1:{"token":"' + ("B" * 40) + '","host":"127.0.0.1","port":8765}'
+        res = self._run_powershell_bootstrap_parser([frame1, frame2])
+        self.assertFalse(res["Success"])
+        self.assertEqual(res["Error"], "DUPLICATE_BOOTSTRAP_FRAME")
+
+    def test_32_powershell_parser_rejects_valid_plus_malformed_duplicate(self) -> None:
+        """PowerShell bootstrap parser fails closed if a second malformed bootstrap frame appears."""
+        frame1 = 'UIAUTH_BOOTSTRAP_V1:{"token":"' + ("A" * 40) + '","host":"127.0.0.1","port":8765}'
+        frame2 = 'UIAUTH_BOOTSTRAP_V1:{broken_json}'
+        res = self._run_powershell_bootstrap_parser([frame1, frame2])
+        self.assertFalse(res["Success"])
+        self.assertEqual(res["Error"], "DUPLICATE_BOOTSTRAP_FRAME")
+
+    def test_33_powershell_parser_accepts_single_frame_with_normal_logs(self) -> None:
+        """PowerShell bootstrap parser accepts a single valid frame followed by normal server logs."""
+        frame1 = 'UIAUTH_BOOTSTRAP_V1:{"token":"' + ("A" * 40) + '","host":"127.0.0.1","port":8765}'
+        log1 = "INFO: Server started on 127.0.0.1:8765"
+        log2 = "INFO: Application ready"
+        res = self._run_powershell_bootstrap_parser([frame1, log1, log2])
+        self.assertTrue(res["Success"])
+        self.assertEqual(res["Port"], 8765)
+
+    def test_34_powershell_parser_rejects_zero_frames(self) -> None:
+        """PowerShell bootstrap parser fails closed if zero bootstrap frames are received."""
+        res = self._run_powershell_bootstrap_parser(["INFO: Starting server...", "INFO: Error occurred."])
+        self.assertFalse(res["Success"])
+        self.assertEqual(res["Error"], "NO_BOOTSTRAP_FRAME")
+
 
 if __name__ == "__main__":
     unittest.main()

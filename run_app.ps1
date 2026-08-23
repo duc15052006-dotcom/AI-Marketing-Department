@@ -1,7 +1,69 @@
-# AI Marketing Department — Local Desktop Launcher (PROD-UIAUTH-01RR)
+# AI Marketing Department — Local Desktop Launcher (PROD-UIAUTH-01RRV)
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  AI MARKETING DEPARTMENT — DESKTOP LAUNCHER" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
+
+function Parse-BootstrapLines {
+    param(
+        [string[]]$Lines
+    )
+    $bootstrapFrameCount = 0
+    $token = ""
+    $hostVal = "127.0.0.1"
+    $portVal = 8765
+    $duplicateDetected = $false
+    $parseError = $false
+
+    foreach ($line in $Lines) {
+        if ($null -eq $line) { continue }
+        $trimmed = $line.Trim()
+        if ($trimmed.StartsWith("UIAUTH_BOOTSTRAP_V1:")) {
+            $bootstrapFrameCount++
+            if ($bootstrapFrameCount -gt 1) {
+                $duplicateDetected = $true
+                break
+            }
+            $jsonStr = $trimmed.Substring("UIAUTH_BOOTSTRAP_V1:".Length)
+            try {
+                $bootJson = $jsonStr | ConvertFrom-Json
+                if ($bootJson.token -and $bootJson.token.Length -ge 32 -and $bootJson.token.Length -le 256) {
+                    $token = $bootJson.token
+                } else {
+                    $parseError = $true
+                }
+                if ($bootJson.host -and ($bootJson.host -eq "127.0.0.1" -or $bootJson.host -eq "localhost" -or $bootJson.host -eq "::1")) {
+                    $hostVal = $bootJson.host
+                } else {
+                    $parseError = $true
+                }
+                if ($bootJson.port -and [int]$bootJson.port -ge 1 -and [int]$bootJson.port -le 65535) {
+                    $portVal = [int]$bootJson.port
+                } else {
+                    $parseError = $true
+                }
+            } catch {
+                $parseError = $true
+            }
+        }
+    }
+
+    if ($duplicateDetected) {
+        return @{ Success = $false; Error = "DUPLICATE_BOOTSTRAP_FRAME" }
+    }
+    if ($bootstrapFrameCount -eq 0) {
+        return @{ Success = $false; Error = "NO_BOOTSTRAP_FRAME" }
+    }
+    if ($parseError -or -not $token) {
+        return @{ Success = $false; Error = "INVALID_BOOTSTRAP_PAYLOAD" }
+    }
+
+    return @{
+        Success = $true
+        Token = $token
+        Host = $hostVal
+        Port = $portVal
+    }
+}
 
 # 1. Start Python Localhost API with Secure Bootstrap Pipe
 Write-Host "[1/3] Starting Python Localhost API with secure bootstrap..." -ForegroundColor Yellow
@@ -14,34 +76,35 @@ $psi.RedirectStandardOutput = $true
 $psi.CreateNoWindow = $true
 $pythonProcess = [System.Diagnostics.Process]::Start($psi)
 
+$collectedLines = @()
 $bootstrapRaw = $pythonProcess.StandardOutput.ReadLine()
-$sessionToken = ""
-$apiHost = "127.0.0.1"
-$apiPort = 8765
+if ($bootstrapRaw) {
+    $collectedLines += $bootstrapRaw
+}
 
-if ($bootstrapRaw -and $bootstrapRaw.StartsWith("UIAUTH_BOOTSTRAP_V1:")) {
-    $jsonStr = $bootstrapRaw.Substring("UIAUTH_BOOTSTRAP_V1:".Length)
-    try {
-        $bootJson = $jsonStr | ConvertFrom-Json
-        if ($bootJson.token -and $bootJson.token.Length -ge 32 -and $bootJson.token.Length -le 256) {
-            $sessionToken = $bootJson.token
+# Check for immediate duplicate line on startup pipe
+Start-Sleep -Milliseconds 100
+while (-not $pythonProcess.StandardOutput.EndOfStream) {
+    $extraLine = $pythonProcess.StandardOutput.ReadLine()
+    if ($extraLine) {
+        $collectedLines += $extraLine
+        if ($extraLine.Trim().StartsWith("UIAUTH_BOOTSTRAP_V1:")) {
+            break
         }
-        if ($bootJson.host -and ($bootJson.host -eq "127.0.0.1" -or $bootJson.host -eq "localhost" -or $bootJson.host -eq "::1")) {
-            $apiHost = $bootJson.host
-        }
-        if ($bootJson.port -and [int]$bootJson.port -ge 1 -and [int]$bootJson.port -le 65535) {
-            $apiPort = [int]$bootJson.port
-        }
-    } catch {
-        Write-Host "      ✗ Failed to parse bootstrap payload." -ForegroundColor Red
     }
 }
 
-if (-not $sessionToken) {
-    Write-Host "      ✗ Critical: No valid runtime session token obtained from backend bootstrap. Terminating." -ForegroundColor Red
+$bootResult = Parse-BootstrapLines -Lines $collectedLines
+
+if (-not $bootResult.Success) {
+    Write-Host "      ✗ Critical: Backend bootstrap handshake failed ($($bootResult.Error)). Terminating." -ForegroundColor Red
     if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-Process -Id $pythonProcess.Id -Force }
     exit 1
 }
+
+$sessionToken = $bootResult.Token
+$apiHost = $bootResult.Host
+$apiPort = $bootResult.Port
 
 Start-Sleep -Seconds 1
 
