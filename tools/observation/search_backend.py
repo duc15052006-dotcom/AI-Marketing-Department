@@ -62,7 +62,10 @@ class SearXNGSearchBackend(BaseSearchBackend):
     COST_CLASS = CostClass.COST_0_LIGHT
 
     def __init__(self, base_url: Optional[str] = None, default_timeout: float = 15.0) -> None:
-        self.base_url = (base_url or os.environ.get("SEARXNG_BASE_URL") or "http://127.0.0.1:8080").rstrip("/")
+        if base_url is None:
+            from config.authority import get_runtime_config
+            base_url = get_runtime_config().searxng_base_url or "http://127.0.0.1:8080"
+        self.base_url = base_url.rstrip("/")
         self.default_timeout = default_timeout
         self.adapter_state = SearXNGAdapterState.IMPLEMENTED
         self.provenance = "SELF_HOSTED_META_SEARCH" if "127.0.0.1" in self.base_url or "localhost" in self.base_url else "THIRD_PARTY_META_SEARCH"

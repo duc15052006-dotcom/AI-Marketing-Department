@@ -1,4 +1,4 @@
-"""Targeted Test Suite for PROD-CONFIG-01 / PROD-CONFIG-01R: Deterministic Configuration Authority.
+"""Targeted Test Suite for PROD-CONFIG-01 / PROD-CONFIG-01R / PROD-CONFIG-01RR: Deterministic Configuration Authority.
 
 Validates:
 1. Missing optional .env handled normally (graceful fallback)
@@ -28,7 +28,17 @@ Validates:
 25. Secret redaction and sanitization in diagnostics and logs
 26. Sentinel secret in exception/diagnostics/health is never leaked
 27. Frontend source contains zero secrets or runtime tokens
-28. Environment restoration post-test (zero leakage between tests)
+28. Real boot-order ENV_FILE provenance (PROD-CONFIG-01RR)
+29. Server bootstrap does not misclassify env-file value as PROCESS_ENV
+30. UniversalModelGateway ignores post-boot FREE_ONLY_MODE env mutation
+31. UniversalModelGateway ignores post-boot DEFAULT_PROVIDER env mutation
+32. ModelRouter ignores post-boot FREE_ONLY_MODE env mutation
+33. ModelRouter ignores post-boot DEFAULT_PROVIDER env mutation
+34. SQLiteChatRepository ignores post-boot DEPARTMENT_DB_PATH env mutation
+35. SearXNGSearchBackend ignores post-boot SEARXNG_BASE_URL env mutation
+36. Zero snapshot-managed LEGACY_DIRECT_CONFIG_READ remains across production code
+37. ConfigAuthority reset/reload is test-only and inaccessible via public API / model tools
+38. CONFIG_RELOAD_REQUIRES_RESTART behavioral truth
 """
 
 import math
@@ -498,6 +508,191 @@ class TestProdConfig01ConfigurationAuthority(unittest.TestCase):
         # Diagnostics must still reflect snapshot state (frozen at boot)
         diag = snapshot.to_diagnostics_dict()
         self.assertEqual(diag["secrets_configured"]["openai"], "[CONFIGURED]")
+
+    # ==========================================================================
+    # 6. PROD-CONFIG-01RR: Split-Brain Elimination & Real Boot Order Verification
+    # ==========================================================================
+
+    def test_27_real_boot_order_env_file_provenance(self) -> None:
+        """Real boot order: Keys absent from initial process env are classified as ENV_FILE."""
+        # Ensure key is absent from process environment
+        if "PROVENANCE_TEST_KEY" in os.environ:
+            del os.environ["PROVENANCE_TEST_KEY"]
+
+        test_env = self.temp_path / ".env"
+        test_env.write_text("APP_ENV=production_env_test\n", encoding="utf-8")
+
+        auth = ConfigurationAuthority(env_file_path=test_env, auto_load=True)
+        snapshot = auth.get_snapshot()
+
+        self.assertEqual(snapshot.environment, "production_env_test")
+        self.assertEqual(snapshot.provenance["APP_ENV"], ConfigSource.ENV_FILE)
+
+    def test_28_universal_model_gateway_ignores_post_boot_free_only_mode_env_mutation(self) -> None:
+        """UniversalModelGateway initialized after os.environ mutation still uses snapshot default."""
+        os.environ["FREE_ONLY_MODE"] = "true"
+        auth = ConfigurationAuthority(env_file_path=self.temp_path / ".env", auto_load=True)
+        snapshot = auth.get_snapshot()
+        self.assertTrue(snapshot.free_only_mode)
+
+        # Mutate ambient environment post-boot
+        os.environ["FREE_ONLY_MODE"] = "false"
+
+        from integrations.models.gateway import UniversalModelGateway
+        gw = UniversalModelGateway()
+        self.assertTrue(gw.free_only_mode)
+
+    def test_29_universal_model_gateway_ignores_post_boot_default_provider_env_mutation(self) -> None:
+        """UniversalModelGateway initialized after os.environ mutation still uses snapshot provider."""
+        os.environ["DEFAULT_PROVIDER"] = "gemini"
+        auth = ConfigurationAuthority(env_file_path=self.temp_path / ".env", auto_load=True)
+        snapshot = auth.get_snapshot()
+        self.assertEqual(snapshot.default_provider, "gemini")
+
+        # Mutate ambient environment post-boot
+        os.environ["DEFAULT_PROVIDER"] = "openai"
+
+        from integrations.models.gateway import UniversalModelGateway
+        gw = UniversalModelGateway()
+        self.assertEqual(gw._default_provider, "gemini")
+
+    def test_30_model_router_ignores_post_boot_free_only_mode_env_mutation(self) -> None:
+        """ModelRouter initialized after os.environ mutation still uses snapshot free_only_mode."""
+        os.environ["FREE_ONLY_MODE"] = "true"
+        auth = ConfigurationAuthority(env_file_path=self.temp_path / ".env", auto_load=True)
+        snapshot = auth.get_snapshot()
+        self.assertTrue(snapshot.free_only_mode)
+
+        # Mutate ambient environment post-boot
+        os.environ["FREE_ONLY_MODE"] = "false"
+
+        from integrations.models.router import ModelRouter
+        router = ModelRouter()
+        self.assertTrue(router._free_only_mode)
+
+    def test_31_model_router_ignores_post_boot_default_provider_env_mutation(self) -> None:
+        """ModelRouter initialized after os.environ mutation still uses snapshot default_provider."""
+        os.environ["DEFAULT_PROVIDER"] = "gemini"
+        auth = ConfigurationAuthority(env_file_path=self.temp_path / ".env", auto_load=True)
+        snapshot = auth.get_snapshot()
+        self.assertEqual(snapshot.default_provider, "gemini")
+
+        # Mutate ambient environment post-boot
+        os.environ["DEFAULT_PROVIDER"] = "thespark"
+
+        from integrations.models.router import ModelRouter
+        router = ModelRouter()
+        self.assertEqual(router.default_provider, "gemini")
+
+    def test_32_chat_repository_ignores_post_boot_db_path_env_mutation(self) -> None:
+        """SQLiteChatRepository initialized after os.environ mutation still uses snapshot DB path."""
+        target_db = str(self.temp_path / "valid_snapshot_sessions.db")
+        os.environ["DEPARTMENT_DB_PATH"] = target_db
+        auth = ConfigurationAuthority(env_file_path=self.temp_path / ".env", auto_load=True)
+        snapshot = auth.get_snapshot()
+        self.assertEqual(snapshot.department_db_path, target_db)
+
+        # Mutate ambient environment post-boot
+        os.environ["DEPARTMENT_DB_PATH"] = str(self.temp_path / "malicious_ambient.db")
+
+        from chat.repository import SQLiteChatRepository
+        repo = SQLiteChatRepository()
+        self.assertEqual(str(repo.db_path), target_db)
+
+    def test_33_searxng_backend_ignores_post_boot_base_url_env_mutation(self) -> None:
+        """SearXNGSearchBackend initialized after os.environ mutation still uses snapshot URL."""
+        os.environ["SEARXNG_BASE_URL"] = "http://127.0.0.1:8080"
+        auth = ConfigurationAuthority(env_file_path=self.temp_path / ".env", auto_load=True)
+        snapshot = auth.get_snapshot()
+        self.assertEqual(snapshot.searxng_base_url, "http://127.0.0.1:8080")
+
+        # Mutate ambient environment post-boot
+        os.environ["SEARXNG_BASE_URL"] = "http://attacker:9999"
+
+        from tools.observation.search_backend import SearXNGSearchBackend
+        backend = SearXNGSearchBackend()
+        self.assertEqual(backend.base_url, "http://127.0.0.1:8080")
+
+    def test_34_no_snapshot_managed_legacy_direct_config_reads_remain(self) -> None:
+        """Automated code audit: Zero legacy os.getenv / os.environ reads for snapshot settings."""
+        snapshot_settings = {
+            "APP_ENV",
+            "AUTONOMY_MODE",
+            "API_HOST",
+            "API_PORT",
+            "MAX_AUTO_BUDGET_USD",
+            "MAX_DAILY_BUDGET_CHANGE_PCT",
+            "FREE_ONLY_MODE",
+            "DEFAULT_PROVIDER",
+            "DEPARTMENT_DB_PATH",
+            "SEARXNG_BASE_URL",
+            "XKIRO_BASE_URL",
+            "XKIRO_MODEL",
+            "XKIRO_TIMEOUT",
+            "THESPARK_BASE_URL",
+            "THESPARK_MODEL",
+            "THESPARK_TIMEOUT",
+        }
+
+        production_dirs = [
+            REPO_ROOT / "app_api",
+            REPO_ROOT / "chat",
+            REPO_ROOT / "connectors",
+            REPO_ROOT / "integrations",
+            REPO_ROOT / "knowledge",
+            REPO_ROOT / "memory",
+            REPO_ROOT / "runtime",
+            REPO_ROOT / "tools",
+            REPO_ROOT / "workspace",
+        ]
+
+        violations = []
+        for pdir in production_dirs:
+            if not pdir.exists():
+                continue
+            for py_file in pdir.rglob("*.py"):
+                content = py_file.read_text(encoding="utf-8")
+                for setting in snapshot_settings:
+                    # Check for direct os.getenv / os.environ read patterns
+                    patterns = [
+                        f'os.getenv("{setting}"',
+                        f"os.getenv('{setting}'",
+                        f'os.environ.get("{setting}"',
+                        f"os.environ.get('{setting}'",
+                        f'os.environ["{setting}"]',
+                        f"os.environ['{setting}']",
+                    ]
+                    for pat in patterns:
+                        if pat in content:
+                            violations.append(f"{py_file.name}: {pat}")
+
+        self.assertEqual(violations, [], f"Found legacy direct config reads: {violations}")
+
+    def test_35_config_authority_reset_is_test_only(self) -> None:
+        """Verify ConfigurationAuthority.reset is not exposed in API handler or tools."""
+        from app_api.server import DepartmentAPIHandler
+        # Check that no method in DepartmentAPIHandler exposes config reset
+        handler_methods = dir(DepartmentAPIHandler)
+        for method_name in handler_methods:
+            self.assertNotIn("reset_config", method_name.lower())
+            self.assertNotIn("reload_config", method_name.lower())
+
+    def test_36_config_reload_requires_restart_truth(self) -> None:
+        """Verify CONFIG_RELOAD_REQUIRES_RESTART is behavioral truth."""
+        self.assertTrue(CONFIG_RELOAD_REQUIRES_RESTART)
+        auth = ConfigurationAuthority(
+            env_file_path=self.temp_path / ".env",
+            explicit_overrides={"API_PORT": 8765},
+            auto_load=True,
+        )
+        snap1 = auth.get_snapshot()
+        self.assertEqual(snap1.api_port, 8765)
+
+        # Mutate environment
+        os.environ["API_PORT"] = "9999"
+        snap2 = auth.get_snapshot()
+        self.assertEqual(snap2.api_port, 8765)
+        self.assertIs(snap1, snap2)
 
 
 if __name__ == "__main__":

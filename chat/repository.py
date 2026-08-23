@@ -98,7 +98,9 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
 
     def __init__(self, db_path: Optional[str] = None) -> None:
         if db_path is None:
-            db_path = os.environ.get("DEPARTMENT_DB_PATH", str(DEFAULT_DB_PATH))
+            from config.authority import get_runtime_config
+            configured_path = get_runtime_config().department_db_path
+            db_path = configured_path if configured_path else str(DEFAULT_DB_PATH)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

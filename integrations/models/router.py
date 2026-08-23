@@ -34,14 +34,15 @@ class ModelRouter:
         free_only_mode: Optional[bool] = None,
     ) -> None:
         self._adapters: Dict[str, BaseModelAdapter] = {}
+        from config.authority import get_runtime_config
+        runtime = get_runtime_config()
         self._default_provider = (
-            default_provider or os.environ.get("DEFAULT_PROVIDER") or "gemini"
+            default_provider or runtime.default_provider
         ).lower()
         self._fallback_chain: List[str] = ["gemini", "thespark", "openai"]
         self._fallback_enabled: bool = True
 
-        env_free_mode = os.environ.get("FREE_ONLY_MODE", "true").lower() in ("true", "1", "yes")
-        self._free_only_mode: bool = free_only_mode if free_only_mode is not None else env_free_mode
+        self._free_only_mode: bool = free_only_mode if free_only_mode is not None else runtime.free_only_mode
 
         # Auto-register available adapters
         self.register_adapter(GeminiProviderAdapter())

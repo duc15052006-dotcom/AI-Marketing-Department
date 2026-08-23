@@ -100,9 +100,9 @@ PUBLIC_LOCAL_HEALTH_PATHS: Set[str] = {
     "/api/health",
 }
 
-# Automatic Environment Loading (Deterministic REPO_ROOT / .env, no home directory search)
-from config.env_loader import load_env_file
-load_env_file(REPO_ROOT / ".env", override=False)
+# Central Configuration Authority Bootstrap (PROD-CONFIG-01 / PROD-CONFIG-01RR)
+from config.authority import get_runtime_config
+get_runtime_config()
 
 from chat.engine import ChatConversationEngine
 from chat.knowledge import SessionKnowledgeStore
@@ -1287,11 +1287,15 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "NOT_FOUND"}, 404)
 
 
-def run_server(port: int = 8765, host: str = "127.0.0.1") -> None:
+def run_server(port: Optional[int] = None, host: Optional[str] = None) -> None:
     """Launch localhost-only Department Application API server."""
+    from config.authority import get_runtime_config
+    runtime = get_runtime_config()
+    target_host = host if host is not None else runtime.api_host
+    target_port = port if port is not None else runtime.api_port
     from config.env_loader import parse_int, validate_loopback_host
-    valid_host = validate_loopback_host(host, setting_name="API_HOST")
-    valid_port = parse_int(port, default=8765, min_val=1, max_val=65535, setting_name="API_PORT")
+    valid_host = validate_loopback_host(str(target_host), setting_name="API_HOST")
+    valid_port = parse_int(target_port, default=8765, min_val=1, max_val=65535, setting_name="API_PORT")
     server_address = (valid_host, valid_port)
     httpd = ThreadingHTTPServer(server_address, DepartmentAPIHandler)
     logger.info(f"AI Marketing Department API running at http://{valid_host}:{valid_port}")

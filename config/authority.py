@@ -111,6 +111,8 @@ class ConfigurationAuthority:
         self._explicit_overrides = dict(explicit_overrides or {})
         self._process_env_at_boot: Dict[str, str] = dict(os.environ)
         self._parsed_env_file: Dict[str, str] = {}
+        if ConfigurationAuthority._instance is None:
+            ConfigurationAuthority._instance = self
         if auto_load:
             self._load_and_initialize()
 
@@ -119,13 +121,14 @@ class ConfigurationAuthority:
         # 1. Parse .env file without mutating process env yet
         self._parsed_env_file = parse_env_file(self._env_file_path)
 
-        # 2. Populate missing keys in os.environ for backwards compatibility with low-level libraries
+        # 2. Build immutable snapshot with exact provenance
+        self._snapshot = self._build_snapshot()
+        ConfigurationAuthority._snapshot = self._snapshot
+
+        # 3. Populate missing keys in os.environ for backwards compatibility with low-level libraries
         for k, v in self._parsed_env_file.items():
             if k not in os.environ:
                 os.environ[k] = v
-
-        # 3. Build immutable snapshot with exact provenance
-        self._snapshot = self._build_snapshot()
 
     def _get_with_provenance(
         self,

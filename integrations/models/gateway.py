@@ -86,9 +86,10 @@ class UniversalModelGateway:
         self.model_registry = model_registry or ModelRegistry()
         self.profile_manager = profile_manager or ProfileManager()
 
-        env_free = os.environ.get("FREE_ONLY_MODE", "true").lower() in ("true", "1", "yes")
-        self._free_only_mode: bool = free_only_mode if free_only_mode is not None else env_free
-        self._default_provider = (default_provider or os.environ.get("DEFAULT_PROVIDER") or "gemini").lower()
+        from config.authority import get_runtime_config
+        runtime = get_runtime_config()
+        self._free_only_mode: bool = free_only_mode if free_only_mode is not None else runtime.free_only_mode
+        self._default_provider = (default_provider or runtime.default_provider).lower()
 
         # Provider health tracking
         self._health_state: Dict[str, Dict[str, Any]] = {}

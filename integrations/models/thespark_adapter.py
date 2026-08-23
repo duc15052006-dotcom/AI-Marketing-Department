@@ -35,16 +35,14 @@ class TheSparkProviderAdapter(BaseModelAdapter):
         default_model: Optional[str] = None,
     ) -> None:
         self._api_key = api_key if api_key is not None else os.environ.get("THESPARK_API_KEY")
-        self._base_url = (
-            base_url
-            if base_url is not None
-            else os.environ.get("THESPARK_BASE_URL", "https://llm.thesparkdaily.com/v1")
-        ).rstrip("/")
-        self._default_model = (
-            default_model
-            if default_model is not None
-            else os.environ.get("THESPARK_MODEL", "gpt-5.6-sol")
-        )
+        if base_url is None:
+            from config.authority import get_runtime_config
+            base_url = get_runtime_config().thespark_base_url or "https://llm.thesparkdaily.com/v1"
+        self._base_url = base_url.rstrip("/")
+        if default_model is None:
+            from config.authority import get_runtime_config
+            default_model = get_runtime_config().thespark_model or "thespark-v1"
+        self._default_model = default_model
 
     @property
     def provider_name(self) -> str:

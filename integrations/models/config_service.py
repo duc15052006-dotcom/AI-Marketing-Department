@@ -136,15 +136,12 @@ class ProviderConfigService:
             except Exception as e:
                 logger.debug(f"Config file read note: {e}")
 
-        # 3. Development .env fallback (deterministic REPO_ROOT / .env, no user home directory search)
-        from config.env_loader import load_env_file
-        proj_root = Path(__file__).resolve().parent.parent.parent
-        for env_path in [self._config_dir / ".env", proj_root / ".env"]:
-            if env_path.is_file():
-                try:
-                    load_env_file(env_path, override=False)
-                except Exception as e:
-                    logger.debug(f"Env file read note: {e}")
+        # 3. Development .env fallback (managed via single ConfigurationAuthority)
+        from config.authority import get_runtime_config
+        try:
+            get_runtime_config()
+        except Exception as e:
+            logger.debug(f"ConfigurationAuthority bootstrap note: {e}")
 
     def _get_env_val(self, key: str) -> Optional[str]:
         """Retrieve key value prioritizing overrides then OS environment."""
@@ -154,15 +151,18 @@ class ProviderConfigService:
 
     def _load_provider_configurations(self) -> None:
         """Construct the resolved provider configurations."""
+        from config.authority import get_runtime_config
+        runtime = get_runtime_config()
+
         # 1. xKiro
         xkiro_key = self._get_env_val("XKIRO_API_KEY")
         self._providers["xkiro"] = ResolvedProviderConfig(
             provider_id="xkiro",
             enabled=True,
-            base_url=self._get_env_val("XKIRO_BASE_URL") or "https://api.xkiro.com/v1",
-            default_model=self._get_env_val("XKIRO_MODEL") or "mistralai/mistral-large-2512",
+            base_url=self._get_env_val("XKIRO_BASE_URL") or runtime.xkiro_base_url,
+            default_model=self._get_env_val("XKIRO_MODEL") or runtime.xkiro_model,
             api_key=xkiro_key,
-            timeout_seconds=float(self._get_env_val("XKIRO_TIMEOUT") or "30.0"),
+            timeout_seconds=float(self._get_env_val("XKIRO_TIMEOUT") or runtime.xkiro_timeout),
             cost_policy="FREE_TIER_ALLOWED",
         )
 
@@ -183,10 +183,10 @@ class ProviderConfigService:
         self._providers["thespark"] = ResolvedProviderConfig(
             provider_id="thespark",
             enabled=True,
-            base_url=self._get_env_val("THESPARK_BASE_URL") or "https://api.thespark.io/v1",
-            default_model=self._get_env_val("THESPARK_MODEL") or "thespark-v1",
+            base_url=self._get_env_val("THESPARK_BASE_URL") or runtime.thespark_base_url,
+            default_model=self._get_env_val("THESPARK_MODEL") or runtime.thespark_model,
             api_key=thespark_key,
-            timeout_seconds=float(self._get_env_val("THESPARK_TIMEOUT") or "30.0"),
+            timeout_seconds=float(self._get_env_val("THESPARK_TIMEOUT") or runtime.thespark_timeout),
             cost_policy="FREE_TIER_ALLOWED",
         )
 
