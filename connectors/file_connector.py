@@ -1,6 +1,7 @@
 """Real File and Data Connector (Phase 6.1).
 
 Implements real local filesystem reads, writes, JSON/CSV parsing, and structured data exports.
+Hardened with strict filesystem sandbox containment (PROD-FS-01).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.filesystem_guard import FilesystemSecurityError, resolve_safe_path
 from tools.receipts import ExecutionMode
 
 
@@ -20,7 +22,7 @@ class RealFileConnector(BaseCapabilityAdapter):
     """Real filesystem and data export connector with sandboxed path validation."""
 
     def __init__(self, base_dir: Optional[Path] = None) -> None:
-        self.base_dir = base_dir or Path.cwd()
+        self.base_dir = (base_dir or Path.cwd()).resolve()
 
     @property
     def adapter_name(self) -> str:
@@ -31,25 +33,27 @@ class RealFileConnector(BaseCapabilityAdapter):
         cap = capability_id.lower()
         path_str = parameters.get("path", "")
 
-        if not path_str:
+        if not path_str or not isinstance(path_str, str):
             return AdapterResult(
                 success=False,
                 error_code="INVALID_PATH",
-                error_message="Missing required parameter 'path'.",
+                error_message="Missing or invalid required parameter 'path'.",
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                execution_mode=ExecutionMode.MOCK,
             )
 
-        target_path = (self.base_dir / path_str).resolve()
-
         if cap in ("file_read", "read_file"):
-            if not target_path.exists():
+            try:
+                target_path = resolve_safe_path(self.base_dir, path_str, operation="read")
+            except FilesystemSecurityError as e:
                 return AdapterResult(
                     success=False,
-                    error_code="FILE_NOT_FOUND",
-                    error_message=f"File not found: {path_str}",
+                    error_code=e.error_code,
+                    error_message=e.message,
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                     execution_mode=ExecutionMode.MOCK,
                 )
+
             try:
                 content = target_path.read_text(encoding="utf-8")
                 return AdapterResult(
@@ -69,6 +73,17 @@ class RealFileConnector(BaseCapabilityAdapter):
                 )
 
         elif cap in ("file_write", "write_file", "data_export"):
+            try:
+                target_path = resolve_safe_path(self.base_dir, path_str, operation="write")
+            except FilesystemSecurityError as e:
+                return AdapterResult(
+                    success=False,
+                    error_code=e.error_code,
+                    error_message=e.message,
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    execution_mode=ExecutionMode.MOCK,
+                )
+
             content = parameters.get("content", "")
             try:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,15 +109,18 @@ class RealFileConnector(BaseCapabilityAdapter):
                 )
 
         elif cap == "structured_storage_query":
-            # Read CSV / JSON table query
-            if not target_path.exists():
+            try:
+                target_path = resolve_safe_path(self.base_dir, path_str, operation="read")
+            except FilesystemSecurityError as e:
+                err_code = "DATASET_NOT_FOUND" if e.error_code == "FILE_NOT_FOUND" else e.error_code
                 return AdapterResult(
                     success=False,
-                    error_code="DATASET_NOT_FOUND",
-                    error_message=f"Dataset not found at {path_str}",
+                    error_code=err_code,
+                    error_message=e.message,
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                     execution_mode=ExecutionMode.MOCK,
                 )
+
             try:
                 if target_path.suffix.lower() == ".json":
                     data = json.loads(target_path.read_text(encoding="utf-8"))
