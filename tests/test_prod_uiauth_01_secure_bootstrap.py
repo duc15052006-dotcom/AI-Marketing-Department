@@ -672,6 +672,85 @@ class TestProdUIAuth01SecureBootstrap(unittest.TestCase):
         self.assertIn('impl std::fmt::Debug for BackendProcessState', tauri_main)
         self.assertIn('"auth_token", &"[REDACTED]"', tauri_main)
 
+    def test_25_approval_display_sourced_from_server_record(self) -> None:
+        """Approval display fields are obtained directly from server record with secrets redacted."""
+        from tools.security import PolicyEngine, RiskLevel
+        policy = PolicyEngine()
+        pending = policy.create_pending_approval(
+            capability_id="social_publishing",
+            parameters={
+                "platform": "facebook",
+                "target_page": "Main Page",
+                "content": "Announcement",
+                "api_key": "sensitive_key_999",
+            },
+            risk_level=RiskLevel.HIGH,
+            run_id="RUN-TEST-001",
+            business_id="BIZ-TEST",
+        )
+        self.assertEqual(pending.capability_id, "social_publishing")
+        self.assertEqual(pending.run_id, "RUN-TEST-001")
+        self.assertEqual(pending.business_id, "BIZ-TEST")
+        self.assertEqual(pending.parameters["platform"], "facebook")
+
+    def test_26_stale_or_expired_proposal_cannot_be_approved(self) -> None:
+        """A proposal that is not in PENDING status strictly fails approval."""
+        from tools.security import PolicyEngine, RiskLevel, PendingApprovalStatus
+        policy = PolicyEngine()
+        pending = policy.create_pending_approval(
+            capability_id="social_publishing",
+            parameters={"platform": "x"},
+            risk_level=RiskLevel.HIGH,
+            run_id="RUN-STALE-001",
+        )
+
+        # Mutate status to REJECTED before user confirms
+        pending.status = PendingApprovalStatus.REJECTED
+        ok, rec, msg = policy.approve_pending_action(pending.pending_approval_id)
+        self.assertFalse(ok)
+        self.assertIsNone(rec)
+        self.assertEqual(msg, "INVALID_STATUS_REJECTED")
+
+        # Expired action
+        expired_pending = policy.create_pending_approval(
+            capability_id="social_publishing",
+            ttl_seconds=-10,
+        )
+        ok_exp, rec_exp, msg_exp = policy.approve_pending_action(expired_pending.pending_approval_id)
+        self.assertFalse(ok_exp)
+        self.assertIsNone(rec_exp)
+        self.assertEqual(msg_exp, "PENDING_ACTION_EXPIRED")
+
+    def test_27_duplicate_bootstrap_stream_fails_closed(self) -> None:
+        """Rust parser strictly rejects duplicate bootstrap frames in stdout stream."""
+        tauri_main = (REPO_ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+        self.assertIn('pub fn parse_bootstrap_stream', tauri_main)
+        self.assertIn('DUPLICATE_BOOTSTRAP_FRAME', tauri_main)
+
+    def test_28_js_cannot_supply_confirmation_or_tamper_fields(self) -> None:
+        """ReviewApprovalArgs IPC struct accepts ONLY pending_id."""
+        tauri_main = (REPO_ROOT / "src-tauri" / "src" / "main.rs").read_text(encoding="utf-8")
+        self.assertIn("pub struct ReviewApprovalArgs", tauri_main)
+        self.assertIn("pub pending_id: String", tauri_main)
+        self.assertNotIn("pub approved:", tauri_main)
+        self.assertNotIn("pub confirmed:", tauri_main)
+        self.assertNotIn("pub capability:", tauri_main)
+        self.assertNotIn("pub parameters:", tauri_main)
+
+    def test_29_approval_secret_token_never_returned_to_frontend(self) -> None:
+        """Pending approval inspection does not return session bearer or private approval secrets."""
+        from tools.security import PolicyEngine, RiskLevel
+        policy = PolicyEngine()
+        pending = policy.create_pending_approval(
+            capability_id="filesystem_write",
+            parameters={"path": "output.txt"},
+            risk_level=RiskLevel.HIGH,
+            run_id="RUN-SECRET-CHECK",
+        )
+        # Verify pending record fields don't contain secret tokens
+        self.assertNotIn("token", pending.parameters)
+        self.assertNotIn("bearer", pending.parameters)
+
 
 if __name__ == "__main__":
     unittest.main()

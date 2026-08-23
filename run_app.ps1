@@ -1,4 +1,4 @@
-# AI Marketing Department — Local Desktop Launcher (PROD-UIAUTH-01R)
+# AI Marketing Department — Local Desktop Launcher (PROD-UIAUTH-01RR)
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "  AI MARKETING DEPARTMENT — DESKTOP LAUNCHER" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
@@ -23,7 +23,7 @@ if ($bootstrapRaw -and $bootstrapRaw.StartsWith("UIAUTH_BOOTSTRAP_V1:")) {
     $jsonStr = $bootstrapRaw.Substring("UIAUTH_BOOTSTRAP_V1:".Length)
     try {
         $bootJson = $jsonStr | ConvertFrom-Json
-        if ($bootJson.token -and $bootJson.token.Length -ge 32) {
+        if ($bootJson.token -and $bootJson.token.Length -ge 32 -and $bootJson.token.Length -le 256) {
             $sessionToken = $bootJson.token
         }
         if ($bootJson.host -and ($bootJson.host -eq "127.0.0.1" -or $bootJson.host -eq "localhost" -or $bootJson.host -eq "::1")) {
@@ -38,7 +38,9 @@ if ($bootstrapRaw -and $bootstrapRaw.StartsWith("UIAUTH_BOOTSTRAP_V1:")) {
 }
 
 if (-not $sessionToken) {
-    Write-Host "      ✗ Critical: No valid runtime session token obtained from backend bootstrap." -ForegroundColor Red
+    Write-Host "      ✗ Critical: No valid runtime session token obtained from backend bootstrap. Terminating." -ForegroundColor Red
+    if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-Process -Id $pythonProcess.Id -Force }
+    exit 1
 }
 
 Start-Sleep -Seconds 1
