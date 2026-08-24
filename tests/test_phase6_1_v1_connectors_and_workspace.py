@@ -52,6 +52,8 @@ from memory.learning import LearningEvent, LocalLearningRepository
 from memory.learning_operations import LearningOperatorService
 from memory.models import MemoryItem, MemoryType, PromotionState
 from memory.operations import MemoryOperatorService
+from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
+from integrations.models.gateway import UniversalModelGateway
 from memory.repository import LocalMemoryRepository
 from runtime.context import RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime
@@ -61,6 +63,62 @@ from tools.security import HumanApprovalRecord, PolicyEngine
 from tools.tool_gateway import ToolGateway, ToolRequest
 from workspace.business import BusinessRegistry, BusinessWorkspace
 from workspace.operator import OperatorWorkspace
+
+
+class ScriptedAgentGateway(UniversalModelGateway):
+    """Deterministic script-based model gateway for hermetic workspace tests."""
+
+    MARKERS = [
+        ("final_cmo", "governed final synthesis"),
+        ("final_cmo", "Final Governed"),
+        ("performance", "Performance Marketing"),
+        ("performance", "Performance Specialist"),
+        ("creative", "Creative Director"),
+        ("creative", "Creative Specialist"),
+        ("strategist", "Marketing Strategist"),
+        ("intelligence", "Intelligence Specialist"),
+        ("cmo_initial", "Executive Master Orchestrator"),
+        ("cmo_initial", "Chief Marketing Officer (CMO)"),
+    ]
+
+    def __init__(self, replies: dict | None = None, fail_stages=()):
+        super().__init__(free_only_mode=True)
+        self.replies = dict(replies or {})
+        self.fail_stages = set(fail_stages)
+        self.calls = []
+
+    def _label(self, request: ModelRequest) -> str:
+        sys_msg = ""
+        if request.messages and request.messages[0].role == ModelRole.SYSTEM:
+            sys_msg = request.messages[0].content
+        for label, marker in self.MARKERS:
+            if marker in sys_msg:
+                return label
+        return "unknown"
+
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
+        label = self._label(request)
+        sys_msg = request.messages[0].content if request.messages else ""
+        user_msg = request.messages[-1].content if request.messages else ""
+        self.calls.append((label, sys_msg, user_msg))
+
+        if label in self.fail_stages:
+            return ModelResponse(
+                request_id=request.request_id,
+                provider="scripted_mock",
+                model_name="scripted",
+                status=ModelResponseStatus.ERROR,
+                error="SCRIPTED_STAGE_FAILURE",
+            )
+
+        reply = self.replies.get(label, f"[{label}] deterministic deliverable for {request.request_id}.")
+        return ModelResponse(
+            request_id=request.request_id,
+            provider="scripted_mock",
+            model_name="scripted",
+            status=ModelResponseStatus.SUCCESS,
+            content=reply,
+        )
 
 
 class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
@@ -90,8 +148,10 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
         self.knowledge_repo = LocalKnowledgeRepository()
         self.memory_repo = LocalMemoryRepository()
         self.learning_repo = LocalLearningRepository()
+        self.model_gateway = ScriptedAgentGateway()
 
         self.runtime = FiveAgentDepartmentRuntime(
+            model_gateway=self.model_gateway,
             tool_gateway=self.tool_gateway,
             knowledge_repo=self.knowledge_repo,
             memory_repo=self.memory_repo,
