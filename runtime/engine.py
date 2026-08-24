@@ -306,6 +306,7 @@ class FiveAgentDepartmentRuntime:
         user_prompt: str,
         temperature: float = 0.3,
         timeout_seconds: Optional[float] = None,
+        context: Optional[RuntimeContext] = None,
     ) -> tuple[Optional[str], Optional[str]]:
         """Helper to invoke UniversalModelGateway for an agent stage.
 
@@ -326,9 +327,47 @@ class FiveAgentDepartmentRuntime:
             temperature=temperature,
             max_tokens=4096,
             timeout_seconds=timeout_seconds,
+            metadata={"agent_id": agent_name},
         )
+
+        model_policy_obj = None
+        provider_snapshot_obj = None
+        if context and context.model_policy:
+            raw_pol = context.model_policy
+            if "policy" in raw_pol and isinstance(raw_pol["policy"], dict):
+                try:
+                    from integrations.models.registry import ModelPolicy
+                    model_policy_obj = ModelPolicy(**raw_pol["policy"])
+                except Exception:
+                    pass
+            elif isinstance(raw_pol, dict):
+                try:
+                    from integrations.models.registry import ModelPolicy
+                    model_policy_obj = ModelPolicy(**raw_pol)
+                except Exception:
+                    pass
+            if "providers" in raw_pol and isinstance(raw_pol["providers"], dict):
+                try:
+                    from integrations.models.registry import ProviderDefinition, ProviderRegistrySnapshot
+                    provider_snapshot_obj = ProviderRegistrySnapshot(
+                        providers={pid: ProviderDefinition(**p) for pid, p in raw_pol["providers"].items()}
+                    )
+                except Exception:
+                    pass
+
         try:
-            resp = self.model_gateway.generate(req)
+            try:
+                resp = self.model_gateway.generate(
+                    req,
+                    agent_id=agent_name,
+                    model_policy=model_policy_obj,
+                    provider_snapshot=provider_snapshot_obj,
+                )
+            except TypeError:
+                try:
+                    resp = self.model_gateway.generate(req, agent_id=agent_name)
+                except TypeError:
+                    resp = self.model_gateway.generate(req)
             if resp.status == ModelResponseStatus.SUCCESS and resp.content:
                 return resp.content.strip(), None
             err = resp.error or f"MODEL_RESPONSE_{resp.status.value}"
@@ -364,6 +403,21 @@ class FiveAgentDepartmentRuntime:
             if rid in self._active_contexts or rid in self._completed_runs:
                 raise RunIdAlreadyExistsError(f"RUN_ID_ALREADY_EXISTS: Run ID '{rid}' already exists in active or completed runs.")
 
+            pol_dict = {"free_only_mode": True, "timeout": 60.0}
+            if self.model_gateway and hasattr(self.model_gateway, "model_policy") and self.model_gateway.model_policy:
+                reg_snap = None
+                if hasattr(self.model_gateway, "provider_registry") and self.model_gateway.provider_registry:
+                    try:
+                        reg_snap = self.model_gateway.provider_registry.snapshot().model_dump()
+                    except Exception:
+                        pass
+                pol_dict = {
+                    "policy": self.model_gateway.model_policy.model_dump(),
+                    "providers": reg_snap["providers"] if reg_snap and "providers" in reg_snap else {},
+                    "configuration_version": self.model_gateway.model_policy.configuration_version,
+                    "free_only_mode": self.model_gateway.model_policy.free_only_mode,
+                }
+
             context = RuntimeContext(
                 run_id=rid,
                 objective=objective,
@@ -374,6 +428,7 @@ class FiveAgentDepartmentRuntime:
                 project_id=project_id,
                 status=RuntimeStatus.RUNNING,
                 current_stage=RuntimeStage.INIT,
+                model_policy=pol_dict,
             )
             # COLLAB-03: structurally capture explicit user restrictions from the
             # raw objective (verbatim; deterministic; fail-closed to empty).
@@ -415,7 +470,7 @@ class FiveAgentDepartmentRuntime:
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Marketing Objective: {context.objective}\nWorkspace/Brand: {context.business_id}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
-        llm_output, err = self._call_agent_llm("cmo", sys_prompt, user_prompt)
+        llm_output, err = self._call_agent_llm("cmo", sys_prompt, user_prompt, context=context)
 
         if not llm_output:
             context.status = RuntimeStatus.FAILED
@@ -516,7 +571,7 @@ class FiveAgentDepartmentRuntime:
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nCMO Directive: {cmo_intent}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
-        llm_findings, err = self._call_agent_llm("intelligence", sys_prompt, user_prompt)
+        llm_findings, err = self._call_agent_llm("intelligence", sys_prompt, user_prompt, context=context)
 
         if not llm_findings:
             context.status = RuntimeStatus.FAILED
@@ -594,7 +649,7 @@ class FiveAgentDepartmentRuntime:
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nIntelligence Research: {intel_findings}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
-        llm_strategy, err = self._call_agent_llm("strategist", sys_prompt, user_prompt)
+        llm_strategy, err = self._call_agent_llm("strategist", sys_prompt, user_prompt, context=context)
 
         if not llm_strategy:
             context.status = RuntimeStatus.FAILED
@@ -697,7 +752,7 @@ class FiveAgentDepartmentRuntime:
         evidence_section = grounded_pkg.render_prompt_section()
         user_prompt = f"Objective: {context.objective}\nPositioning Strategy: {strat_pos}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
-        llm_creative, err = self._call_agent_llm("creative", sys_prompt, user_prompt, temperature=0.7)
+        llm_creative, err = self._call_agent_llm("creative", sys_prompt, user_prompt, temperature=0.7, context=context)
 
         if not llm_creative:
             context.status = RuntimeStatus.FAILED
@@ -818,7 +873,7 @@ class FiveAgentDepartmentRuntime:
             f"{evidence_section}"
         ).strip()
         user_prompt = self._append_governance_block(context, user_prompt)
-        llm_perf, err = self._call_agent_llm("performance", sys_prompt, user_prompt)
+        llm_perf, err = self._call_agent_llm("performance", sys_prompt, user_prompt, context=context)
 
         if not llm_perf:
             context.status = RuntimeStatus.FAILED
@@ -1556,7 +1611,7 @@ class FiveAgentDepartmentRuntime:
         ).strip()
         user_prompt = self._append_governance_block(context, user_prompt)
 
-        llm_report, err = self._call_agent_llm("cmo", sys_prompt, user_prompt)
+        llm_report, err = self._call_agent_llm("cmo", sys_prompt, user_prompt, context=context)
 
         if not llm_report:
             fail_reason = err or "MODEL_PROVIDER_FAILURE"

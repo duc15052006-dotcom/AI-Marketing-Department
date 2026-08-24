@@ -31,7 +31,17 @@ from integrations.models.base import (
 )
 from integrations.models.config_service import GLOBAL_PROVIDER_CONFIG, ProviderConfigService, ProviderErrorCode
 from integrations.models.profiles import ModelProfile, ProfileManager
-from integrations.models.registry import ModelMetadata, ModelRegistry, ProviderConfig, ProviderProtocol, ProviderRegistry
+from integrations.models.registry import (
+    ModelMetadata,
+    ModelPolicy,
+    ModelRegistry,
+    ModelTarget,
+    ProviderConfig,
+    ProviderDefinition,
+    ProviderProtocol,
+    ProviderRegistry,
+    normalize_agent_id,
+)
 
 logger = logging.getLogger("universal_model_gateway")
 
@@ -55,8 +65,10 @@ def classify_error(err_str: Optional[str]) -> ProviderErrorCode:
         return ProviderErrorCode.MODEL_NOT_FOUND
     if "NETWORK" in err_upper or "CONNECTION" in err_upper or "ECONNREFUSED" in err_upper:
         return ProviderErrorCode.NETWORK_ERROR
-    if "CONFIG" in err_upper:
+    if "CONFIG" in err_upper or "SCHEME" in err_upper or "URL" in err_upper:
         return ProviderErrorCode.CONFIG_ERROR
+    if "DISABLED" in err_upper:
+        return ProviderErrorCode.PROVIDER_DISABLED
     return ProviderErrorCode.OTHER
 
 
@@ -78,6 +90,7 @@ class UniversalModelGateway:
         model_registry: Optional[ModelRegistry] = None,
         profile_manager: Optional[ProfileManager] = None,
         config_service: Optional[ProviderConfigService] = None,
+        model_policy: Optional[ModelPolicy] = None,
         free_only_mode: Optional[bool] = None,
         default_provider: Optional[str] = None,
     ) -> None:
@@ -91,6 +104,17 @@ class UniversalModelGateway:
         self._free_only_mode: bool = free_only_mode if free_only_mode is not None else runtime.free_only_mode
         self._default_provider = (default_provider or runtime.default_provider).lower()
 
+        # Authoritative Model Policy
+        self._has_explicit_policy: bool = model_policy is not None
+        self.model_policy = model_policy or ModelPolicy(
+            global_target=ModelTarget(provider_id=default_provider or "xkiro", model_id="mistralai/mistral-large-2512"),
+            fallback_chain=[
+                ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
+                ModelTarget(provider_id="gemini", model_id="gemini-flash-latest"),
+            ],
+            free_only_mode=self._free_only_mode,
+        )
+
         # Provider health tracking
         self._health_state: Dict[str, Dict[str, Any]] = {}
 
@@ -101,6 +125,7 @@ class UniversalModelGateway:
     def set_free_only_mode(self, enabled: bool) -> None:
         """Toggle strict free-only cost governance."""
         self._free_only_mode = enabled
+        self.model_policy.free_only_mode = enabled
 
     def get_provider_health(self, provider_id: str) -> ProviderHealth:
         """Get current health state for a provider."""
@@ -121,6 +146,8 @@ class UniversalModelGateway:
         profile: Optional[str] = None,
         provider_id: Optional[str] = None,
         model_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        model_policy: Optional[ModelPolicy] = None,
     ) -> List[Tuple[str, str]]:
         """Resolve ordered list of (provider_id, model_id) candidates."""
         if provider_id and model_id:
@@ -134,23 +161,32 @@ class UniversalModelGateway:
             m_id = model_id or (cfg.default_model if cfg else "default")
             return [(provider_id.lower(), m_id)]
 
-        if getattr(self.provider_registry, "_has_custom_adapters", False) and not profile and not provider_id:
-            return [
-                (pid, getattr(adapter, "default_model", "default"))
-                for pid, adapter in self.provider_registry._adapters.items()
-            ]
+        effective_policy = model_policy or self.model_policy
 
-        # Default fallback chain
-        return [
-            ("xkiro", "mistralai/mistral-large-2512"),
-            ("gemini", "gemini-flash-latest"),
-        ]
+        # Explicit Injected Adapter Chain (Generic DI Mode):
+        # When adapters are explicitly injected and no explicit policy override exists,
+        # route through the injected adapter chain.
+        has_injected = getattr(self.provider_registry, "_has_custom_adapters", False) or bool(getattr(self.provider_registry, "_injected_adapters", None))
+        if has_injected and not profile and not provider_id and not self._has_explicit_policy:
+            adapters = getattr(self.provider_registry, "_injected_adapters", {}) or getattr(self.provider_registry, "_adapters", {})
+            if adapters:
+                return [
+                    (pid, getattr(adapter, "default_model", "default"))
+                    for pid, adapter in adapters.items()
+                ]
+
+        # Explicit Policy Authority (Production / Governed Policy):
+        targets = effective_policy.get_candidate_chain_for_agent(agent_id)
+        return [(t.provider_id, t.model_id) for t in targets]
 
     def generate(
         self,
         request: ModelRequest,
         profile: Optional[str] = None,
         provider_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        model_policy: Optional[ModelPolicy] = None,
+        provider_snapshot: Optional[Any] = None,
         strict_model_pin: bool = False,
         allow_paid: bool = False,
     ) -> ModelResponse:
@@ -176,6 +212,8 @@ class UniversalModelGateway:
             profile=profile,
             provider_id=provider_id,
             model_id=norm_req.model_name if norm_req.model_name not in ("default", "", None) else None,
+            agent_id=agent_id,
+            model_policy=model_policy,
         )
 
         if not candidates:
@@ -206,10 +244,33 @@ class UniversalModelGateway:
 
             attempt_count += 1
 
-            # 1. Cost Policy & FREE_ONLY_MODE Gate
+            # 1. Retrieve / Check Provider & Adapter Definition
+            if provider_snapshot is not None:
+                prov_def = provider_snapshot.get_provider(cand_provider) if hasattr(provider_snapshot, "get_provider") else provider_snapshot.get(cand_provider)
+            else:
+                prov_def = self.provider_registry.get_provider(cand_provider)
+
+            if prov_def is not None and not prov_def.enabled:
+                err_msg = f"PROVIDER_DISABLED: Provider '{cand_provider}' is disabled."
+                last_error_resp = ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider=cand_provider,
+                    model_name=cand_model,
+                    status=ModelResponseStatus.ERROR,
+                    error=err_msg,
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
+                if strict_model_pin or len(candidates) == 1:
+                    return last_error_resp
+                continue
+
+            # 2. Cost Policy & FREE_ONLY_MODE Gate
             adapter = self.provider_registry.get_adapter(cand_provider)
             model_meta = self.model_registry.get_model(cand_provider, cand_model)
-            cost_tier = model_meta.cost_tier if model_meta else (adapter.cost_policy if adapter else CostPolicy.UNKNOWN)
+            cost_tier = prov_def.cost_policy if (prov_def and prov_def.cost_policy != CostPolicy.UNKNOWN) else (
+                model_meta.cost_tier if model_meta else (adapter.cost_policy if adapter else CostPolicy.UNKNOWN)
+            )
 
             if self._free_only_mode and not allow_paid:
                 if cost_tier == CostPolicy.PAID:
@@ -235,7 +296,6 @@ class UniversalModelGateway:
                     )
                     continue
 
-            # 2. Retrieve Adapter
             adapter = self.provider_registry.get_adapter(cand_provider)
             if adapter is None:
                 err_msg = f"PROVIDER_NOT_CONFIGURED: Provider '{cand_provider}' is not registered."
@@ -248,8 +308,9 @@ class UniversalModelGateway:
                     usage=ModelUsage(usage_source="NOT_AVAILABLE"),
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
-                if strict_model_pin:
+                if strict_model_pin or len(candidates) == 1:
                     return last_error_resp
+                continue
 
             # 3. Construct Request Copy with Targeted Model and Remaining Timeout Budget
             cand_cfg_timeout = self.config_service.get_timeout(cand_provider) if self.config_service else 30.0

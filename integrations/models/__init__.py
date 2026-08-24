@@ -6,6 +6,7 @@ invocation bridge, and multi-agent workflow orchestrator.
 
 from integrations.models.base import (
     BaseModelAdapter,
+    CostPolicy,
     ModelMessage,
     ModelRequest,
     ModelResponse,
@@ -27,11 +28,20 @@ from integrations.models.orchestrator import (
     WorkflowStep,
 )
 from integrations.models.registry import (
+    AgentId,
+    ConnectionTestResult,
+    ConnectionTestStatus,
     ModelMetadata,
+    ModelPolicy,
     ModelRegistry,
+    ModelTarget,
     ProviderConfig,
+    ProviderDefinition,
     ProviderProtocol,
     ProviderRegistry,
+    ProviderRegistrySnapshot,
+    normalize_agent_id,
+    validate_base_url,
 )
 from integrations.models.transport import OpenAICompatibleTransport, classify_transport_error, sanitize_secrets
 from integrations.models.profiles import ModelProfile, ProfileManager
@@ -40,6 +50,7 @@ from integrations.models.router import ModelRouter
 
 __all__ = [
     "BaseModelAdapter",
+    "CostPolicy",
     "ModelMessage",
     "ModelRequest",
     "ModelResponse",
@@ -63,10 +74,19 @@ __all__ = [
     "WorkflowOrchestrator",
     "WorkflowStep",
     "ProviderRegistry",
+    "ProviderDefinition",
     "ProviderConfig",
     "ProviderProtocol",
     "ModelRegistry",
     "ModelMetadata",
+    "ModelTarget",
+    "AgentId",
+    "normalize_agent_id",
+    "ModelPolicy",
+    "ConnectionTestStatus",
+    "ConnectionTestResult",
+    "ProviderRegistrySnapshot",
+    "validate_base_url",
     "ModelProfile",
     "ProfileManager",
     "UniversalModelGateway",
