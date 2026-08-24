@@ -1102,6 +1102,83 @@ class TestProdLifecycle01ProcessOwnership(unittest.TestCase):
         # Verify allow_reuse_address is explicitly False
         self.assertFalse(ExclusiveThreadingHTTPServer.allow_reuse_address)
 
+    # 35. Adversarial SO_REUSEADDR Second Bind Fails
+    def test_35_adversarial_so_reuseaddr_second_bind_fails(self) -> None:
+        """When production app server is listening, an adversarial SO_REUSEADDR socket fails to bind."""
+        port = get_free_port()
+        proc = subprocess.Popen(
+            [sys.executable, "app_api/server.py", "--emit-bootstrap", "--port", str(port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        self._track_pid(proc.pid)
+
+        # Wait for app server bootstrap
+        line = proc.stdout.readline()
+        self.assertIn("UIAUTH_BOOTSTRAP_V1:", line)
+
+        # Adversarial socket explicitly sets SO_REUSEADDR=1 and tries to bind same address/port
+        s_adv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s_adv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            with self.assertRaises(OSError):
+                s_adv.bind(("127.0.0.1", port))
+        finally:
+            s_adv.close()
+            proc.terminate()
+            proc.wait(timeout=3)
+
+    # 36. Reverse Order Adversarial Socket First Fails App Bind
+    def test_36_reverse_order_adversarial_socket_first_fails_app_bind(self) -> None:
+        """When an adversarial/existing socket is bound, app server fails closed and does not share listener."""
+        port = get_free_port()
+        s_first = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s_first.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s_first.bind(("127.0.0.1", port))
+        s_first.listen(1)
+
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, "app_api/server.py", "--emit-bootstrap", "--port", str(port)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            self._track_pid(proc.pid)
+            proc.wait(timeout=5)
+            self.assertNotEqual(proc.returncode, 0, "App server must fail closed when port is occupied")
+        finally:
+            s_first.close()
+
+    # 37. Unrelated Listener Survives Failed App Launch
+    def test_37_unrelated_listener_survives_failed_app_launch(self) -> None:
+        """Failed app server launch on occupied port does not harm unrelated socket."""
+        port = get_free_port()
+        s_unrelated = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s_unrelated.bind(("127.0.0.1", port))
+        s_unrelated.listen(1)
+
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, "app_api/server.py", "--emit-bootstrap", "--port", str(port)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            self._track_pid(proc.pid)
+            proc.wait(timeout=5)
+            # Verify unrelated socket is still intact and listening
+            s_test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                s_test.connect(("127.0.0.1", port))
+                conn, _ = s_unrelated.accept()
+                conn.close()
+            finally:
+                s_test.close()
+        finally:
+            s_unrelated.close()
+
 
 if __name__ == "__main__":
     unittest.main()

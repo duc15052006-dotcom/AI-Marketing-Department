@@ -214,11 +214,58 @@ pub mod job_object {
         pub process_handle: HANDLE,
     }
 
+    pub fn resolve_python_executable() -> String {
+        if let Ok(p) = std::env::var("PYTHON_PATH") {
+            if Path::new(&p).exists() {
+                return p;
+            }
+        }
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            let py_core = Path::new(&local_app_data).join("Python").join("pythoncore-3.14-64").join("python.exe");
+            if py_core.exists() {
+                return py_core.to_string_lossy().to_string();
+            }
+            let py_programs = Path::new(&local_app_data).join("Programs").join("Python");
+            if py_programs.exists() {
+                if let Ok(entries) = std::fs::read_dir(py_programs) {
+                    for entry in entries.flatten() {
+                        let exe = entry.path().join("python.exe");
+                        if exe.exists() {
+                            return exe.to_string_lossy().to_string();
+                        }
+                    }
+                }
+            }
+        }
+        if let Ok(path_var) = std::env::var("PATH") {
+            for dir in std::env::split_paths(&path_var) {
+                if dir.to_string_lossy().to_lowercase().contains("windowsapps") {
+                    continue;
+                }
+                let candidate = dir.join("python.exe");
+                if candidate.exists() {
+                    return candidate.to_string_lossy().to_string();
+                }
+            }
+        }
+        "python".to_string()
+    }
+
     /// Spawns python process suspended, assigns it to Job Object BEFORE execution begins, and resumes thread.
     /// Eliminates PROD-LIFECYCLE-JOB-ASSIGNMENT-RACE-01 completely.
     pub fn spawn_in_job_suspended(
         job: &JobObjectHandle,
         script_path: &Path,
+        work_dir: &Path,
+    ) -> Result<SuspendedSpawnResult, &'static str> {
+        let py_exe = resolve_python_executable();
+        let cmd_str = format!("\"{}\" \"{}\" --emit-bootstrap", py_exe, script_path.display());
+        spawn_raw_cmd_in_job_suspended(job, &cmd_str, work_dir)
+    }
+
+    pub fn spawn_raw_cmd_in_job_suspended(
+        job: &JobObjectHandle,
+        cmd_str: &str,
         work_dir: &Path,
     ) -> Result<SuspendedSpawnResult, &'static str> {
         unsafe {
@@ -244,8 +291,7 @@ pub mod job_object {
             SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0);
 
             // 2. Prepare Command Line with structured argument quoting
-            let cmd_str = format!("python \"{}\" --emit-bootstrap", script_path.display());
-            let mut cmd_wide: Vec<u16> = OsStr::new(&cmd_str).encode_wide().chain(std::iter::once(0)).collect();
+            let mut cmd_wide: Vec<u16> = OsStr::new(cmd_str).encode_wide().chain(std::iter::once(0)).collect();
             let work_dir_wide: Vec<u16> = OsStr::new(work_dir.as_os_str()).encode_wide().chain(std::iter::once(0)).collect();
 
             let mut si: STARTUPINFOW = std::mem::zeroed();
@@ -1313,6 +1359,112 @@ mod tests {
             let assigned = job.assign_raw_process(std::ptr::null_mut());
             assert!(!assigned, "Assigning null handle must fail closed");
             assert!(job.terminate(0));
+        }
+    }
+
+    #[test]
+    fn test_job_object_immediate_grandchild_50_cycles() {
+        #[cfg(target_os = "windows")]
+        {
+            extern "system" {
+                fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut std::ffi::c_void;
+                fn GetExitCodeProcess(hProcess: *mut std::ffi::c_void, lpExitCode: *mut u32) -> i32;
+                fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+            }
+
+            let root = find_project_root();
+            let helper_script = root.join("tests").join("helper_grandchild.py");
+            if !helper_script.exists() {
+                return;
+            }
+
+            let mut escaped_count = 0usize;
+            let start = std::time::Instant::now();
+
+            for _cycle in 0..50 {
+                let job = job_object::JobObjectHandle::new().expect("Failed to create Job Object");
+                let spawn_res = job_object::spawn_in_job_suspended(&job, &helper_script, &root);
+                assert!(spawn_res.is_ok());
+                let res = spawn_res.unwrap();
+                let child_pid = res.child_pid;
+
+                let mut reader = std::io::BufReader::new(res.stdout_file);
+                let mut line = String::new();
+                let _ = reader.read_line(&mut line);
+
+                let mut gc_pid = 0u32;
+                if line.trim().starts_with("GC_PID:") {
+                    if let Ok(p) = line.trim()["GC_PID:".len()..].parse::<u32>() {
+                        gc_pid = p;
+                    }
+                }
+
+                let h_proc = unsafe { OpenProcess(0x1000, 0, child_pid) };
+                let mut exit_code: u32 = 0;
+                let helper_alive_before = if !h_proc.is_null() {
+                    unsafe {
+                        GetExitCodeProcess(h_proc, &mut exit_code);
+                        CloseHandle(h_proc);
+                    }
+                    exit_code == 259
+                } else {
+                    false
+                };
+                assert!(helper_alive_before, "Helper must be alive before Job Object termination");
+
+                let h_gc = if gc_pid > 0 {
+                    unsafe { OpenProcess(0x1000 | 0x00100000, 0, gc_pid) }
+                } else {
+                    std::ptr::null_mut()
+                };
+
+                if !h_gc.is_null() {
+                    let mut gc_exit: u32 = 0;
+                    unsafe {
+                        GetExitCodeProcess(h_gc, &mut gc_exit);
+                    }
+                    assert_eq!(gc_exit, 259, "Grandchild must be active before Job Object termination");
+                }
+
+                // Terminate Job Object
+                assert!(job.terminate(0));
+
+                // Bounded wait for kernel termination to complete
+                unsafe {
+                    extern "system" {
+                        fn WaitForSingleObject(hHandle: *mut std::ffi::c_void, dwMilliseconds: u32) -> u32;
+                    }
+                    WaitForSingleObject(res.process_handle, 3000);
+                    if !h_gc.is_null() {
+                        WaitForSingleObject(h_gc, 3000);
+                    }
+                }
+
+                // Verify helper is dead after teardown
+                let mut helper_exit: u32 = 0;
+                unsafe {
+                    GetExitCodeProcess(res.process_handle, &mut helper_exit);
+                    CloseHandle(res.process_handle);
+                }
+                if helper_exit == 259 {
+                    escaped_count += 1;
+                }
+
+                // Verify grandchild is dead after teardown
+                if !h_gc.is_null() {
+                    let mut gc_exit_after: u32 = 0;
+                    unsafe {
+                        GetExitCodeProcess(h_gc, &mut gc_exit_after);
+                        CloseHandle(h_gc);
+                    }
+                    if gc_exit_after == 259 {
+                        escaped_count += 1;
+                    }
+                }
+            }
+
+            println!("50 Rust Job Object immediate-grandchild cycles completed in {:?}", start.elapsed());
+            assert_eq!(escaped_count, 0, "All 50 cycles must result in 0 escaped processes");
         }
     }
 
