@@ -348,12 +348,31 @@ class ContextCompiler:
         query: str = "",
     ) -> AgentCompiledContext:
         """Legacy compatibility wrapper compiling AgentCompiledContext."""
-        if chat_id:
-            ctx.chat_id = chat_id
-        if project_id:
-            ctx.project_id = project_id
+        effective_ctx = ctx
+        if (chat_id and ctx.chat_id != chat_id) or (project_id and ctx.project_id != project_id):
+            effective_ctx = RuntimeContext(
+                run_id=ctx.run_id,
+                objective=ctx.objective,
+                business_id=ctx.business_id,
+                campaign_id=ctx.campaign_id,
+                user_id=ctx.user_id,
+                chat_id=chat_id or ctx.chat_id,
+                project_id=project_id or ctx.project_id,
+                current_stage=ctx.current_stage,
+                status=ctx.status,
+                knowledge_refs=list(ctx.knowledge_refs),
+                memory_refs=list(ctx.memory_refs),
+                execution_receipt_refs=list(ctx.execution_receipt_refs),
+                artifact_refs=list(ctx.artifact_refs),
+                approval_refs=list(ctx.approval_refs),
+                working_state=dict(ctx.working_state),
+                stage_outputs=dict(ctx.stage_outputs),
+                unresolved_questions=list(ctx.unresolved_questions),
+                constraints=list(ctx.constraints),
+                risk_flags=list(ctx.risk_flags),
+            )
 
-        pkg = self.compile_grounded_package(agent_id, ctx)
+        pkg = self.compile_grounded_package(agent_id, effective_ctx)
         session_chunks = [it.content for it in pkg.evidence_items if it.source_type == "SESSION_ATTACHMENT"]
         persistent_refs = [it.title_or_reference for it in pkg.evidence_items if it.source_type != "SESSION_ATTACHMENT" and it.epistemic_tier in (EpistemicTier.VERIFIED_SOURCE, EpistemicTier.UNVERIFIED_SOURCE)]
         memory_cits = [it.title_or_reference for it in pkg.evidence_items if it.source_type == "INSTITUTIONAL_MEMORY"]

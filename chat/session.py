@@ -8,12 +8,15 @@ Operates completely independently of brand onboarding.
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("chat_session")
 
 
 class ChatRole(str, Enum):
@@ -343,10 +346,13 @@ class ChatSessionManager:
                 self.repo.save_session(session)
         return attachment
 
-    def update_message(self, message_id: str, content: str) -> Optional[ChatMessage]:
+    def update_message(self, message_id: str, content: str, chat_id: Optional[str] = None) -> Optional[ChatMessage]:
         """Update an existing message safely with historical version preservation and persist to SQLite."""
         msg = self.repo.get_message(message_id)
         if not msg:
+            return None
+        if chat_id is not None and msg.chat_id != chat_id:
+            logger.warning(f"Cross-chat message edit rejected: message {message_id} belongs to chat {msg.chat_id}, not {chat_id}")
             return None
         msg.edit_content(content)
         self.repo.save_message(msg)

@@ -474,6 +474,9 @@ class FiveAgentDepartmentRuntime:
                 agent_id="intelligence",
                 capability_id="web_search",
                 parameters={"query": context.objective},
+                business_id=context.business_id,
+                project_id=context.project_id,
+                chat_id=context.chat_id,
             )
             search_receipt = self.tool_gateway.execute(search_req)
             self._executed_tool_idempotency_keys[idem_key] = search_receipt
@@ -649,6 +652,9 @@ class FiveAgentDepartmentRuntime:
                 agent_id="creative",
                 capability_id="image_generation",
                 parameters={"prompt": f"Hero marketing visual concept for {context.objective}"},
+                business_id=context.business_id,
+                project_id=context.project_id,
+                chat_id=context.chat_id,
             )
             img_receipt = self.tool_gateway.execute(img_req)
             self._executed_tool_idempotency_keys[idem_key] = img_receipt
@@ -762,6 +768,9 @@ class FiveAgentDepartmentRuntime:
                 agent_id="performance",
                 capability_id="kpi_calculation",
                 parameters={"metric_name": "target_cac", "target_value": 150.0},
+                business_id=context.business_id,
+                project_id=context.project_id,
+                chat_id=context.chat_id,
             )
             calc_receipt = self.tool_gateway.execute(calc_req)
             self._executed_tool_idempotency_keys[idem_key] = calc_receipt
@@ -1298,7 +1307,11 @@ class FiveAgentDepartmentRuntime:
                 if context is not None:
                     claim_meta["tenant_id"] = context.business_id
                     claim_meta["run_id"] = context.run_id
+                    claim_meta["chat_id"] = context.chat_id
+                    claim_meta["project_id"] = context.project_id
                     source_meta["tenant_id"] = source_meta.get("tenant_id") or context.business_id
+                    source_meta["chat_id"] = source_meta.get("chat_id") or context.chat_id
+                    source_meta["project_id"] = source_meta.get("project_id") or context.project_id
 
                     # Pre-verify scope boundary
                     if scope and scope != "GLOBAL" and context.business_id:
@@ -1613,6 +1626,9 @@ class FiveAgentDepartmentRuntime:
             capability_id="social_publishing",
             parameters={"platform": platform, "content": "Campaign Go-To-Market Plan"},
             approval_token=approval_token,
+            business_id=context.business_id,
+            project_id=context.project_id,
+            chat_id=context.chat_id,
         )
         receipt = self.tool_gateway.execute(pub_req)
         context.execution_receipt_refs.append(receipt.execution_id)
@@ -1694,6 +1710,11 @@ class FiveAgentDepartmentRuntime:
             artifact = DepartmentRunArtifact(
                 run_id=context.run_id,
                 objective=context.objective,
+                business_id=context.business_id,
+                project_id=context.project_id,
+                chat_id=context.chat_id,
+                campaign_id=context.campaign_id,
+                user_id=context.user_id,
                 started_at=context.created_at,
                 completed_at=completed_at,
                 status=context.status,

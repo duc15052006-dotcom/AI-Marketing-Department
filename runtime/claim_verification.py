@@ -263,17 +263,76 @@ def audit_deterministic_claim_guards(
             reason=f"Evidence source execution status is {exec_status}, invalidating support.",
         )
 
-    # 2. Security / Provenance Scope Boundary Guard (Tenant, Run, Chat isolation)
+    # 2. Security / Provenance Scope Boundary Guard (Tenant, Project, Run, Chat isolation)
+    source_scope = str(source_meta.get("scope") or "").strip()
+    is_explicit_global = (source_scope == "GLOBAL")
+
     claim_tenant = claim_meta.get("tenant_id") or claim_meta.get("brand_id")
     source_tenant = source_meta.get("tenant_id") or source_meta.get("brand_id")
-    if claim_tenant and source_tenant and str(claim_tenant).strip() != str(source_tenant).strip():
-        return DeterministicFindings(
-            guard_name="SECURITY_SCOPE_VIOLATION",
-            passed=False,
-            reason=f"Cross-tenant security violation: claim tenant '{claim_tenant}' != evidence source tenant '{source_tenant}'.",
-            extracted_claim_values={"tenant_id": str(claim_tenant)},
-            extracted_evidence_values={"tenant_id": str(source_tenant)},
-        )
+    claim_tenant_str = str(claim_tenant).strip() if claim_tenant else ""
+    source_tenant_str = str(source_tenant).strip() if source_tenant else ""
+
+    if not is_explicit_global:
+        if claim_tenant_str and not source_tenant_str:
+            return DeterministicFindings(
+                guard_name="SECURITY_SCOPE_VIOLATION",
+                passed=False,
+                reason=f"Missing required tenant scope on evidence source for scoped claim tenant '{claim_tenant_str}'.",
+                extracted_claim_values={"tenant_id": claim_tenant_str},
+                extracted_evidence_values={"tenant_id": ""},
+            )
+        if source_tenant_str and not claim_tenant_str:
+            return DeterministicFindings(
+                guard_name="SECURITY_SCOPE_VIOLATION",
+                passed=False,
+                reason=f"Unscoped claim cannot consume tenant-scoped evidence from tenant '{source_tenant_str}'.",
+                extracted_claim_values={"tenant_id": ""},
+                extracted_evidence_values={"tenant_id": source_tenant_str},
+            )
+        if claim_tenant_str and source_tenant_str and claim_tenant_str != source_tenant_str:
+            return DeterministicFindings(
+                guard_name="SECURITY_SCOPE_VIOLATION",
+                passed=False,
+                reason=f"Cross-tenant security violation: claim tenant '{claim_tenant_str}' != evidence source tenant '{source_tenant_str}'.",
+                extracted_claim_values={"tenant_id": claim_tenant_str},
+                extracted_evidence_values={"tenant_id": source_tenant_str},
+            )
+
+    claim_project = claim_meta.get("project_id")
+    source_project = source_meta.get("project_id")
+    claim_proj_str = str(claim_project).strip() if claim_project else ""
+    source_proj_str = str(source_project).strip() if source_project else ""
+
+    # Check if source is explicitly authorized at global or business-level shared knowledge
+    is_tenant_or_global_shared = is_explicit_global or (
+        claim_tenant_str and source_scope in (f"SCOPE_{claim_tenant_str}", claim_tenant_str)
+    )
+
+    if not is_tenant_or_global_shared:
+        if claim_proj_str and not source_proj_str:
+            return DeterministicFindings(
+                guard_name="SECURITY_SCOPE_VIOLATION",
+                passed=False,
+                reason=f"Missing required project scope on evidence source for scoped claim project '{claim_proj_str}'.",
+                extracted_claim_values={"project_id": claim_proj_str},
+                extracted_evidence_values={"project_id": ""},
+            )
+        if source_proj_str and not claim_proj_str:
+            return DeterministicFindings(
+                guard_name="SECURITY_SCOPE_VIOLATION",
+                passed=False,
+                reason=f"Unscoped claim cannot consume project-scoped evidence from project '{source_proj_str}'.",
+                extracted_claim_values={"project_id": ""},
+                extracted_evidence_values={"project_id": source_proj_str},
+            )
+        if claim_proj_str and source_proj_str and claim_proj_str != source_proj_str:
+            return DeterministicFindings(
+                guard_name="SECURITY_SCOPE_VIOLATION",
+                passed=False,
+                reason=f"Cross-project security violation: claim project '{claim_proj_str}' != evidence source project '{source_proj_str}'.",
+                extracted_claim_values={"project_id": claim_proj_str},
+                extracted_evidence_values={"project_id": source_proj_str},
+            )
 
     claim_run = claim_meta.get("run_id")
     source_run = source_meta.get("run_id")

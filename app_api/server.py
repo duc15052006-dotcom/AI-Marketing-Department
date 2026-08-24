@@ -918,9 +918,9 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Session not found"}, 404)
                 return
 
-            updated_msg = APP_BACKEND.chat_mgr.update_message(msg_id, new_text)
+            updated_msg = APP_BACKEND.chat_mgr.update_message(msg_id, new_text, chat_id=chat_id)
             if not updated_msg:
-                self._send_json({"error": "Message not found"}, 404)
+                self._send_json({"error": "Message not found or does not belong to this session"}, 404)
                 return
 
             # Re-execute continuation from this edited message with 0 duplicate user messages

@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -62,6 +63,9 @@ class ExecutionCheckpoint(BaseModel):
     """Durable snapshot of runtime state at stage boundaries and approval gates."""
     checkpoint_id: str = Field(default_factory=lambda: f"CHKPT-{uuid.uuid4().hex[:10].upper()}")
     run_id: str
+    business_id: Optional[str] = None
+    project_id: Optional[str] = None
+    chat_id: Optional[str] = None
     stage: RuntimeStage
     status: RuntimeStatus
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -165,6 +169,17 @@ class GroundedContextPackage(BaseModel):
         return "\n".join(lines)
 
 
+@dataclass(frozen=True)
+class AuthoritativeScope:
+    """Minimal immutable execution scope descriptor."""
+    run_id: str
+    business_id: str = "BIZ_DEFAULT"
+    project_id: Optional[str] = None
+    chat_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    user_id: Optional[str] = None
+
+
 class RuntimeContext(BaseModel):
     """Deterministic, bounded execution context passed across the Five-Agent Department runtime."""
     run_id: str = Field(default_factory=lambda: f"RUN-DEPT-{uuid.uuid4().hex[:10].upper()}")
@@ -196,10 +211,44 @@ class RuntimeContext(BaseModel):
 
     checkpoints: List[ExecutionCheckpoint] = Field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "_scope_frozen", True)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if getattr(self, "_scope_frozen", False) and name in (
+            "run_id",
+            "business_id",
+            "project_id",
+            "chat_id",
+            "campaign_id",
+            "user_id",
+        ):
+            raise AttributeError(
+                f"Cannot mutate authoritative scope field '{name}' on active RuntimeContext. "
+                "Runtime context scope is strictly immutable across all execution stages."
+            )
+        super().__setattr__(name, value)
+
+    @property
+    def scope(self) -> AuthoritativeScope:
+        """Return the immutable AuthoritativeScope descriptor for this run."""
+        return AuthoritativeScope(
+            run_id=self.run_id,
+            business_id=self.business_id,
+            project_id=self.project_id,
+            chat_id=self.chat_id,
+            campaign_id=self.campaign_id,
+            user_id=self.user_id,
+        )
+
     def create_checkpoint(self, pending_approval_id: Optional[str] = None) -> ExecutionCheckpoint:
         """Create and record an immutable checkpoint of the current state."""
         chkpt = ExecutionCheckpoint(
             run_id=self.run_id,
+            business_id=self.business_id,
+            project_id=self.project_id,
+            chat_id=self.chat_id,
             stage=self.current_stage,
             status=self.status,
             completed_stages=list(self.stage_outputs.keys()),

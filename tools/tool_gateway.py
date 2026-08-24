@@ -46,6 +46,9 @@ class ToolRequest(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Execution parameters")
     approval_token: Optional[str] = Field(default=None, description="Human approval authorization token if required")
     timeout_seconds: Optional[float] = Field(default=None, description="Optional override for execution timeout")
+    business_id: Optional[str] = Field(default=None, description="Tenant/business scope")
+    project_id: Optional[str] = Field(default=None, description="Associated workspace project ID")
+    chat_id: Optional[str] = Field(default=None, description="Associated chat session ID")
 
     def calculate_request_hash(self) -> str:
         """Compute SHA-256 hash of the request parameters."""
@@ -136,6 +139,9 @@ class ToolGateway:
                 status=ExecutionStatus.ERROR,
                 error_class="CAPABILITY_NOT_FOUND",
                 error_message=f"Capability '{request.capability_id}' is not registered in CapabilityRegistry.",
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
             )
             return self.receipt_repository.save_receipt(receipt)
 
@@ -157,6 +163,7 @@ class ToolGateway:
                     capability_id=request.capability_id,
                     parameters=request.parameters,
                     run_id=request.run_id,
+                    business_id=request.business_id,
                     scope="",
                     risk_level=cap.risk_level,
                 )
@@ -174,6 +181,9 @@ class ToolGateway:
                 error_class=err_class,
                 error_message=decision.reason,
                 approval_reference=appr_ref,
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
             )
             return self.receipt_repository.save_receipt(receipt)
 
@@ -192,6 +202,9 @@ class ToolGateway:
                 status=ExecutionStatus.ERROR,
                 error_class="PROVIDER_NOT_CONFIGURED",
                 error_message=f"Provider adapter '{cap.provider}' is not registered with ToolGateway.",
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
             )
             return self.receipt_repository.save_receipt(receipt)
 
@@ -224,6 +237,9 @@ class ToolGateway:
                     error_class="APPROVAL_ALREADY_CLAIMED",
                     error_message="APPROVAL_ALREADY_CLAIMED: Approval token has already been claimed or consumed for execution.",
                     approval_reference=request.approval_token,
+                    business_id=request.business_id,
+                    project_id=request.project_id,
+                    chat_id=request.chat_id,
                 )
                 return self.receipt_repository.save_receipt(receipt)
 
@@ -274,6 +290,9 @@ class ToolGateway:
                 cost_or_token_usage=adapter_res.cost_or_tokens,
                 artifact_references=adapter_res.artifact_refs,
                 approval_reference=request.approval_token,
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
             )
         else:
             err_code = adapter_res.error_code if adapter_res else "EXECUTION_EXCEPTION"
@@ -294,6 +313,9 @@ class ToolGateway:
                 cost_or_token_usage=adapter_res.cost_or_tokens if adapter_res else {},
                 artifact_references=adapter_res.artifact_refs if adapter_res else [],
                 approval_reference=request.approval_token,
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
             )
 
         return self.receipt_repository.save_receipt(receipt)

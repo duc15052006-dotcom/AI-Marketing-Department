@@ -76,6 +76,11 @@ class DepartmentRunArtifact(BaseModel):
     """Complete, immutable audit artifact produced at the conclusion of a department run."""
     run_id: str
     objective: str
+    business_id: str = Field(default="BIZ_DEFAULT", description="Tenant/business scope")
+    project_id: Optional[str] = Field(default=None, description="Associated workspace project ID")
+    chat_id: Optional[str] = Field(default=None, description="Associated chat session ID")
+    campaign_id: Optional[str] = Field(default=None, description="Associated campaign ID")
+    user_id: Optional[str] = Field(default=None, description="Associated operator/user ID")
     started_at: datetime
     completed_at: datetime
     status: RuntimeStatus
@@ -109,6 +114,9 @@ class DepartmentRunArtifact(BaseModel):
                 "execution_mode": _normalize_for_hashing(dump.get("execution_mode", "")),
                 "status": _normalize_for_hashing(dump.get("status", "")),
                 "error_class": dump.get("error_class"),
+                "business_id": str(dump.get("business_id") or ""),
+                "project_id": str(dump.get("project_id") or ""),
+                "chat_id": str(dump.get("chat_id") or ""),
                 "result_hash": str(dump.get("result_hash", "")),
             }
         elif isinstance(r, dict):
@@ -122,6 +130,9 @@ class DepartmentRunArtifact(BaseModel):
                 "execution_mode": _normalize_for_hashing(r.get("execution_mode", "")),
                 "status": _normalize_for_hashing(r.get("status", "")),
                 "error_class": r.get("error_class"),
+                "business_id": str(r.get("business_id") or ""),
+                "project_id": str(r.get("project_id") or ""),
+                "chat_id": str(r.get("chat_id") or ""),
                 "result_hash": str(r.get("result_hash", "")),
             }
         return {
@@ -131,6 +142,9 @@ class DepartmentRunArtifact(BaseModel):
             "capability_id": str(getattr(r, "capability_id", "")),
             "provider": str(getattr(r, "provider", "")),
             "request_hash": str(getattr(r, "request_hash", "")),
+            "business_id": str(getattr(r, "business_id", "") or ""),
+            "project_id": str(getattr(r, "project_id", "") or ""),
+            "chat_id": str(getattr(r, "chat_id", "") or ""),
             "result_hash": str(getattr(r, "result_hash", "")),
         }
 
@@ -201,6 +215,11 @@ class DepartmentRunArtifact(BaseModel):
         return {
             "run_id": self.run_id,
             "objective": self.objective,
+            "business_id": self.business_id,
+            "project_id": str(self.project_id or ""),
+            "chat_id": str(self.chat_id or ""),
+            "campaign_id": str(self.campaign_id or ""),
+            "user_id": str(self.user_id or ""),
             "status": self.status.value if hasattr(self.status, "value") else str(self.status),
             "agent_outputs": _normalize_for_hashing(self.agent_outputs),
             "final_cmo_output": _normalize_for_hashing(self.final_cmo_output),
