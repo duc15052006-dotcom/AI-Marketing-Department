@@ -65,6 +65,53 @@ function Parse-BootstrapLines {
     }
 }
 
+function Stop-ProcessTree {
+    param(
+        [int]$ParentId
+    )
+    if (-not $ParentId -or $ParentId -le 0) { return }
+
+    # Double-pass descendant gathering and termination to eliminate descendant-spawn race
+    for ($pass = 1; $pass -le 2; $pass++) {
+        $descendants = @()
+        $queue = [System.Collections.Generic.Queue[int]]::new()
+        $queue.Enqueue($ParentId)
+
+        while ($queue.Count -gt 0) {
+            $curr = $queue.Dequeue()
+            try {
+                $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $curr" -ErrorAction SilentlyContinue
+                if ($children) {
+                    foreach ($c in $children) {
+                        $cId = [int]$c.ProcessId
+                        if ($cId -gt 0 -and $cId -notin $descendants -and $cId -ne $ParentId) {
+                            $descendants += $cId
+                            $queue.Enqueue($cId)
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        # Terminate descendants first (bottom-up)
+        [array]::Reverse($descendants)
+        foreach ($dId in $descendants) {
+            try {
+                Stop-Process -Id $dId -Force -ErrorAction SilentlyContinue
+            } catch {}
+        }
+
+        # Terminate root parent process
+        try {
+            Stop-Process -Id $ParentId -Force -ErrorAction SilentlyContinue
+        } catch {}
+
+        if ($pass -eq 1) {
+            Start-Sleep -Milliseconds 50
+        }
+    }
+}
+
 # 1. Start Python Localhost API with Secure Bootstrap Pipe
 Write-Host "[1/3] Starting Python Localhost API with secure bootstrap..." -ForegroundColor Yellow
 
@@ -98,9 +145,21 @@ $bootResult = Parse-BootstrapLines -Lines $collectedLines
 
 if (-not $bootResult.Success) {
     Write-Host "      ✗ Critical: Backend bootstrap handshake failed ($($bootResult.Error)). Terminating." -ForegroundColor Red
-    if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-Process -Id $pythonProcess.Id -Force }
+    if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-ProcessTree -ParentId $pythonProcess.Id }
     exit 1
 }
+
+# Spawn background drain worker to continuously drain stdout and prevent pipe buffer deadlock (PROD-LIFECYCLE-PIPE-DRAIN)
+$drainThread = [System.Threading.Thread]::new([System.Threading.ThreadStart]{
+    try {
+        while (-not $pythonProcess.HasExited) {
+            $dLine = $pythonProcess.StandardOutput.ReadLine()
+            if ($null -eq $dLine) { break }
+        }
+    } catch {}
+})
+$drainThread.IsBackground = $true
+$drainThread.Start()
 
 $sessionToken = $bootResult.Token
 $apiHost = $bootResult.Host
@@ -123,7 +182,9 @@ $env:APP_BACKEND_PORT_DEV = "$apiPort"
 $env:APP_BACKEND_BEARER_DEV = $sessionToken
 $env:APP_BACKEND_TARGET = "http://${apiHost}:${apiPort}"
 
-$frontendProcess = Start-Process -FilePath "npm" -ArgumentList "--prefix frontend run dev" -PassThru -NoNewWindow
+$npmCmd = (Get-Command "npm.cmd" -ErrorAction SilentlyContinue).Source
+if (-not $npmCmd) { $npmCmd = "npm" }
+$frontendProcess = Start-Process -FilePath $npmCmd -ArgumentList "--prefix frontend run dev" -PassThru -NoNewWindow
 
 # Clean bearer token from parent PowerShell process environment
 $env:APP_BACKEND_BEARER_DEV = $null
@@ -144,12 +205,12 @@ try {
         Start-Sleep -Seconds 1
     }
 } finally {
-    Write-Host "`nStopping AI Marketing Department processes..." -ForegroundColor Yellow
-    if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-Process -Id $pythonProcess.Id -Force }
-    if ($frontendProcess -and !$frontendProcess.HasExited) { Stop-Process -Id $frontendProcess.Id -Force }
+    Write-Host "`nStopping AI Marketing Department process trees..." -ForegroundColor Yellow
+    if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-ProcessTree -ParentId $pythonProcess.Id }
+    if ($frontendProcess -and !$frontendProcess.HasExited) { Stop-ProcessTree -ParentId $frontendProcess.Id }
     $env:APP_BACKEND_HOST_DEV = $null
     $env:APP_BACKEND_PORT_DEV = $null
     $env:APP_BACKEND_BEARER_DEV = $null
     $env:APP_BACKEND_TARGET = $null
-    Write-Host "Shutdown complete." -ForegroundColor Green
+    Write-Host "Shutdown complete. Process trees terminated." -ForegroundColor Green
 }

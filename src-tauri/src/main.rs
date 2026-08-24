@@ -5,26 +5,327 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tauri::Manager;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 pub struct BackendProcessState {
-    pub child: Mutex<Option<Child>>,
+    pub child_pid: Mutex<Option<u32>>,
+    #[cfg(target_os = "windows")]
+    pub process_handle: Mutex<Option<usize>>,
+    pub job: Mutex<Option<job_object::JobObjectHandle>>,
     pub auth_token: Mutex<Option<String>>,
     pub api_host: Mutex<String>,
     pub api_port: Mutex<u16>,
 }
 
+#[cfg(target_os = "windows")]
+pub mod job_object {
+    use std::ffi::{c_void, OsStr};
+    use std::fs::File;
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
+    use std::path::Path;
+    use std::process::Child;
+
+    pub type HANDLE = *mut c_void;
+    pub type BOOL = i32;
+    pub type DWORD = u32;
+
+    pub const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: u32 = 9;
+    pub const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: DWORD = 0x00002000;
+    pub const CREATE_SUSPENDED: DWORD = 0x00000004;
+    pub const CREATE_NO_WINDOW: DWORD = 0x08000000;
+    pub const STARTF_USESTDHANDLES: DWORD = 0x00000100;
+    pub const HANDLE_FLAG_INHERIT: DWORD = 0x00000001;
+
+    #[repr(C)]
+    pub struct SECURITY_ATTRIBUTES {
+        pub n_length: DWORD,
+        pub lp_security_descriptor: *mut c_void,
+        pub b_inherit_handle: BOOL,
+    }
+
+    #[repr(C)]
+    pub struct STARTUPINFOW {
+        pub cb: DWORD,
+        pub lp_reserved: *mut u16,
+        pub lp_desktop: *mut u16,
+        pub lp_title: *mut u16,
+        pub dw_x: DWORD,
+        pub dw_y: DWORD,
+        pub dw_x_size: DWORD,
+        pub dw_y_size: DWORD,
+        pub dw_x_count_chars: DWORD,
+        pub dw_y_count_chars: DWORD,
+        pub dw_fill_attribute: DWORD,
+        pub dw_flags: DWORD,
+        pub w_show_window: u16,
+        pub cb_reserved2: u16,
+        pub lp_reserved2: *mut u8,
+        pub h_std_input: HANDLE,
+        pub h_std_output: HANDLE,
+        pub h_std_error: HANDLE,
+    }
+
+    #[repr(C)]
+    pub struct PROCESS_INFORMATION {
+        pub h_process: HANDLE,
+        pub h_thread: HANDLE,
+        pub dw_process_id: DWORD,
+        pub dw_thread_id: DWORD,
+    }
+
+    #[repr(C)]
+    pub struct IO_COUNTERS {
+        pub read_operation_count: u64,
+        pub write_operation_count: u64,
+        pub other_operation_count: u64,
+        pub read_transfer_count: u64,
+        pub write_transfer_count: u64,
+        pub other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    pub struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+        pub per_process_user_time_limit: i64,
+        pub per_job_user_time_limit: i64,
+        pub limit_flags: DWORD,
+        pub minimum_working_set_size: usize,
+        pub maximum_working_set_size: usize,
+        pub active_process_limit: DWORD,
+        pub affinity: usize,
+        pub priority_class: DWORD,
+        pub scheduling_class: DWORD,
+    }
+
+    #[repr(C)]
+    pub struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+        pub basic_limit_information: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+        pub io_info: IO_COUNTERS,
+        pub process_memory_limit: usize,
+        pub job_memory_limit: usize,
+        pub peak_process_memory_limit: usize,
+        pub peak_job_memory_limit: usize,
+    }
+
+    extern "system" {
+        pub fn CreateJobObjectW(lp_job_attributes: *mut c_void, lp_name: *const u16) -> HANDLE;
+        pub fn SetInformationJobObject(
+            h_job: HANDLE,
+            job_object_information_class: u32,
+            lp_job_object_information: *const c_void,
+            cb_job_object_information_length: DWORD,
+        ) -> BOOL;
+        pub fn AssignProcessToJobObject(h_job: HANDLE, h_process: HANDLE) -> BOOL;
+        pub fn TerminateJobObject(h_job: HANDLE, u_exit_code: u32) -> BOOL;
+        pub fn TerminateProcess(h_process: HANDLE, u_exit_code: u32) -> BOOL;
+        pub fn ResumeThread(h_thread: HANDLE) -> DWORD;
+        pub fn CloseHandle(h_object: HANDLE) -> BOOL;
+        pub fn CreatePipe(h_read_pipe: *mut HANDLE, h_write_pipe: *mut HANDLE, lp_pipe_attributes: *mut SECURITY_ATTRIBUTES, n_size: DWORD) -> BOOL;
+        pub fn SetHandleInformation(h_object: HANDLE, dw_mask: DWORD, dw_flags: DWORD) -> BOOL;
+        pub fn CreateProcessW(
+            lp_application_name: *const u16,
+            lp_command_line: *mut u16,
+            lp_process_attributes: *mut SECURITY_ATTRIBUTES,
+            lp_thread_attributes: *mut SECURITY_ATTRIBUTES,
+            b_inherit_handles: BOOL,
+            dw_creation_flags: DWORD,
+            lp_environment: *mut c_void,
+            lp_current_directory: *const u16,
+            lp_startup_info: *mut STARTUPINFOW,
+            lp_process_information: *mut PROCESS_INFORMATION,
+        ) -> BOOL;
+    }
+
+    pub struct JobObjectHandle {
+        pub handle: HANDLE,
+    }
+
+    unsafe impl Send for JobObjectHandle {}
+    unsafe impl Sync for JobObjectHandle {}
+
+    impl JobObjectHandle {
+        pub fn new() -> Option<Self> {
+            unsafe {
+                let handle = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+                if handle.is_null() {
+                    return None;
+                }
+
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+                let ok = SetInformationJobObject(
+                    handle,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    &info as *const _ as *const c_void,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as DWORD,
+                );
+
+                if ok == 0 {
+                    CloseHandle(handle);
+                    return None;
+                }
+
+                Some(JobObjectHandle { handle })
+            }
+        }
+
+        pub fn assign_raw_process(&self, process_handle: HANDLE) -> bool {
+            unsafe {
+                AssignProcessToJobObject(self.handle, process_handle) != 0
+            }
+        }
+
+        pub fn assign_child(&self, child: &Child) -> bool {
+            unsafe {
+                let process_handle = child.as_raw_handle() as HANDLE;
+                AssignProcessToJobObject(self.handle, process_handle) != 0
+            }
+        }
+
+        pub fn terminate(&self, exit_code: u32) -> bool {
+            unsafe {
+                if !self.handle.is_null() {
+                    TerminateJobObject(self.handle, exit_code) != 0
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    impl Drop for JobObjectHandle {
+        fn drop(&mut self) {
+            unsafe {
+                if !self.handle.is_null() {
+                    CloseHandle(self.handle);
+                }
+            }
+        }
+    }
+
+    pub struct SuspendedSpawnResult {
+        pub child_pid: u32,
+        pub stdout_file: File,
+        pub stderr_file: File,
+        pub process_handle: HANDLE,
+    }
+
+    /// Spawns python process suspended, assigns it to Job Object BEFORE execution begins, and resumes thread.
+    /// Eliminates PROD-LIFECYCLE-JOB-ASSIGNMENT-RACE-01 completely.
+    pub fn spawn_in_job_suspended(
+        job: &JobObjectHandle,
+        script_path: &Path,
+        work_dir: &Path,
+    ) -> Result<SuspendedSpawnResult, &'static str> {
+        unsafe {
+            // 1. Create Pipes with Inheritable Write Ends
+            let mut sa: SECURITY_ATTRIBUTES = std::mem::zeroed();
+            sa.n_length = std::mem::size_of::<SECURITY_ATTRIBUTES>() as DWORD;
+            sa.b_inherit_handle = 1;
+
+            let mut stdout_read: HANDLE = std::ptr::null_mut();
+            let mut stdout_write: HANDLE = std::ptr::null_mut();
+            if CreatePipe(&mut stdout_read, &mut stdout_write, &mut sa, 0) == 0 {
+                return Err("FAILED_CREATE_STDOUT_PIPE");
+            }
+            SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0);
+
+            let mut stderr_read: HANDLE = std::ptr::null_mut();
+            let mut stderr_write: HANDLE = std::ptr::null_mut();
+            if CreatePipe(&mut stderr_read, &mut stderr_write, &mut sa, 0) == 0 {
+                CloseHandle(stdout_read);
+                CloseHandle(stdout_write);
+                return Err("FAILED_CREATE_STDERR_PIPE");
+            }
+            SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0);
+
+            // 2. Prepare Command Line with structured argument quoting
+            let cmd_str = format!("python \"{}\" --emit-bootstrap", script_path.display());
+            let mut cmd_wide: Vec<u16> = OsStr::new(&cmd_str).encode_wide().chain(std::iter::once(0)).collect();
+            let work_dir_wide: Vec<u16> = OsStr::new(work_dir.as_os_str()).encode_wide().chain(std::iter::once(0)).collect();
+
+            let mut si: STARTUPINFOW = std::mem::zeroed();
+            si.cb = std::mem::size_of::<STARTUPINFOW>() as DWORD;
+            si.dw_flags = STARTF_USESTDHANDLES;
+            si.h_std_input = std::ptr::null_mut();
+            si.h_std_output = stdout_write;
+            si.h_std_error = stderr_write;
+
+            let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+
+            // 3. Create Process SUSPENDED
+            let created = CreateProcessW(
+                std::ptr::null(),
+                cmd_wide.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                1, // Inherit handles
+                CREATE_SUSPENDED | CREATE_NO_WINDOW,
+                std::ptr::null_mut(),
+                work_dir_wide.as_ptr(),
+                &mut si,
+                &mut pi,
+            );
+
+            // Close write handles in parent so EOF is triggered on child exit
+            CloseHandle(stdout_write);
+            CloseHandle(stderr_write);
+
+            if created == 0 {
+                CloseHandle(stdout_read);
+                CloseHandle(stderr_read);
+                return Err("CREATE_PROCESS_FAILED");
+            }
+
+            // 4. Assign to Job Object BEFORE thread executes any user instructions
+            let assigned = job.assign_raw_process(pi.h_process);
+            if !assigned {
+                eprintln!("CRITICAL: AssignProcessToJobObject failed. Terminating unmanaged child immediately.");
+                TerminateProcess(pi.h_process, 1);
+                CloseHandle(pi.h_thread);
+                CloseHandle(pi.h_process);
+                CloseHandle(stdout_read);
+                CloseHandle(stderr_read);
+                return Err("ASSIGN_JOB_FAILED");
+            }
+
+            // 5. Resume main thread now that process is strictly within Job Object boundary
+            ResumeThread(pi.h_thread);
+            CloseHandle(pi.h_thread);
+
+            let stdout_file = File::from_raw_handle(stdout_read as RawHandle);
+            let stderr_file = File::from_raw_handle(stderr_read as RawHandle);
+
+            Ok(SuspendedSpawnResult {
+                child_pid: pi.dw_process_id,
+                stdout_file,
+                stderr_file,
+                process_handle: pi.h_process,
+            })
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub mod job_object {
+    use std::process::Child;
+    pub struct JobObjectHandle;
+    impl JobObjectHandle {
+        pub fn new() -> Option<Self> { Some(JobObjectHandle) }
+        pub fn assign_child(&self, _child: &Child) -> bool { true }
+        pub fn terminate(&self, _exit_code: u32) -> bool { true }
+    }
+}
+
 impl std::fmt::Debug for BackendProcessState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BackendProcessState")
-            .field("child", &"<Child Process>")
+            .field("child_pid", &self.child_pid)
+            .field("job", &"<Job Object>")
             .field("auth_token", &"[REDACTED]")
             .field("api_host", &self.api_host)
             .field("api_port", &self.api_port)
@@ -126,7 +427,7 @@ pub fn parse_bootstrap_line(line: &str) -> Result<(String, String, u16), &'stati
     Ok((tok.to_string(), h.to_string(), p as u16))
 }
 
-fn spawn_backend_and_bootstrap() -> (Option<Child>, Option<String>, String, u16) {
+fn spawn_backend_and_bootstrap() -> (Option<u32>, Option<usize>, Option<job_object::JobObjectHandle>, Option<String>, String, u16) {
     let root_dir = find_project_root();
     let server_script = root_dir.join("app_api").join("server.py");
 
@@ -136,34 +437,39 @@ fn spawn_backend_and_bootstrap() -> (Option<Child>, Option<String>, String, u16)
     if is_backend_healthy(&default_host, default_port) {
         println!("Backend already running and healthy on {}:{}", default_host, default_port);
         let existing_token = std::env::var("APP_BACKEND_BEARER_DEV").ok();
-        return (None, existing_token, default_host, default_port);
+        return (None, None, None, existing_token, default_host, default_port);
     }
 
     println!("Starting backend process from: {:?}", root_dir);
 
-    let mut cmd = Command::new("python");
-    cmd.arg(&server_script)
-        .arg("--emit-bootstrap")
-        .current_dir(&root_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
+    let job = match job_object::JobObjectHandle::new() {
+        Some(j) => j,
+        None => {
+            eprintln!("CRITICAL: Failed to create Windows Job Object. Failing closed.");
+            return (None, None, None, None, default_host, default_port);
+        }
+    };
 
     #[cfg(target_os = "windows")]
     {
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+        match job_object::spawn_in_job_suspended(&job, &server_script, &root_dir) {
+            Ok(spawn_res) => {
+                println!("Spawned backend process in Job Object with PID: {}", spawn_res.child_pid);
 
-    match cmd.spawn() {
-        Ok(mut child) => {
-            println!("Spawned backend process with PID: {}", child.id());
+                // Continuous stderr drain worker to prevent buffer saturation (PROD-LIFECYCLE-PIPE-DRAIN)
+                let stderr_file = spawn_res.stderr_file;
+                std::thread::spawn(move || {
+                    let mut reader = BufReader::new(stderr_file);
+                    let mut buf = [0u8; 4096];
+                    while let Ok(n) = reader.read(&mut buf) {
+                        if n == 0 { break; }
+                    }
+                });
 
-            let mut token: Option<String> = None;
-            let mut bootstrap_frames_count = 0usize;
-
-            // Read the single framed bootstrap message from child stdout pipe
-            if let Some(stdout) = child.stdout.take() {
-                let mut reader = BufReader::new(stdout);
+                let mut token: Option<String> = None;
+                let mut bootstrap_frames_count = 0usize;
+                let stdout_file = spawn_res.stdout_file;
+                let mut reader = BufReader::new(stdout_file);
                 let mut line = String::new();
 
                 while let Ok(bytes_read) = reader.read_line(&mut line) {
@@ -198,6 +504,13 @@ fn spawn_backend_and_bootstrap() -> (Option<Child>, Option<String>, String, u16)
                     }
                 }
 
+                // If bootstrap handshake failed or was rejected, terminate process tree immediately
+                if token.is_none() {
+                    eprintln!("Bootstrap failed or was rejected. Terminating spawned child process tree...");
+                    job.terminate(1);
+                    return (None, None, None, None, default_host, default_port);
+                }
+
                 // Spawn a drain thread for remaining stdout so child is not blocked (PROD-LIFECYCLE-PIPE-DRAIN)
                 std::thread::spawn(move || {
                     let mut drain_line = String::new();
@@ -211,24 +524,38 @@ fn spawn_backend_and_bootstrap() -> (Option<Child>, Option<String>, String, u16)
                         drain_line.clear();
                     }
                 });
-            }
 
-            // Wait up to 6 seconds for backend to become responsive
-            let start = Instant::now();
-            while start.elapsed() < Duration::from_secs(6) {
-                if is_backend_healthy(&default_host, default_port) {
-                    println!("Backend is ready and listening on {}:{}", default_host, default_port);
-                    break;
+                // Wait up to 6 seconds for backend to become responsive
+                let start = Instant::now();
+                let mut backend_ready = false;
+                while start.elapsed() < Duration::from_secs(6) {
+                    if is_backend_healthy(&default_host, default_port) {
+                        println!("Backend is ready and listening on {}:{}", default_host, default_port);
+                        backend_ready = true;
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
                 }
-                std::thread::sleep(Duration::from_millis(100));
-            }
 
-            (Some(child), token, default_host, default_port)
+                if !backend_ready {
+                    eprintln!("Backend failed to become healthy within timeout. Terminating spawned child process tree...");
+                    job.terminate(1);
+                    return (None, None, None, None, default_host, default_port);
+                }
+
+                (Some(spawn_res.child_pid), Some(spawn_res.process_handle as usize), Some(job), token, default_host, default_port)
+            }
+            Err(e) => {
+                eprintln!("Failed to spawn backend python process suspended in job: {}", e);
+                job.terminate(1);
+                (None, None, None, None, default_host, default_port)
+            }
         }
-        Err(e) => {
-            eprintln!("Failed to spawn backend python process: {}", e);
-            (None, None, default_host, default_port)
-        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        (None, None, None, None, default_host, default_port)
     }
 }
 
@@ -517,7 +844,28 @@ async fn review_pending_approval(
 ) -> Result<ApiResponse, String> {
     let pending_id = args.pending_id.trim();
 
-    // 1. Validate pending_id format
+    // 1. Check if backend child process has exited
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(guard_handle) = state.process_handle.lock() {
+            if let Some(handle_val) = *guard_handle {
+                unsafe {
+                    extern "system" {
+                        fn GetExitCodeProcess(h_process: *mut std::ffi::c_void, lp_exit_code: *mut u32) -> i32;
+                    }
+                    let mut exit_code: u32 = 0;
+                    if GetExitCodeProcess(handle_val as *mut std::ffi::c_void, &mut exit_code) != 0 {
+                        if exit_code != 259 {
+                            let _ = state.auth_token.lock().map(|mut t| *t = None);
+                            return Err(format!("BACKEND_PROCESS_TERMINATED: Backend process exited with status {}", exit_code));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Validate pending_id format
     if !pending_id.starts_with("pending_appr_") || pending_id.len() > 80 {
         return Err("INVALID_PENDING_APPROVAL_ID: Format must be pending_appr_<id>".to_string());
     }
@@ -535,7 +883,7 @@ async fn review_pending_approval(
         (tok, guard_h.clone(), *guard_p)
     };
 
-    // 2. Fetch authoritative proposal from backend using native bearer
+    // 3. Fetch authoritative proposal from backend using native bearer
     let fetch_path = format!("/api/approvals/{}", pending_id);
     let proposal_res = perform_loopback_http_request(&host, port, "GET", &fetch_path, &token, None, None)?;
 
@@ -552,7 +900,7 @@ async fn review_pending_approval(
         return Err(format!("PROPOSAL_NOT_PENDING: Cannot review action with status {}", proposal_status));
     }
 
-    // 3. Format and show native confirmation dialog
+    // 4. Format and show native confirmation dialog
     let title = "AI Marketing Department — Consequential Action Approval";
     let message = format_approval_confirmation_message(&parsed_proposal, pending_id);
 
@@ -561,7 +909,7 @@ async fn review_pending_approval(
         return Err("USER_REJECTED_NATIVE_CONFIRMATION".to_string());
     }
 
-    // 4. Submit approval decision to backend
+    // 5. Submit approval decision to backend
     let approve_path = format!("/api/approvals/{}/approve", pending_id);
     perform_loopback_http_request(&host, port, "POST", &approve_path, &token, Some("{}".to_string()), None)
 }
@@ -638,6 +986,27 @@ async fn api_request(
     let method = args.method.trim().to_uppercase();
     let path = args.path.trim();
 
+    // 0. Check if backend child process has exited
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(guard_handle) = state.process_handle.lock() {
+            if let Some(handle_val) = *guard_handle {
+                unsafe {
+                    extern "system" {
+                        fn GetExitCodeProcess(h_process: *mut std::ffi::c_void, lp_exit_code: *mut u32) -> i32;
+                    }
+                    let mut exit_code: u32 = 0;
+                    if GetExitCodeProcess(handle_val as *mut std::ffi::c_void, &mut exit_code) != 0 {
+                        if exit_code != 259 {
+                            let _ = state.auth_token.lock().map(|mut t| *t = None);
+                            return Err(format!("BACKEND_PROCESS_TERMINATED: Backend process exited with status {}", exit_code));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 1. Strict Method Whitelist
     if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS") {
         return Err("INVALID_HTTP_METHOD: Allowed methods are GET, POST, PUT, DELETE, PATCH, OPTIONS".to_string());
@@ -693,11 +1062,14 @@ async fn api_request(
 }
 
 fn main() {
-    let (child_process, auth_token, api_host, api_port) = spawn_backend_and_bootstrap();
+    let (child_pid, process_handle, job_handle, auth_token, api_host, api_port) = spawn_backend_and_bootstrap();
 
     let app = tauri::Builder::default()
         .manage(BackendProcessState {
-            child: Mutex::new(child_process),
+            child_pid: Mutex::new(child_pid),
+            #[cfg(target_os = "windows")]
+            process_handle: Mutex::new(process_handle),
+            job: Mutex::new(job_handle),
             auth_token: Mutex::new(auth_token),
             api_host: Mutex::new(api_host),
             api_port: Mutex::new(api_port),
@@ -710,11 +1082,21 @@ fn main() {
         if let tauri::RunEvent::Exit = event {
             // Clean up spawned backend on exit
             if let Some(state) = app_handle.try_state::<BackendProcessState>() {
-                if let Ok(mut lock) = state.child.lock() {
-                    if let Some(mut child) = lock.take() {
-                        println!("Terminating child backend process PID: {}", child.id());
-                        let _ = child.kill();
-                        let _ = child.wait();
+                if let Ok(mut lock_job) = state.job.lock() {
+                    if let Some(job) = lock_job.take() {
+                        println!("Terminating backend job object on exit...");
+                        let _ = job.terminate(0);
+                    }
+                }
+                #[cfg(target_os = "windows")]
+                if let Ok(mut lock_handle) = state.process_handle.lock() {
+                    if let Some(handle_val) = lock_handle.take() {
+                        unsafe {
+                            extern "system" {
+                                fn CloseHandle(h: *mut std::ffi::c_void) -> i32;
+                            }
+                            CloseHandle(handle_val as *mut std::ffi::c_void);
+                        }
                     }
                 }
             }
@@ -866,7 +1248,10 @@ mod tests {
     #[test]
     fn test_backend_process_state_debug_redaction() {
         let state = BackendProcessState {
-            child: Mutex::new(None),
+            child_pid: Mutex::new(None),
+            #[cfg(target_os = "windows")]
+            process_handle: Mutex::new(None),
+            job: Mutex::new(None),
             auth_token: Mutex::new(Some("SUPER_SECRET_TOKEN_1234567890".to_string())),
             api_host: Mutex::new("127.0.0.1".to_string()),
             api_port: Mutex::new(8765),
@@ -874,6 +1259,61 @@ mod tests {
         let debug_str = format!("{:?}", state);
         assert!(debug_str.contains("[REDACTED]"));
         assert!(!debug_str.contains("SUPER_SECRET_TOKEN_1234567890"));
+    }
+
+    #[test]
+    fn test_job_object_creation_and_termination() {
+        let job = job_object::JobObjectHandle::new();
+        assert!(job.is_some());
+        let j = job.unwrap();
+        assert!(j.terminate(0));
+    }
+
+    #[test]
+    fn test_job_object_suspended_process_assignment() {
+        #[cfg(target_os = "windows")]
+        {
+            let job = job_object::JobObjectHandle::new().expect("Failed to create Job Object");
+            let root = find_project_root();
+            let helper_script = root.join("app_api").join("server.py");
+            if helper_script.exists() {
+                let spawn_res = job_object::spawn_in_job_suspended(&job, &helper_script, &root);
+                assert!(spawn_res.is_ok());
+                let res = spawn_res.unwrap();
+                assert!(res.child_pid > 0);
+                assert!(!res.process_handle.is_null());
+                // Terminate job to clean up test process immediately
+                assert!(job.terminate(0));
+                unsafe {
+                    extern "system" {
+                        fn CloseHandle(h: *mut std::ffi::c_void) -> i32;
+                    }
+                    CloseHandle(res.process_handle);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_job_object_breakaway_is_disabled() {
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(job_object::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, 0x00002000);
+            // Verify breakaway flag (0x00000800) is NOT part of limit flags
+            assert_eq!(job_object::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE & 0x00000800, 0);
+        }
+    }
+
+    #[test]
+    fn test_job_object_assignment_failure_cleanup() {
+        #[cfg(target_os = "windows")]
+        {
+            let job = job_object::JobObjectHandle::new().expect("Failed to create Job Object");
+            // Attempt assigning null / invalid handle
+            let assigned = job.assign_raw_process(std::ptr::null_mut());
+            assert!(!assigned, "Assigning null handle must fail closed");
+            assert!(job.terminate(0));
+        }
     }
 
     #[test]

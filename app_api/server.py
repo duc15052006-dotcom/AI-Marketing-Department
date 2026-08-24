@@ -43,6 +43,11 @@ PRODUCTION_ALLOWED_HOSTNAMES: Set[str] = {
 }
 
 
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer with allow_reuse_address=False to enforce exclusive port binding on Windows."""
+    allow_reuse_address = False
+
+
 def parse_and_validate_host(
     host_header: Optional[str],
     allowed_hostnames: Optional[Set[str]] = None,
@@ -1302,7 +1307,11 @@ def run_server(
     valid_host = validate_loopback_host(str(target_host), setting_name="API_HOST")
     valid_port = parse_int(target_port, default=8765, min_val=1, max_val=65535, setting_name="API_PORT")
     server_address = (valid_host, valid_port)
-    httpd = ThreadingHTTPServer(server_address, DepartmentAPIHandler)
+    try:
+        httpd = ExclusiveThreadingHTTPServer(server_address, DepartmentAPIHandler)
+    except OSError as bind_err:
+        logger.error(f"Failed to bind API server to {valid_host}:{valid_port}: {bind_err}")
+        sys.exit(1)
 
     # Secure Launcher/Desktop UI Bootstrap Handshake (PROD-UIAUTH-01)
     should_emit_bootstrap = (
