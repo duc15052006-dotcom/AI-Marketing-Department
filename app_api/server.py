@@ -132,6 +132,11 @@ from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, Runtime
 from runtime.context_compiler import ContextCompiler
 from runtime.engine import FiveAgentDepartmentRuntime, extract_explicit_user_constraints
 from runtime.queue import ResourceLimiter, RunManager
+from integrations.models.settings_manager import (
+    ModelSettingsManager,
+    ModelSettingsValidationError,
+    StaleSettingsRevisionError,
+)
 from tools.capabilities import CapabilityRegistry, RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import (
@@ -224,6 +229,9 @@ class DepartmentAppBackend:
             max_workers=2,
             resource_limiter=self.resource_limiter,
         )
+
+        # Authoritative Model & Provider Settings Manager (PROD-MODEL-SETTINGS-01)
+        self.settings_manager = ModelSettingsManager(gateway=self.runtime.model_gateway)
 
         # Register Demo Workspace with explicit warning
         self.biz_registry.register_workspace(
@@ -498,16 +506,35 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             health = APP_BACKEND.workspace.inspect_connector_health()
             health["app_backend_version"] = "1.0.0"
             health["build_id"] = "20260820-RELEASE-V1"
-            health["providers"] = GLOBAL_PROVIDER_CONFIG.get_sanitized_health_report()
+            health["providers"] = self._authoritative_provider_report()
             self._send_json(health)
             return
 
         elif path == "/api/system/providers/health":
-            self._send_json(GLOBAL_PROVIDER_CONFIG.get_sanitized_health_report())
+            self._send_json(self._authoritative_provider_report())
             return
 
         elif path == "/api/system/diagnostics":
-            self._send_json(GLOBAL_PROVIDER_CONFIG.get_boot_diagnostics())
+            diag = GLOBAL_PROVIDER_CONFIG.get_boot_diagnostics()
+            # Overlay authoritative ModelSettings provider truth (enabled/model/
+            # endpoint/credential) so diagnostics cannot report stale legacy values.
+            try:
+                mgr = APP_BACKEND.settings_manager
+                for pid, entry in diag.get("providers", {}).items():
+                    pdef = mgr.get_settings().providers.get(pid)
+                    if pdef is not None:
+                        entry["enabled"] = pdef.enabled
+                        entry["model_present"] = bool(pdef.default_model)
+                        entry["endpoint_present"] = bool(pdef.base_url) or pdef.adapter_type == "GEMINI_NATIVE"
+                        entry["credential_present"] = mgr._secret_store.has_secret(pdef.credential_ref)
+            except Exception:
+                pass
+            self._send_json(diag)
+            return
+
+        # Model & Provider Settings API (PROD-MODEL-SETTINGS-01)
+        elif path in ("/api/settings/model", "/api/settings/models"):
+            self._send_json(APP_BACKEND.settings_manager.get_safe_settings_dict())
             return
 
         # 2. Chat Sessions API
@@ -801,7 +828,52 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "CHAT_NOT_FOUND"}, 404)
             return
 
+        elif path.startswith("/api/settings/providers/"):
+            pid = path.split("/")[-1]
+            query = urllib.parse.parse_qs(parsed.query)
+            raw_rev = query.get("expected_revision", [None])[0]
+            if raw_rev is None or not str(raw_rev).strip().isdigit():
+                self._send_json({"error": "MISSING_SETTINGS_REVISION", "message": "MISSING_SETTINGS_REVISION: expected_revision query parameter is required for all Settings mutations."}, 400)
+                return
+            try:
+                APP_BACKEND.settings_manager.delete_provider(pid, expected_revision=int(raw_rev))
+                self._send_json({"status": "DELETED", "provider_id": pid,
+                                 "settings_revision": APP_BACKEND.settings_manager.get_settings().settings_revision})
+            except StaleSettingsRevisionError as e:
+                self._send_json({"error": "STALE_SETTINGS_REVISION", "message": str(e), "current_revision": e.current_revision}, 409)
+            except (ModelSettingsValidationError, ValueError) as e:
+                self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+            return
+
         self._send_json({"error": "NOT_FOUND"}, 404)
+
+    def _authoritative_provider_report(self) -> List[Dict[str, Any]]:
+        """Provider health/status report built from AUTHORITATIVE ModelSettings
+        and the live ProviderRegistry (not legacy GLOBAL_PROVIDER_CONFIG values)
+        so user-facing diagnostics always match committed Settings."""
+        mgr = APP_BACKEND.settings_manager
+        settings = mgr.get_settings()
+        report: List[Dict[str, Any]] = []
+        for pid, pdef in settings.providers.items():
+            has_cred = False
+            try:
+                has_cred = mgr._secret_store.has_secret(pdef.credential_ref)
+            except Exception:
+                has_cred = False
+            live_def = APP_BACKEND.runtime.model_gateway.provider_registry.get_provider(pid)
+            report.append({
+                "provider": pid,
+                "enabled": bool(live_def.enabled) if live_def else pdef.enabled,
+                "credential_present": has_cred,
+                "configured": bool(pdef.enabled and has_cred and pdef.default_model),
+                "health": ("AVAILABLE" if (pdef.enabled and has_cred) else ("DISABLED" if not pdef.enabled else "NO_CREDENTIAL")),
+                "model": pdef.default_model,
+                "base_url": pdef.base_url,
+                "timeout_seconds": pdef.timeout_seconds,
+                "cost_policy": getattr(getattr(pdef, "cost_policy", None), "value", str(pdef.cost_policy)),
+                "last_error_category": None,
+            })
+        return report
 
     def do_POST(self) -> None:
         host = self.headers.get("Host", "")
@@ -821,6 +893,132 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
         body = self._read_body_json()
+
+        def _require_expected_revision() -> int:
+            """Settings concurrency contract: every persisted mutation MUST carry
+            the caller's observed revision. Localhost is not a revision authority."""
+            raw = body.get("expected_revision")
+            if raw is None or (isinstance(raw, str) and not raw.strip().isdigit()):
+                raise ValueError("MISSING_SETTINGS_REVISION: expected_revision is required for all Settings mutations.")
+            return int(raw)
+
+        # 0. Model & Provider Settings API (PROD-MODEL-SETTINGS-01)
+        if path in ("/api/settings/model", "/api/settings/models"):
+            try:
+                expected_rev = _require_expected_revision()
+                APP_BACKEND.settings_manager.update_settings(
+                    updates=body,
+                    expected_revision=expected_rev,
+                )
+                self._send_json(APP_BACKEND.settings_manager.get_safe_settings_dict())
+            except StaleSettingsRevisionError as e:
+                self._send_json({"error": "STALE_SETTINGS_REVISION", "message": str(e), "current_revision": e.current_revision}, 409)
+            except ValueError as e:
+                if "MISSING_SETTINGS_REVISION" in str(e):
+                    self._send_json({"error": "MISSING_SETTINGS_REVISION", "message": str(e)}, 400)
+                else:
+                    self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+            except (ModelSettingsValidationError, Exception) as e:
+                if isinstance(e, (ModelSettingsValidationError, ValueError)):
+                    self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+                else:
+                    logger.error(f"Failed to update model settings: {e}")
+                    self._send_json({"error": "SETTINGS_UPDATE_FAILED", "message": "Failed to update model settings."}, 500)
+            return
+
+        elif path == "/api/settings/providers/upsert":
+            secret = body.get("api_key")
+            try:
+                expected_rev = _require_expected_revision()
+                provider_data = {k: v for k, v in body.items()
+                                 if k not in ("expected_revision",)}
+                pdef = APP_BACKEND.settings_manager.upsert_provider(
+                    provider_data=provider_data,
+                    secret=secret,
+                    expected_revision=expected_rev,
+                )
+                mgr = APP_BACKEND.settings_manager
+                has_cred = mgr._secret_store.has_secret(pdef.credential_ref)
+                safe = ModelSettingsManager.sanitize_provider_response(pdef)
+                safe["has_credential"] = has_cred
+                safe["is_configured"] = pdef.enabled and has_cred and bool(pdef.default_model)
+                safe["settings_revision"] = mgr.get_settings().settings_revision
+                self._send_json(safe)
+            except StaleSettingsRevisionError as e:
+                self._send_json({"error": "STALE_SETTINGS_REVISION", "message": str(e), "current_revision": e.current_revision}, 409)
+            except ValueError as e:
+                if "MISSING_SETTINGS_REVISION" in str(e):
+                    self._send_json({"error": "MISSING_SETTINGS_REVISION", "message": str(e)}, 400)
+                else:
+                    self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+            except (ModelSettingsValidationError, Exception) as e:
+                if isinstance(e, (ModelSettingsValidationError, ValueError)):
+                    self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+                else:
+                    logger.error(f"Failed to upsert provider: {e}")
+                    self._send_json({"error": "PROVIDER_UPSERT_FAILED", "message": "Failed to save provider."}, 500)
+            return
+
+        elif path.startswith("/api/settings/providers/") and path.endswith("/enable"):
+            pid = path.split("/")[-2]
+            try:
+                expected_rev = _require_expected_revision()
+                pdef = APP_BACKEND.settings_manager.enable_provider(pid, expected_revision=expected_rev)
+                safe = ModelSettingsManager.sanitize_provider_response(pdef)
+                safe["settings_revision"] = APP_BACKEND.settings_manager.get_settings().settings_revision
+                self._send_json(safe)
+            except StaleSettingsRevisionError as e:
+                self._send_json({"error": "STALE_SETTINGS_REVISION", "message": str(e)}, 409)
+            except ValueError as e:
+                code = "MISSING_SETTINGS_REVISION" if "MISSING_SETTINGS_REVISION" in str(e) else "VALIDATION_ERROR"
+                self._send_json({"error": code, "message": str(e)}, 400)
+            except Exception as e:
+                self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+            return
+
+        elif path.startswith("/api/settings/providers/") and path.endswith("/disable"):
+            pid = path.split("/")[-2]
+            try:
+                expected_rev = _require_expected_revision()
+                pdef = APP_BACKEND.settings_manager.disable_provider(pid, expected_revision=expected_rev)
+                safe = ModelSettingsManager.sanitize_provider_response(pdef)
+                safe["settings_revision"] = APP_BACKEND.settings_manager.get_settings().settings_revision
+                self._send_json(safe)
+            except StaleSettingsRevisionError as e:
+                self._send_json({"error": "STALE_SETTINGS_REVISION", "message": str(e)}, 409)
+            except ValueError as e:
+                code = "MISSING_SETTINGS_REVISION" if "MISSING_SETTINGS_REVISION" in str(e) else "VALIDATION_ERROR"
+                self._send_json({"error": code, "message": str(e)}, 400)
+            except Exception as e:
+                self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+            return
+
+        elif path.startswith("/api/settings/providers/") and path.endswith("/delete"):
+            pid = path.split("/")[-2]
+            try:
+                expected_rev = _require_expected_revision()
+                APP_BACKEND.settings_manager.delete_provider(pid, expected_revision=expected_rev)
+                self._send_json({"status": "DELETED", "provider_id": pid,
+                                 "settings_revision": APP_BACKEND.settings_manager.get_settings().settings_revision})
+            except StaleSettingsRevisionError as e:
+                self._send_json({"error": "STALE_SETTINGS_REVISION", "message": str(e), "current_revision": e.current_revision}, 409)
+            except ValueError as e:
+                code = "MISSING_SETTINGS_REVISION" if "MISSING_SETTINGS_REVISION" in str(e) else "VALIDATION_ERROR"
+                self._send_json({"error": code, "message": str(e)}, 400)
+            except (ModelSettingsValidationError, Exception) as e:
+                if isinstance(e, (ModelSettingsValidationError, ValueError)):
+                    self._send_json({"error": "VALIDATION_ERROR", "message": str(e)}, 400)
+                else:
+                    logger.error(f"Failed to delete provider: {e}")
+                    self._send_json({"error": "PROVIDER_DELETE_FAILED", "message": "Failed to delete provider."}, 500)
+            return
+
+        elif path in ("/api/settings/models/test", "/api/settings/providers/test"):
+            res = APP_BACKEND.settings_manager.test_connection(body)
+            # Connection test responses carry only safe status metadata.
+            forbidden = {"credential", "credential_ref", "authorization", "api_key", "secret"}
+            self._send_json({k: v for k, v in res.items() if str(k).lower() not in forbidden})
+            return
 
         # 1. Create / Manage Chat Sessions
         if path in ("/api/chat/sessions/first_turn", "/api/chat/sessions/first_message", "/api/chat/sessions/new/messages"):

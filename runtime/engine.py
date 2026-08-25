@@ -234,6 +234,43 @@ class FiveAgentDepartmentRuntime:
         self._cancelled_run_ids: Set[str] = set()
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
 
+        # PROD-MODEL-SETTINGS-01R2 credential lifetime authority:
+        # this runtime answers whether an opaque credential_ref is still pinned
+        # by an active (non-terminal) run, driving safe reclamation decisions.
+        if self.model_gateway and getattr(self.model_gateway, "provider_registry", None):
+            try:
+                self.model_gateway.provider_registry.set_credential_usage_authority(
+                    self._is_credential_ref_in_use
+                )
+            except Exception:
+                pass
+
+    def _is_credential_ref_in_use(self, credential_ref: str) -> bool:
+        """True when any non-terminal active run's pinned provider snapshot
+        references the given opaque credential_ref."""
+        from runtime.context import RuntimeStatus
+        non_terminal = {
+            RuntimeStatus.RUNNING,
+            RuntimeStatus.WAITING_FOR_TOOL,
+            RuntimeStatus.WAITING_FOR_APPROVAL,
+            RuntimeStatus.PAUSED,
+        }
+        with self._lock:
+            contexts = list(self._active_contexts.values())
+        for ctx in contexts:
+            if ctx.status not in non_terminal:
+                continue
+            pol = ctx.model_policy
+            if not isinstance(pol, dict):
+                continue
+            providers = pol.get("providers")
+            if not isinstance(providers, dict):
+                continue
+            for pdef in providers.values():
+                if isinstance(pdef, dict) and pdef.get("credential_ref") == credential_ref:
+                    return True
+        return False
+
     def reserve_run_id(self, custom_id: Optional[str] = None, trusted: bool = False) -> str:
         """Reserve an authoritative run ID before execution begins."""
         with self._lock:

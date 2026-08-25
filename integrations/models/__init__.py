@@ -48,6 +48,14 @@ from integrations.models.profiles import ModelProfile, ProfileManager
 from integrations.models.gateway import UniversalModelGateway, ProviderHealth
 from integrations.models.router import ModelRouter
 
+from integrations.models.secret_store import GLOBAL_SECRET_STORE, SecureSecretStore
+from integrations.models.settings_manager import (
+    ModelSettings,
+    ModelSettingsManager,
+    ModelSettingsValidationError,
+    StaleSettingsRevisionError,
+)
+
 __all__ = [
     "BaseModelAdapter",
     "CostPolicy",
@@ -95,4 +103,10 @@ __all__ = [
     "OpenAICompatibleTransport",
     "classify_transport_error",
     "sanitize_secrets",
+    "SecureSecretStore",
+    "GLOBAL_SECRET_STORE",
+    "ModelSettings",
+    "ModelSettingsManager",
+    "StaleSettingsRevisionError",
+    "ModelSettingsValidationError",
 ]

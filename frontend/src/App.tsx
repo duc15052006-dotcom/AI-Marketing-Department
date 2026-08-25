@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import brandLogo from './assets/logo.png';
 import { MarkdownView } from './components/MarkdownView.tsx';
+import { ModelSettingsView } from './components/ModelSettingsView.tsx';
 import {
   IconPlus,
   IconClock,
@@ -80,7 +81,7 @@ interface ProjectItem {
 }
 
 export default function App() {
-  const [activeView, setActiveView] = useState<'chat' | 'dashboard' | 'brands' | 'projects' | 'knowledge' | 'memory' | 'approvals' | 'connections' | 'activity'>('chat');
+  const [activeView, setActiveView] = useState<'chat' | 'dashboard' | 'brands' | 'projects' | 'knowledge' | 'memory' | 'approvals' | 'connections' | 'activity' | 'settings'>('chat');
   const [chatSessions, setChatSessions] = useState<ChatSessionItem[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -828,6 +829,7 @@ export default function App() {
                 { id: 'approvals', label: `Approvals (${pendingApprovals.length})`, icon: IconShieldCheck },
                 { id: 'connections', label: `Connections (${Object.keys(connectorHealth).length})`, icon: IconPlug },
                 { id: 'activity', label: `Receipts & Lineage (${receipts.length})`, icon: IconReceipt },
+                { id: 'settings', label: 'AI Model Settings', icon: IconSettings },
               ].map((item) => {
                 const isItemActive = activeView === item.id;
                 const IconComponent = item.icon;
@@ -1160,6 +1162,9 @@ export default function App() {
                 <div ref={messagesEndRef} />
               </div>
             )
+          ) : activeView === 'settings' ? (
+            /* Dedicated Model & Provider Settings View */
+            <ModelSettingsView />
           ) : (
             /* Alternate Workspace Views (Brands, Projects, Dashboard, Knowledge, etc.) */
             <div style={{ padding: '30px 40px', maxWidth: '900px', margin: '0 auto', width: '100%' }}>

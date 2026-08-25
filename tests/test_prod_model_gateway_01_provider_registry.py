@@ -108,10 +108,16 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
         self.assertEqual(url, "https://api.openai.com/v1")
 
     def test_06_base_url_validation_http_loopback_valid(self):
-        """Verify plain HTTP loopback URLs pass validation."""
+        """Verify plain HTTP explicit loopback URLs pass validation.
+        R4A policy: only exact 127.0.0.1 / localhost / ::1 are loopback;
+        0.0.0.0, other 127/8 and wildcard addresses are rejected."""
         self.assertEqual(validate_base_url("http://127.0.0.1:8000/v1"), "http://127.0.0.1:8000/v1")
         self.assertEqual(validate_base_url("http://localhost:11434/v1"), "http://localhost:11434/v1")
-        self.assertEqual(validate_base_url("http://0.0.0.0:8080/v1"), "http://0.0.0.0:8080/v1")
+        self.assertEqual(validate_base_url("http://[::1]:8000/v1"), "http://[::1]:8000/v1")
+        for no_longer_loopback in ("http://0.0.0.0:8080/v1", "http://127.0.0.2:8080/v1"):
+            with self.assertRaises(ValueError) as ctx:
+                validate_base_url(no_longer_loopback)
+            self.assertIn("INSECURE_HTTP_URL", str(ctx.exception))
 
     def test_07_base_url_validation_http_remote_rejected(self):
         """Verify non-loopback plain HTTP is rejected with INSECURE_HTTP_URL."""

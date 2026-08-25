@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
+import json
 import logging
 import os
 import re
@@ -52,7 +54,11 @@ def validate_base_url(url: Optional[str]) -> Optional[str]:
     Security & normalization rules:
     - Must use http:// or https://. Rejects file://, ftp://, javascript:, data:, etc.
     - Rejects embedded userinfo/credentials (https://user:pass@example.com).
-    - Plain HTTP (http://) is strictly restricted to local loopback hosts (127.0.0.1, localhost, ::1, [::1], 0.0.0.0).
+    - Rejects scheme-relative URLs ('//host/...') and percent-encoded host tricks.
+    - Plain HTTP (http://) is strictly restricted to explicit loopback hosts:
+      exactly 127.0.0.1, localhost (incl. subdomains of localhost), and ::1.
+      0.0.0.0, [::], other 127/8 addresses and all private/link-local ranges
+      are NOT accepted for plain HTTP.
     - Canonicalizes duplicate slashes and redundant trailing paths (/v1/v1, /chat/completions).
     """
     if url is None:
@@ -61,32 +67,151 @@ def validate_base_url(url: Optional[str]) -> Optional[str]:
     if not cleaned:
         return None
 
+    if cleaned.startswith("//"):
+        raise ValueError("INVALID_URL_SCHEME: Scheme-relative URLs are not allowed.")
+
+    if any(ch in cleaned for ch in ("\x00", "\n", "\r", "\t")):
+        raise ValueError("INVALID_URL_CHARACTERS: Control characters are not allowed in URLs.")
+
     parsed = urllib.parse.urlparse(cleaned)
     scheme = parsed.scheme.lower()
     if scheme not in ("http", "https"):
         raise ValueError(f"INVALID_URL_SCHEME: Unsupported scheme '{parsed.scheme}'. Base URL must use https:// or http:// loopback.")
 
-    if parsed.username or parsed.password or "@" in (parsed.netloc or ""):
+    netloc = parsed.netloc or ""
+    if "%" in netloc:
+        raise ValueError("INVALID_URL_HOST: Percent-encoded host components are not allowed.")
+
+    if parsed.username or parsed.password or "@" in netloc:
         raise ValueError("INVALID_URL_CREDENTIALS: Base URL must not contain embedded username or password.")
 
-    hostname = (parsed.hostname or "").lower()
+    hostname = (parsed.hostname or "").strip().lower().rstrip(".")
+    if not hostname:
+        raise ValueError("INVALID_URL_HOST: Base URL host is missing or malformed.")
+    if any(ch in hostname for ch in (" ", "\\", "/")):
+        raise ValueError("INVALID_URL_HOST: Host contains illegal characters.")
+
     if scheme == "http":
-        is_loopback = hostname in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "local") or hostname.endswith(".localhost")
+        # Exact parsed-host semantics only (never substring matching).
+        is_loopback = (
+            hostname == "127.0.0.1"
+            or hostname == "::1"
+            or hostname == "localhost"
+            or hostname.endswith(".localhost")
+        )
         if not is_loopback:
-            raise ValueError(f"INSECURE_HTTP_URL: Plain HTTP is restricted to local loopback addresses (127.0.0.1, localhost). Found '{hostname}'.")
+            raise ValueError(
+                f"INSECURE_HTTP_URL: Plain HTTP is restricted to explicit loopback hosts "
+                f"(127.0.0.1, localhost, ::1). Found '{hostname}'."
+            )
 
     # Canonicalize path: remove trailing /chat/completions or duplicate /v1/v1
     path = parsed.path or ""
-    path = re.sub(r"/+", "/", path)
+    path = re.sub(r"/+", "/", path).rstrip("/")
     if path.endswith("/chat/completions"):
-        path = path[:-len("/chat/completions")]
+        path = path[:-len("/chat/completions")].rstrip("/")
     while path.endswith("/v1/v1"):
-        path = path[:-3]
-    path = path.rstrip("/")
+        path = path[:-3].rstrip("/")
 
-    port_str = f":{parsed.port}" if parsed.port else ""
-    canonical_url = f"{scheme}://{parsed.hostname}{port_str}{path}"
-    return canonical_url
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError("INVALID_URL_PORT: Base URL port is malformed.")
+
+    port_str = f":{port}" if port else ""
+    host_for_url = f"[{hostname}]" if ":" in hostname else hostname  # re-bracket IPv6
+    return f"{scheme}://{host_for_url}{port_str}{path}"
+
+
+# Adapter types that may actually be constructed by this registry.
+SUPPORTED_ADAPTER_TYPES = {
+    "OPENAI_COMPATIBLE",
+    "OPENAI",
+    "GEMINI_NATIVE",
+    "GEMINI",
+    "CUSTOM_INJECTED",
+}
+
+# Sane execution upper bound consistent with gateway budgeting behavior.
+MAX_PROVIDER_TIMEOUT_SECONDS = 600.0
+
+_PROVIDER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_MODEL_ID_RE = re.compile(r"^[^\x00-\x1f\x7f\\]{1,200}$")
+
+
+def validate_provider_id(provider_id: str) -> str:
+    """Canonical provider-id grammar: lowercase alnum start, then alnum/-/_ ,
+    max 64 chars. Rejects empty/whitespace-only values, path traversal,
+    slashes/backslashes, control characters, ':' (secret-ref delimiter),
+    and unreasonably long identifiers."""
+    pid = str(provider_id or "").strip().lower()
+    if not pid:
+        raise ValueError("INVALID_PROVIDER_ID: provider_id cannot be empty.")
+    if len(pid) > 64:
+        raise ValueError("INVALID_PROVIDER_ID: provider_id exceeds maximum length of 64 characters.")
+    if not _PROVIDER_ID_RE.fullmatch(pid):
+        raise ValueError(
+            "INVALID_PROVIDER_ID: provider_id must match ^[a-z0-9][a-z0-9_-]{0,63}$ "
+            "(no slashes, dots, colons, spaces, traversal or control characters)."
+        )
+    return pid
+
+
+def validate_adapter_type(adapter_type: str) -> str:
+    val = str(adapter_type or "").strip().upper()
+    if val not in SUPPORTED_ADAPTER_TYPES:
+        raise ValueError(
+            f"UNSUPPORTED_ADAPTER_TYPE: '{adapter_type}' is not a supported adapter type "
+            f"(allowed: {', '.join(sorted(SUPPORTED_ADAPTER_TYPES))})."
+        )
+    return val
+
+
+def validate_timeout_seconds(timeout_seconds) -> float:
+    try:
+        value = float(timeout_seconds)
+    except Exception:
+        raise ValueError(f"INVALID_TIMEOUT_SECONDS: timeout_seconds must be numeric, got '{timeout_seconds!r}'.")
+    import math
+    if not math.isfinite(value):
+        raise ValueError("INVALID_TIMEOUT_SECONDS: timeout_seconds must be finite (no NaN/Infinity).")
+    if value <= 0:
+        raise ValueError("INVALID_TIMEOUT_SECONDS: timeout_seconds must be > 0.")
+    if value > MAX_PROVIDER_TIMEOUT_SECONDS:
+        raise ValueError(
+            f"INVALID_TIMEOUT_SECONDS: timeout_seconds exceeds the maximum allowed "
+            f"{MAX_PROVIDER_TIMEOUT_SECONDS} seconds."
+        )
+    return value
+
+
+def validate_default_model(default_model: str) -> str:
+    mid = str(default_model or "").strip()
+    if not mid:
+        raise ValueError("INVALID_MODEL_ID: model id cannot be empty.")
+    if not _MODEL_ID_RE.fullmatch(mid):
+        raise ValueError("INVALID_MODEL_ID: model id contains control characters or is pathologically sized.")
+    return mid
+
+
+def validate_chat_completions_path(path: Optional[str]) -> Optional[str]:
+    """Must be a relative HTTP path appropriate to the base URL. Absolute URLs,
+    alternate origins, schemes and backslashes are rejected so the value can
+    never become a second SSRF URL authority."""
+    if path is None:
+        return None
+    cleaned = str(path).strip()
+    if not cleaned:
+        return None
+    if "://" in cleaned or cleaned.startswith("//"):
+        raise ValueError("INVALID_CHAT_COMPLETIONS_PATH: absolute origins/schemes are not allowed.")
+    if not cleaned.startswith("/"):
+        raise ValueError("INVALID_CHAT_COMPLETIONS_PATH: path must start with '/'.")
+    if "\\" in cleaned or any(ch in cleaned for ch in "\x00\r\n\t"):
+        raise ValueError("INVALID_CHAT_COMPLETIONS_PATH: illegal characters in path.")
+    if len(cleaned) > 256:
+        raise ValueError("INVALID_CHAT_COMPLETIONS_PATH: path exceeds maximum length of 256 characters.")
+    return cleaned
 
 
 class ProviderDefinition(BaseModel):
@@ -111,14 +236,27 @@ class ProviderDefinition(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # Validate machine provider ID
-        if not self.provider_id or not str(self.provider_id).strip():
-            raise ValueError("INVALID_PROVIDER_ID: provider_id cannot be empty.")
-        self.provider_id = str(self.provider_id).strip().lower()
+        # Validate machine provider ID (canonical grammar; traversal/secret-ref safe)
+        self.provider_id = validate_provider_id(self.provider_id)
 
         # Default display name
         if not self.display_name:
             self.display_name = self.provider_id.capitalize()
+
+        # Adapter type must be an actually supported type (no silent coercion).
+        if self.adapter_type:
+            self.adapter_type = validate_adapter_type(self.adapter_type)
+
+        # Execution timeout must be numeric, finite, > 0 and within sane bounds.
+        if self.timeout_seconds is not None:
+            self.timeout_seconds = validate_timeout_seconds(self.timeout_seconds)
+
+        # Model id: free-form but sane (no control chars, bounded size).
+        self.default_model = validate_default_model(self.default_model)
+
+        # OpenAI-compatible request path must stay relative to the base URL.
+        if self.chat_completions_path:
+            self.chat_completions_path = validate_chat_completions_path(self.chat_completions_path)
 
         # Handle backward compatibility fields
         if self.protocol is not None:
@@ -258,6 +396,10 @@ class ModelPolicy(BaseModel):
                 return self.agent_overrides[norm_key]
         return self.global_target
 
+    def get_target_for_agent(self, agent_name: Optional[str] = None) -> ModelTarget:
+        """Alias for resolve_target_for_agent."""
+        return self.resolve_target_for_agent(agent_name)
+
     def get_candidate_chain_for_agent(self, agent_name: Optional[str] = None) -> List[ModelTarget]:
         """Resolve ordered list of candidate ModelTargets for an agent execution."""
         primary = self.resolve_target_for_agent(agent_name)
@@ -319,13 +461,99 @@ class ModelMetadata(BaseModel):
 class ProviderRegistry:
     """Registry managing provider configurations, custom adapters, and connection testing."""
 
-    def __init__(self) -> None:
+    def __init__(self, secret_store: Optional[Any] = None) -> None:
         self._lock = threading.RLock()
         self._configs: Dict[str, ProviderDefinition] = {}
         self._adapters: Dict[str, BaseModelAdapter] = {}
         self._secrets: Dict[str, str] = {}
         self._injected_adapters: Dict[str, BaseModelAdapter] = {}
+        self._secret_store = secret_store
+        self._credential_usage_authority: Optional[Any] = None
         self._load_builtin_providers()
+
+    def bind_secret_store(self, secret_store: Any) -> None:
+        """Explicit dependency binding for the secure credential store.
+        Replaces direct private-attribute mutation by collaborators."""
+        with self._lock:
+            self._secret_store = secret_store
+
+    def set_credential_usage_authority(self, authority: Optional[Any]) -> None:
+        """Register a callback(ref: str) -> bool answering whether an opaque
+        credential_ref is still referenced by any active execution run.
+        Used as the lifetime authority for credential version reclamation."""
+        with self._lock:
+            self._credential_usage_authority = authority
+
+    def _is_credential_ref_active(self, credential_ref: str) -> bool:
+        authority = getattr(self, "_credential_usage_authority", None)
+        if authority is None:
+            return False
+        try:
+            return bool(authority(credential_ref))
+        except Exception:
+            # Fail safe: if the authority errors, treat the ref as in-use so an
+            # actively pinned credential is never prematurely reclaimed.
+            return True
+
+    def remove_provider_config(self, provider_id: str) -> bool:
+        """Remove a provider's configuration and its LIVE cached adapter so new
+        runs can no longer select it.
+
+        Credential-version-pinned adapters are also purged; they are safely
+        rebuildable while their pinned secret remains retained for active runs.
+        Returns True if a configuration existed and was removed.
+        """
+        pid = provider_id.lower()
+        with self._lock:
+            existed = self._configs.pop(pid, None) is not None
+            doomed = [k for k in self._adapters if k == pid or k.startswith(f"{pid}@")]
+            for k in doomed:
+                del self._adapters[k]
+            self._drop_pinned_index_entries(doomed)
+            if hasattr(self, "_injected_adapters"):
+                self._injected_adapters.pop(pid, None)
+            return existed
+
+    def restore_provider_configs(self, providers_map: Dict[str, "ProviderDefinition"]) -> None:
+        """Restore registry configuration to an exact prior committed snapshot
+        (transaction rollback). Non-injected providers absent from the map are
+        removed; all mapped definitions are (re)installed; live adapter cache
+        entries for restored/removed pids are evicted so subsequent requests
+        rebuild from the restored state. Injected DI adapters are preserved.
+        """
+        with self._lock:
+            injected = getattr(self, "_injected_adapters", {}) or {}
+            for pid in [p for p in list(self._configs.keys()) if p not in providers_map]:
+                if pid in injected:
+                    continue
+                del self._configs[pid]
+                doomed = [k for k in self._adapters if k == pid or k.startswith(f"{pid}@")]
+                for k in doomed:
+                    del self._adapters[k]
+                self._drop_pinned_index_entries(doomed)
+            for pid, pdef in providers_map.items():
+                if pid in injected:
+                    continue
+                self._configs[pid] = ProviderDefinition(**pdef.model_dump()) if not isinstance(pdef, ProviderDefinition) else pdef
+                self._adapters.pop(pid, None)
+
+    def reconcile_provider_configs(self, valid_provider_ids: set) -> None:
+        """Reconcile registry configuration to the complete committed Settings
+        state: provider configs (and their adapters) absent from the authoritative
+        settings are removed. Explicitly injected DI adapters and their
+        auto-registered config entries are preserved per the generic DI contract.
+        """
+        with self._lock:
+            injected = getattr(self, "_injected_adapters", {}) or {}
+            for pid in [p for p in list(self._configs.keys()) if p not in valid_provider_ids]:
+                if pid in injected:
+                    continue
+                del self._configs[pid]
+                doomed = [k for k in self._adapters if k == pid or k.startswith(f"{pid}@")]
+                for k in doomed:
+                    del self._adapters[k]
+                self._drop_pinned_index_entries(doomed)
+                self._injected_adapters.pop(pid, None)
 
     def _load_builtin_providers(self) -> None:
         """Register default production provider configurations."""
@@ -428,6 +656,33 @@ class ProviderRegistry:
             self._configs[pid].enabled = False
             self._adapters.pop(pid, None)
 
+    def evict_adapter(self, provider_id: str) -> None:
+        """Evict the LIVE cached adapter for a provider, forcing re-instantiation
+        with updated credentials/config.
+
+        Deliberately does NOT purge credential-version-pinned adapters
+        ('<pid>@<credential_ref>' keys) so active runs may continue resolving
+        their run-start credential version. Use purge_provider_adapters() when
+        the provider (and all its credential versions) is being removed.
+        """
+        pid = provider_id.lower()
+        with self._lock:
+            self._adapters.pop(pid, None)
+            if hasattr(self, "_injected_adapters"):
+                self._injected_adapters.pop(pid, None)
+
+    def purge_provider_adapters(self, provider_id: str) -> None:
+        """Purge ALL cached adapters for a provider: the live entry plus every
+        pinned entry. Used on provider deletion."""
+        pid = provider_id.lower()
+        with self._lock:
+            doomed = [k for k in self._adapters if k == pid or k.startswith(f"{pid}@")]
+            for k in doomed:
+                del self._adapters[k]
+            self._drop_pinned_index_entries(doomed)
+            if hasattr(self, "_injected_adapters"):
+                self._injected_adapters.pop(pid, None)
+
     def get_provider(self, provider_id: str) -> Optional[ProviderDefinition]:
         """Retrieve provider definition by ID."""
         with self._lock:
@@ -450,20 +705,48 @@ class ProviderRegistry:
             return [p for p in self._configs.values() if p.enabled]
 
     def _resolve_secret(self, cfg: ProviderDefinition) -> Optional[str]:
-        """Resolve API credential from secret storage or environment reference."""
+        """Resolve API credential from secret storage, vault, or environment reference."""
         pid = cfg.provider_id.lower()
         if pid in self._secrets and self._secrets[pid]:
             return self._secrets[pid]
         ref = cfg.credential_ref or ""
-        if ref.startswith("ENV:"):
-            env_var = ref[4:].strip()
-            return os.environ.get(env_var)
+        if ref:
+            from integrations.models.secret_store import GLOBAL_SECRET_STORE
+            store = getattr(self, "_secret_store", None) or GLOBAL_SECRET_STORE
+            secret = store.get_secret(ref)
+            if secret:
+                return secret
         if cfg.api_key_env:
             return os.environ.get(cfg.api_key_env)
         return None
 
+    def _build_adapter(self, cfg: ProviderDefinition, secret: Optional[str]) -> BaseModelAdapter:
+        """Instantiate the correct adapter for a provider definition."""
+        adapter_type_upper = str(cfg.adapter_type).upper()
+        adapter: BaseModelAdapter
+        if adapter_type_upper in ("GEMINI_NATIVE", "GEMINI"):
+            adapter = GeminiProviderAdapter(
+                default_model=cfg.default_model,
+                api_key=secret,
+            )
+        elif adapter_type_upper in ("OPENAI_COMPATIBLE", "OPENAI"):
+            adapter = OpenAICompatibleProviderAdapter(
+                provider_id=cfg.provider_id,
+                base_url=cfg.base_url or "",
+                api_key_env=cfg.api_key_env or f"{cfg.provider_id.upper()}_API_KEY",
+                default_model=cfg.default_model,
+                api_key=secret,
+                chat_completions_path=cfg.chat_completions_path,
+                cost_policy=cfg.cost_policy,
+                timeout_seconds=cfg.timeout_seconds,
+                capabilities=cfg.supported_capabilities,
+            )
+        else:
+            raise ValueError(f"UNSUPPORTED_ADAPTER_TYPE: '{cfg.adapter_type}' for provider '{cfg.provider_id.lower()}'.")
+        return adapter
+
     def get_adapter(self, provider_id: str, include_disabled: bool = False) -> Optional[BaseModelAdapter]:
-        """Retrieve or create adapter instance for given provider ID."""
+        """Retrieve or create adapter instance for given provider ID (live config)."""
         pid = provider_id.lower()
         with self._lock:
             if pid in getattr(self, "_injected_adapters", {}):
@@ -479,31 +762,97 @@ class ProviderRegistry:
                 return self._adapters[pid]
 
             secret = self._resolve_secret(cfg)
-            adapter_type_upper = str(cfg.adapter_type).upper()
-
-            adapter: BaseModelAdapter
-            if adapter_type_upper in ("GEMINI_NATIVE", "GEMINI"):
-                adapter = GeminiProviderAdapter(
-                    default_model=cfg.default_model,
-                    api_key=secret,
-                )
-            elif adapter_type_upper in ("OPENAI_COMPATIBLE", "OPENAI"):
-                adapter = OpenAICompatibleProviderAdapter(
-                    provider_id=cfg.provider_id,
-                    base_url=cfg.base_url or "",
-                    api_key_env=cfg.api_key_env or f"{cfg.provider_id.upper()}_API_KEY",
-                    default_model=cfg.default_model,
-                    api_key=secret,
-                    chat_completions_path=cfg.chat_completions_path,
-                    cost_policy=cfg.cost_policy,
-                    timeout_seconds=cfg.timeout_seconds,
-                    capabilities=cfg.supported_capabilities,
-                )
-            else:
-                raise ValueError(f"UNSUPPORTED_ADAPTER_TYPE: '{cfg.adapter_type}' for provider '{pid}'.")
+            adapter = self._build_adapter(cfg, secret)
 
             self._adapters[pid] = adapter
             return adapter
+
+    @staticmethod
+    def _execution_fingerprint(cfg: ProviderDefinition) -> str:
+        """Deterministic SHA-256 fingerprint of the SAFE execution-influencing
+        ProviderDefinition fields. Contains no secret material (credential_ref
+        is an opaque non-secret handle; api keys are never part of identity)."""
+        payload = json.dumps({
+            "provider_id": cfg.provider_id.lower(),
+            "adapter_type": str(cfg.adapter_type).upper(),
+            "base_url": cfg.base_url or "",
+            "credential_ref": cfg.credential_ref or "",
+            "default_model": cfg.default_model or "",
+            "chat_completions_path": cfg.chat_completions_path or "",
+            "timeout_seconds": float(cfg.timeout_seconds or 0.0),
+            "cost_policy": str(getattr(cfg.cost_policy, "value", cfg.cost_policy)),
+            "supported_capabilities": sorted((cfg.supported_capabilities or {}).items()),
+        }, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def get_pinned_adapter(self, cfg: ProviderDefinition) -> Optional[BaseModelAdapter]:
+        """Retrieve or create an adapter PINNED to an exact provider definition.
+
+        Used when executing under a run-scoped ProviderRegistrySnapshot: the
+        cache key is provider_id + SHA-256 fingerprint over the complete safe
+        execution configuration (endpoint, path, model, timeout, cost policy,
+        credential version), so neither key rotation nor any other config
+        mutation can alias one run's adapter onto another run's definition.
+        No secret values ever appear in cache keys or the pin index.
+        """
+        pid = cfg.provider_id.lower()
+        with self._lock:
+            if pid in getattr(self, "_injected_adapters", {}):
+                return self._injected_adapters[pid]
+
+            fingerprint = self._execution_fingerprint(cfg)
+            cache_key = f"{pid}@{fingerprint}"
+            if cache_key in self._adapters:
+                return self._adapters[cache_key]
+
+            secret = self._resolve_secret(cfg)
+            if not secret:
+                # A pinned adapter cannot be constructed without its pinned
+                # credential (e.g. reclaimed after run termination).
+                return None
+            adapter = self._build_adapter(cfg, secret)
+
+            self._adapters[cache_key] = adapter
+            # Pin index: credential_ref -> cache keys, enabling reclamation
+            # eviction without depending on the key format itself.
+            ref = cfg.credential_ref or ""
+            if ref:
+                index = getattr(self, "_pinned_adapter_index", None)
+                if index is None:
+                    index = {}
+                    self._pinned_adapter_index = index
+                index.setdefault(ref, set()).add(cache_key)
+            return adapter
+
+    def _drop_pinned_index_entries(self, cache_keys) -> None:
+        index = getattr(self, "_pinned_adapter_index", None)
+        if not index:
+            return
+        removed = set(cache_keys)
+        for ref in list(index.keys()):
+            remaining = index[ref] - removed
+            if remaining:
+                index[ref] = remaining
+            else:
+                del index[ref]
+
+    def evict_pinned_adapter(self, credential_ref: str) -> None:
+        """Evict cached adapters PINNED to a specific opaque credential_ref
+        (across providers), e.g. after that credential version was reclaimed.
+        Uses the pin index; independent of cache-key format."""
+        if not credential_ref:
+            return
+        with self._lock:
+            index = getattr(self, "_pinned_adapter_index", None)
+            keys = list(index.get(credential_ref, set())) if index else []
+            # Fallback scan for legacy entries created before the index existed.
+            if not keys:
+                suffix = f"@{credential_ref}"
+                keys = [k for k in self._adapters if k.endswith(suffix)]
+            for k in keys:
+                self._adapters.pop(k, None)
+            if index:
+                index.pop(credential_ref, None)
 
     def register_custom_adapter(self, adapter: BaseModelAdapter) -> None:
         """Test/Mock Dependency Injection: register a pre-instantiated adapter object."""

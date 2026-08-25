@@ -106,7 +106,7 @@ class UniversalModelGateway:
 
         # Authoritative Model Policy
         self._has_explicit_policy: bool = model_policy is not None
-        self.model_policy = model_policy or ModelPolicy(
+        self._model_policy = model_policy or ModelPolicy(
             global_target=ModelTarget(provider_id=default_provider or "xkiro", model_id="mistralai/mistral-large-2512"),
             fallback_chain=[
                 ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
@@ -119,13 +119,26 @@ class UniversalModelGateway:
         self._health_state: Dict[str, Dict[str, Any]] = {}
 
     @property
+    def model_policy(self) -> ModelPolicy:
+        return self._model_policy
+
+    @model_policy.setter
+    def model_policy(self, policy: ModelPolicy) -> None:
+        self._model_policy = policy
+        self._has_explicit_policy = True
+
+    @property
     def free_only_mode(self) -> bool:
         return self._free_only_mode
+
+    @free_only_mode.setter
+    def free_only_mode(self, enabled: bool) -> None:
+        self.set_free_only_mode(enabled)
 
     def set_free_only_mode(self, enabled: bool) -> None:
         """Toggle strict free-only cost governance."""
         self._free_only_mode = enabled
-        self.model_policy.free_only_mode = enabled
+        self._model_policy.free_only_mode = enabled
 
     def get_provider_health(self, provider_id: str) -> ProviderHealth:
         """Get current health state for a provider."""
@@ -234,6 +247,8 @@ class UniversalModelGateway:
             total_timeout = 180.0
         last_error_resp: Optional[ModelResponse] = None
         attempt_count = 0
+        policy_blocked_count = 0
+        executed_any = False
 
         for cand_provider, cand_model in candidates:
             elapsed = time.perf_counter() - start_time
@@ -265,18 +280,48 @@ class UniversalModelGateway:
                     return last_error_resp
                 continue
 
-            # 2. Cost Policy & FREE_ONLY_MODE Gate
-            adapter = self.provider_registry.get_adapter(cand_provider)
+            # 2. Active-run adapter binding + Cost Policy & FREE_ONLY_MODE Gate
+            # When executing under a run-scoped snapshot, resolve the adapter
+            # PINNED to the snapshot's provider definition (full execution
+            # fingerprint) so mid-run settings changes cannot drift an active
+            # run onto a new credential or endpoint.
+            if provider_snapshot is not None and prov_def is not None:
+                adapter = self.provider_registry.get_pinned_adapter(prov_def)
+            else:
+                adapter = self.provider_registry.get_adapter(cand_provider)
             model_meta = self.model_registry.get_model(cand_provider, cand_model)
-            cost_tier = prov_def.cost_policy if (prov_def and prov_def.cost_policy != CostPolicy.UNKNOWN) else (
-                model_meta.cost_tier if model_meta else (adapter.cost_policy if adapter else CostPolicy.UNKNOWN)
+            # ProviderDefinition-declared cost policy is authoritative when a
+            # definition exists (including explicit UNKNOWN = unverified);
+            # model metadata is only a fallback for undefined providers.
+            if prov_def is not None:
+                cost_tier = prov_def.cost_policy
+            else:
+                cost_tier = (
+                    model_meta.cost_tier if model_meta
+                    else (adapter.cost_policy if adapter else CostPolicy.UNKNOWN)
+                )
+
+            # Effective cost-governance authority: an explicitly supplied
+            # run-scoped ModelPolicy governs its own runs; live gateway state
+            # applies only when no pinned policy exists. No second authority.
+            effective_free_only = (
+                bool(model_policy.free_only_mode)
+                if model_policy is not None and getattr(model_policy, "free_only_mode", None) is not None
+                else self._free_only_mode
             )
 
-            if self._free_only_mode and not allow_paid:
-                if cost_tier == CostPolicy.PAID:
-                    logger.warning(
-                        f"Skipping paid model {cand_provider}::{cand_model} under FREE_ONLY_MODE (allow_paid=False)."
+            if effective_free_only and not allow_paid:
+                if cost_tier == CostPolicy.PAID or cost_tier == CostPolicy.UNKNOWN:
+                    policy_reason = (
+                        f"Requesting paid model {cand_provider}::{cand_model} is blocked when FREE_ONLY_MODE=True."
+                        if cost_tier == CostPolicy.PAID
+                        else f"Unverified cost model {cand_provider}::{cand_model} is blocked when FREE_ONLY_MODE=True."
                     )
+                    logger.warning(
+                        f"Skipping {'paid' if cost_tier == CostPolicy.PAID else 'unverified cost'} model "
+                        f"{cand_provider}::{cand_model} under FREE_ONLY_MODE (allow_paid=False)."
+                    )
+                    policy_blocked_count += 1
                     if strict_model_pin or len(candidates) == 1:
                         latency_ms = (time.perf_counter() - start_time) * 1000.0
                         return ModelResponse(
@@ -284,19 +329,12 @@ class UniversalModelGateway:
                             provider=cand_provider,
                             model_name=cand_model,
                             status=ModelResponseStatus.ERROR,
-                            error=f"FREE_ONLY_POLICY_VIOLATION: Requesting paid model {cand_provider}::{cand_model} is blocked when FREE_ONLY_MODE=True.",
+                            error=f"FREE_ONLY_POLICY_VIOLATION: {policy_reason}",
                             usage=ModelUsage(usage_source="NOT_AVAILABLE"),
                             latency_ms=latency_ms,
                         )
                     continue
 
-                if cost_tier == CostPolicy.UNKNOWN and cand_provider not in ("gemini", "thespark", "xkiro"):
-                    logger.warning(
-                        f"Skipping unverified cost model {cand_provider}::{cand_model} under FREE_ONLY_MODE."
-                    )
-                    continue
-
-            adapter = self.provider_registry.get_adapter(cand_provider)
             if adapter is None:
                 err_msg = f"PROVIDER_NOT_CONFIGURED: Provider '{cand_provider}' is not registered."
                 last_error_resp = ModelResponse(
@@ -313,13 +351,32 @@ class UniversalModelGateway:
                 continue
 
             # 3. Construct Request Copy with Targeted Model and Remaining Timeout Budget
-            cand_cfg_timeout = self.config_service.get_timeout(cand_provider) if self.config_service else 30.0
-            adapter_timeout = min(cand_cfg_timeout, remaining_timeout) if norm_req.timeout_seconds is None else remaining_timeout
+            # Timeout authority: the ProviderDefinition (run-pinned snapshot def
+            # for active runs, live definition otherwise) bounds the execution
+            # timeout, always capped by the overall request/gateway budget.
+            # The legacy GLOBAL_PROVIDER_CONFIG does not override Model Settings.
+            if provider_snapshot is not None and prov_def is not None and prov_def.timeout_seconds:
+                definition_timeout = float(prov_def.timeout_seconds)
+            elif prov_def is not None and prov_def.timeout_seconds:
+                definition_timeout = float(prov_def.timeout_seconds)
+            else:
+                definition_timeout = None
+
+            request_budget = (
+                float(norm_req.timeout_seconds)
+                if getattr(norm_req, "timeout_seconds", None)
+                else float(total_timeout)
+            )
+            if definition_timeout is not None:
+                adapter_timeout = min(definition_timeout, request_budget, remaining_timeout)
+            else:
+                adapter_timeout = min(request_budget, remaining_timeout)
             req_copy = normalize_model_request(norm_req)
             req_copy.model_name = cand_model
             req_copy.timeout_seconds = max(adapter_timeout, 0.001)
 
             # 4. Execute Invocation
+            executed_any = True
             try:
                 resp = adapter.generate(req_copy)
             except Exception as e:
@@ -371,6 +428,18 @@ class UniversalModelGateway:
             return last_error_resp
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
+        if policy_blocked_count >= len(candidates) and not executed_any:
+            # Every candidate was rejected by cost policy and none executed:
+            # report a truthful policy violation, never fake success.
+            return ModelResponse(
+                request_id=norm_req.request_id,
+                provider="gateway",
+                model_name=request.model_name,
+                status=ModelResponseStatus.ERROR,
+                error="FREE_ONLY_POLICY_VIOLATION: All candidate models are blocked under FREE_ONLY_MODE (allow_paid=False).",
+                usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                latency_ms=latency_ms,
+            )
         return ModelResponse(
             request_id=request.request_id,
             provider="gateway",
