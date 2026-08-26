@@ -152,19 +152,22 @@ class TestPhase43C9BThreeWayProtocolFreeze(unittest.TestCase):
 
     def test_three_way_blind_packet_leak_free(self):
         """10. Verify 3-way double blind review packet generation has 0 identity leaks."""
+        import tempfile
+
         sample_prop_a = {"EXECUTIVE_SUMMARY": "Proposal A summary", "POSITIONING": "Positioning A"}
         sample_prop_b = {"EXECUTIVE_SUMMARY": "Proposal B summary", "POSITIONING": "Positioning B"}
         sample_prop_c = {"EXECUTIVE_SUMMARY": "Proposal C summary", "POSITIONING": "Positioning C"}
 
-        key_path, packet_path = assemble_three_way_blind_packet(
-            sample_prop_a, sample_prop_b, sample_prop_c, self.bench_dir, seed=42
-        )
-        self.assertTrue(key_path.exists())
-        self.assertTrue(packet_path.exists())
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            key_path, packet_path = assemble_three_way_blind_packet(
+                sample_prop_a, sample_prop_b, sample_prop_c, Path(tmp_dir), seed=42
+            )
+            self.assertTrue(key_path.exists())
+            self.assertTrue(packet_path.exists())
 
-        packet_content = packet_path.read_text(encoding="utf-8")
-        leaks = audit_identity_leaks(packet_content)
-        self.assertEqual(leaks, 0)
+            packet_content = packet_path.read_text(encoding="utf-8")
+            leaks = audit_identity_leaks(packet_content)
+            self.assertEqual(leaks, 0)
 
     def test_master_protocol_fingerprint_deterministic(self):
         """11. Verify active deterministic composite benchmark protocol fingerprint."""

@@ -390,11 +390,24 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
         chkpt_pre = ctx.checkpoints[-1]
         self.assertEqual(chkpt_pre.approval_state, ApprovalState.PENDING_APPROVAL)
 
-        # Register Verified Human Approval Token
-        approval_token = "PILOT-APPROVAL-EXEC-BOARD-2026"
+        # Register a pending approval and approve it through proper semantics
+        # Use same parameters that request_publish_action will use
+        policy = self.runtime.tool_gateway.policy_engine
+        pending = policy.create_pending_approval(
+            capability_id="social_publishing",
+            parameters={"platform": "linkedin", "content": "Campaign Go-To-Market Plan"},
+            risk_level=RiskLevel.HIGH,
+            run_id=ctx.run_id,
+            business_id=ctx.business_id,
+        )
+        ok, approval_record, _ = policy.approve_pending_action(
+            pending.pending_approval_id, approved_by="Executive VP of Marketing"
+        )
+        self.assertTrue(ok)
+
         approve_ok = self.workspace.approve_gated_action(
             run_id=ctx.run_id,
-            approval_token=approval_token,
+            approval_token=approval_record.approval_token,
             action_type="social_publishing",
             approved_by="Executive VP of Marketing",
         )

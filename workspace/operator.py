@@ -22,7 +22,7 @@ from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, Runtime
 from runtime.engine import FiveAgentDepartmentRuntime
 from tools.capabilities import RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionStatus
-from tools.security import HumanApprovalRecord, PendingApprovalStatus, PolicyEngine, compute_request_fingerprint
+from tools.security import HumanApprovalRecord, PolicyEngine, compute_request_fingerprint
 from tools.tool_gateway import ToolGateway
 from workspace.business import BusinessRegistry, BusinessWorkspace
 
@@ -110,7 +110,14 @@ class OperatorWorkspace:
         approved_by: str = "Executive Operator",
         parameters: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """Approve server-originated pending action and resume a paused/waiting run."""
+        """Approve server-originated pending action and resume a paused/waiting run.
+
+        Requires ONE of:
+        A. a valid unconsumed approval token already bound by PolicyEngine, OR
+        B. an explicit pending_approval_id approved through the authorized human-intent route
+
+        Does NOT permit: no token + no pending_id → pick first pending automatically.
+        """
         ctx = self.runtime._active_contexts.get(run_id)
         if not ctx:
             return False
@@ -129,14 +136,8 @@ class OperatorWorkspace:
                 return False
             tok_to_use = record.approval_token
         else:
-            pendings = policy.list_pending_approvals(run_id=run_id, status=PendingApprovalStatus.PENDING)
-            if not pendings:
-                return False
-            target_pending = pendings[0]
-            ok, record, msg = policy.approve_pending_action(target_pending.pending_approval_id, approved_by=approved_by)
-            if not ok or not record:
-                return False
-            tok_to_use = record.approval_token
+            # No token and no pending_id — must not auto-approve
+            return False
 
         ctx.approval_refs.append(tok_to_use)
 
@@ -188,25 +189,23 @@ class OperatorWorkspace:
         objective: str,
         auto_approve_token: Optional[str] = None,
     ) -> DepartmentRunArtifact:
-        """Execute full end-to-end campaign workflow under operator supervision."""
-        ctx = self.create_run(business_id=business_id, objective=objective)
+        """Execute full end-to-end campaign workflow under operator supervision.
 
-        # Stage 1: CMO Initial
-        self.runtime.execute_stage_cmo_initial(ctx)
-        # Stage 2: Intelligence
-        self.runtime.execute_stage_intelligence(ctx)
-        # Stage 3: Strategist
-        self.runtime.execute_stage_strategist(ctx)
-        # Stage 4: Creative
-        self.runtime.execute_stage_creative(ctx)
-        # Stage 5: Performance
-        self.runtime.execute_stage_performance(ctx)
-        # Stage 6: Final CMO
-        self.runtime.execute_stage_final_cmo(ctx)
+        Delegates to the canonical FiveAgentDepartmentRuntime.execute_run authority.
+        Auto-approval of human-gated actions is strictly forbidden.
+        """
+        if auto_approve_token:
+            raise RuntimeError(
+                "AUTO_APPROVAL_FORBIDDEN: Auto-approval of human-gated actions is not permitted. "
+                "Use explicit human approval via the approvals API."
+            )
+
+        ctx = self.create_run(business_id=business_id, objective=objective)
 
         # Gated publishing step
         self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=None)
-        if auto_approve_token:
-            self.approve_gated_action(ctx.run_id, approved_by="Supervisor Auto-Approve")
 
-        return self.runtime.complete_run(ctx)
+        # Delegate all 6 stages to canonical runtime authority
+        ctx, cmo_final, artifact = self.runtime.execute_run(ctx)
+
+        return artifact

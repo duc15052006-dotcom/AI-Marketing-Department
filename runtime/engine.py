@@ -376,36 +376,36 @@ class FiveAgentDepartmentRuntime:
                 try:
                     from integrations.models.registry import ModelPolicy
                     model_policy_obj = ModelPolicy(**raw_pol["policy"])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ModelPolicy: {exc}"
+                    ) from exc
             elif isinstance(raw_pol, dict):
                 try:
                     from integrations.models.registry import ModelPolicy
                     model_policy_obj = ModelPolicy(**raw_pol)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ModelPolicy: {exc}"
+                    ) from exc
             if "providers" in raw_pol and isinstance(raw_pol["providers"], dict):
                 try:
                     from integrations.models.registry import ProviderDefinition, ProviderRegistrySnapshot
                     provider_snapshot_obj = ProviderRegistrySnapshot(
                         providers={pid: ProviderDefinition(**p) for pid, p in raw_pol["providers"].items()}
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ProviderRegistrySnapshot: {exc}"
+                    ) from exc
 
         try:
-            try:
-                resp = self.model_gateway.generate(
-                    req,
-                    agent_id=agent_name,
-                    model_policy=model_policy_obj,
-                    provider_snapshot=provider_snapshot_obj,
-                )
-            except TypeError:
-                try:
-                    resp = self.model_gateway.generate(req, agent_id=agent_name)
-                except TypeError:
-                    resp = self.model_gateway.generate(req)
+            resp = self.model_gateway.generate(
+                req,
+                agent_id=agent_name,
+                model_policy=model_policy_obj,
+                provider_snapshot=provider_snapshot_obj,
+            )
             if resp.status == ModelResponseStatus.SUCCESS and resp.content:
                 return resp.content.strip(), None
             err = resp.error or f"MODEL_RESPONSE_{resp.status.value}"
@@ -447,8 +447,10 @@ class FiveAgentDepartmentRuntime:
                 if hasattr(self.model_gateway, "provider_registry") and self.model_gateway.provider_registry:
                     try:
                         reg_snap = self.model_gateway.provider_registry.snapshot().model_dump()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        raise RuntimeError(
+                            f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Provider registry snapshot failed: {exc}"
+                        ) from exc
                 pol_dict = {
                     "policy": self.model_gateway.model_policy.model_dump(),
                     "providers": reg_snap["providers"] if reg_snap and "providers" in reg_snap else {},

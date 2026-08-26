@@ -66,7 +66,7 @@ class ControllableMockAdapter(BaseModelAdapter):
     def cost_policy(self) -> CostPolicy:
         return CostPolicy.FREE_TIER_ALLOWED
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
         self.invocations.append(request)
 
         # Detect role from system instruction

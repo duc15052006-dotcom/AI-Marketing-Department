@@ -123,7 +123,6 @@ class QueueItem:
     project_id: Optional[str] = None
     chat_id: Optional[str] = None
     status: RunQueueStatus = RunQueueStatus.QUEUED
-    auto_approve_token: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -138,7 +137,6 @@ class QueueItem:
             "project_id": self.project_id,
             "chat_id": self.chat_id,
             "status": self.status.value if hasattr(self.status, "value") else str(self.status),
-            "auto_approve_token": self.auto_approve_token,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
@@ -179,6 +177,11 @@ class RunManager:
         chat_id: Optional[str] = None,
         auto_approve_token: Optional[str] = None,
     ) -> QueueItem:
+        if auto_approve_token:
+            raise RuntimeError(
+                "AUTO_APPROVAL_FORBIDDEN: Auto-approval of human-gated actions is not permitted. "
+                "Use explicit human approval via the approvals API."
+            )
         if run_id:
             if not self.runtime.is_reserved_run_id(run_id):
                 # Auto-reserve if trusted/valid format
@@ -194,7 +197,6 @@ class RunManager:
             business_id=business_id,
             project_id=project_id,
             chat_id=chat_id,
-            auto_approve_token=auto_approve_token,
         )
         with self._lock:
             self._items[rid] = item

@@ -34,7 +34,7 @@ class ScriptedAppGateway(UniversalModelGateway):
     def __init__(self) -> None:
         super().__init__(free_only_mode=True)
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
         system_content = next((m.content for m in request.messages if m.role == ModelRole.SYSTEM), "")
         sys_low = system_content.lower()
         if "final governed" in sys_low or "master gtm" in sys_low:
@@ -218,13 +218,12 @@ class TestApplicationizationV1(unittest.TestCase):
         self.assertEqual(code_r, 200)
         self.assertEqual(res_r["status"], "RUNNING")
 
-        # 4. Execute Supervised Pipeline with auto-approval
+        # 4. Execute Supervised Pipeline
         code_exec, exec_data = self._api_post(
             "/api/campaigns/execute_supervised",
             {
                 "business_id": "BIZ_ACME_HEALTH_2026",
                 "objective": "Acme Q4 Physician GTM Strategy",
-                "auto_approve_token": "API-TOKEN-VALID-2026",
             },
         )
         self.assertEqual(code_exec, 200)

@@ -60,7 +60,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         self.replies = replies or {}
         self.calls: list[tuple[str, str, str]] = []
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
         system_content = next((m.content for m in request.messages if m.role == ModelRole.SYSTEM), "")
         user_content = next((m.content for m in request.messages if m.role == ModelRole.USER), "")
 

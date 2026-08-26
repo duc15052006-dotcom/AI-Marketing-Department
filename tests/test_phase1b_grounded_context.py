@@ -58,7 +58,7 @@ class RequestCaptureAdapter(BaseModelAdapter):
     def provider_name(self) -> str:
         return "capture_provider"
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
         self.captured_requests.append(request)
         return ModelResponse(
             request_id=request.request_id,

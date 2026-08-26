@@ -1240,10 +1240,18 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             biz_id = body.get("business_id", "BIZ_PRODUCTION_USER_01")
             objective = body.get("objective", "Execute campaign")
             auto_approve = body.get("auto_approve_token")
+            if auto_approve:
+                self._send_json(
+                    {
+                        "error": "AUTO_APPROVAL_FORBIDDEN",
+                        "message": "Auto-approval of human-gated actions is not permitted. Use explicit human approval via the approvals API.",
+                    },
+                    403,
+                )
+                return
             artifact = APP_BACKEND.workspace.execute_supervised_campaign(
                 business_id=biz_id,
                 objective=objective,
-                auto_approve_token=auto_approve,
             )
             self._send_json(
                 {
@@ -1307,12 +1315,20 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             proj_id = body.get("project_id")
             chat_id = body.get("chat_id")
             auto_tok = body.get("auto_approve_token")
+            if auto_tok:
+                self._send_json(
+                    {
+                        "error": "AUTO_APPROVAL_FORBIDDEN",
+                        "message": "Auto-approval of human-gated actions is not permitted. Use explicit human approval via the approvals API.",
+                    },
+                    403,
+                )
+                return
             item = APP_BACKEND.run_manager.enqueue_run(
                 objective=obj,
                 business_id=biz_id,
                 project_id=proj_id,
                 chat_id=chat_id,
-                auto_approve_token=auto_tok,
             )
             self._send_json(item.model_dump(), 202)
             return

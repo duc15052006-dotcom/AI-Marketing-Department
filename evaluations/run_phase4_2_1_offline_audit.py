@@ -42,7 +42,7 @@ from schemas.claim_provenance import (
 )
 
 
-def run_offline_audit():
+def run_offline_audit(output_dir=None):
     print("================================================================================")
     print("PHASE 4.2.1: OFFLINE CLAIM SAFETY AUDIT ON FROZEN BENCHMARK CLAIMS")
     print("================================================================================")
@@ -229,8 +229,9 @@ def run_offline_audit():
 ---
 *End of Phase 4.2.1 Implementation Report.*
 """
-    (base_dir / "evaluations" / "phase4_2_1_claim_safety_report.md").write_text(report_content, encoding="utf-8")
-    print(f"\nReport written to {base_dir / 'evaluations' / 'phase4_2_1_claim_safety_report.md'}")
+    out_dir = Path(output_dir) if output_dir else base_dir / "evaluations"
+    (out_dir / "phase4_2_1_claim_safety_report.md").write_text(report_content, encoding="utf-8")
+    print(f"\nReport written to {out_dir / 'phase4_2_1_claim_safety_report.md'}")
 
 
 if __name__ == "__main__":

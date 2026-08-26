@@ -407,23 +407,9 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
         )
         self.biz_registry.register_workspace(biz)
 
-        # Execute supervised run with pre-registered approval token
-        approval_token = "AUTH-TOKEN-OPERATOR-VALID-2026"
-        self.policy_engine.register_approval(
-            HumanApprovalRecord(
-                approval_token=approval_token,
-                action_type="social_publishing",
-                approved_by="VP of Marketing",
-                approved_at=datetime.now(timezone.utc).isoformat(),
-                scope="BIZ_CARDIOVITAL_PROD",
-                risk_level=RiskLevel.CRITICAL,
-            )
-        )
-
         artifact = self.workspace.execute_supervised_campaign(
             business_id="BIZ_CARDIOVITAL_PROD",
             objective="Launch Q4 Physician-Guided Telehealth Acquisition Campaign",
-            auto_approve_token=approval_token,
         )
 
         self.assertEqual(artifact.status, RuntimeStatus.COMPLETED)

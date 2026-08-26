@@ -51,7 +51,7 @@ class MockProviderAdapter(BaseModelAdapter):
     def provider_name(self) -> str:
         return self._provider_label
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
         self.call_count += 1
         return ModelResponse(
             request_id=request.request_id,

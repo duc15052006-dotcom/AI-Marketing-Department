@@ -235,12 +235,15 @@ class TestPhase421ClaimSafety(unittest.TestCase):
 
     def test_offline_audit_detects_all_14_known_failures(self):
         """Verify offline audit detects 14/14 known unsupported claims from Phase 4.1.2."""
+        import tempfile
+
         from evaluations.run_phase4_2_1_offline_audit import run_offline_audit
-        run_offline_audit()
-        report_path = self.base_dir / "evaluations" / "phase4_2_1_claim_safety_report.md"
-        self.assertTrue(report_path.exists())
-        content = report_path.read_text(encoding="utf-8")
-        self.assertIn("`KNOWN_FAILURES_DETECTED`:** **`14/14`**", content)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_offline_audit(output_dir=tmp_dir)
+            report_path = Path(tmp_dir) / "phase4_2_1_claim_safety_report.md"
+            self.assertTrue(report_path.exists())
+            content = report_path.read_text(encoding="utf-8")
+            self.assertIn("`KNOWN_FAILURES_DETECTED`:** **`14/14`**", content)
 
 
 if __name__ == "__main__":

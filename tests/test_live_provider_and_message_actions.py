@@ -45,7 +45,7 @@ class MockTestAdapter(BaseModelAdapter):
     def default_model(self) -> str:
         return "mock-model"
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
         self.call_count += 1
         if self.fail:
             return ModelResponse(

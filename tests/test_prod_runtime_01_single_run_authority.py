@@ -50,7 +50,7 @@ class MockScriptedGateway(UniversalModelGateway):
         self.fail_stage = fail_stage
         self.calls: List[Dict[str, Any]] = []
 
-    def generate(self, request: ModelRequest) -> ModelResponse:
+    def generate(self, request: ModelRequest, **kwargs) -> ModelResponse:
         self.calls.append({
             "messages": [m.content for m in request.messages],
             "role": request.messages[0].role.value if request.messages else "",
