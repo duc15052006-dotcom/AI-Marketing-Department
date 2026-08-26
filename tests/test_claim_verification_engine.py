@@ -1,4 +1,4 @@
-"""Unit Tests for Claim Verification Engine Foundation (Phase CLAIM-REPAIR-03A).
+﻿"""Unit Tests for Claim Verification Engine Foundation (Phase CLAIM-REPAIR-03A).
 
 Validates all 20 required contract items using fast deterministic MockClaimVerifier,
 with an opt-in integration test for the real neural weights.
@@ -7,12 +7,15 @@ with an opt-in integration test for the real neural weights.
 from __future__ import annotations
 
 import os
+import sys
 import unittest
 from typing import Any, Dict
 
 from runtime.claim_verification import (
     BaseClaimVerifier,
     ClaimVerificationResult,
+    DEFAULT_MODEL_ID,
+    DEFAULT_MODEL_REVISION,
     DeterministicFindings,
     MockClaimVerifier,
     MultilingualNLIClaimVerifier,
@@ -448,20 +451,36 @@ class TestClaimVerificationEngine(unittest.TestCase):
 
     # -----------------------------------------------------------------------
     # Optional Real Model Integration Test (Opt-in via env flag)
+    # Migrated (PROD-VERIFIER-02B): neural inference now executes ONLY inside
+    # the isolated verifier worker; the main process never loads torch.
+    # Requires a configured worker interpreter (VERIFIER_PYTHON_EXECUTABLE or
+    # explicit constructor argument) whose environment contains the pinned
+    # model weights. Never runs by default.
     # -----------------------------------------------------------------------
     @unittest.skipUnless(
         os.environ.get("RUN_REAL_MODEL_TEST") == "1",
-        "Opt-in test requiring real neural model weights (set RUN_REAL_MODEL_TEST=1)",
+        "Opt-in test requiring isolated worker + real model weights (set RUN_REAL_MODEL_TEST=1)",
     )
     def test_real_model_integration(self) -> None:
-        verifier = MultilingualNLIClaimVerifier(device="auto")
-        loaded = verifier.load_model()
-        self.assertTrue(loaded, "Failed to load real model weights")
-        claim = "Khung viền được chế tác từ titan chuẩn hàng không vũ trụ."
-        evidence = "Tài liệu thông số kỹ thuật sản phẩm: Khung máy sử dụng hợp kim titan cấp hàng không vũ trụ (Grade 5 Titanium), gia công CNC nguyên khối."
-        res = verifier.verify_claim(claim, evidence)
-        self.assertEqual(res.verdict, VerificationVerdict.SUPPORTED)
-        self.assertGreaterEqual(res.confidence, 0.90)
+        interpreter = os.environ.get("VERIFIER_PYTHON_EXECUTABLE", "")
+        if not interpreter:
+            self.skipTest("VERIFIER_PYTHON_EXECUTABLE not configured for isolated verifier worker")
+        from runtime.verifier_worker.client import SidecarClaimVerifier
+
+        verifier = SidecarClaimVerifier(interpreter_executable=interpreter)
+        try:
+            claim = "Khung viền được chế tác từ titan chuẩn hàng không vũ trụ."
+            evidence = "Tài liệu thông số kỹ thuật sản phẩm: Khung máy sử dụng hợp kim titan cấp hàng không vũ trụ (Grade 5 Titanium), gia công CNC nguyên khối."
+            res = verifier.verify_claim(claim, evidence)
+            self.assertEqual(res.verdict, VerificationVerdict.SUPPORTED)
+            self.assertGreaterEqual(res.confidence, 0.90)
+            self.assertEqual(res.model_id, DEFAULT_MODEL_ID)
+            self.assertEqual(res.model_revision, DEFAULT_MODEL_REVISION)
+            # Boundary truth: the main process still has no ML modules loaded.
+            self.assertNotIn("torch", sys.modules)
+            self.assertNotIn("transformers", sys.modules)
+        finally:
+            verifier.close()
 
 
 

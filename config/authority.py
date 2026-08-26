@@ -47,6 +47,24 @@ class RuntimeConfigSnapshot:
     thespark_base_url: str = "https://api.thespark.io/v1"
     thespark_model: str = "thespark-v1"
     thespark_timeout: float = 30.0
+    verifier_python_executable: str = ""
+    verifier_worker_startup_timeout_s: float = 20.0
+    verifier_claim_timeout_s: float = 30.0
+    verifier_gate_timeout_s: float = 120.0
+    verifier_max_claim_chars: int = 4000
+    verifier_max_evidence_chars: int = 24000
+    verifier_ipc_frame_limit_bytes: int = 1048576
+    verifier_max_claims_per_gate: int = 64
+    verifier_model_network_mode: str = "LOCAL_ONLY"
+    verifier_cache_root: str = ""
+    verifier_manifest_required: bool = True
+    # PROD-VERIFIER-02E CERTIFIED BASELINE (real-model acceptance 02E):
+    # frozen from the actual isolated-worker acceptance run. Production
+    # handshakes are validated against this map; mismatch fails closed.
+    verifier_expected_dependency_versions: str = (
+        '{"torch": "2.13.0+cpu", "transformers": "4.57.6", "numpy": "2.5.2", '
+        '"huggingface_hub": "0.36.2", "tokenizers": "0.22.2", "safetensors": "0.8.0"}'
+    )
     repo_root: Path = REPO_ROOT
     secrets_configured: Dict[str, str] = field(default_factory=dict)
     provenance: Dict[str, ConfigSource] = field(default_factory=dict)
@@ -70,6 +88,18 @@ class RuntimeConfigSnapshot:
             "thespark_base_url": self.thespark_base_url,
             "thespark_model": self.thespark_model,
             "thespark_timeout": self.thespark_timeout,
+            "verifier_python_configured": bool(self.verifier_python_executable),
+            "verifier_worker_startup_timeout_s": self.verifier_worker_startup_timeout_s,
+            "verifier_claim_timeout_s": self.verifier_claim_timeout_s,
+            "verifier_gate_timeout_s": self.verifier_gate_timeout_s,
+            "verifier_max_claim_chars": self.verifier_max_claim_chars,
+            "verifier_max_evidence_chars": self.verifier_max_evidence_chars,
+            "verifier_ipc_frame_limit_bytes": self.verifier_ipc_frame_limit_bytes,
+            "verifier_max_claims_per_gate": self.verifier_max_claims_per_gate,
+            "verifier_model_network_mode": self.verifier_model_network_mode,
+            "verifier_cache_root_configured": bool(self.verifier_cache_root),
+            "verifier_manifest_required": self.verifier_manifest_required,
+            "verifier_expected_dependency_versions_configured": bool(self.verifier_expected_dependency_versions),
             "repo_root": str(self.repo_root),
             "secrets_configured": dict(self.secrets_configured),
             "provenance": {k: v.value for k, v in self.provenance.items()},
@@ -220,7 +250,69 @@ class ConfigurationAuthority:
         raw_spark_timeout, prov["THESPARK_TIMEOUT"] = self._get_with_provenance("THESPARK_TIMEOUT", 30.0)
         thespark_timeout = parse_float(raw_spark_timeout, default=30.0, min_val=0.1, setting_name="THESPARK_TIMEOUT")
 
-        # 11. Safe Secret Presence Status (Frozen at boot)
+        # 11. Verifier Worker Interpreter (isolated NLI sidecar boundary)
+        raw_vpy, prov["VERIFIER_PYTHON_EXECUTABLE"] = self._get_with_provenance("VERIFIER_PYTHON_EXECUTABLE", "")
+        verifier_python_executable = str(raw_vpy).strip()
+
+        # 11b. Verifier deadline & resource authority (all finite, >0, bounded).
+        raw_vstart, prov["VERIFIER_WORKER_STARTUP_TIMEOUT_S"] = self._get_with_provenance("VERIFIER_WORKER_STARTUP_TIMEOUT_S", 20.0)
+        verifier_worker_startup_timeout_s = parse_float(raw_vstart, default=20.0, min_val=0.5, max_val=120.0, setting_name="VERIFIER_WORKER_STARTUP_TIMEOUT_S")
+
+        raw_vclaim, prov["VERIFIER_CLAIM_TIMEOUT_S"] = self._get_with_provenance("VERIFIER_CLAIM_TIMEOUT_S", 30.0)
+        verifier_claim_timeout_s = parse_float(raw_vclaim, default=30.0, min_val=0.5, max_val=300.0, setting_name="VERIFIER_CLAIM_TIMEOUT_S")
+
+        raw_vgate, prov["VERIFIER_GATE_TIMEOUT_S"] = self._get_with_provenance("VERIFIER_GATE_TIMEOUT_S", 120.0)
+        verifier_gate_timeout_s = parse_float(raw_vgate, default=120.0, min_val=1.0, max_val=600.0, setting_name="VERIFIER_GATE_TIMEOUT_S")
+
+        raw_vcc, prov["VERIFIER_MAX_CLAIM_CHARS"] = self._get_with_provenance("VERIFIER_MAX_CLAIM_CHARS", 4000)
+        from .env_loader import parse_int as _parse_int
+        verifier_max_claim_chars = _parse_int(raw_vcc, default=4000, min_val=64, max_val=100000, setting_name="VERIFIER_MAX_CLAIM_CHARS")
+
+        raw_vec, prov["VERIFIER_MAX_EVIDENCE_CHARS"] = self._get_with_provenance("VERIFIER_MAX_EVIDENCE_CHARS", 24000)
+        verifier_max_evidence_chars = _parse_int(raw_vec, default=24000, min_val=256, max_val=500000, setting_name="VERIFIER_MAX_EVIDENCE_CHARS")
+
+        raw_vframe, prov["VERIFIER_IPC_FRAME_LIMIT_BYTES"] = self._get_with_provenance("VERIFIER_IPC_FRAME_LIMIT_BYTES", 1048576)
+        verifier_ipc_frame_limit_bytes = _parse_int(raw_vframe, default=1048576, min_val=4096, max_val=16777216, setting_name="VERIFIER_IPC_FRAME_LIMIT_BYTES")
+
+        raw_vmc, prov["VERIFIER_MAX_CLAIMS_PER_GATE"] = self._get_with_provenance("VERIFIER_MAX_CLAIMS_PER_GATE", 64)
+        verifier_max_claims_per_gate = _parse_int(raw_vmc, default=64, min_val=1, max_val=1024, setting_name="VERIFIER_MAX_CLAIMS_PER_GATE")
+
+        # 11c. Verifier supply-chain authority (PROD-VERIFIER-02D / 02F-R2).
+        # Normal production verification is IMMUTABLY:
+        #   network_mode=LOCAL_ONLY + manifest REQUIRED + hash verified +
+        #   safetensors-only. Configuration may never weaken these.
+        # Provisioning (model download) exists ONLY as the explicit out-of-band
+        # command `python -m runtime.verifier_worker.provision` and MUST NOT be
+        # selected through normal runtime configuration -> fail closed loudly
+        # instead of silently coercing (operator error must stay visible).
+        raw_vnet, prov["VERIFIER_MODEL_NETWORK_MODE"] = self._get_with_provenance("VERIFIER_MODEL_NETWORK_MODE", "LOCAL_ONLY")
+        verifier_model_network_mode = str(raw_vnet).strip().upper()
+        if verifier_model_network_mode != "LOCAL_ONLY":
+            raise ValueError(
+                f"INSECURE_VERIFIER_NETWORK_MODE: VERIFIER_MODEL_NETWORK_MODE "
+                f"must be 'LOCAL_ONLY' for the normal production verifier "
+                f"(got '{verifier_model_network_mode}'). Provisioning is a "
+                f"separate explicit command "
+                f"(python -m runtime.verifier_worker.provision) and cannot be "
+                f"selected through configuration.")
+
+        raw_vcroot, prov["VERIFIER_CACHE_ROOT"] = self._get_with_provenance("VERIFIER_CACHE_ROOT", "")
+        verifier_cache_root = str(raw_vcroot).strip()
+
+        raw_vman, prov["VERIFIER_MANIFEST_REQUIRED"] = self._get_with_provenance("VERIFIER_MANIFEST_REQUIRED", True)
+        from .env_loader import parse_bool as _parse_bool
+        verifier_manifest_required = _parse_bool(raw_vman, default=True, setting_name="VERIFIER_MANIFEST_REQUIRED")
+        # No silent coercion: an explicitly insecure override fails closed.
+        if not verifier_manifest_required:
+            raise ValueError(
+                "INSECURE_VERIFIER_CONFIGURATION: VERIFIER_MANIFEST_REQUIRED="
+                "false is forbidden; production claim verification is ALWAYS "
+                "integrity-manifest hash verified. Remove this override.")
+
+        raw_vdeps, prov["VERIFIER_EXPECTED_DEPENDENCY_VERSIONS"] = self._get_with_provenance("VERIFIER_EXPECTED_DEPENDENCY_VERSIONS", "")
+        verifier_expected_dependency_versions = str(raw_vdeps).strip()
+
+        # 12. Safe Secret Presence Status (Frozen at boot)
         raw_openai, _ = self._get_with_provenance("OPENAI_API_KEY", "")
         raw_anthropic, _ = self._get_with_provenance("ANTHROPIC_API_KEY", "")
         raw_gemini, _ = self._get_with_provenance("GEMINI_API_KEY", "", alias_key="GOOGLE_API_KEY")
@@ -254,6 +346,18 @@ class ConfigurationAuthority:
             thespark_base_url=thespark_base_url,
             thespark_model=thespark_model,
             thespark_timeout=thespark_timeout,
+            verifier_python_executable=verifier_python_executable,
+            verifier_worker_startup_timeout_s=verifier_worker_startup_timeout_s,
+            verifier_claim_timeout_s=verifier_claim_timeout_s,
+            verifier_gate_timeout_s=verifier_gate_timeout_s,
+            verifier_max_claim_chars=verifier_max_claim_chars,
+            verifier_max_evidence_chars=verifier_max_evidence_chars,
+            verifier_ipc_frame_limit_bytes=verifier_ipc_frame_limit_bytes,
+            verifier_max_claims_per_gate=verifier_max_claims_per_gate,
+            verifier_model_network_mode=verifier_model_network_mode,
+            verifier_cache_root=verifier_cache_root,
+            verifier_manifest_required=verifier_manifest_required,
+            verifier_expected_dependency_versions=verifier_expected_dependency_versions,
             repo_root=REPO_ROOT,
             secrets_configured=secrets_configured,
             provenance=prov,

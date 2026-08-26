@@ -1,4 +1,4 @@
-"""Unit tests for Phase CLAIM-REPAIR-04: Semantic Claim <-> Evidence Binding.
+﻿"""Unit tests for Phase CLAIM-REPAIR-04: Semantic Claim <-> Evidence Binding.
 
 Validates all 24 required contract points using deterministic MockClaimVerifier,
 verifying:
@@ -585,7 +585,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
         captured_calls: list[dict[str, Any]] = []
 
         class RecordingVerifier(BaseClaimVerifier):
-            def verify_claim(self, claim_text, evidence_text, claim_metadata=None, source_metadata=None):
+            def verify_claim(self, claim_text, evidence_text, claim_metadata=None, source_metadata=None, deadline_monotonic=None):
                 captured_calls.append({
                     "claim_text": claim_text,
                     "evidence_text": evidence_text,
@@ -620,7 +620,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
     # 26. Realistic premise-dependent verifier
     def test_26_realistic_premise_dependent_verifier(self) -> None:
         class RealisticFakeVerifier(BaseClaimVerifier):
-            def verify_claim(self, claim_text, evidence_text, claim_metadata=None, source_metadata=None):
+            def verify_claim(self, claim_text, evidence_text, claim_metadata=None, source_metadata=None, deadline_monotonic=None):
                 # Verify strictly based on string overlap / premise content
                 if "5000mAh" in claim_text and "5000mAh" in evidence_text:
                     return ClaimVerificationResult(
@@ -678,7 +678,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
         calls: list[tuple[str, str]] = []
 
         class MultiVerifier(BaseClaimVerifier):
-            def verify_claim(self, claim_text, evidence_text, claim_metadata=None, source_metadata=None):
+            def verify_claim(self, claim_text, evidence_text, claim_metadata=None, source_metadata=None, deadline_monotonic=None):
                 calls.append((claim_text, evidence_text))
                 return ClaimVerificationResult(
                     claim_text=claim_text,

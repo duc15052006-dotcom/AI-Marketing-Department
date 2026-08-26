@@ -1,0 +1,36 @@
+# Verifier Worker Dependencies — CERTIFIED BASELINE (PROD-VERIFIER-02E)
+# ----------------------------------------------------------------------
+# These dependencies belong EXCLUSIVELY to the isolated NLI verifier worker
+# environment (Python 3.12.14). They must NEVER be added to the main runtime
+# requirements.txt and must NEVER be installed into Python 3.14.
+#
+# BASELINE SOURCE: NEW_ACCEPTANCE — every version below was installed into
+# .verifier-venv, used to provision the pinned model, and PASSED the real
+# multilingual acceptance run (52 EN/VI holdout cases + curated set) through
+# the isolated worker boundary. See tests/test_prod_verifier_02_real_acceptance.py.
+#
+# Provisioning flow:
+#   1) create venv from Python 3.12.14
+#   2) python -m pip install -r requirements-verifier-win-py312.lock
+#      (see lock artifact; hash-locked where platform coverage allows)
+#      or: torch==2.13.0+cpu --index-url https://download.pytorch.org/whl/cpu
+#          plus the pinned packages below from PyPI
+#   3) python -m runtime.verifier_worker.provision
+#   4) register interpreter via ConfigurationAuthority:
+#      VERIFIER_PYTHON_EXECUTABLE=<venv>\Scripts\python.exe
+#
+torch==2.13.0+cpu
+transformers==4.57.6
+numpy==2.5.2
+huggingface_hub==0.36.2
+tokenizers==0.22.2
+safetensors==0.8.0
+# NOTE (02F-R1): sentencepiece was required only by the discarded ernie-m
+# benchmark challenger and is NOT required by the promoted production model
+# (mDeBERTa-v3 uses the fast tokenizers library); it has been removed from
+# this production trust baseline.
+
+# Historical attestation retained for lineage (NOT the certification source):
+#   calibration artifacts recorded python 3.12.14 / torch 2.13.0+cpu;
+#   transformers/numpy/hub/tokenizers/safetensors were historically unattested
+#   and are now certified via NEW_ACCEPTANCE above.

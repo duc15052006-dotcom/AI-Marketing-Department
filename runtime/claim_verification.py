@@ -1,4 +1,4 @@
-"""Phase CLAIM-REPAIR-03A: Structured Claim Verification Foundation.
+﻿"""Phase CLAIM-REPAIR-03A: Structured Claim Verification Foundation.
 
 Provides reusable claim verification interfaces and adapters:
 1. VerificationVerdict & ClaimVerificationResult: Standard verification data contract.
@@ -39,8 +39,14 @@ logger = logging.getLogger("runtime.claim_verification")
 # ---------------------------------------------------------------------------
 # Model Pinning Constants (Benchmark Calibrated & Validated)
 # ---------------------------------------------------------------------------
-DEFAULT_MODEL_ID = "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
-DEFAULT_MODEL_REVISION = "b5113eb38ab63efdd7f280f8c144ea8b13f978ce"
+DEFAULT_MODEL_ID = "MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
+# Promoted PROD-VERIFIER-02F-R1 (challenger won the frozen 130-case policy
+# benchmark: lower false-SUPPORTED, higher supported recall, better VI/mixed
+# robustness). Historical production identity was
+# MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7 @
+# b5113eb38ab63efdd7f280f8c144ea8b13f978ce — retained only in historical
+# benchmark fixtures/results.
+DEFAULT_MODEL_REVISION = "8adb042d524ecd5c26d3e3ba0e3fbcf7e2d0864c"
 DEFAULT_MODEL_LICENSE = "MIT"
 
 # Provisional thresholds derived from CLAIM-BENCH-01 and verified on CLAIM-BENCH-02 holdout
@@ -497,13 +503,20 @@ class BaseClaimVerifier(ABC):
         evidence_text: str,
         claim_metadata: Optional[Dict[str, Any]] = None,
         source_metadata: Optional[Dict[str, Any]] = None,
+        deadline_monotonic: Optional[float] = None,
     ) -> ClaimVerificationResult:
-        """Verify a single atomic claim against an evidence chunk."""
+        """Verify a single atomic claim against an evidence chunk.
+
+        deadline_monotonic (PROD-VERIFIER-02C): optional monotonic gate
+        deadline. Implementations must consume REMAINING budget and never
+        reset the full timeout per claim.
+        """
         raise NotImplementedError
 
     def verify_batch(
         self,
         requests: Sequence[Tuple[str, str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]],
+        deadline_monotonic: Optional[float] = None,
     ) -> List[ClaimVerificationResult]:
         """Verify a batch of (claim_text, evidence_text, claim_metadata, source_metadata) tuples.
 
@@ -512,7 +525,8 @@ class BaseClaimVerifier(ABC):
         """
         results = []
         for claim_text, evidence_text, claim_meta, source_meta in requests:
-            results.append(self.verify_claim(claim_text, evidence_text, claim_meta, source_meta))
+            results.append(self.verify_claim(claim_text, evidence_text, claim_meta, source_meta,
+                                             deadline_monotonic=deadline_monotonic))
         return results
 
 
@@ -520,441 +534,34 @@ class BaseClaimVerifier(ABC):
 # Production Multilingual NLI Claim Verifier
 # ---------------------------------------------------------------------------
 
-class MultilingualNLIClaimVerifier(BaseClaimVerifier):
-    """Production NLI claim verifier adapter backed by HuggingFace Transformers.
 
-    Features:
-    - Lazy model loading (weights loaded on first inference or explicit load_model)
-    - Pinned model ID and revision commit
-    - Dynamic label resolution via config (never hardcoded indices)
-    - Deterministic pre-guard execution
-    - Fail-closed fault tolerance (OOM, missing model, invalid labels return INCONCLUSIVE)
-    - Device auto-detection (CUDA preferred when available, CPU fallback)
-    - Batched inference API preserving sequence ordering
+# ---------------------------------------------------------------------------
+# Isolated Production Verifier (PROD-VERIFIER-02B)
+# ---------------------------------------------------------------------------
+# The historical in-process MultilingualNLIClaimVerifier executed torch/
+# transformers INSIDE the main Python 3.14 runtime whenever those
+# dependencies happened to be installed. Absence of a dependency is not an
+# isolation boundary (PROD-VERIFIER-INPROCESS-ISOLATION-01).
+#
+# The neural backend now lives exclusively behind the isolated worker
+# boundary (runtime/verifier_worker/) and this module keeps only the
+# torch-free contracts, deterministic guards, and the mock verifier.
+#
+# `MultilingualNLIClaimVerifier` remains importable as the production
+# facade name; it resolves to the isolated sidecar client via PEP 562 so
+# that importing runtime.claim_verification NEVER imports torch.
+
+def __getattr__(name: str):
+    """PEP 562: resolve the production verifier facade lazily.
+
+    Keeps `import runtime.claim_verification` free of any ML dependency:
+    the sidecar client module imports no torch/transformers either; only
+    the WORKER process ever executes the neural stack.
     """
-
-    def __init__(
-        self,
-        model_id: str = DEFAULT_MODEL_ID,
-        model_revision: str = DEFAULT_MODEL_REVISION,
-        tau_entailment: float = PROVISIONAL_TAU_ENTAILMENT,
-        tau_contradiction: float = PROVISIONAL_TAU_CONTRADICTION,
-        device: str = "auto",
-        max_length: int = 512,
-    ) -> None:
-        self.model_id = model_id
-        self.model_revision = model_revision
-        self.tau_entailment = tau_entailment
-        self.tau_contradiction = tau_contradiction
-        self.max_length = max_length
-
-        self._requested_device = device
-        self._active_device = "cpu"
-        self._model = None
-        self._tokenizer = None
-        self._label_map: Dict[str, int] = {}
-        self._is_loaded = False
-
-    def load_model(self) -> bool:
-        """Load tokenizer and model with strict pinning and error handling."""
-        if self._is_loaded and self._model is not None:
-            return True
-
-        try:
-            import torch
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-            # 1. Resolve Device
-            if self._requested_device == "auto":
-                self._active_device = "cuda" if torch.cuda.is_available() else "cpu"
-            else:
-                self._active_device = self._requested_device
-
-            logger.info(f"Loading NLI verifier: {self.model_id} (rev: {self.model_revision}) on {self._active_device}")
-
-            # 2. Load Tokenizer & Model (trust_remote_code=False strictly enforced)
-            self._tokenizer = AutoTokenizer.from_pretrained(
-                self.model_id,
-                revision=self.model_revision,
-                use_fast=True,
-                trust_remote_code=False,
-            )
-            self._model = AutoModelForSequenceClassification.from_pretrained(
-                self.model_id,
-                revision=self.model_revision,
-                trust_remote_code=False,
-            )
-            self._model.to(self._active_device)
-            self._model.eval()
-
-            # 3. Dynamic Label Resolution
-            config = self._model.config
-            raw_label2id = {k.lower(): int(v) for k, v in config.label2id.items()} if hasattr(config, "label2id") else {}
-            raw_id2label = {int(k): v.lower() for k, v in config.id2label.items()} if hasattr(config, "id2label") else {}
-
-            ent_idx = raw_label2id.get("entailment")
-            neu_idx = raw_label2id.get("neutral")
-            con_idx = raw_label2id.get("contradiction")
-
-            if ent_idx is None or neu_idx is None or con_idx is None:
-                # Fallback: scan id2label
-                for idx, name in raw_id2label.items():
-                    name_l = name.lower()
-                    if "entail" in name_l:
-                        ent_idx = idx
-                    elif "contra" in name_l:
-                        con_idx = idx
-                    elif "neut" in name_l:
-                        neu_idx = idx
-
-            if ent_idx is None or neu_idx is None or con_idx is None:
-                logger.error(f"Cannot resolve 3-way NLI labels from model config: {config}")
-                self._is_loaded = False
-                return False
-
-            self._label_map = {
-                "entailment": ent_idx,
-                "neutral": neu_idx,
-                "contradiction": con_idx,
-            }
-
-            self._is_loaded = True
-            logger.info(f"NLI verifier loaded successfully. Label map: {self._label_map}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to load NLI verifier ({self.model_id}): {e}", exc_info=True)
-            self._model = None
-            self._tokenizer = None
-            self._is_loaded = False
-            return False
-
-    def verify_claim(
-        self,
-        claim_text: str,
-        evidence_text: str,
-        claim_metadata: Optional[Dict[str, Any]] = None,
-        source_metadata: Optional[Dict[str, Any]] = None,
-    ) -> ClaimVerificationResult:
-        """Verify an atomic claim using deterministic pre-guards + NLI inference."""
-        claim_meta = claim_metadata or {}
-        source_meta = source_metadata or {}
-        source_id = source_meta.get("source_id") or source_meta.get("execution_id")
-        evidence_refs = [str(source_id)] if source_id else []
-
-        # 1. Deterministic Guard Layer
-        guard_findings = audit_deterministic_claim_guards(
-            claim_text=claim_text,
-            evidence_text=evidence_text,
-            claim_metadata=claim_meta,
-            source_metadata=source_meta,
-        )
-
-        ev_hash = compute_evidence_content_hash(evidence_text)
-        prov_hash = compute_provenance_context_hash(claim_meta, source_meta)
-
-        if not guard_findings.passed:
-            g_name = str(guard_findings.guard_name)
-            verdict = VerificationVerdict.INCONCLUSIVE
-            if "SECURITY_SCOPE" in g_name or "PROVENANCE_SCOPE" in g_name:
-                verdict = VerificationVerdict.SCOPE_VIOLATION
-            elif "GEOGRAPHIC_SCOPE" in g_name or "MISMATCH" in g_name:
-                verdict = VerificationVerdict.CONTRADICTED
-            elif "MOCK" in g_name or "EXECUTION" in g_name:
-                verdict = VerificationVerdict.UNSUPPORTED
-
-            return ClaimVerificationResult(
-                claim_text=claim_text,
-                source_id=source_id,
-                evidence_refs=evidence_refs,
-                evidence_content_hash=ev_hash,
-                verdict=verdict,
-                confidence=1.0,
-                reason=f"Blocked by deterministic guard: {guard_findings.reason}",
-                model_id=self.model_id,
-                model_revision=self.model_revision,
-                backend=f"pytorch_{self._active_device}",
-                deterministic_findings=guard_findings,
-                provenance_context_hash=prov_hash,
-                epistemic_type_preserved=guard_findings.extracted_claim_values.get("claim_class"),
-            )
-
-        # 2. Lazy Model Load
-        if not self._is_loaded:
-            loaded = self.load_model()
-            if not loaded:
-                return ClaimVerificationResult(
-                    claim_text=claim_text,
-                    source_id=source_id,
-                    evidence_refs=evidence_refs,
-                    evidence_content_hash=ev_hash,
-                    verdict=VerificationVerdict.INCONCLUSIVE,
-                    confidence=0.0,
-                    reason="NLI verifier backend unavailable (model load failure). Fails closed.",
-                    model_id=self.model_id,
-                    model_revision=self.model_revision,
-                    backend=f"pytorch_{self._active_device}",
-                    deterministic_findings=guard_findings,
-                    provenance_context_hash=prov_hash,
-                )
-
-        # 3. Model Inference (Fail-closed)
-        try:
-            import numpy as np
-            import torch
-
-            t0 = time.perf_counter()
-            inputs = self._tokenizer(
-                evidence_text,
-                claim_text,
-                truncation=True,
-                max_length=self.max_length,
-                return_tensors="pt",
-            )
-            inputs = {k: v.to(self._active_device) for k, v in inputs.items()}
-
-            with torch.no_grad():
-                outputs = self._model(**inputs)
-                logits = outputs.logits[0]
-                probs = torch.softmax(logits, dim=-1).cpu().numpy()
-
-            latency_ms = (time.perf_counter() - t0) * 1000.0
-
-            p_ent = float(probs[self._label_map["entailment"]])
-            p_neu = float(probs[self._label_map["neutral"]])
-            p_con = float(probs[self._label_map["contradiction"]])
-
-            # Determine Argmax
-            scores_dict = {"ENTAILMENT": p_ent, "NEUTRAL": p_neu, "CONTRADICTION": p_con}
-            argmax_label = max(scores_dict, key=scores_dict.get)
-
-            semantic_scores = SemanticScores(
-                p_entailment=round(p_ent, 6),
-                p_neutral=round(p_neu, 6),
-                p_contradiction=round(p_con, 6),
-                argmax_label=argmax_label,
-                raw_latency_ms=round(latency_ms, 2),
-            )
-
-            # 4. Apply Calibrated Provisional Thresholds
-            if p_ent >= self.tau_entailment:
-                verdict = VerificationVerdict.SUPPORTED
-                confidence = p_ent
-                reason = f"Verified with high entailment confidence (p_entailment={p_ent:.4f} >= {self.tau_entailment})."
-            elif p_con >= self.tau_contradiction:
-                verdict = VerificationVerdict.CONTRADICTED
-                confidence = p_con
-                reason = f"Contradiction detected (p_contradiction={p_con:.4f} >= {self.tau_contradiction})."
-            else:
-                verdict = VerificationVerdict.INCONCLUSIVE
-                confidence = max(p_ent, p_con, p_neu)
-                reason = (
-                    f"Evidence is inconclusive for this claim (p_entailment={p_ent:.4f} < {self.tau_entailment}, "
-                    f"p_contradiction={p_con:.4f} < {self.tau_contradiction})."
-                )
-
-            return ClaimVerificationResult(
-                claim_text=claim_text,
-                source_id=source_id,
-                evidence_refs=evidence_refs,
-                evidence_content_hash=ev_hash,
-                verdict=verdict,
-                confidence=round(confidence, 4),
-                reason=reason,
-                model_id=self.model_id,
-                model_revision=self.model_revision,
-                backend=f"pytorch_{self._active_device}",
-                deterministic_findings=guard_findings,
-                semantic_scores=semantic_scores,
-                provenance_context_hash=prov_hash,
-            )
-
-        except Exception as e:
-            logger.error(f"Inference exception during claim verification: {e}", exc_info=True)
-            return ClaimVerificationResult(
-                claim_text=claim_text,
-                source_id=source_id,
-                evidence_refs=evidence_refs,
-                evidence_content_hash=ev_hash,
-                verdict=VerificationVerdict.INCONCLUSIVE,
-                confidence=0.0,
-                reason=f"Inference failure ({type(e).__name__}: {str(e)}). Fails closed.",
-                model_id=self.model_id,
-                model_revision=self.model_revision,
-                backend=f"pytorch_{self._active_device}",
-                deterministic_findings=guard_findings,
-                provenance_context_hash=prov_hash,
-            )
-
-    def verify_batch(
-        self,
-        requests: Sequence[Tuple[str, str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]],
-    ) -> List[ClaimVerificationResult]:
-        """Execute batched NLI inference with strict ordering preservation."""
-        if not requests:
-            return []
-
-        # Check if all pass deterministic guards
-        guard_results = []
-        needs_nli_indices = []
-        premises = []
-        hypotheses = []
-
-        for idx, (claim_text, evidence_text, claim_meta, source_meta) in enumerate(requests):
-            findings = audit_deterministic_claim_guards(
-                claim_text=claim_text,
-                evidence_text=evidence_text,
-                claim_metadata=claim_meta,
-                source_metadata=source_meta,
-            )
-            guard_results.append(findings)
-            if findings.passed:
-                needs_nli_indices.append(idx)
-                premises.append(evidence_text)
-                hypotheses.append(claim_text)
-
-        # If no items need NLI, return deterministic decisions directly
-        results: List[Optional[ClaimVerificationResult]] = [None] * len(requests)
-        for idx, (claim_text, evidence_text, claim_meta, source_meta) in enumerate(requests):
-            findings = guard_results[idx]
-            if not findings.passed:
-                source_id = (source_meta or {}).get("source_id")
-                g_name = str(findings.guard_name)
-                verdict = VerificationVerdict.INCONCLUSIVE
-                if "SECURITY_SCOPE" in g_name or "PROVENANCE_SCOPE" in g_name:
-                    verdict = VerificationVerdict.SCOPE_VIOLATION
-                elif "GEOGRAPHIC_SCOPE" in g_name or "MISMATCH" in g_name:
-                    verdict = VerificationVerdict.CONTRADICTED
-                elif "MOCK" in g_name or "EXECUTION" in g_name:
-                    verdict = VerificationVerdict.UNSUPPORTED
-
-                results[idx] = ClaimVerificationResult(
-                    claim_text=claim_text,
-                    source_id=source_id,
-                    evidence_refs=[str(source_id)] if source_id else [],
-                    verdict=verdict,
-                    confidence=1.0,
-                    reason=f"Blocked by deterministic guard: {findings.reason}",
-                    deterministic_findings=findings,
-                    epistemic_type_preserved=findings.extracted_claim_values.get("claim_class"),
-                )
-
-        if not needs_nli_indices:
-            return [r for r in results if r is not None]
-
-        # Load model for remaining items
-        if not self._is_loaded:
-            loaded = self.load_model()
-            if not loaded:
-                for idx in needs_nli_indices:
-                    claim_text, evidence_text, claim_meta, source_meta = requests[idx]
-                    source_id = (source_meta or {}).get("source_id")
-                    results[idx] = ClaimVerificationResult(
-                        claim_text=claim_text,
-                        source_id=source_id,
-                        evidence_refs=[str(source_id)] if source_id else [],
-                        verdict=VerificationVerdict.INCONCLUSIVE,
-                        confidence=0.0,
-                        reason="NLI verifier backend unavailable. Fails closed.",
-                        deterministic_findings=guard_results[idx],
-                    )
-                return [r for r in results if r is not None]
-
-        # Execute batched inference
-        try:
-            import numpy as np
-            import torch
-
-            t0 = time.perf_counter()
-            inputs = self._tokenizer(
-                premises,
-                hypotheses,
-                padding=True,
-                truncation=True,
-                max_length=self.max_length,
-                return_tensors="pt",
-            )
-            inputs = {k: v.to(self._active_device) for k, v in inputs.items()}
-
-            with torch.no_grad():
-                outputs = self._model(**inputs)
-                logits = outputs.logits
-                probs_batch = torch.softmax(logits, dim=-1).cpu().numpy()
-
-            batch_latency_ms = (time.perf_counter() - t0) * 1000.0
-            per_item_latency_ms = batch_latency_ms / len(needs_nli_indices)
-
-            for batch_pos, req_idx in enumerate(needs_nli_indices):
-                claim_text, evidence_text, claim_meta, source_meta = requests[req_idx]
-                source_id = (source_meta or {}).get("source_id")
-                probs = probs_batch[batch_pos]
-
-                p_ent = float(probs[self._label_map["entailment"]])
-                p_neu = float(probs[self._label_map["neutral"]])
-                p_con = float(probs[self._label_map["contradiction"]])
-
-                scores_dict = {"ENTAILMENT": p_ent, "NEUTRAL": p_neu, "CONTRADICTION": p_con}
-                argmax_label = max(scores_dict, key=scores_dict.get)
-
-                semantic_scores = SemanticScores(
-                    p_entailment=round(p_ent, 6),
-                    p_neutral=round(p_neu, 6),
-                    p_contradiction=round(p_con, 6),
-                    argmax_label=argmax_label,
-                    raw_latency_ms=round(per_item_latency_ms, 2),
-                )
-
-                if p_ent >= self.tau_entailment:
-                    verdict = VerificationVerdict.SUPPORTED
-                    confidence = p_ent
-                    reason = f"Verified with high entailment confidence (p_entailment={p_ent:.4f} >= {self.tau_entailment})."
-                elif p_con >= self.tau_contradiction:
-                    verdict = VerificationVerdict.CONTRADICTED
-                    confidence = p_con
-                    reason = f"Contradiction detected (p_contradiction={p_con:.4f} >= {self.tau_contradiction})."
-                else:
-                    verdict = VerificationVerdict.INCONCLUSIVE
-                    confidence = max(p_ent, p_con, p_neu)
-                    reason = (
-                        f"Evidence is inconclusive for this claim (p_entailment={p_ent:.4f} < {self.tau_entailment}, "
-                        f"p_contradiction={p_con:.4f} < {self.tau_contradiction})."
-                    )
-
-                results[req_idx] = ClaimVerificationResult(
-                    claim_text=claim_text,
-                    source_id=source_id,
-                    evidence_refs=[str(source_id)] if source_id else [],
-                    verdict=verdict,
-                    confidence=round(confidence, 4),
-                    reason=reason,
-                    model_id=self.model_id,
-                    backend=f"pytorch_{self._active_device}",
-                    deterministic_findings=guard_results[req_idx],
-                    semantic_scores=semantic_scores,
-                )
-
-        except Exception as e:
-            logger.error(f"Batch inference failure: {e}", exc_info=True)
-            for req_idx in needs_nli_indices:
-                claim_text, evidence_text, claim_meta, source_meta = requests[req_idx]
-                source_id = (source_meta or {}).get("source_id")
-                results[req_idx] = ClaimVerificationResult(
-                    claim_text=claim_text,
-                    source_id=source_id,
-                    evidence_refs=[str(source_id)] if source_id else [],
-                    verdict=VerificationVerdict.INCONCLUSIVE,
-                    confidence=0.0,
-                    reason=f"Batch inference failure ({type(e).__name__}: {str(e)}). Fails closed.",
-                    deterministic_findings=guard_results[req_idx],
-                )
-
-        return [r for r in results if r is not None]
-
-
-# ---------------------------------------------------------------------------
-# Deterministic Mock Verifier for Unit Testing
-# ---------------------------------------------------------------------------
-
+    if name == "MultilingualNLIClaimVerifier":
+        from runtime.verifier_worker.client import SidecarClaimVerifier
+        return SidecarClaimVerifier
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 class MockClaimVerifier(BaseClaimVerifier):
     """Deterministic, configurable mock verifier for zero-download unit testing."""
 
@@ -986,6 +593,7 @@ class MockClaimVerifier(BaseClaimVerifier):
         evidence_text: str,
         claim_metadata: Optional[Dict[str, Any]] = None,
         source_metadata: Optional[Dict[str, Any]] = None,
+        deadline_monotonic: Optional[float] = None,
     ) -> ClaimVerificationResult:
         claim_meta = claim_metadata or {}
         source_meta = source_metadata or {}

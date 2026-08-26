@@ -694,6 +694,74 @@ class TestProdConfig01ConfigurationAuthority(unittest.TestCase):
         self.assertEqual(snap2.api_port, 8765)
         self.assertIs(snap1, snap2)
 
+    # ==========================================================================
+    # 7. PROD-VERIFIER-02F-R2: verifier supply-chain lockdown
+    # ==========================================================================
+
+    def test_37_verifier_network_mode_provisioning_fails_closed(self) -> None:
+        """PROD-VERIFIER-NETWORK-MODE-DOWNGRADE-01 (fixed): PROVISIONING can
+        never be selected through normal runtime configuration."""
+        for value in ("PROVISIONING", "provisioning", "ONLINE"):
+            with self.subTest(value=value):
+                ConfigurationAuthority.reset()
+                os.environ["VERIFIER_MODEL_NETWORK_MODE"] = value
+                try:
+                    with self.assertRaises(ValueError) as ctx:
+                        ConfigurationAuthority(
+                            env_file_path=self.temp_path / ".env", auto_load=True)
+                    self.assertIn("INSECURE_VERIFIER_NETWORK_MODE", str(ctx.exception))
+                finally:
+                    ConfigurationAuthority.reset()
+
+    def test_38_verifier_network_mode_provisioning_explicit_override_fails_closed(self) -> None:
+        """Explicit Settings-style overrides get the identical fail-closed path."""
+        with self.assertRaises(ValueError) as ctx:
+            ConfigurationAuthority(
+                env_file_path=self.temp_path / ".env",
+                explicit_overrides={"VERIFIER_MODEL_NETWORK_MODE": "PROVISIONING"},
+                auto_load=True,
+            )
+        self.assertIn("INSECURE_VERIFIER_NETWORK_MODE", str(ctx.exception))
+
+    def test_39_verifier_manifest_required_false_fails_closed(self) -> None:
+        """PROD-VERIFIER-MANIFEST-DOWNGRADE-01 (fixed): disabling the integrity
+        manifest fails closed at configuration construction."""
+        attempts = [
+            {"VERIFIER_MANIFEST_REQUIRED": "false"},
+            {"VERIFIER_MANIFEST_REQUIRED": "False"},
+            {"VERIFIER_MANIFEST_REQUIRED": "0"},
+            {"VERIFIER_MANIFEST_REQUIRED": "no"},
+        ]
+        for env_patch in attempts:
+            with self.subTest(env=env_patch):
+                ConfigurationAuthority.reset()
+                os.environ.update(env_patch)
+                try:
+                    with self.assertRaises(ValueError) as ctx:
+                        ConfigurationAuthority(
+                            env_file_path=self.temp_path / ".env", auto_load=True)
+                    self.assertIn("INSECURE_VERIFIER_CONFIGURATION", str(ctx.exception))
+                finally:
+                    ConfigurationAuthority.reset()
+        # Explicit API-level override obeys the same contract.
+        with self.assertRaises(ValueError) as ctx:
+            ConfigurationAuthority(
+                env_file_path=self.temp_path / ".env",
+                explicit_overrides={"VERIFIER_MANIFEST_REQUIRED": False},
+                auto_load=True,
+            )
+        self.assertIn("INSECURE_VERIFIER_CONFIGURATION", str(ctx.exception))
+
+    def test_40_verifier_snapshot_defaults_remain_hardened(self) -> None:
+        """Default normal-runtime snapshot: LOCAL_ONLY + manifest required."""
+        auth = ConfigurationAuthority(env_file_path=self.temp_path / ".env", auto_load=True)
+        snap = auth.get_snapshot()
+        self.assertEqual(snap.verifier_model_network_mode, "LOCAL_ONLY")
+        self.assertTrue(snap.verifier_manifest_required)
+        diag = snap.to_diagnostics_dict()
+        self.assertEqual(diag["verifier_model_network_mode"], "LOCAL_ONLY")
+        self.assertTrue(diag["verifier_manifest_required"])
+
 
 if __name__ == "__main__":
     unittest.main()

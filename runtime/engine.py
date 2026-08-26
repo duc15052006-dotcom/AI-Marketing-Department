@@ -15,6 +15,7 @@ import logging
 import re
 import secrets
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1273,6 +1274,7 @@ class FiveAgentDepartmentRuntime:
         context: Optional[RuntimeContext] = None,
         claim_verifier: Optional[BaseClaimVerifier] = None,
         knowledge_repo: Optional[Any] = None,
+        gate_deadline_monotonic: Optional[float] = None,
     ) -> tuple[int, int, int, List[str], Dict[str, str]]:
         """Scan free text for factual/product claims lacking verified support.
 
@@ -1281,26 +1283,70 @@ class FiveAgentDepartmentRuntime:
         2. Resolves cited source id and validates epistemic tier (VERIFIED_SOURCE / SOURCE_BACKED_OBSERVATION).
         3. Retrieves exact evidence content and validates security/geographic scope.
         4. Runs deterministic pre-guards (numeric, currency, SKU, temporal, execution state).
-        5. Executes semantic verification (NLI or injected verifier).
+        5. Executes semantic verification (isolated NLI worker or injected verifier).
         6. Preserves planning and hypotheses without blocking.
+
+        PROD-VERIFIER-02C resource authority:
+        - corpus_text is hard-capped; an over-limit corpus fails the whole
+          gate closed (no silent truncation of unscanned claims).
+        - material-claim count is capped; over-limit blocks publication with
+          VERIFIER_RESOURCE_LIMIT (never a partially-verified prefix).
+        - every verification consumes REMAINING gate deadline (monotonic).
         """
         total = supported = hypotheses = blocked = 0
         blocking_reasons: List[str] = []
         claim_actions: Dict[str, str] = {}
+
+        # --- Corpus bound (PROD-VERIFIER-02C) -----------------------------
+        try:
+            from config.authority import get_runtime_config
+            max_corpus_chars = 200_000
+            max_claims_per_gate = int(getattr(
+                get_runtime_config(), "verifier_max_claims_per_gate", 64))
+            gate_timeout_s = float(getattr(
+                get_runtime_config(), "verifier_gate_timeout_s", 120.0))
+        except Exception:
+            max_corpus_chars = 200_000
+            max_claims_per_gate = 64
+            gate_timeout_s = 120.0
+        if len(corpus_text or "") > max_corpus_chars:
+            return 0, 0, 0, [
+                f"VERIFIER_RESOURCE_LIMIT [CORPUS_LIMIT]: Final-CMO corpus exceeds "
+                f"{max_corpus_chars} characters ({len(corpus_text or '')}); refusing to "
+                f"scan a truncated subset. Publication blocked."
+            ], {"corpus": "BLOCK_PUBLICATION"}
+
+        # One monotonic overall gate deadline for ALL claim verifications.
+        gate_deadline = (
+            gate_deadline_monotonic
+            if gate_deadline_monotonic is not None
+            else time.monotonic() + gate_timeout_s
+        )
 
         verifier = claim_verifier
         if verifier is None:
             from runtime.claim_verification import MultilingualNLIClaimVerifier
             verifier = MultilingualNLIClaimVerifier()
 
+        # --- Material-claim count authority: two-pass, fail closed on overflow
+        candidate_sentences: List[str] = []
         for sentence in re.split(r"(?<=[.!?\n])\s+", corpus_text or ""):
             clean_sentence = sentence.strip()
             if not clean_sentence or len(clean_sentence) < 3:
                 continue
-
             if not cls._is_material_factual_claim(clean_sentence):
                 continue
+            candidate_sentences.append(clean_sentence)
 
+        if len(candidate_sentences) > max_claims_per_gate:
+            return 0, 0, 0, [
+                f"VERIFIER_RESOURCE_LIMIT [CLAIM_LIMIT_EXCEEDED]: {len(candidate_sentences)} "
+                f"material factual claims exceed the verification gate maximum "
+                f"{max_claims_per_gate}. Refusing partial authorization of an unverified tail; "
+                f"publication blocked."
+            ], {"claim_count": "BLOCK_PUBLICATION"}
+
+        for clean_sentence in candidate_sentences:
             total += 1
             label = f"claim_{total}"
 
@@ -1418,12 +1464,14 @@ class FiveAgentDepartmentRuntime:
                             )
                             continue
 
-                # Execute Semantic Claim ↔ Evidence Binding (guards + NLI)
+                # Execute Semantic Claim ↔ Evidence Binding (guards + isolated NLI)
+                # consuming REMAINING gate deadline (PROD-VERIFIER-02C).
                 ver_res = verifier.verify_claim(
                     claim_text=atomic_claim,
                     evidence_text=evidence_text,
                     claim_metadata=claim_meta,
                     source_metadata=source_meta,
+                    deadline_monotonic=gate_deadline,
                 )
 
                 if context is not None and isinstance(context.working_state, dict):
@@ -1533,6 +1581,7 @@ class FiveAgentDepartmentRuntime:
             final_text,
         ]
         corpus = " ".join(part for part in creative_text_parts if part)
+        gate_started_at = time.monotonic()
         total, supported, hypotheses, claim_reasons, claim_actions_scan = (
             self._scan_unsupported_product_claims(
                 corpus_text=corpus,

@@ -70,3 +70,6 @@ Thumbs.db
 # Backups
 # ==============================
 *-BACKUP-*/
+
+# Isolated verifier worker environment (PROD-VERIFIER-02E) - never tracked
+.verifier-venv/
