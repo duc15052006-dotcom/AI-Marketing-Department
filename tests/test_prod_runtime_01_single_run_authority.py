@@ -98,6 +98,7 @@ def _build_test_runtime(gateway: Optional[UniversalModelGateway] = None) -> Five
     gw = gateway or MockScriptedGateway()
     return FiveAgentDepartmentRuntime(
         model_gateway=gw,
+        tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         knowledge_repo=LocalKnowledgeRepository(),
         memory_repo=LocalMemoryRepository(),
     )
@@ -218,7 +219,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         self.assertIsNotNone(approval_record.approval_token)
 
         # 1. PolicyEngine evaluate directly rejects token under RUN-B
-        tool_gw = ToolGateway(policy_engine=policy)
+        tool_gw = ToolGateway(capability_registry=CapabilityRegistry(), policy_engine=policy)
         cap = tool_gw.registry.get_capability("social_publishing")
         self.assertIsNotNone(cap)
 
@@ -688,6 +689,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         """Bounded completed run cache evicts oldest entries and does not grow unbounded."""
         rt = FiveAgentDepartmentRuntime(
             model_gateway=MockScriptedGateway(),
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
             max_completed_runs_cache=10,

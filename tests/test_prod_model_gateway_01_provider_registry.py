@@ -52,6 +52,8 @@ from integrations.models import (
     validate_base_url,
 )
 from runtime.engine import FiveAgentDepartmentRuntime
+from tools.capabilities import CapabilityRegistry
+from tools.tool_gateway import ToolGateway
 
 
 class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
@@ -650,7 +652,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             status=ModelResponseStatus.SUCCESS,
             content="Stage response",
         )
-        runtime = FiveAgentDepartmentRuntime(model_gateway=mock_gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=mock_gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
         content, err = runtime._call_agent_llm("creative", "sys_inst", "user_prompt")
         self.assertIsNone(err)
         self.assertEqual(content, "Stage response")
@@ -660,7 +662,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
 
     def test_45_runtime_context_preserves_pinned_model_policy(self):
         """Verify RuntimeContext retains model policy in frozen state across run execution."""
-        runtime = FiveAgentDepartmentRuntime()
+        runtime = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
         ctx = runtime.start_run(
             objective="Launch Campaign",
             business_id="BIZ_99",
@@ -692,7 +694,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             free_only_mode=True,
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         ctx, final_output, artifact = runtime.run_workflow(
             objective="Execute Full E2E Campaign with Custom Provider",
@@ -1029,7 +1031,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             configuration_version="v1",
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy_v1)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         ctx = runtime.start_run(objective="Pinning test")
         self.assertEqual(ctx.model_policy["configuration_version"], "v1")
@@ -1080,7 +1082,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
 
     def test_54_api_provider_injection_boundary(self):
         """Verify API client payload cannot inject arbitrary provider/model routing overrides into runtime context."""
-        runtime = FiveAgentDepartmentRuntime()
+        runtime = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
         # Simulated untrusted request payload attempting provider injection
         malicious_input = {
             "objective": "Normal Campaign",
@@ -1146,7 +1148,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
 
     def test_57_production_bootstrap_does_not_enter_injected_di_mode(self):
         """Verify normal runtime/server initialization starts in explicit policy mode, not injected DI mode."""
-        runtime = FiveAgentDepartmentRuntime()
+        runtime = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
         gw = runtime.model_gateway
         self.assertIsNotNone(gw)
         self.assertFalse(getattr(gw.provider_registry, "_has_custom_adapters", False))
@@ -1200,7 +1202,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             fallback_chain=[ModelTarget(provider_id="prov_b", model_id="m2")],
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         # Start RUN-1 with Provider A enabled
         ctx1 = runtime.start_run(objective="Active run stability test")
@@ -1259,7 +1261,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             fallback_chain=[ModelTarget(provider_id="prov_b", model_id="m2")],
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         # Disable Provider A globally
         reg.disable_provider("prov_a")
@@ -1307,7 +1309,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             configuration_version="v1",
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy_v1)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         ctx = runtime.start_run(objective="Policy mutation test")
         runtime.execute_stage_cmo_initial(ctx)
@@ -1351,7 +1353,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             provider_registry=reg,
             model_policy=ModelPolicy(global_target=ModelTarget(provider_id="prov_v1", model_id="m-v1")),
         )
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         gw.model_policy = ModelPolicy(
             global_target=ModelTarget(provider_id="prov_v2", model_id="m-v2"),
@@ -1403,7 +1405,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             fallback_chain=[ModelTarget(provider_id="prov_b", model_id="m2")],
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         ctx = runtime.start_run(objective="Fallback pinning test")
 
@@ -1459,7 +1461,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             agent_overrides={"CREATIVE": ModelTarget(provider_id="prov_b", model_id="m2")},
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         ctx = runtime.start_run(objective="Creative override pinning test")
         runtime.execute_stage_cmo_initial(ctx)
@@ -1504,7 +1506,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             agent_overrides={"CMO": ModelTarget(provider_id="cmo_v1", model_id="m1")},
         )
         gw = UniversalModelGateway(provider_registry=reg, model_policy=policy)
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         ctx = runtime.start_run(objective="Final CMO pinning test")
         runtime.execute_stage_cmo_initial(ctx)
@@ -1538,7 +1540,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
             provider_registry=reg,
             model_policy=ModelPolicy(global_target=ModelTarget(provider_id="openai_test", model_id="gpt-4o-mini")),
         )
-        runtime = FiveAgentDepartmentRuntime(model_gateway=gw)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=gw, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         ctx = runtime.start_run(objective="Secret sanitization test")
 

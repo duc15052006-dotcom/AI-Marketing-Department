@@ -75,6 +75,8 @@ from integrations.models.settings_manager import (
 )
 from runtime.context import RuntimeContext, RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime
+from tools.capabilities import CapabilityRegistry
+from tools.tool_gateway import ToolGateway
 
 
 class MockOpenAIHttpServer(http.server.HTTPServer):
@@ -634,7 +636,7 @@ class TestProdModelSettings01(unittest.TestCase):
             "global_target": {"provider_id": "prov_a", "model_id": "m-a"},
         })
 
-        runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
 
         # Start RUN-1 with Provider A
         ctx1 = runtime.start_run(objective="Active Run Immutability Test")
@@ -887,7 +889,7 @@ class TestProdModelSettings01(unittest.TestCase):
             })
 
             # Run FiveAgentDepartmentRuntime stage
-            runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway)
+            runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
             ctx = runtime.start_run(objective="Local HTTP Server Contract Test")
             out = runtime.execute_stage_cmo_initial(ctx)
 
@@ -1046,7 +1048,7 @@ class TestProdModelSettings01(unittest.TestCase):
                 "global_target": {"provider_id": "prov_rot", "model_id": "m-rot"},
             })
 
-            runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway)
+            runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
             ctx1 = runtime.start_run(objective="Active Run Rotation Truth RUN-1")
 
             # RUN-1 first actual model call
@@ -1302,7 +1304,7 @@ class TestProdModelSettings01(unittest.TestCase):
                 "global_target": {"provider_id": "prov_mrot", "model_id": "m-mrot"},
             })
 
-            runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway)
+            runtime = FiveAgentDepartmentRuntime(model_gateway=self.gateway, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
             ctx1 = runtime.start_run(objective="Multi Rotation RUN-1")
             out1 = runtime.execute_stage_cmo_initial(ctx1)
             self.assertEqual(out1["status"], "COMPLETED")
@@ -1433,7 +1435,7 @@ class TestProdModelSettings01(unittest.TestCase):
             ref_v1 = manager.get_settings().providers["del_prov"].credential_ref
             manager.update_settings({"global_target": {"provider_id": "del_prov", "model_id": "m-d"}})
 
-            runtime = FiveAgentDepartmentRuntime(model_gateway=gateway)
+            runtime = FiveAgentDepartmentRuntime(model_gateway=gateway, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
             ctx1 = runtime.start_run(objective="Delete vs Active Run RUN-1")
             out1 = runtime.execute_stage_cmo_initial(ctx1)
             self.assertEqual(out1["status"], "COMPLETED")

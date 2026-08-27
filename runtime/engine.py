@@ -211,7 +211,7 @@ class FiveAgentDepartmentRuntime:
         max_completed_runs_cache: int = 1000,
     ) -> None:
         self.model_gateway = model_gateway or UniversalModelGateway(free_only_mode=True)
-        self.tool_gateway = tool_gateway or ToolGateway()
+        self.tool_gateway = tool_gateway
         self.knowledge_repo = knowledge_repo or LocalKnowledgeRepository()
         self.memory_repo = memory_repo or LocalMemoryRepository()
         self.learning_repo = learning_repo or LocalLearningRepository()
@@ -225,6 +225,7 @@ class FiveAgentDepartmentRuntime:
             session_knowledge=self.session_knowledge,
             knowledge_repo=self.knowledge_repo,
             memory_repo=self.memory_repo,
+            capability_registry=self.tool_gateway.registry,
         )
         self.lineage_inspector = LineageInspector()
 

@@ -113,7 +113,7 @@ class LocalKnowledgeRepository(KnowledgeRepository):
     ) -> List[KnowledgeDocument]:
         results = list(self._documents.values())
         if scope:
-            results = [d for d in results if d.scope == scope or d.scope == "GLOBAL"]
+            results = [d for d in results if d.scope == scope]
         if authority_level:
             results = [d for d in results if d.authority_level == authority_level]
         if source_type:

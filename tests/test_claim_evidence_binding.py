@@ -50,6 +50,8 @@ from runtime.claim_verification import (
 from runtime.context import EpistemicTier, RuntimeContext
 from runtime.engine import FiveAgentDepartmentRuntime
 from schemas.claim_provenance import AllowedUsage, ClaimClass
+from tools.capabilities import CapabilityRegistry
+from tools.tool_gateway import ToolGateway
 
 
 class ScriptedAgentGateway(UniversalModelGateway):
@@ -108,6 +110,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(
                 default_semantic_scores=SemanticScores(
@@ -136,6 +139,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(
                 default_semantic_scores=SemanticScores(
@@ -165,6 +169,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(),
         )
@@ -189,6 +194,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(
                 default_semantic_scores=SemanticScores(
@@ -217,6 +223,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(simulate_model_failure=True),
         )
@@ -241,6 +248,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(simulate_exception=True),
         )
@@ -265,7 +273,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
         }
         ctx = RuntimeContext(objective="Test", business_id="BIZ_TEST")
         ctx.working_state["provenance_index"] = prov_index
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=self.mock_verifier)
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=self.mock_verifier)
         audit_res = rt._evaluate_final_authorization(
             context=ctx,
             perf_out={},
@@ -285,7 +293,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             authority_level=AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
             scope="SCOPE_BIZ_BETA",
         ))
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=self.mock_verifier)
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=self.mock_verifier)
         ctx = rt.start_run(objective="Test", business_id="BIZ_ALPHA")
         audit_res = rt._evaluate_final_authorization(
             context=ctx,
@@ -412,7 +420,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
     def test_19_raw_final_cmo_output_preserved_verbatim(self) -> None:
         raw_text = "# FINAL_CMO_PLAN\nThis tool delivers 10x ROI (Source: SRC_UNKNOWN)."
         ctx = RuntimeContext(objective="Test", business_id="BIZ_TEST")
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=self.mock_verifier)
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=self.mock_verifier)
         audit_res = rt._evaluate_final_authorization(
             context=ctx,
             perf_out={},
@@ -433,6 +441,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(
                 default_semantic_scores=SemanticScores(
@@ -477,6 +486,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             "final_cmo": "# GTM PLAN\nClinically proven results (Source: SRC_SERUM_CLINICAL) theo bao cao phong thi nghiem.",
         })
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             model_gateway=gw,
             knowledge_repo=self.repo,
             memory_repo=LocalMemoryRepository(),
@@ -510,6 +520,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             "final_cmo": "# GTM PLAN\nClinically proven results (Source: SRC_SERUM_CLINICAL) theo bao cao phong thi nghiem.",
         })
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             model_gateway=gw,
             knowledge_repo=self.repo,
             memory_repo=LocalMemoryRepository(),
@@ -538,6 +549,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(
                 default_semantic_scores=SemanticScores(
@@ -601,6 +613,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
                 )
 
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=RecordingVerifier(),
         )
@@ -646,7 +659,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             authority_level=AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
             scope="SCOPE_BIZ_TEST",
         ))
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=RealisticFakeVerifier())
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=RealisticFakeVerifier())
         ctx = rt.start_run(objective="Test GTM", business_id="BIZ_TEST")
         audit_res = rt._evaluate_final_authorization(
             context=ctx,
@@ -687,7 +700,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
                     reason="Matched",
                 )
 
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=MultiVerifier())
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=MultiVerifier())
         ctx = rt.start_run(objective="Test", business_id="BIZ_TEST")
         multi_text = (
             "Device has 5000mAh battery (Source: SRC_BATTERY_DOC). "
@@ -711,6 +724,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             "final_cmo": "# FINAL PLAN\nAll requirements satisfied.",
         })
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             model_gateway=gw,
             knowledge_repo=self.repo,
             memory_repo=LocalMemoryRepository(),
@@ -734,6 +748,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(),
         )
@@ -768,6 +783,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(model_revision="rev-alpha-12345"),
         )
@@ -800,6 +816,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(
                 default_semantic_scores=SemanticScores(
@@ -836,6 +853,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(),
         )
@@ -874,6 +892,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(),
         )
@@ -908,6 +927,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(),
         )
@@ -954,12 +974,12 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             authority_level=AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
             scope="SCOPE_BIZ_TEST",
         ))
-        rt1 = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
+        rt1 = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
         ctx1 = rt1.start_run(objective="GTM Campaign", business_id="BIZ_TEST", trusted_run_id="RUN_FIXED_001")
         rt1._evaluate_final_authorization(context=ctx1, perf_out={}, crtv_out={}, final_text="5000mAh battery (Source: SRC_BATTERY_SPEC).")
         art1 = rt1.complete_run(ctx1)
 
-        rt2 = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
+        rt2 = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
         ctx2 = rt2.start_run(objective="GTM Campaign", business_id="BIZ_TEST", trusted_run_id="RUN_FIXED_001")
         rt2._evaluate_final_authorization(context=ctx2, perf_out={}, crtv_out={}, final_text="5000mAh battery (Source: SRC_BATTERY_SPEC).")
         art2 = rt2.complete_run(ctx2)
@@ -968,7 +988,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
 
     # 37. Empty ledger default artifact hash safety
     def test_37_empty_ledger_default_artifact_hash_safety(self) -> None:
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=self.repo, claim_verifier=MockClaimVerifier())
         ctx = rt.start_run(objective="General brand positioning", business_id="BIZ_TEST")
         # Run with creative prose containing 0 material factual claims
         rt._evaluate_final_authorization(context=ctx, perf_out={}, crtv_out={}, final_text="Our vision is to empower modern marketers everywhere.")
@@ -987,6 +1007,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
             scope="SCOPE_BIZ_TEST",
         ))
         rt = FiveAgentDepartmentRuntime(
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.repo,
             claim_verifier=MockClaimVerifier(simulate_model_failure=True),
         )

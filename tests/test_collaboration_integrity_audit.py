@@ -52,7 +52,9 @@ from runtime.engine import (
     extract_explicit_user_constraints,
     record_constraint,
 )
+from tools.capabilities import CapabilityRegistry
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
+from tools.tool_gateway import ToolGateway
 
 
 class ScriptedAgentGateway(UniversalModelGateway):
@@ -115,6 +117,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
 def build_runtime(gateway) -> FiveAgentDepartmentRuntime:
     return FiveAgentDepartmentRuntime(
         model_gateway=gateway,
+        tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         knowledge_repo=LocalKnowledgeRepository(),
         memory_repo=LocalMemoryRepository(),
     )
@@ -394,6 +397,7 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
         from runtime.claim_verification import MockClaimVerifier
         rt = FiveAgentDepartmentRuntime(
             model_gateway=gateway,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=knowledge_repo or LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
             claim_verifier=claim_verifier or MockClaimVerifier(),
@@ -462,6 +466,7 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
         gw = ScriptedAgentGateway()
         rt = ExplodingGateRuntime(
             model_gateway=gw,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )
@@ -486,6 +491,7 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
         gw = ScriptedAgentGateway()
         rt = NoneGateRuntime(
             model_gateway=gw,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )
@@ -571,6 +577,7 @@ class TestConstraintPropagation(unittest.TestCase):
     def _runtime(self, gateway):
         return FiveAgentDepartmentRuntime(
             model_gateway=gateway,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )
@@ -647,6 +654,7 @@ class TestConstraintPropagation(unittest.TestCase):
         gw = ScriptedAgentGateway()
         rt = FiveAgentDepartmentRuntime(
             model_gateway=gw, knowledge_repo=repo, memory_repo=mem_repo,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         )
         ctx = self._seeded_context(rt)
         pkg = rt.context_compiler.compile_grounded_package("creative", ctx)
@@ -759,6 +767,7 @@ class TestProductionConstraintPath(unittest.TestCase):
         gw = ScriptedAgentGateway()
         rt = FiveAgentDepartmentRuntime(
             model_gateway=gw,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )
@@ -785,6 +794,7 @@ class TestDataOriginIntegrity(unittest.TestCase):
     def _runtime(self, gateway):
         return FiveAgentDepartmentRuntime(
             model_gateway=gateway,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )

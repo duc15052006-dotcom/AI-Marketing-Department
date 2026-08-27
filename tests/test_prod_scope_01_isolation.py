@@ -38,7 +38,7 @@ from runtime.context import ApprovalState, EpistemicTier, ExecutionCheckpoint, R
 from runtime.context_compiler import ContextCompiler
 from runtime.engine import FiveAgentDepartmentRuntime
 from runtime.queue import QueueItem, RunManager, RunQueueStatus
-from tools.capabilities import CapabilityCategory, CapabilityDescriptor, RiskLevel
+from tools.capabilities import CapabilityCategory, CapabilityDescriptor, CapabilityRegistry, RiskLevel
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import HumanApprovalRecord, PendingApprovalRecord, PendingApprovalStatus, PermissionLevel, PolicyDecision, PolicyEngine
 from tools.tool_gateway import ToolGateway, ToolRequest
@@ -61,6 +61,7 @@ class TestProdScope01Isolation(unittest.TestCase):
         self.receipt_repo = ExecutionReceiptRepository()
         self.policy_engine = PolicyEngine()
         self.tool_gateway = ToolGateway(
+            capability_registry=CapabilityRegistry(),
             policy_engine=self.policy_engine,
             receipt_repository=self.receipt_repo,
         )

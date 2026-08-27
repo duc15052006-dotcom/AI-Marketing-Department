@@ -34,6 +34,7 @@ from runtime.engine import FiveAgentDepartmentRuntime
 from tools.receipts import ExecutionReceiptRepository
 from tools.security import PolicyEngine
 from tools.tool_gateway import ToolGateway
+from tools.capabilities import CapabilityRegistry
 
 
 class ControllableMockAdapter(BaseModelAdapter):
@@ -125,6 +126,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         self.receipt_repo = ExecutionReceiptRepository()
         self.policy_engine = PolicyEngine()
         self.tool_gateway = ToolGateway(
+            capability_registry=CapabilityRegistry(),
             policy_engine=self.policy_engine,
             receipt_repository=self.receipt_repo,
         )

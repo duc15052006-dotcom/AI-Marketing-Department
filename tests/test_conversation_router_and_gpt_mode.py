@@ -26,6 +26,8 @@ from chat.session import AttachmentType, ChatAttachment, ChatSessionManager
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
 from integrations.models.gateway import UniversalModelGateway
 from runtime.engine import FiveAgentDepartmentRuntime
+from tools.capabilities import CapabilityRegistry
+from tools.tool_gateway import ToolGateway
 
 
 class MockEchoModelGateway(UniversalModelGateway):
@@ -224,7 +226,7 @@ class TestConversationRouterAndGptMode(unittest.TestCase):
         decision = self.router.route(query)
         self.assertEqual(decision.intent, ConversationIntent.MARKETING_WORKFLOW)
 
-        runtime = FiveAgentDepartmentRuntime(model_gateway=self.mock_gateway)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=self.mock_gateway, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
         ctx = runtime.start_run(objective=query)
 
         cmo_init = runtime.execute_stage_cmo_initial(ctx)
@@ -279,7 +281,7 @@ class TestConversationRouterAndGptMode(unittest.TestCase):
     # STATIC CONTENT LEAK TEST
     # -------------------------------------------------------------------------
     def test_static_content_leak_prevention(self):
-        runtime = FiveAgentDepartmentRuntime(model_gateway=self.mock_gateway)
+        runtime = FiveAgentDepartmentRuntime(model_gateway=self.mock_gateway, tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))
         ctx = runtime.start_run(objective="Xây dựng thương hiệu thời trang GenZ")
 
         runtime.execute_stage_cmo_initial(ctx)

@@ -16,6 +16,8 @@ from typing import Any, Dict
 from knowledge.repository import LocalKnowledgeRepository
 from runtime.engine import FiveAgentDepartmentRuntime, RuntimeContext
 from schemas.claim_provenance import AllowedUsage, ClaimClass
+from tools.capabilities import CapabilityRegistry
+from tools.tool_gateway import ToolGateway
 
 
 class TestMaterialFactualClaimCoverage(unittest.TestCase):
@@ -257,7 +259,7 @@ class TestMaterialFactualClaimCoverage(unittest.TestCase):
                 ]
             }
         }
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=LocalKnowledgeRepository())
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=LocalKnowledgeRepository())
         audit_res = rt._evaluate_final_authorization(
             context=ctx,
             perf_out={},
@@ -283,7 +285,7 @@ class TestMaterialFactualClaimCoverage(unittest.TestCase):
                 ]
             }
         }
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=LocalKnowledgeRepository())
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=LocalKnowledgeRepository())
         audit_res = rt._evaluate_final_authorization(
             context=ctx,
             perf_out={},
@@ -297,7 +299,7 @@ class TestMaterialFactualClaimCoverage(unittest.TestCase):
     def test_20_raw_output_preserved_verbatim(self) -> None:
         raw_text = "# FINAL_CMO_VERDICT\nRated #1 in Vietnam with battery lasts 3x longer than all competitors."
         ctx = RuntimeContext(objective="Test GTM")
-        rt = FiveAgentDepartmentRuntime(knowledge_repo=LocalKnowledgeRepository())
+        rt = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()), knowledge_repo=LocalKnowledgeRepository())
         audit_res = rt._evaluate_final_authorization(
             context=ctx,
             perf_out={},

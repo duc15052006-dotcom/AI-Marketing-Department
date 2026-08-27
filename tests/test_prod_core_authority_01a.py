@@ -36,7 +36,7 @@ from runtime.context import (
 )
 from runtime.engine import FiveAgentDepartmentRuntime
 from runtime.queue import RunManager, RunQueueStatus
-from tools.capabilities import RiskLevel
+from tools.capabilities import CapabilityRegistry, RiskLevel
 from tools.receipts import ExecutionStatus
 from tools.security import (
     HumanApprovalRecord,
@@ -142,6 +142,7 @@ def _build_runtime(gateway: Optional[UniversalModelGateway] = None) -> FiveAgent
     gw = gateway or MockScriptedGateway()
     return FiveAgentDepartmentRuntime(
         model_gateway=gw,
+        tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         knowledge_repo=LocalKnowledgeRepository(),
         memory_repo=LocalMemoryRepository(),
     )
@@ -161,6 +162,7 @@ def _build_runtime_with_gateway(
         gw.provider_registry._adapters = {}
     return FiveAgentDepartmentRuntime(
         model_gateway=gw,
+        tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         knowledge_repo=LocalKnowledgeRepository(),
         memory_repo=LocalMemoryRepository(),
     )
@@ -717,6 +719,7 @@ class TestProviderArchitectureRegression(unittest.TestCase):
         gw.model_policy = policy
         rt = FiveAgentDepartmentRuntime(
             model_gateway=gw,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )
@@ -746,7 +749,7 @@ class TestSecurityUIAuthRegression(unittest.TestCase):
         ok, rec, _ = policy.approve_pending_action(pending_a.pending_approval_id, approved_by="Op")
         self.assertTrue(ok)
 
-        tool_gw = ToolGateway(policy_engine=policy)
+        tool_gw = ToolGateway(capability_registry=CapabilityRegistry(), policy_engine=policy)
         cap = tool_gw.registry.get_capability("social_publishing")
         decision = policy.evaluate(
             agent_id="cmo",
@@ -775,7 +778,7 @@ class TestSecurityUIAuthRegression(unittest.TestCase):
         # Mark as consumed
         rec.consumed = True
 
-        tool_gw = ToolGateway(policy_engine=policy)
+        tool_gw = ToolGateway(capability_registry=CapabilityRegistry(), policy_engine=policy)
         cap = tool_gw.registry.get_capability("social_publishing")
         decision = policy.evaluate(
             agent_id="cmo",
@@ -883,6 +886,7 @@ class TestStartRunSnapshotFailure(unittest.TestCase):
 
         rt = FiveAgentDepartmentRuntime(
             model_gateway=gw,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )

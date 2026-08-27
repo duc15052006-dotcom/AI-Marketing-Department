@@ -50,7 +50,9 @@ from runtime.handoff import (
     extract_handoff_payload,
     render_handoff_sections,
 )
+from tools.capabilities import CapabilityRegistry
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
+from tools.tool_gateway import ToolGateway
 
 
 def fence(payload: dict) -> str:
@@ -119,6 +121,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
 def build_runtime(gateway, knowledge_repo=None, memory_repo=None) -> FiveAgentDepartmentRuntime:
     return FiveAgentDepartmentRuntime(
         model_gateway=gateway,
+        tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         knowledge_repo=knowledge_repo or LocalKnowledgeRepository(),
         memory_repo=memory_repo or LocalMemoryRepository(),
     )
@@ -761,6 +764,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         gw = ScriptedAgentGateway()
         rt = ExplodingGateRuntime(
             model_gateway=gw,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=LocalKnowledgeRepository(),
             memory_repo=LocalMemoryRepository(),
         )

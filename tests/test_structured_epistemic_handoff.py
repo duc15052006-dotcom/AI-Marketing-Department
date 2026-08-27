@@ -16,6 +16,8 @@ from memory.repository import LocalMemoryRepository
 from runtime.artifacts import DepartmentRunArtifact
 from runtime.context import RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime, record_constraint
+from tools.capabilities import CapabilityRegistry
+from tools.tool_gateway import ToolGateway
 from runtime.handoff import (
     EpistemicType,
     StageHandoff,
@@ -81,6 +83,7 @@ class StructuredScriptedGateway(UniversalModelGateway):
 def build_runtime(gateway):
     return FiveAgentDepartmentRuntime(
         model_gateway=gateway,
+        tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         knowledge_repo=LocalKnowledgeRepository(),
         memory_repo=LocalMemoryRepository(),
     )

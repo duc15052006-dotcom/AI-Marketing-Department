@@ -186,6 +186,7 @@ class DepartmentAppBackend:
             session_knowledge=self.session_knowledge,
             knowledge_repo=self.knowledge_repo,
             memory_repo=self.memory_repo,
+            capability_registry=self.cap_registry,
         )
 
         self.runtime = FiveAgentDepartmentRuntime(
@@ -617,7 +618,15 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         # 6. Knowledge Management (with Scopes: SESSION, PROJECT, BRAND, GLOBAL)
         elif path == "/api/knowledge":
             scope = query.get("scope", [None])[0]
-            docs = APP_BACKEND.knowledge_repo.list_documents(scope=scope)
+            if scope:
+                # Explicit scope composition: requested scope + GLOBAL
+                docs = APP_BACKEND.knowledge_repo.list_documents(scope=scope)
+                if scope != "GLOBAL":
+                    global_docs = APP_BACKEND.knowledge_repo.list_documents(scope="GLOBAL")
+                    seen = {d.knowledge_id for d in docs}
+                    docs = docs + [d for d in global_docs if d.knowledge_id not in seen]
+            else:
+                docs = APP_BACKEND.knowledge_repo.list_documents()
             out = []
             for d in docs:
                 out.append(

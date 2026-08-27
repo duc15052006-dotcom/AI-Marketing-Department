@@ -121,10 +121,14 @@ class ContextCompiler:
             if ctx.project_id:
                 scopes.append(f"SCOPE_PROJ_{ctx.project_id}")
 
+            seen_knowledge_ids: set = set()
             for s in scopes:
                 scoped_docs = self.knowledge_repo.list_documents(scope=s)
                 valid_docs = [d for d in scoped_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
                 for doc in valid_docs[:4]:
+                    if doc.knowledge_id in seen_knowledge_ids:
+                        continue
+                    seen_knowledge_ids.add(doc.knowledge_id)
                     # Map canonical authority level to EpistemicTier
                     if doc.authority_level in (AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH, AuthorityLevel.TIER_2_VERIFIED_RESEARCH):
                         tier = EpistemicTier.VERIFIED_SOURCE

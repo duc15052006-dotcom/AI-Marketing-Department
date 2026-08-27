@@ -44,6 +44,7 @@ from runtime.context import (
 from runtime.context_compiler import ContextCompiler
 from runtime.engine import FiveAgentDepartmentRuntime
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
+from tools.capabilities import CapabilityRegistry
 from tools.tool_gateway import ToolGateway, ToolRequest
 
 
@@ -88,6 +89,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
         self.runtime = FiveAgentDepartmentRuntime(
             model_gateway=self.model_gateway,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.knowledge_repo,
             memory_repo=self.memory_repo,
             session_knowledge=self.session_knowledge,
@@ -431,6 +433,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
         failing_runtime = FiveAgentDepartmentRuntime(
             model_gateway=failing_gateway,
+            tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
             knowledge_repo=self.knowledge_repo,
             memory_repo=self.memory_repo,
             session_knowledge=self.session_knowledge,

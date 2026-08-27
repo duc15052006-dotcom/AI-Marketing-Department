@@ -65,7 +65,9 @@ class ToolGateway:
         policy_engine: Optional[PolicyEngine] = None,
         receipt_repository: Optional[ExecutionReceiptRepository] = None,
     ) -> None:
-        self.registry = capability_registry or CapabilityRegistry()
+        if capability_registry is None:
+            raise ValueError("ToolGateway requires an explicit CapabilityRegistry instance. Pass capability_registry= to the constructor.")
+        self.registry = capability_registry
         self.policy_engine = policy_engine or PolicyEngine()
         self.receipt_repository = receipt_repository or ExecutionReceiptRepository()
         self._adapters: Dict[str, BaseCapabilityAdapter] = {}

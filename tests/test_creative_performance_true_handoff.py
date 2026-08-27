@@ -14,6 +14,8 @@ from knowledge.repository import LocalKnowledgeRepository
 from memory.repository import LocalMemoryRepository
 from runtime.context import RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime, record_constraint
+from tools.capabilities import CapabilityRegistry
+from tools.tool_gateway import ToolGateway
 
 
 def fence(payload: dict) -> str:
@@ -67,6 +69,7 @@ class HandoffGateway(UniversalModelGateway):
 def build_rt(gateway):
     return FiveAgentDepartmentRuntime(
         model_gateway=gateway,
+        tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()),
         knowledge_repo=LocalKnowledgeRepository(),
         memory_repo=LocalMemoryRepository(),
     )
