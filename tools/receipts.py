@@ -82,6 +82,10 @@ class ExecutionReceipt(BaseModel):
     result_hash: str = Field(default="", description="SHA-256 hash of execution payload data")
     data: Optional[Dict[str, Any]] = Field(default=None)
     output: Any = Field(default=None)
+    observation_record: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Canonical serialized ObservationRecord from observation execution path, if available.",
+    )
 
     def __post_init__(self) -> None:
         super().__post_init__()

@@ -298,6 +298,7 @@ class ToolGateway:
                 business_id=request.business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
+                observation_record=adapter_res.observation_record,
             )
         else:
             err_code = adapter_res.error_code if adapter_res else "EXECUTION_EXCEPTION"

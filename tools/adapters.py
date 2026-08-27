@@ -23,6 +23,10 @@ class AdapterResult(BaseModel):
     artifact_refs: list[str] = Field(default_factory=list)
     latency_ms: float = 0.0
     execution_mode: ExecutionMode = Field(default=ExecutionMode.MOCK)
+    observation_record: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Canonical serialized ObservationRecord from observation execution path, if available.",
+    )
 
 
 class BaseCapabilityAdapter(abc.ABC):
@@ -435,4 +439,5 @@ class ObservationSearchAdapter(BaseCapabilityAdapter):
             data=result.data,
             latency_ms=latency_ms,
             execution_mode=exec_mode,
+            observation_record=getattr(result, "observation_record", None),
         )
