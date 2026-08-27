@@ -466,6 +466,9 @@ class ToolGateway:
             blocked_domains=blocked_domains,
             preferred_backend=preferred_backend,
             timeout=timeout,
+            run_id=request.context.run_id,
+            business_id=request.context.business_id,
+            project_id=request.context.project_id,
         )
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0

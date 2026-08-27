@@ -459,8 +459,9 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
         """18. Verify DepartmentAppBackend resolves all standard capabilities to truthful connectors."""
         backend = DepartmentAppBackend()
 
+        from tools.adapters import ObservationSearchAdapter
         mapping = {
-            "web_search": RealWebConnector,
+            "web_search": ObservationSearchAdapter,
             "read_page": RealWebConnector,
             "file_read": RealFileConnector,
             "file_write": RealFileConnector,

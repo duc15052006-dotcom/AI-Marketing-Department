@@ -24,7 +24,16 @@ class SandboxPublishingConnector(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "sandbox_publisher"
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 15.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 15.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start_time = time.perf_counter()
         platform = parameters.get("platform", "generic")
         content = parameters.get("content", "")

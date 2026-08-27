@@ -260,6 +260,9 @@ class EvidenceItem(BaseModel):
     capability: str
     product_id: str
     brand_id: str
+    run_id: str = ""
+    business_id: str = ""
+    project_id: str = ""
 
     source_platform: str
     source_type: str

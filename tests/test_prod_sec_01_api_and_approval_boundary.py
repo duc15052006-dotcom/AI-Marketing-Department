@@ -56,7 +56,7 @@ class FailingAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self.name
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0, *, run_id: str = "", business_id: str = "", project_id: str = "") -> AdapterResult:
         self.invocations += 1
         if self.mode == "exception":
             raise RuntimeError("CRITICAL_NETWORK_FAILURE: Remote connection dropped mid-dispatch")
@@ -77,7 +77,7 @@ class ConcurrentSynchronizedAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self.name
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0, *, run_id: str = "", business_id: str = "", project_id: str = "") -> AdapterResult:
         self.invocations += 1
         time.sleep(0.05)
         return AdapterResult(success=True, data={"published": True}, execution_mode=ExecutionMode.SANDBOX)

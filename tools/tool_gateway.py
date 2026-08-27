@@ -259,6 +259,9 @@ class ToolGateway:
                         capability_id=cap.capability_id,
                         parameters=request.parameters,
                         timeout_seconds=timeout,
+                        run_id=request.run_id,
+                        business_id=request.business_id or "",
+                        project_id=request.project_id or "",
                     )
                 except Exception as e:
                     adapter_res = None

@@ -451,6 +451,9 @@ class SearchManager:
         search_scope: SearchScope = SearchScope.GENERAL_WEB,
         preferred_backend: Optional[str] = None,
         timeout: Optional[float] = None,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
     ) -> Tuple[Optional[ObservationRecord], Optional[ToolError]]:
         """Execute provider-independent web search discovery and return typed ObservationRecord."""
         t0 = time.perf_counter()
@@ -574,6 +577,9 @@ class SearchManager:
             product_id=product_id,
             brand_id=brand_id,
             content_trust=ContentTrustLevel.UNTRUSTED_EXTERNAL,
+            run_id=run_id,
+            business_id=business_id,
+            project_id=project_id,
         )
 
         return obs, None

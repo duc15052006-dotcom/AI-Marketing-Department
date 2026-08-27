@@ -35,8 +35,21 @@ class BaseCapabilityAdapter(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
-        """Execute the capability against the underlying backend."""
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
+        """Execute the capability against the underlying backend.
+
+        Trusted scope parameters (run_id, business_id, project_id) are sourced
+        from ToolRequest fields, NOT from model-controlled parameters.
+        """
         pass
 
 
@@ -47,7 +60,16 @@ class SearchAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "search_adapter"
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         query = parameters.get("query", "")
         if not query:
@@ -76,7 +98,16 @@ class HttpAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "http_adapter"
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         url = parameters.get("url", "")
         if not url:
@@ -107,7 +138,16 @@ class CreativeTextAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "creative_text_adapter"
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         prompt = parameters.get("prompt", "")
         return AdapterResult(
@@ -128,7 +168,16 @@ class MediaCreationAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self._name
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         asset_type = "video" if "video" in capability_id else "image"
         artifact_id = f"art-{asset_type}-{int(time.time())}"
@@ -151,7 +200,16 @@ class PublishingAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self._name
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         platform = parameters.get("platform", "generic")
         return AdapterResult(
@@ -172,7 +230,16 @@ class AnalyticsAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self._name
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         metric_name = parameters.get("metric_name", "roas")
         return AdapterResult(
@@ -196,7 +263,16 @@ class FileStorageAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "file_io_adapter"
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         action = "read" if "read" in capability_id else "write"
         path = parameters.get("path", "workspace/output.txt")
@@ -233,7 +309,16 @@ class MockToolAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self._name
 
-    def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0) -> AdapterResult:
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
         start = time.perf_counter()
         self._current_attempts += 1
 
@@ -262,4 +347,92 @@ class MockToolAdapter(BaseCapabilityAdapter):
             data={"mock_output": "SUCCESS_PAYLOAD", "attempts": self._current_attempts},
             latency_ms=(time.perf_counter() - start) * 1000.0,
             execution_mode=ExecutionMode.MOCK,
+        )
+
+
+class ObservationSearchAdapter(BaseCapabilityAdapter):
+    """Production search adapter delegating to the observation SearchManager.
+
+    Bridges the production ToolGateway to the certified observation backends
+    (DuckDuckGo, SearXNG, Wikipedia) without bypassing capability authority.
+    """
+
+    def __init__(self) -> None:
+        from tools.gateway.gateway import ToolGateway as ObservationToolGateway
+        self._gateway = ObservationToolGateway()
+
+    @property
+    def adapter_name(self) -> str:
+        return "observation_search_adapter"
+
+    def execute(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 15.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+    ) -> AdapterResult:
+        from tools.gateway.contracts import CapabilityRequest, ToolExecutionContext
+
+        start = time.perf_counter()
+        query = parameters.get("query", "")
+        if not query:
+            return AdapterResult(
+                success=False,
+                error_code="INVALID_PARAMETERS",
+                error_message="Missing required parameter 'query'.",
+                latency_ms=(time.perf_counter() - start) * 1000.0,
+            )
+
+        context = ToolExecutionContext(
+            agent_id=parameters.get("agent_id", "intelligence"),
+            product_id=parameters.get("product_id", ""),
+            brand_id=parameters.get("brand_id", ""),
+            run_id=run_id,
+            business_id=business_id,
+            project_id=project_id,
+            timeout_seconds=min(timeout_seconds, 15.0),
+        )
+        req = CapabilityRequest(
+            capability="search_web",
+            parameters={
+                "query": query,
+                "language": parameters.get("language", "en"),
+                "max_results": parameters.get("max_results", 10),
+                "safe_search": parameters.get("safe_search", True),
+            },
+            context=context,
+        )
+
+        try:
+            result = self._gateway.execute(req)
+        except Exception as exc:
+            return AdapterResult(
+                success=False,
+                error_code="OBSERVATION_GATEWAY_ERROR",
+                error_message=str(exc),
+                latency_ms=(time.perf_counter() - start) * 1000.0,
+                execution_mode=ExecutionMode.MOCK,
+            )
+
+        latency_ms = (time.perf_counter() - start) * 1000.0
+
+        if result.status != "SUCCESS":
+            return AdapterResult(
+                success=False,
+                error_code=result.error.error_code if result.error else "OBSERVATION_ERROR",
+                error_message=result.error.message if result.error else "Unknown observation error",
+                latency_ms=latency_ms,
+                execution_mode=ExecutionMode.MOCK,
+            )
+
+        exec_mode = ExecutionMode.REAL if result.backend_used and result.backend_used != "mock" else ExecutionMode.MOCK
+        return AdapterResult(
+            success=True,
+            data=result.data,
+            latency_ms=latency_ms,
+            execution_mode=exec_mode,
         )

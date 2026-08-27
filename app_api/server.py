@@ -173,7 +173,9 @@ class DepartmentAppBackend:
         self.analytics_conn = RealAnalyticsConnector()
         self.publish_conn = SandboxPublishingConnector()
 
-        self.tool_gateway.register_adapter(self.web_conn, aliases=["http_adapter", "search_adapter"])
+        from tools.adapters import ObservationSearchAdapter
+        self.tool_gateway.register_adapter(self.web_conn, aliases=["http_adapter"])
+        self.tool_gateway.register_adapter(ObservationSearchAdapter(), aliases=["search_adapter"])
         self.tool_gateway.register_adapter(self.file_conn, aliases=["file_io_adapter", "db_storage_adapter", "export_adapter"])
         self.tool_gateway.register_adapter(self.analytics_conn, aliases=["analytics_adapter", "kpi_calc_adapter", "attribution_adapter", "stats_analysis_adapter", "data_retrieval_adapter"])
         self.tool_gateway.register_adapter(self.publish_conn, aliases=["social_publish_adapter", "schedule_adapter", "ad_platform_adapter"])

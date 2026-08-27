@@ -86,7 +86,7 @@ def run(gateway, objective="demo objective", business_id="BIZ_AUDIT", real_adapt
             def adapter_name(self):
                 return "real_test_search"
 
-            def execute(self, capability_id, parameters, timeout_seconds=15.0):
+            def execute(self, capability_id, parameters, timeout_seconds=15.0, *, run_id="", business_id="", project_id=""):
                 return AdapterResult(success=True, data={"result": "real observation"}, execution_mode=ExecutionMode.REAL)
 
         rt.tool_gateway.register_adapter(RealTestAdapter(), aliases=["search_adapter", "image_gen_adapter"])

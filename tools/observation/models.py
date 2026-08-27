@@ -279,6 +279,11 @@ class ObservationRecord(BaseModel):
     brand_id: str = Field(..., description="Brand partition key")
     content_trust: ContentTrustLevel = Field(default=ContentTrustLevel.UNTRUSTED_EXTERNAL)
 
+    # Trusted execution scope (sourced from RuntimeContext/AuthoritativeScope, NOT model parameters)
+    run_id: str = Field(default="", description="Trusted execution run ID from RuntimeContext")
+    business_id: str = Field(default="", description="Trusted business scope from RuntimeContext")
+    project_id: str = Field(default="", description="Trusted project scope from RuntimeContext")
+
     def __post_init__(self) -> None:
         super().__post_init__()
         # Sync legacy confidence field if not explicitly supplied

@@ -35,6 +35,9 @@ class ToolExecutionContext(BaseModel):
     agent_id: str
     product_id: str
     brand_id: str
+    run_id: str = ""
+    business_id: str = ""
+    project_id: str = ""
     timeout_seconds: float = Field(default=15.0)
     max_retries: int = Field(default=1)
     allowed_domains: List[str] = Field(default_factory=list)
