@@ -7,7 +7,7 @@ and research dimensions, enforces structured relevance traces, and validates sem
 
 from __future__ import annotations
 
-from tools.evidence.builder import EvidenceBuilder, ProductIsolationViolationError
+from tools.evidence.builder import EvidenceBuilder, ProductIsolationViolationError, ScopeViolationError
 from tools.evidence.conflicts import ConflictTracker, GapTracker
 from tools.evidence.freshness import FreshnessEvaluator
 from tools.evidence.grounding import GroundingContextBuilder
@@ -91,6 +91,7 @@ __all__ = [
     "GapTracker",
     "EvidenceBuilder",
     "ProductIsolationViolationError",
+    "ScopeViolationError",
     "GroundingContextBuilder",
     "EvidenceRelevanceGate",
     "ResearchDimensionEvaluator",

@@ -385,6 +385,9 @@ class EvidenceBundle(BaseModel):
     task_id: str
     product_id: str
     brand_id: str
+    run_id: str = ""
+    business_id: str = ""
+    project_id: str = ""
     research_question: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -456,6 +459,9 @@ class GroundingContext(BaseModel):
     business_context: str
     product_id: str
     brand_id: str
+    run_id: str = ""
+    business_id: str = ""
+    project_id: str = ""
 
     grounding_metadata: Optional[GroundingMetadata] = None
     known_facts: List[str] = Field(default_factory=list)

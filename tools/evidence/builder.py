@@ -35,6 +35,11 @@ class ProductIsolationViolationError(ValueError):
     pass
 
 
+class ScopeViolationError(ValueError):
+    """Raised when EvidenceItems with mismatched trusted scope are added to a bundle."""
+    pass
+
+
 class EvidenceBuilder:
     """Deterministic converter and compiler for observational evidence."""
 
@@ -159,6 +164,10 @@ class EvidenceBuilder:
         evidence_gaps: Optional[List[EvidenceGap]] = None,
         requested_source_families: Optional[List[SourceFamily]] = None,
         allow_cross_product: bool = False,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
     ) -> EvidenceBundle:
         """Compile an EvidenceBundle with strict product isolation, coverage auditing, and segmented indices."""
         bundle_id = f"BNDL-{uuid.uuid4().hex[:8].upper()}"
@@ -169,6 +178,22 @@ class EvidenceBuilder:
                 if item.product_id != product_id:
                     raise ProductIsolationViolationError(
                         f"Product isolation violation: EvidenceItem '{item.evidence_id}' belongs to product '{item.product_id}', expected '{product_id}'."
+                    )
+
+        # 1b. Trusted Scope Isolation Check
+        if evidence_items and (run_id or business_id or project_id):
+            for item in evidence_items:
+                if item.run_id != run_id:
+                    raise ScopeViolationError(
+                        f"Scope violation: EvidenceItem '{item.evidence_id}' has run_id '{item.run_id}', expected '{run_id}'."
+                    )
+                if item.business_id != business_id:
+                    raise ScopeViolationError(
+                        f"Scope violation: EvidenceItem '{item.evidence_id}' has business_id '{item.business_id}', expected '{business_id}'."
+                    )
+                if item.project_id != project_id:
+                    raise ScopeViolationError(
+                        f"Scope violation: EvidenceItem '{item.evidence_id}' has project_id '{item.project_id}', expected '{project_id}'."
                     )
 
         # 2. Deduplication Check (Exact URL / ID)
@@ -245,6 +270,9 @@ class EvidenceBuilder:
             task_id=task_id,
             product_id=product_id,
             brand_id=brand_id,
+            run_id=run_id,
+            business_id=business_id,
+            project_id=project_id,
             research_question=research_question,
             evidence_items=evidence_items,
             discovery_items=discovery_ids,

@@ -107,6 +107,9 @@ class GroundingContextBuilder:
             business_context=business_context,
             product_id=bundle.product_id,
             brand_id=bundle.brand_id,
+            run_id=bundle.run_id,
+            business_id=bundle.business_id,
+            project_id=bundle.project_id,
             grounding_metadata=grounding_meta,
             known_facts=known_facts or [
                 f"Empirical evidence gathered for research question: '{bundle.research_question}'."
