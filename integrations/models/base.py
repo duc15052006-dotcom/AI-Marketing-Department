@@ -11,7 +11,7 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 from schemas.base import BaseModel, Field
 
 
@@ -152,6 +152,20 @@ class ModelResponseStatus(str, Enum):
     ERROR = "ERROR"
     TIMEOUT = "TIMEOUT"
     RATE_LIMITED = "RATE_LIMITED"
+    STREAM_UNSUPPORTED = "STREAM_UNSUPPORTED"
+
+
+class StreamDelta(BaseModel):
+    """Visible-only content delta from a streaming model response.
+
+    Contains only user-visible assistant text. Internal reasoning,
+    chain-of-thought, analysis, and provider-specific hidden fields
+    are never included.
+    """
+    content: str = ""
+    finish_reason: Optional[str] = None
+    provider: str = ""
+    model_name: str = ""
 
 
 class ModelResponse(BaseModel):
@@ -210,3 +224,19 @@ class BaseModelAdapter(ABC):
     def generate(self, request: ModelRequest) -> ModelResponse:
         """Execute a model completion request synchronously."""
         pass
+
+    def generate_stream(self, request: ModelRequest) -> Generator[StreamDelta, None, None]:
+        """Execute a model completion request with streaming.
+
+        Yields StreamDelta instances containing visible-only content deltas.
+        Default implementation yields STREAM_UNSUPPORTED status.
+
+        Subclasses that support streaming should override this method.
+        Non-streaming adapters remain valid through synchronous generate().
+        """
+        yield StreamDelta(
+            content="",
+            finish_reason="stream_unsupported",
+            provider=self.provider_name,
+            model_name=getattr(request, "model_name", "default"),
+        )

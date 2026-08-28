@@ -15,7 +15,7 @@ from enum import Enum
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from integrations.models.base import (
     BaseModelAdapter,
@@ -26,6 +26,7 @@ from integrations.models.base import (
     ModelResponseStatus,
     ModelRole,
     ModelUsage,
+    StreamDelta,
     normalize_model_message,
     normalize_model_request,
 )
@@ -448,3 +449,203 @@ class UniversalModelGateway:
             error="ALL_CANDIDATES_EXHAUSTED: All candidate providers failed or were unavailable.",
             latency_ms=latency_ms,
         )
+
+    def generate_stream(
+        self,
+        request: ModelRequest,
+        profile: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        model_policy: Optional[ModelPolicy] = None,
+        provider_snapshot: Optional[Any] = None,
+        strict_model_pin: bool = False,
+        allow_paid: bool = False,
+    ) -> Generator[StreamDelta, None, None]:
+        """Execute model generation with streaming and production fallback.
+
+        Fallback semantics:
+        - BEFORE first visible content delta: fallback is safe (try next candidate).
+        - AFTER first visible content delta: fallback is FORBIDDEN (provider committed).
+
+        Non-streaming providers are handled via synchronous generate() degradation:
+        the complete response is emitted as a single StreamDelta.
+        """
+        try:
+            norm_req = normalize_model_request(request)
+        except Exception as e:
+            yield StreamDelta(
+                content="",
+                finish_reason="error",
+                provider="gateway",
+                model_name=getattr(request, "model_name", "unknown"),
+            )
+            return
+
+        candidates = self.resolve_candidate_chain(
+            profile=profile,
+            provider_id=provider_id,
+            model_id=norm_req.model_name if norm_req.model_name not in ("default", "", None) else None,
+            agent_id=agent_id,
+            model_policy=model_policy,
+        )
+
+        if not candidates:
+            yield StreamDelta(
+                content="",
+                finish_reason="error",
+                provider="gateway",
+                model_name=norm_req.model_name,
+            )
+            return
+
+        if norm_req.timeout_seconds is not None:
+            total_timeout = norm_req.timeout_seconds
+        else:
+            total_timeout = 180.0
+
+        start_time = time.perf_counter()
+        has_emitted_visible_content = False
+
+        for cand_provider, cand_model in candidates:
+            if has_emitted_visible_content:
+                break
+
+            elapsed = time.perf_counter() - start_time
+            remaining_timeout = total_timeout - elapsed
+
+            # 1. Retrieve Provider Definition
+            if provider_snapshot is not None:
+                prov_def = provider_snapshot.get_provider(cand_provider) if hasattr(provider_snapshot, "get_provider") else provider_snapshot.get(cand_provider)
+            else:
+                prov_def = self.provider_registry.get_provider(cand_provider)
+
+            if prov_def is not None and not prov_def.enabled:
+                if strict_model_pin or len(candidates) == 1:
+                    yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                    return
+                continue
+
+            # 2. Adapter Resolution
+            if provider_snapshot is not None and prov_def is not None:
+                adapter = self.provider_registry.get_pinned_adapter(prov_def)
+            else:
+                adapter = self.provider_registry.get_adapter(cand_provider)
+
+            if adapter is None:
+                if strict_model_pin or len(candidates) == 1:
+                    yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                    return
+                continue
+
+            # 3. Cost Policy Gate
+            if prov_def is not None:
+                cost_tier = prov_def.cost_policy
+            else:
+                cost_tier = adapter.cost_policy
+
+            effective_free_only = (
+                bool(model_policy.free_only_mode)
+                if model_policy is not None and getattr(model_policy, "free_only_mode", None) is not None
+                else self._free_only_mode
+            )
+
+            if effective_free_only and not allow_paid:
+                if cost_tier == CostPolicy.PAID or cost_tier == CostPolicy.UNKNOWN:
+                    if strict_model_pin or len(candidates) == 1:
+                        yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                        return
+                    continue
+
+            # 4. Construct Request
+            if provider_snapshot is not None and prov_def is not None and prov_def.timeout_seconds:
+                definition_timeout = float(prov_def.timeout_seconds)
+            elif prov_def is not None and prov_def.timeout_seconds:
+                definition_timeout = float(prov_def.timeout_seconds)
+            else:
+                definition_timeout = None
+
+            request_budget = float(norm_req.timeout_seconds) if getattr(norm_req, "timeout_seconds", None) else float(total_timeout)
+            if definition_timeout is not None:
+                adapter_timeout = min(definition_timeout, request_budget, remaining_timeout)
+            else:
+                adapter_timeout = min(request_budget, remaining_timeout)
+
+            req_copy = normalize_model_request(norm_req)
+            req_copy.model_name = cand_model
+            req_copy.timeout_seconds = max(adapter_timeout, 0.001)
+
+            # 5. Execute Streaming with Fallback Semantics
+            try:
+                stream_gen = adapter.generate_stream(req_copy)
+                first_delta = next(stream_gen, None)
+
+                if first_delta is None:
+                    if strict_model_pin or len(candidates) == 1:
+                        yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                        return
+                    continue
+
+                # Check for unsupported/error before first visible content
+                if first_delta.finish_reason == "stream_unsupported" and first_delta.content == "" and not has_emitted_visible_content:
+                    # Degradation for non-streaming adapters via synchronous generate()
+                    try:
+                        sync_resp = adapter.generate(req_copy)
+                        if sync_resp.status == ModelResponseStatus.SUCCESS:
+                            self.update_provider_health(cand_provider, ProviderHealth.AVAILABLE)
+                            yield StreamDelta(
+                                content=sync_resp.content,
+                                finish_reason=sync_resp.finish_reason or "stop",
+                                provider=cand_provider,
+                                model_name=cand_model,
+                            )
+                            return
+                        else:
+                            err_code = classify_error(sync_resp.error)
+                            self.config_service.record_error(cand_provider, err_code)
+                            if strict_model_pin or len(candidates) == 1:
+                                yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                                return
+                            continue
+                    except Exception:
+                        if strict_model_pin or len(candidates) == 1:
+                            yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                            return
+                        continue
+
+                if first_delta.finish_reason == "error" and first_delta.content == "" and not has_emitted_visible_content:
+                    if strict_model_pin or len(candidates) == 1:
+                        yield first_delta
+                        return
+                    continue
+
+                # First delta has visible content — provider is committed
+                if first_delta.content:
+                    has_emitted_visible_content = True
+                    yield first_delta
+                elif first_delta.finish_reason:
+                    # First delta is a finish_reason with no content
+                    yield first_delta
+                    return
+
+                # Yield remaining deltas
+                for delta in stream_gen:
+                    if delta.content:
+                        has_emitted_visible_content = True
+                    yield delta
+                    if delta.finish_reason:
+                        return
+
+                return
+
+            except Exception as e:
+                if has_emitted_visible_content:
+                    yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                    return
+                if strict_model_pin or len(candidates) == 1:
+                    yield StreamDelta(content="", finish_reason="error", provider=cand_provider, model_name=cand_model)
+                    return
+                continue
+
+        # All candidates exhausted without visible content
+        if not has_emitted_visible_content:
+            yield StreamDelta(content="", finish_reason="error", provider="gateway", model_name=norm_req.model_name)

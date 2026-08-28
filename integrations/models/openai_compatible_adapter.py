@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Generator, Optional, Set
 import urllib.error
 import urllib.request
 
@@ -29,6 +29,7 @@ from integrations.models.base import (
     ModelResponseStatus,
     ModelRole,
     ModelUsage,
+    StreamDelta,
     normalize_model_request,
 )
 from integrations.models.transport import (
@@ -265,3 +266,95 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
             usage=ModelUsage(usage_source="NOT_AVAILABLE"),
             latency_ms=latency_ms,
         )
+
+    def generate_stream(self, request: ModelRequest) -> Generator[StreamDelta, None, None]:
+        """Execute completion with streaming via OpenAI-compatible SSE endpoint.
+
+        Yields StreamDelta instances with visible-only content deltas.
+        Uses same request construction as synchronous generate().
+        Adds "stream": True to payload.
+        """
+        try:
+            norm_req = normalize_model_request(request)
+        except Exception as e:
+            yield StreamDelta(
+                content="",
+                finish_reason="error",
+                provider=self.provider_name,
+                model_name=getattr(request, "model_name", self._default_model),
+            )
+            return
+
+        if not self.is_configured():
+            yield StreamDelta(
+                content="",
+                finish_reason="error",
+                provider=self.provider_name,
+                model_name=norm_req.model_name if norm_req.model_name not in ("default", "", None) else self._default_model,
+            )
+            return
+
+        model_name = norm_req.model_name if norm_req.model_name not in ("default", "", None) else self._default_model
+
+        messages = [
+            {
+                "role": msg.role.value if isinstance(msg.role, ModelRole) else str(msg.role),
+                "content": msg.content,
+            }
+            for msg in norm_req.messages
+        ]
+
+        payload: Dict[str, Any] = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": norm_req.temperature,
+            "stream": True,
+        }
+
+        if norm_req.max_tokens:
+            payload["max_tokens"] = norm_req.max_tokens
+
+        if norm_req.response_schema:
+            payload["response_format"] = {"type": "json_object"}
+
+        timeout = norm_req.timeout_seconds if norm_req.timeout_seconds else self._timeout_seconds
+
+        for sse_event in self._transport.post_json_stream(
+            endpoint_path=self._chat_completions_path,
+            payload=payload,
+            timeout_seconds=timeout,
+        ):
+            if sse_event.get("_error"):
+                yield StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    provider=self.provider_name,
+                    model_name=model_name,
+                )
+                return
+
+            choices = sse_event.get("choices", [])
+            if not choices:
+                continue
+
+            choice = choices[0]
+            delta = choice.get("delta", {})
+            finish_reason = choice.get("finish_reason")
+
+            content = delta.get("content", "")
+            if content:
+                yield StreamDelta(
+                    content=content,
+                    finish_reason=None,
+                    provider=self.provider_name,
+                    model_name=sse_event.get("model", model_name),
+                )
+
+            if finish_reason:
+                yield StreamDelta(
+                    content="",
+                    finish_reason=finish_reason,
+                    provider=self.provider_name,
+                    model_name=sse_event.get("model", model_name),
+                )
+                return

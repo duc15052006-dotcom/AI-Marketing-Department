@@ -15,7 +15,7 @@ import json
 import logging
 import re
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Generator, Optional, Tuple
 import urllib.error
 import urllib.request
 
@@ -124,6 +124,86 @@ class OpenAICompatibleTransport:
             is_timeout = isinstance(e, TimeoutError) or "timed out" in str(e).lower()
             status_code = 408 if is_timeout else 599
             return status_code, {}, str(e)
+
+    def post_json_stream(
+        self,
+        endpoint_path: str,
+        payload: Dict[str, Any],
+        timeout_seconds: Optional[float] = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """Execute HTTP POST with streaming SSE response.
+
+        Yields parsed JSON objects from `data: {...}` lines.
+        Handles `data: [DONE]` termination signal.
+        Closes HTTP response on generator exhaustion or early termination.
+
+        Does NOT use whole-body resp.read().
+        """
+        url = f"{self.base_url}/{endpoint_path.lstrip('/')}"
+        timeout = timeout_seconds if timeout_seconds is not None else self.timeout_seconds
+        req_bytes = json.dumps(payload).encode("utf-8")
+        headers = self.build_headers()
+
+        http_req = urllib.request.Request(
+            url=url,
+            data=req_bytes,
+            headers=headers,
+            method="POST",
+        )
+
+        resp = None
+        try:
+            resp = urllib.request.urlopen(http_req, timeout=timeout)
+            buffer = b""
+
+            while True:
+                try:
+                    chunk = resp.read(1)
+                except Exception:
+                    break
+
+                if not chunk:
+                    break
+
+                buffer += chunk
+
+                while b"\n" in buffer:
+                    line_bytes, buffer = buffer.split(b"\n", 1)
+                    line = line_bytes.decode("utf-8", errors="replace").rstrip("\r")
+
+                    if not line.startswith("data: "):
+                        continue
+
+                    data_str = line[6:].strip()
+
+                    if data_str == "[DONE]":
+                        return
+
+                    try:
+                        parsed = json.loads(data_str)
+                        yield parsed
+                    except json.JSONDecodeError:
+                        continue
+
+        except urllib.error.HTTPError as e:
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            yield {"_error": True, "status_code": e.code, "body": error_body}
+
+        except (TimeoutError, urllib.error.URLError) as e:
+            is_timeout = isinstance(e, TimeoutError) or "timed out" in str(e).lower()
+            status_code = 408 if is_timeout else 599
+            yield {"_error": True, "status_code": status_code, "body": str(e)}
+
+        finally:
+            if resp is not None:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
 
 
 def extract_cloudflare_error(status_code: int, headers: Dict[str, str], body_str: str) -> Optional[Dict[str, Any]]:

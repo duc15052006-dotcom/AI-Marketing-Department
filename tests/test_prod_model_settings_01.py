@@ -202,13 +202,19 @@ class TestProdModelSettings01(unittest.TestCase):
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(url, data=data, headers=req_headers, method=method.upper())
 
-        try:
-            with urllib.request.urlopen(req, timeout=5.0) as resp:
-                resp_body = resp.read().decode("utf-8")
-                return resp.status, json.loads(resp_body) if resp_body else {}
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8")
-            return e.code, json.loads(err_body) if err_body else {}
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=5.0) as resp:
+                    resp_body = resp.read().decode("utf-8")
+                    return resp.status, json.loads(resp_body) if resp_body else {}
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8")
+                return e.code, json.loads(err_body) if err_body else {}
+            except (ConnectionResetError, ConnectionAbortedError) as e:
+                if attempt < 2:
+                    time.sleep(0.05)
+                    continue
+                raise
 
     # =========================================================================
     # 1. SAFE SETTINGS READ & ZERO SECRET LEAKAGE
@@ -1806,6 +1812,7 @@ class TestProdModelSettings01(unittest.TestCase):
             mgr = APP_BACKEND.settings_manager
             base_url = f"http://127.0.0.1:{server.server_address[1]}/v1"
             original_target = mgr.get_settings().global_target.model_dump()
+            original_agent_overrides = {k: v.model_dump() for k, v in mgr.get_settings().agent_overrides.items()}
             try:
                 mgr.upsert_provider(
                     {"provider_id": "prodwire_prov", "adapter_type": "OPENAI_COMPATIBLE",
@@ -1815,6 +1822,7 @@ class TestProdModelSettings01(unittest.TestCase):
                 )
                 ref_v1 = mgr.get_settings().providers["prodwire_prov"].credential_ref
                 mgr.update_settings({"fallback_chain": []})
+                mgr.update_settings({"agent_overrides": {}})
                 mgr.update_settings({"global_target": {"provider_id": "prodwire_prov", "model_id": "m-pw"}})
 
                 runtime = APP_BACKEND.runtime
@@ -1834,7 +1842,7 @@ class TestProdModelSettings01(unittest.TestCase):
                 self.assertEqual(received[1]["auth"], "Bearer PRODWIRE_V1")
                 self.assertTrue(mgr._secret_store.has_secret(ref_v1))
             finally:
-                mgr.update_settings({"global_target": original_target})
+                mgr.update_settings({"global_target": original_target, "agent_overrides": original_agent_overrides})
         finally:
             server.shutdown()
             server.server_close()
