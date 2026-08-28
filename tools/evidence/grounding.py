@@ -9,7 +9,7 @@ Zero chain-of-thought, zero marketing hallucinations.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from tools.evidence.models import EvidenceBundle, GroundingContext, GroundingMetadata
+from tools.evidence.models import EvidenceBundle, GroundingContext, GroundingMetadata, RelevanceStatus
 
 
 class GroundingContextBuilder:
@@ -102,6 +102,50 @@ class GroundingContextBuilder:
 
         source_limitations = list(bundle.limitations)
 
+        # B4 — Collect evidence IDs participating in UNRESOLVED conflicts.
+        # These IDs are structurally excluded from settled known_facts below.
+        unresolved_conflict_evidence_ids: set = set()
+        for conflict in bundle.conflicts:
+            if conflict.resolution_status == "UNRESOLVED":
+                unresolved_conflict_evidence_ids.update(conflict.evidence_ids)
+
+        # B4 — Epistemic boundary notes for conflicts and gaps (supplemental guidance)
+        if bundle.conflicts:
+            source_limitations.append(
+                f"CONFLICT NOTICE: {len(bundle.conflicts)} unresolved conflict(s) detected. "
+                "Conflicting claims must NOT be collapsed into a single settled fact. "
+                "Discuss the disagreement without choosing a side absent explicit evidence."
+            )
+        if bundle.evidence_gaps:
+            source_limitations.append(
+                f"GAP NOTICE: {len(bundle.evidence_gaps)} evidence gap(s) detected. "
+                "Gaps represent missing information needs, not proven absence. "
+                "Do not fabricate facts to fill gaps; report what is unknown."
+            )
+
+        # B4 — Structural known_facts: exclude evidence IDs in unresolved conflicts.
+        # If caller provided explicit known_facts, use them as-is (caller's authority).
+        # If building default known_facts, enumerate non-conflicting eligible evidence.
+        if known_facts is not None:
+            settled_facts = list(known_facts)
+        else:
+            settled_facts = [
+                f"Empirical evidence gathered for research question: '{bundle.research_question}'."
+            ]
+            # Enumerate eligible evidence items that are NOT in unresolved conflicts
+            for item in bundle.evidence_items:
+                if item.evidence_id in unresolved_conflict_evidence_ids:
+                    continue
+                if item.relevance_status in (
+                    RelevanceStatus.RELEVANT,
+                    RelevanceStatus.LIKELY_RELEVANT,
+                ):
+                    settled_facts.append(
+                        f"Evidence {item.evidence_id}: {item.bounded_content[:120]}"
+                        if item.bounded_content
+                        else f"Evidence {item.evidence_id} ({item.capability}, {item.source_domain})"
+                    )
+
         return GroundingContext(
             task=task_description,
             business_context=business_context,
@@ -111,9 +155,7 @@ class GroundingContextBuilder:
             business_id=bundle.business_id,
             project_id=bundle.project_id,
             grounding_metadata=grounding_meta,
-            known_facts=known_facts or [
-                f"Empirical evidence gathered for research question: '{bundle.research_question}'."
-            ],
+            known_facts=settled_facts,
             unknown_facts=unknown_facts,
             evidence_bundle_reference=bundle.bundle_id,
             evidence_items=items_payload,

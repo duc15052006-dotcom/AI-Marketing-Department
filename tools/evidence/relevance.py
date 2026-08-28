@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import urllib.parse
 from typing import Any, Dict, List, Optional, Set, Tuple
+from tools.evidence.conflicts import ConflictTracker, GapTracker
 from tools.evidence.models import (
     AliasVerificationStatus,
     ContentRole,
@@ -530,6 +531,25 @@ class EvidenceBundleSemanticValidator:
         bundle.research_dimensions = cov_report.dimensions
         bundle.video_substantive_coverage = cov_report.video_substantive_coverage
         bundle.research_dimension_coverage = cov_report.research_dimension_coverage
+
+        # B4 — Deterministic gap detection from dimension coverage.
+        # Gaps are derived from UNSUPPORTED dimensions; they represent explicit
+        # missing information needs, NOT fabricated facts.
+        detected_gaps = GapTracker.detect_gaps(bundle)
+        if detected_gaps:
+            existing_gap_ids = {g.gap_id for g in bundle.evidence_gaps}
+            for gap in detected_gaps:
+                if gap.gap_id not in existing_gap_ids:
+                    bundle.evidence_gaps.append(gap)
+
+        # B4 — Deterministic conflict detection from structural incompatibilities.
+        # Only detects provable conflicts; does NOT use LLM or semantic guessing.
+        detected_conflicts = ConflictTracker.detect_conflicts(bundle)
+        if detected_conflicts:
+            existing_conflict_ids = {c.conflict_id for c in bundle.conflicts}
+            for conflict in detected_conflicts:
+                if conflict.conflict_id not in existing_conflict_ids:
+                    bundle.conflicts.append(conflict)
 
         bundle.research_source_coverage = coverage_status
         bundle.semantic_coherence = coherence_status
