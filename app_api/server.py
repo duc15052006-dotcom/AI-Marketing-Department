@@ -7,6 +7,7 @@ Zero secret exposure to frontend.
 
 from __future__ import annotations
 
+import atexit
 import hmac
 import json
 import logging
@@ -46,6 +47,42 @@ PRODUCTION_ALLOWED_HOSTNAMES: Set[str] = {
 class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
     """ThreadingHTTPServer with allow_reuse_address=False to enforce exclusive port binding on Windows."""
     allow_reuse_address = False
+
+
+def get_backend_state_file_path() -> Path:
+    runtime_dir = REPO_ROOT / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    return runtime_dir / "backend_instance.json"
+
+
+def write_backend_state(host: str, port: int) -> None:
+    state_path = get_backend_state_file_path()
+    payload = {
+        "pid": os.getpid(),
+        "host": host,
+        "port": port,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "service": "AI Marketing Department API",
+        "root_dir": str(REPO_ROOT),
+    }
+    temp_path = state_path.with_suffix(".tmp")
+    try:
+        temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        temp_path.replace(state_path)
+    except Exception as ex:
+        logger.warning(f"Could not write backend state file: {ex}")
+
+
+def remove_backend_state() -> None:
+    state_path = get_backend_state_file_path()
+    try:
+        if state_path.exists():
+            state_path.unlink()
+    except Exception as ex:
+        logger.warning(f"Could not remove backend state file: {ex}")
+
+
+atexit.register(remove_backend_state)
 
 
 def parse_and_validate_host(
@@ -258,6 +295,13 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
     """Localhost HTTP request dispatcher for React / Tauri desktop UI."""
 
     allow_testserver_for_testing: bool = False
+
+    def log_message(self, format: str, *args: Any) -> None:
+        """Safe logging override to prevent unhandled BrokenPipeError on stdio when launchers exit."""
+        try:
+            logger.debug("%s - - [%s] %s" % (self.address_string(), self.log_date_time_string(), format % args))
+        except Exception:
+            pass
 
     def _is_valid_host(self, host_header: Optional[str]) -> bool:
         return parse_and_validate_host(
@@ -1538,6 +1582,8 @@ def run_server(
         logger.error(f"Failed to bind API server to {valid_host}:{valid_port}: {bind_err}")
         sys.exit(1)
 
+    write_backend_state(valid_host, valid_port)
+
     # Secure Launcher/Desktop UI Bootstrap Handshake (PROD-UIAUTH-01)
     should_emit_bootstrap = (
         emit_bootstrap
@@ -1557,8 +1603,13 @@ def run_server(
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        httpd.server_close()
         logger.info("API server stopped.")
+    finally:
+        remove_backend_state()
+        try:
+            httpd.server_close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

@@ -80,8 +80,37 @@ interface ProjectItem {
   chat_ids: string[];
 }
 
+function classifyErrorMessage(errOrStatus: any, fallback = 'Lỗi không xác định'): string {
+  if (typeof errOrStatus === 'number') {
+    if (errOrStatus === 401) return 'Lỗi xác thực phiên cục bộ (BACKEND_UNAUTHENTICATED).';
+    if (errOrStatus === 502 || errOrStatus === 503 || errOrStatus === 504) return 'Dịch vụ backend tạm thời không phản hồi (BACKEND_UNHEALTHY).';
+    if (errOrStatus >= 500) return 'Lỗi dịch vụ nội bộ (BACKEND_ERROR).';
+  }
+  if (typeof errOrStatus === 'string') {
+    if (errOrStatus.includes('BACKEND_PROCESS_TERMINATED')) {
+      return 'Tiến trình backend đã dừng đột ngột (BACKEND_PROCESS_TERMINATED). Vui lòng khởi động lại ứng dụng.';
+    }
+    if (errOrStatus.includes('BACKEND_UNAVAILABLE') || errOrStatus.includes('CONNECTION_FAILED')) {
+      return 'Không thể kết nối đến dịch vụ backend cục bộ (BACKEND_UNAVAILABLE).';
+    }
+    if (errOrStatus.includes('BACKEND_UNAUTHENTICATED')) {
+      return 'Lỗi xác thực phiên cục bộ (BACKEND_UNAUTHENTICATED).';
+    }
+    if (errOrStatus.includes('MODEL_PROVIDER') || errOrStatus.includes('provider') || errOrStatus.includes('API key')) {
+      return `Lỗi kết nối mô hình AI (MODEL_PROVIDER_FAILURE): ${errOrStatus}`;
+    }
+    return errOrStatus;
+  }
+  if (errOrStatus instanceof Error) {
+    return classifyErrorMessage(errOrStatus.message, fallback);
+  }
+  return fallback;
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<'chat' | 'dashboard' | 'brands' | 'projects' | 'knowledge' | 'memory' | 'approvals' | 'connections' | 'activity' | 'settings'>('chat');
+  const [backendState, setBackendState] = useState<'STARTING_BACKEND' | 'BACKEND_READY' | 'BACKEND_FAILED'>('STARTING_BACKEND');
+  const [backendErrorDetail, setBackendErrorDetail] = useState<string>('');
   const [chatSessions, setChatSessions] = useState<ChatSessionItem[]>([]);
   const [activeChatId, setActiveChatId] = useState<string>('');
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -131,8 +160,17 @@ export default function App() {
 
   const fetchCoreData = async () => {
     try {
-      const resHealth = await apiFetch(`${API_BASE}/api/system/health`);
-      if (resHealth.ok) setConnectorHealth(await resHealth.json());
+      const resHealth = await apiFetch(`${API_BASE}/api/health`);
+      if (resHealth.ok) {
+        setBackendState('BACKEND_READY');
+        setBackendErrorDetail('');
+      } else {
+        setBackendState('BACKEND_FAILED');
+        setBackendErrorDetail('BACKEND_UNHEALTHY: Dịch vụ backend phản hồi lỗi kết nối.');
+      }
+
+      const resHealthSys = await apiFetch(`${API_BASE}/api/system/health`);
+      if (resHealthSys.ok) setConnectorHealth(await resHealthSys.json());
 
       const resChats = await apiFetch(`${API_BASE}/api/chat/sessions`);
       if (resChats.ok) {
@@ -158,8 +196,10 @@ export default function App() {
 
       const resRec = await apiFetch(`${API_BASE}/api/activity/receipts`);
       if (resRec.ok) setReceipts(await resRec.json());
-    } catch (e) {
+    } catch (e: any) {
       console.warn('Local API fetch warning:', e);
+      setBackendState('BACKEND_FAILED');
+      setBackendErrorDetail(e?.message ? `BACKEND_UNAVAILABLE: ${e.message}` : 'BACKEND_UNAVAILABLE: Không thể kết nối với dịch vụ backend cục bộ.');
     }
   };
 
@@ -405,11 +445,16 @@ export default function App() {
           );
           setActiveChatId(realChatId);
         } else {
+          let errPayload: any = null;
+          try {
+            errPayload = await res.json();
+          } catch {}
+          const errorMsg = classifyErrorMessage(errPayload?.error || res.status, 'Không thể nhận phản hồi từ backend.');
           const honestErrorMsg: ChatMessageItem = {
             message_id: `MSG-E-${Date.now()}`,
             role: 'assistant',
             sender_name: 'AI Assistant',
-            content: 'Không thể kết nối với model provider. Vui lòng kiểm tra kết nối hoặc cấu hình API.',
+            content: errorMsg,
             status: 'ERROR',
           };
           setChatSessions((prev) =>
@@ -420,13 +465,14 @@ export default function App() {
             )
           );
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn('First message send error:', e);
+        const errorMsg = classifyErrorMessage(e, 'Không thể kết nối đến backend cục bộ.');
         const honestErrorMsg: ChatMessageItem = {
           message_id: `MSG-E-${Date.now()}`,
           role: 'assistant',
           sender_name: 'AI Assistant',
-          content: 'Không thể kết nối với model provider. Vui lòng kiểm tra kết nối hoặc cấu hình API.',
+          content: errorMsg,
           status: 'ERROR',
         };
         setChatSessions((prev) =>
@@ -480,11 +526,16 @@ export default function App() {
             );
           }
         } else {
+          let errPayload: any = null;
+          try {
+            errPayload = await res.json();
+          } catch {}
+          const errorMsg = classifyErrorMessage(errPayload?.error || res.status, 'Không thể nhận phản hồi từ backend.');
           const honestErrorMsg: ChatMessageItem = {
             message_id: `MSG-E-${Date.now()}`,
             role: 'assistant',
             sender_name: 'AI Assistant',
-            content: 'Không thể kết nối với model provider. Vui lòng kiểm tra kết nối hoặc cấu hình API.',
+            content: errorMsg,
             status: 'ERROR',
           };
           setChatSessions((prev) =>
@@ -495,8 +546,23 @@ export default function App() {
             )
           );
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn('Send message error:', e);
+        const errorMsg = classifyErrorMessage(e, 'Không thể kết nối đến backend cục bộ.');
+        const honestErrorMsg: ChatMessageItem = {
+          message_id: `MSG-E-${Date.now()}`,
+          role: 'assistant',
+          sender_name: 'AI Assistant',
+          content: errorMsg,
+          status: 'ERROR',
+        };
+        setChatSessions((prev) =>
+          prev.map((s) =>
+            s.chat_id === targetChatId
+              ? { ...s, messages: [...s.messages, honestErrorMsg] }
+              : s
+          )
+        );
       }
     }
 
@@ -1269,6 +1335,28 @@ export default function App() {
                 </div>
               )}
 
+              {/* Backend Health Status Banner */}
+              {backendState === 'STARTING_BACKEND' && (
+                <div style={{ marginBottom: '8px', padding: '8px 12px', background: '#111317', border: '1px solid #1D222A', borderRadius: '8px', color: '#9CA3AF', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IconRotateCw size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>Đang kết nối với dịch vụ backend cục bộ...</span>
+                </div>
+              )}
+              {backendState === 'BACKEND_FAILED' && (
+                <div style={{ marginBottom: '8px', padding: '10px 14px', background: '#1A0E0E', border: '1px solid #3D1C1C', borderRadius: '8px', color: '#EF4444', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <IconAlertCircle size={14} />
+                    <span>{backendErrorDetail || 'Không thể kết nối với dịch vụ backend cục bộ (BACKEND_UNAVAILABLE).'}</span>
+                  </div>
+                  <button
+                    onClick={fetchCoreData}
+                    style={{ background: '#2B1414', border: '1px solid #522020', color: '#FCA5A5', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    Thử lại
+                  </button>
+                </div>
+              )}
+
               {/* Composer Box */}
               <div
                 style={{
@@ -1286,7 +1374,8 @@ export default function App() {
                   value={chatInput}
                   onChange={handleTextareaChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Message Five-Agent Marketing Department..."
+                  placeholder={backendState === 'STARTING_BACKEND' ? 'Đang kết nối backend...' : 'Message Five-Agent Marketing Department...'}
+                  disabled={backendState !== 'BACKEND_READY'}
                   rows={1}
                   style={{
                     width: '100%',
@@ -1307,6 +1396,7 @@ export default function App() {
                   {/* Left: + Attachment Button */}
                   <button
                     onClick={() => setShowAttachmentMenu((prev) => !prev)}
+                    disabled={backendState !== 'BACKEND_READY'}
                     style={{
                       width: '28px',
                       height: '28px',
@@ -1317,10 +1407,11 @@ export default function App() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      cursor: 'pointer',
+                      cursor: backendState === 'BACKEND_READY' ? 'pointer' : 'default',
+                      opacity: backendState === 'BACKEND_READY' ? 1 : 0.5,
                       transition: 'background 0.15s, color 0.15s',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#202020'; e.currentTarget.style.color = '#F2F2F2'; }}
+                    onMouseEnter={(e) => { if (backendState === 'BACKEND_READY') { e.currentTarget.style.background = '#202020'; e.currentTarget.style.color = '#F2F2F2'; } }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = '#16181D'; e.currentTarget.style.color = '#A0A0A0'; }}
                   >
                     <IconPlus size={15} />
@@ -1329,18 +1420,18 @@ export default function App() {
                   {/* Right: Send Button */}
                   <button
                     onClick={handleSendMessage}
-                    disabled={!chatInput.trim() && attachments.length === 0}
+                    disabled={backendState !== 'BACKEND_READY' || (!chatInput.trim() && attachments.length === 0)}
                     style={{
                       width: '28px',
                       height: '28px',
                       borderRadius: '50%',
-                      background: chatInput.trim() || attachments.length > 0 ? '#ECECEC' : '#222222',
+                      background: backendState === 'BACKEND_READY' && (chatInput.trim() || attachments.length > 0) ? '#ECECEC' : '#222222',
                       border: 'none',
-                      color: chatInput.trim() || attachments.length > 0 ? '#050505' : '#666666',
+                      color: backendState === 'BACKEND_READY' && (chatInput.trim() || attachments.length > 0) ? '#050505' : '#666666',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      cursor: chatInput.trim() || attachments.length > 0 ? 'pointer' : 'default',
+                      cursor: backendState === 'BACKEND_READY' && (chatInput.trim() || attachments.length > 0) ? 'pointer' : 'default',
                       transition: 'background 0.15s, color 0.15s',
                     }}
                   >

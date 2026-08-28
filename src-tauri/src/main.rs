@@ -402,7 +402,37 @@ pub struct ApiResponse {
 const MAX_REQUEST_BODY_BYTES: usize = 10 * 1024 * 1024; // 10MB
 const MAX_RESPONSE_BODY_BYTES: usize = 50 * 1024 * 1024; // 50MB
 
-fn is_backend_healthy(host: &str, port: u16) -> bool {
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq)]
+pub struct BackendStateFile {
+    pub pid: u32,
+    #[serde(rename = "host")]
+    pub bound_host: Option<String>,
+    #[serde(rename = "port")]
+    pub bound_port: Option<u16>,
+    pub service: Option<String>,
+    pub root_dir: Option<String>,
+}
+
+pub fn read_backend_state(root: &std::path::Path) -> Option<BackendStateFile> {
+    let state_path = root.join("runtime").join("backend_instance.json");
+    if state_path.is_file() {
+        if let Ok(content) = std::fs::read_to_string(&state_path) {
+            if let Ok(state) = serde_json::from_str::<BackendStateFile>(&content) {
+                return Some(state);
+            }
+        }
+    }
+    None
+}
+
+pub fn clear_backend_state_file(root: &std::path::Path) {
+    let state_path = root.join("runtime").join("backend_instance.json");
+    if state_path.is_file() {
+        let _ = std::fs::remove_file(state_path);
+    }
+}
+
+pub fn is_port_in_use(host: &str, port: u16) -> bool {
     let addr = format!("{}:{}", host, port);
     if let Ok(_stream) = TcpStream::connect_timeout(
         &addr.parse().unwrap_or_else(|_| "127.0.0.1:8765".parse().unwrap()),
@@ -412,6 +442,71 @@ fn is_backend_healthy(host: &str, port: u16) -> bool {
     } else {
         false
     }
+}
+
+pub fn is_backend_healthy(host: &str, port: u16) -> bool {
+    let addr = format!("{}:{}", host, port);
+    let parse_addr = match addr.parse() {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+    let mut stream = match TcpStream::connect_timeout(&parse_addr, Duration::from_millis(500)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(1000)));
+    let req = format!("GET /api/health HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\n\r\n", host, port);
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 1024];
+    loop {
+        match stream.read(&mut tmp) {
+            Ok(0) => break,
+            Ok(n) => {
+                buf.extend_from_slice(&tmp[..n]);
+                if buf.len() > 8192 { break; }
+            }
+            Err(_) => break,
+        }
+    }
+    let resp_str = String::from_utf8_lossy(&buf);
+    if (resp_str.starts_with("HTTP/1.1 200") || resp_str.starts_with("HTTP/1.0 200"))
+        && resp_str.contains("\"status\"")
+        && resp_str.contains("\"ok\"")
+    {
+        return true;
+    }
+    false
+}
+
+#[cfg(target_os = "windows")]
+pub fn terminate_owned_process(pid: u32) -> bool {
+    unsafe {
+        extern "system" {
+            fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut std::ffi::c_void;
+            fn TerminateProcess(hProcess: *mut std::ffi::c_void, uExitCode: u32) -> i32;
+            fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
+            fn WaitForSingleObject(hHandle: *mut std::ffi::c_void, dwMilliseconds: u32) -> u32;
+        }
+        const PROCESS_TERMINATE: u32 = 0x0001;
+        const SYNCHRONIZE: u32 = 0x00100000;
+        let h_proc = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, 0, pid);
+        if h_proc.is_null() {
+            return false;
+        }
+        let ok = TerminateProcess(h_proc, 1) != 0;
+        WaitForSingleObject(h_proc, 2000);
+        CloseHandle(h_proc);
+        ok
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn terminate_owned_process(_pid: u32) -> bool {
+    true
 }
 
 fn find_project_root() -> PathBuf {
@@ -480,10 +575,43 @@ fn spawn_backend_and_bootstrap() -> (Option<u32>, Option<usize>, Option<job_obje
     let mut default_host = "127.0.0.1".to_string();
     let mut default_port = 8765u16;
 
-    if is_backend_healthy(&default_host, default_port) {
-        println!("Backend already running and healthy on {}:{}", default_host, default_port);
-        let existing_token = std::env::var("APP_BACKEND_BEARER_DEV").ok();
-        return (None, None, None, existing_token, default_host, default_port);
+    // Check if port is currently occupied
+    if is_port_in_use(&default_host, default_port) {
+        println!("Port {}:{} is already in use. Checking backend ownership...", default_host, default_port);
+        let owned_state = read_backend_state(&root_dir);
+
+        if let Some(state) = owned_state {
+            if state.service.as_deref() == Some("AI Marketing Department API") && state.pid > 0 {
+                let existing_token = std::env::var("APP_BACKEND_BEARER_DEV").ok();
+                if is_backend_healthy(&default_host, default_port) && existing_token.is_some() {
+                    println!("Reusing healthy owned dev backend on {}:{}", default_host, default_port);
+                    return (None, None, None, existing_token, default_host, default_port);
+                } else {
+                    println!("Stale or unauthenticated owned backend detected (PID {}). Safely recycling...", state.pid);
+                    terminate_owned_process(state.pid);
+                    clear_backend_state_file(&root_dir);
+
+                    // Wait up to 3 seconds for port to release
+                    let start_wait = Instant::now();
+                    while start_wait.elapsed() < Duration::from_secs(3) {
+                        if !is_port_in_use(&default_host, default_port) {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                }
+            } else {
+                eprintln!("CRITICAL: Port {}:{} occupied by an unknown process. Refusing to terminate arbitrary processes. Failing closed.", default_host, default_port);
+                return (None, None, None, None, default_host, default_port);
+            }
+        } else {
+            // Port in use without valid state file -> UNKNOWN PROCESS
+            eprintln!("CRITICAL: Port {}:{} occupied by an unknown process without backend state record. Failing closed.", default_host, default_port);
+            return (None, None, None, None, default_host, default_port);
+        }
+    } else {
+        // Clean up any stale state file if port is not in use
+        clear_backend_state_file(&root_dir);
     }
 
     println!("Starting backend process from: {:?}", root_dir);
@@ -571,10 +699,10 @@ fn spawn_backend_and_bootstrap() -> (Option<u32>, Option<usize>, Option<job_obje
                     }
                 });
 
-                // Wait up to 6 seconds for backend to become responsive
+                // Wait up to 10 seconds for backend to become responsive on /api/health
                 let start = Instant::now();
                 let mut backend_ready = false;
-                while start.elapsed() < Duration::from_secs(6) {
+                while start.elapsed() < Duration::from_secs(10) {
                     if is_backend_healthy(&default_host, default_port) {
                         println!("Backend is ready and listening on {}:{}", default_host, default_port);
                         backend_ready = true;
@@ -1508,5 +1636,73 @@ mod tests {
         assert!(msg.contains("platform: linkedin"));
         assert!(msg.contains("summary: Q3 Report Post"));
         assert!(msg.contains("Do you explicitly authorize this exact consequential action to execute?"));
+    }
+
+    #[test]
+    fn test_read_backend_state_valid_and_invalid() {
+        let temp_dir = std::env::temp_dir().join(format!("test_aimktg_state_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let runtime_dir = temp_dir.join("runtime");
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+
+        // 1. Missing file -> None
+        assert_eq!(read_backend_state(&temp_dir), None);
+
+        // 2. Valid file -> Some
+        let valid_json = r#"{
+            "pid": 12345,
+            "host": "127.0.0.1",
+            "port": 8765,
+            "service": "AI Marketing Department API",
+            "root_dir": "C:\\AI-Marketing-Department"
+        }"#;
+        std::fs::write(runtime_dir.join("backend_instance.json"), valid_json).unwrap();
+        let state = read_backend_state(&temp_dir).expect("Expected valid state");
+        assert_eq!(state.pid, 12345);
+        assert_eq!(state.service.as_deref(), Some("AI Marketing Department API"));
+
+        // 3. Clear file
+        clear_backend_state_file(&temp_dir);
+        assert_eq!(read_backend_state(&temp_dir), None);
+
+        // Clean up temp dir
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_is_backend_healthy_against_mock_servers() {
+        use std::net::TcpListener;
+
+        // 1. Healthy HTTP 200 server
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server_thread = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut req_buf = [0u8; 512];
+                let _ = stream.read(&mut req_buf);
+                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 58\r\n\r\n{\"status\":\"ok\",\"service\":\"AI Marketing Department API\"}";
+                let _ = stream.write_all(resp.as_bytes());
+            }
+        });
+
+        assert!(is_backend_healthy("127.0.0.1", port));
+        let _ = server_thread.join();
+
+        // 2. Unhealthy HTTP 500 server
+        let listener500 = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port500 = listener500.local_addr().unwrap().port();
+        let server_thread500 = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener500.accept() {
+                let mut req_buf = [0u8; 512];
+                let _ = stream.read(&mut req_buf);
+                let resp = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+                let _ = stream.write_all(resp.as_bytes());
+            }
+        });
+
+        assert!(!is_backend_healthy("127.0.0.1", port500));
+        let _ = server_thread500.join();
+
+        // 3. Non-listening port -> false
+        assert!(!is_backend_healthy("127.0.0.1", 65432));
     }
 }
