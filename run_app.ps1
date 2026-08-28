@@ -115,51 +115,132 @@ function Stop-ProcessTree {
 # 1. Start Python Localhost API with Secure Bootstrap Pipe
 Write-Host "[1/3] Starting Python Localhost API with secure bootstrap..." -ForegroundColor Yellow
 
+# Resolve real Python interpreter (PROD-DESKTOP-BOOTSTRAP-LAUNCHER-01).
+# On Windows the bare "python" command may resolve to a 0-byte Windows Store
+# App Execution Alias that spawns the real interpreter as a child, breaking
+# stdout pipe ownership.  We resolve the actual executable before launching.
+$resolvedPythonExe = $null
+
+# A. Prefer project-local virtualenv if present
+$venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+if (Test-Path -LiteralPath $venvPython) {
+    $resolvedPythonExe = $venvPython
+}
+
+# B. Otherwise ask the existing "python" for its real executable path
+if (-not $resolvedPythonExe) {
+    try {
+        $probe = & python -c "import sys; print(sys.executable)" 2>$null
+        if ($probe -and (Test-Path -LiteralPath $probe.Trim())) {
+            $resolvedPythonExe = $probe.Trim()
+        }
+    } catch {}
+}
+
+# C. Fallback: try the Python Launcher for Windows (py.exe)
+if (-not $resolvedPythonExe) {
+    try {
+        $probe = & py -3 -c "import sys; print(sys.executable)" 2>$null
+        if ($probe -and (Test-Path -LiteralPath $probe.Trim())) {
+            $resolvedPythonExe = $probe.Trim()
+        }
+    } catch {}
+}
+
+# D. Validate: reject WindowsApps alias and anything unusable
+if (-not $resolvedPythonExe) {
+    Write-Host "      ✗ Critical: PYTHON_INTERPRETER_NOT_FOUND — cannot locate a Python interpreter." -ForegroundColor Red
+    exit 1
+}
+if ($resolvedPythonExe -match "WindowsApps") {
+    Write-Host "      ✗ Critical: resolved Python is the Windows Store alias ($resolvedPythonExe), which cannot own stdout. Aborting." -ForegroundColor Red
+    exit 1
+}
+if (-not (Test-Path -LiteralPath $resolvedPythonExe -PathType Leaf)) {
+    Write-Host "      ✗ Critical: resolved Python path is not a file: $resolvedPythonExe" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "      Using Python: $resolvedPythonExe" -ForegroundColor DarkGray
+
 $psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = "python"
+$psi.FileName = $resolvedPythonExe
 $psi.Arguments = "app_api/server.py --emit-bootstrap"
 $psi.UseShellExecute = $false
 $psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
 $psi.CreateNoWindow = $true
 $pythonProcess = [System.Diagnostics.Process]::Start($psi)
 
-$collectedLines = @()
-$bootstrapRaw = $pythonProcess.StandardOutput.ReadLine()
-if ($bootstrapRaw) {
-    $collectedLines += $bootstrapRaw
-}
+# Non-blocking bootstrap read (PROD-DESKTOP-BOOTSTRAP-READ-HANG-01).
+# The server is long-lived so EndOfStream never becomes true.  We poll
+# stdout with Peek()/Read() and stop as soon as a valid bootstrap frame
+# arrives, with a hard deadline to prevent infinite hangs.  The ongoing
+# stdout drain is handled by a background runspace after bootstrap.
+$bootstrapLines = @()
+$bootstrapFound = $false
+$bootstrapTimeoutSec = 12
+$lineBuf = ""
 
-# Check for immediate duplicate line on startup pipe
-Start-Sleep -Milliseconds 100
-while (-not $pythonProcess.StandardOutput.EndOfStream) {
-    $extraLine = $pythonProcess.StandardOutput.ReadLine()
-    if ($extraLine) {
-        $collectedLines += $extraLine
-        if ($extraLine.Trim().StartsWith("UIAUTH_BOOTSTRAP_V1:")) {
-            break
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+while ($sw.Elapsed.TotalSeconds -lt $bootstrapTimeoutSec) {
+    if ($pythonProcess.HasExited) { break }
+    while ($pythonProcess.StandardOutput.Peek() -ge 0) {
+        $ch = [char]$pythonProcess.StandardOutput.Read()
+        $lineBuf += $ch
+        if ($ch -eq "`n") {
+            $line = $lineBuf.TrimEnd("`r","`n")
+            $bootstrapLines += $line
+            $lineBuf = ""
+            if ($line.Trim().StartsWith("UIAUTH_BOOTSTRAP_V1:")) {
+                $bootstrapFound = $true
+                break
+            }
         }
     }
+    if ($bootstrapFound) { break }
+    Start-Sleep -Milliseconds 50
 }
+$sw.Stop()
 
-$bootResult = Parse-BootstrapLines -Lines $collectedLines
+$bootResult = Parse-BootstrapLines -Lines $bootstrapLines
 
 if (-not $bootResult.Success) {
-    Write-Host "      ✗ Critical: Backend bootstrap handshake failed ($($bootResult.Error)). Terminating." -ForegroundColor Red
+    $errLines = @()
+    $errBuf = ""
+    while ($pythonProcess.StandardError.Peek() -ge 0) {
+        $ch = [char]$pythonProcess.StandardError.Read()
+        $errBuf += $ch
+        if ($ch -eq "`n") {
+            $errLines += $errBuf.TrimEnd("`r","`n")
+            $errBuf = ""
+        }
+    }
+    $errDetail = ""
+    if ($errLines.Count -gt 0) {
+        $tail = $errLines | Select-Object -Last 5
+        $errDetail = " | stderr: " + ($tail -join " ")
+    }
+    Write-Host "      ✗ Critical: Backend bootstrap handshake failed ($($bootResult.Error)$errDetail). Terminating." -ForegroundColor Red
     if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-ProcessTree -ParentId $pythonProcess.Id }
     exit 1
 }
 
-# Spawn background drain worker to continuously drain stdout and prevent pipe buffer deadlock (PROD-LIFECYCLE-PIPE-DRAIN)
-$drainThread = [System.Threading.Thread]::new([System.Threading.ThreadStart]{
+# Background drain: keep stdout/stderr consumed to prevent pipe buffer deadlock.
+$drainRunspace = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspace()
+$drainRunspace.Open()
+$drainPS = [System.Management.Automation.PowerShell]::Create()
+$drainPS.Runspace = $drainRunspace
+[void]$drainPS.AddScript({
+    param($stdout, $stderr)
     try {
-        while (-not $pythonProcess.HasExited) {
-            $dLine = $pythonProcess.StandardOutput.ReadLine()
-            if ($null -eq $dLine) { break }
+        while ($true) {
+            if ($stdout.Peek() -ge 0) { $stdout.Read() | Out-Null } else { Start-Sleep -Milliseconds 100 }
+            if ($stderr.Peek() -ge 0) { $stderr.Read() | Out-Null }
         }
     } catch {}
-})
-$drainThread.IsBackground = $true
-$drainThread.Start()
+}).AddArgument($pythonProcess.StandardOutput).AddArgument($pythonProcess.StandardError)
+$drainPS.BeginInvoke() | Out-Null
 
 $sessionToken = $bootResult.Token
 $apiHost = $bootResult.Host
@@ -206,6 +287,8 @@ try {
     }
 } finally {
     Write-Host "`nStopping AI Marketing Department process trees..." -ForegroundColor Yellow
+    if ($drainPS) { try { $drainPS.Stop(); $drainPS.Dispose() } catch {} }
+    if ($drainRunspace) { try { $drainRunspace.Close(); $drainRunspace.Dispose() } catch {} }
     if ($pythonProcess -and !$pythonProcess.HasExited) { Stop-ProcessTree -ParentId $pythonProcess.Id }
     if ($frontendProcess -and !$frontendProcess.HasExited) { Stop-ProcessTree -ParentId $frontendProcess.Id }
     $env:APP_BACKEND_HOST_DEV = $null
