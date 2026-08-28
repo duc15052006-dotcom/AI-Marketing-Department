@@ -2096,3 +2096,70 @@ class FiveAgentDepartmentRuntime:
                     context.constraints.append(c)
             self._sync_constraint_state(context)
         return self.execute_run(context)
+
+    def run_research_inquiry(
+        self,
+        objective: str,
+        business_id: str = "BIZ_AD_HOC_EXPLORATION",
+        chat_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+    ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
+        """Research-only fast path: Intelligence stage only, no full workflow.
+
+        Executes:
+        1. start_run (context + model policy pinning)
+        2. execute_stage_intelligence (ToolGateway → EvidenceBuilder → GroundingContext → Intelligence synthesis)
+        3. complete_run (seal artifact)
+
+        Bypasses: CMO Initial, Strategist, Creative, Performance, Final CMO.
+        Model call count: 1 (Intelligence synthesis only).
+        Preserves: full evidence pipeline, B3 quality gates, B4 conflict/gap,
+        scope isolation, canonical ObservationRecord identity.
+        """
+        context = self.start_run(
+            objective=objective,
+            business_id=business_id,
+            chat_id=chat_id,
+            project_id=project_id,
+        )
+
+        try:
+            # Execute Intelligence stage only — search, evidence, grounding, synthesis
+            intel_out = self.execute_stage_intelligence(context)
+
+            # Set terminal status based on Intelligence outcome
+            if intel_out.get("status") == "FAILED":
+                context.status = RuntimeStatus.FAILED
+            else:
+                context.status = RuntimeStatus.COMPLETED
+
+            # Final CMO output for artifact compatibility — Intelligence findings as the response
+            final_output = {
+                "stage": "INTELLIGENCE_ONLY",
+                "agent": "intelligence",
+                "status": intel_out.get("status", "FAILED"),
+                "master_gtm_plan_markdown": intel_out.get("market_findings", ""),
+                "research_findings": intel_out.get("market_findings", ""),
+                "search_receipt_id": intel_out.get("search_receipt_id"),
+                "research_grounding_bundle_id": intel_out.get("research_grounding_bundle_id"),
+                "research_grounding_context_id": intel_out.get("research_grounding_context_id"),
+            }
+            context.stage_outputs["final_cmo"] = final_output
+            context.create_checkpoint()
+
+        except Exception as exc:
+            logger.exception(f"Unhandled exception during research inquiry {context.run_id}: {exc}")
+            context.status = RuntimeStatus.FAILED
+            context.risk_flags.append(f"RESEARCH_INQUIRY_UNHANDLED_EXCEPTION: {str(exc)}")
+            final_output = {
+                "stage": "INTELLIGENCE_ONLY",
+                "agent": "intelligence",
+                "status": "FAILED",
+                "master_gtm_plan_markdown": f"⚠️ Lỗi hệ thống nghiên cứu: {str(exc)}",
+                "research_findings": "",
+            }
+            context.stage_outputs["final_cmo"] = final_output
+            context.create_checkpoint()
+
+        artifact = self.complete_run(context)
+        return context, final_output, artifact

@@ -53,6 +53,7 @@ class ConversationIntent(str, Enum):
     """Execution route for an incoming chat message."""
     GENERAL_CONVERSATION = "GENERAL_CONVERSATION"
     DOCUMENT_ANALYSIS = "DOCUMENT_ANALYSIS"
+    RESEARCH_INQUIRY = "RESEARCH_INQUIRY"
     MARKETING_WORKFLOW = "MARKETING_WORKFLOW"
     SYSTEM_COMMAND = "SYSTEM_COMMAND"
 
@@ -122,6 +123,32 @@ class ConversationRouter:
             re.IGNORECASE,
         )
 
+        # Research inquiry keywords — pure information-seeking intent.
+        # These indicate the user wants research/evidence, NOT a full marketing plan.
+        self._research_keywords_pattern = re.compile(
+            r"\b(tìm\s+thông\s+tin|tìm\s+kiếm|nghiên\s+cứu\s+thị\s+trường|nghiên\s+cứu\s+giá|"
+            r"nghiên\s+cứu\s+xu\s+hướng|thông\s+tin\s+mới\s+nhất|nguồn\s+dữ\s+liệu|dữ\s+liệu\s+mới|"
+            r"xu\s+hướng\s+hiện\s+tại|giá\s+hiện\s+nay|market\s+data|latest\s+research|"
+            r"search\s+for|find\s+information|research\s+the|look\s+up|"
+            r"tìm\s+nguồn|tìm\s+dữ\s+liệu|xu\s+hướng\s+đèn|giá\s+thị\s+trường|"
+            r"tìm\s+hiểu|khảo\s+sát|thu\s+thập\s+dữ\s+liệu|phân\s+tích\s+dữ\s+liệu)\b",
+            re.IGNORECASE,
+        )
+
+        # Full marketing workflow markers — deliverables that require multi-agent pipeline.
+        # When present, the request MUST go through the full 6-stage workflow regardless
+        # of whether research keywords also appear.
+        self._full_workflow_pattern = re.compile(
+            r"\b(xây\s*(dựng)?\s*chiến\s+lược|lập\s+kế\s+hoạch\s+marketing|lập\s+chiến\s+lược|"
+            r"chiến\s+lược\s+marketing|chiến\s+lược\s+gtm|tạo\s+chiến\s+lược|"
+            r"lập\s+campaign|chạy\s+campaign|chiến\s+dịch|"
+            r"content\s+plan|media\s+plan|kpi|ngân\s+sách|budget|"
+            r"phân\s+bổ|positioning|creative\s+hooks|launch\s+campaign|"
+            r"build\s+marketing|create\s+ad|competitor\s+intelligence|"
+            r"five-agent|5\s+agents)\b",
+            re.IGNORECASE,
+        )
+
         # Accent-insensitive companions built from the SAME keyword sources.
         # Matching-layer folding only; raw user text is never modified.
         self._marketing_explicit_pattern_folded = re.compile(
@@ -129,6 +156,12 @@ class ConversationRouter:
         )
         self._doc_keywords_folded = re.compile(
             fold_vietnamese(self._doc_keywords.pattern), re.IGNORECASE
+        )
+        self._research_keywords_pattern_folded = re.compile(
+            fold_vietnamese(self._research_keywords_pattern.pattern), re.IGNORECASE
+        )
+        self._full_workflow_pattern_folded = re.compile(
+            fold_vietnamese(self._full_workflow_pattern.pattern), re.IGNORECASE
         )
 
     def _matches_marketing_explicit(self, text: str) -> bool:
@@ -142,6 +175,18 @@ class ConversationRouter:
         if self._doc_keywords.search(text):
             return True
         return bool(self._doc_keywords_folded.search(fold_vietnamese(text)))
+
+    def _matches_research_keywords(self, text: str) -> bool:
+        """Research-keyword match, tolerant to missing Vietnamese diacritics."""
+        if self._research_keywords_pattern.search(text):
+            return True
+        return bool(self._research_keywords_pattern_folded.search(fold_vietnamese(text)))
+
+    def _matches_full_workflow(self, text: str) -> bool:
+        """Full-marketing-workflow match, tolerant to missing Vietnamese diacritics."""
+        if self._full_workflow_pattern.search(text):
+            return True
+        return bool(self._full_workflow_pattern_folded.search(fold_vietnamese(text)))
 
     def _try_semantic_classification(self, text: str) -> Optional[ConversationIntent]:
         """Single-attempt semantic classification; None when unavailable/failed.
@@ -251,6 +296,15 @@ class ConversationRouter:
                 reason_code="DETERMINISTIC_MARKETING_KEYWORD",
             )
 
+        # 4b. Research Inquiry — pure information-seeking, no full workflow deliverables.
+        # Full workflow markers take precedence over research keywords (already handled above).
+        if self._matches_research_keywords(text):
+            return RoutingDecision(
+                intent=ConversationIntent.RESEARCH_INQUIRY,
+                confidence=0.93,
+                reason_code="DETERMINISTIC_RESEARCH_KEYWORD",
+            )
+
         # 5. Semantic classification for ALL ambiguous/unmatched input.
         # NOTE: no short-message cutoff here anymore - SHORT_GENERAL_QUERY is
         # only a FINAL fail-safe fallback below, never a preemptive return.
@@ -287,9 +341,12 @@ class ConversationRouter:
             "Classify the following user message into exactly one category:\n"
             "- GENERAL: normal conversation, greeting, Q&A, definitions, coding, rewriting\n"
             "- DOCS: questions about attached files or documents\n"
-            "- MARKETING: comprehensive marketing strategy, multi-channel ad campaigns, positioning architecture, GTM planning, budget allocation\n\n"
+            "- RESEARCH: information inquiry, market data lookup, trend search, source finding — "
+            "user wants facts/evidence, NOT a marketing plan or strategy deliverable\n"
+            "- MARKETING: comprehensive marketing strategy, multi-channel ad campaigns, "
+            "positioning architecture, GTM planning, budget allocation, content plans, KPI frameworks\n\n"
             f"User message: \"{text[:300]}\"\n\n"
-            "Respond with only the category word (GENERAL, DOCS, or MARKETING):"
+            "Respond with only the category word (GENERAL, DOCS, RESEARCH, or MARKETING):"
         )
 
         req = ModelRequest(
@@ -303,6 +360,8 @@ class ConversationRouter:
             ans = resp.content.strip().upper()
             if "MARKETING" in ans:
                 return ConversationIntent.MARKETING_WORKFLOW
+            elif "RESEARCH" in ans:
+                return ConversationIntent.RESEARCH_INQUIRY
             elif "DOC" in ans:
                 return ConversationIntent.DOCUMENT_ANALYSIS
             elif "GENERAL" in ans:

@@ -457,7 +457,47 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            # Route C: Full Supervised Five-Agent Marketing Workflow
+            # Route C: Research Inquiry — Intelligence-only fast path (1 model call)
+            elif decision.intent == ConversationIntent.RESEARCH_INQUIRY:
+                ctx, intel_out, artifact = APP_BACKEND.runtime.run_research_inquiry(
+                    objective=user_text,
+                    business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
+                    chat_id=chat_id,
+                    project_id=session.optional_project_id,
+                )
+
+                is_failed = intel_out.get("status") == "FAILED"
+                status_val = "ERROR" if is_failed else "COMPLETED"
+                research_content = intel_out.get("research_findings") or intel_out.get("master_gtm_plan_markdown") or (
+                    "⚠️ Không thể hoàn tất nghiên cứu do lỗi kết nối mô hình." if is_failed else "Research completed."
+                )
+
+                resp_msg = APP_BACKEND.chat_mgr.add_assistant_response(
+                    chat_id=chat_id,
+                    content=research_content,
+                    status=status_val,
+                    run_id=ctx.run_id,
+                    agent_outputs=artifact.agent_outputs,
+                )
+                self._send_json(
+                    {
+                        "success": not is_failed,
+                        "chat_id": chat_id,
+                        "session": session.model_dump() if hasattr(session, "model_dump") else None,
+                        "user_message": user_msg.model_dump() if user_msg else None,
+                        "message": resp_msg.model_dump() if resp_msg else {},
+                        "run_id": ctx.run_id,
+                        "artifact_hash": artifact.final_artifact_hash,
+                        "route": "RESEARCH_INQUIRY",
+                        "intent": decision.intent.value,
+                        "reason_code": decision.reason_code,
+                        "five_agent_call_count": 1,
+                    },
+                    201,
+                )
+                return
+
+            # Route D: Full Supervised Five-Agent Marketing Workflow
             else:
                 ctx, cmo_final, artifact = APP_BACKEND.runtime.run_workflow(
                     objective=user_text,
