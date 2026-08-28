@@ -64,7 +64,7 @@ from runtime.knowledge_builder import KnowledgeContextBuilder
 from runtime.lineage import LineageInspector
 from runtime.memory_builder import MemoryContextBuilder
 from tools.capabilities import CapabilityRegistry
-from tools.evidence import EvidenceBuilder, GroundingContextBuilder
+from tools.evidence import EvidenceBuilder, EvidenceBundleSemanticValidator, GroundingContextBuilder, SubjectIdentity, SemanticCoherenceStatus
 from tools.observation.models import ObservationRecord
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import HumanApprovalRecord, PolicyEngine
@@ -606,6 +606,32 @@ class FiveAgentDepartmentRuntime:
                 business_id=context.business_id,
                 project_id=context.project_id or "",
             )
+
+            # B3 — Deterministic research quality evaluation.
+            # Construct SubjectIdentity from trusted canonical anchors only.
+            # RuntimeContext has no trusted semantic names (product/brand names),
+            # only IDs. Empty canonical_name/brand_name causes the relevance gate
+            # to return UNKNOWN (relevance not evaluable) rather than IRRELEVANT,
+            # which is the correct epistemic state when no semantic identity is
+            # available.
+            subject = SubjectIdentity(
+                product_id=obs_record.product_id,
+                brand_id=obs_record.brand_id,
+                canonical_name="",
+                brand_name="",
+                official_domains=[],
+                aliases=[],
+            )
+            coherence_status, rejection_manifest, validation_notes = (
+                EvidenceBundleSemanticValidator.validate(ev_bundle, subject)
+            )
+
+            # Zero-usability truthfulness: explicit signal when no usable evidence.
+            usable_count = ev_bundle.relevant_source_count
+            total_items = len(ev_bundle.evidence_items)
+            rejected_count = len(rejection_manifest)
+            zero_usable = usable_count == 0 and total_items > 0
+
             grounding_ctx = GroundingContextBuilder.build_grounding_context(
                 bundle=ev_bundle,
                 task_description=context.objective,
@@ -623,6 +649,9 @@ class FiveAgentDepartmentRuntime:
             )
             context.working_state["research_grounding_bundle_id"] = ev_bundle.bundle_id
             context.working_state["research_grounding_context_id"] = grounding_ctx.context_id
+            context.working_state["research_grounding_usable_evidence_count"] = usable_count
+            context.working_state["research_grounding_rejected_count"] = rejected_count
+            context.working_state["research_grounding_coherence"] = coherence_status.value
 
         if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":
             context.status = RuntimeStatus.FAILED

@@ -46,6 +46,23 @@ class EvidenceRelevanceGate:
         subject: SubjectIdentity,
     ) -> RelevanceAssessment:
         """Evaluate whether an EvidenceItem genuinely concerns the specified SubjectIdentity with exact field attribution."""
+        # E0. No semantic identity available -> UNKNOWN (not evaluated)
+        has_semantic_identity = bool(
+            subject.canonical_name and subject.canonical_name.strip()
+        ) or bool(
+            subject.brand_name and subject.brand_name.strip()
+        ) or bool(subject.official_domains) or bool(subject.aliases)
+
+        if not has_semantic_identity:
+            return RelevanceAssessment(
+                evidence_id=item.evidence_id,
+                relevance_status=RelevanceStatus.UNKNOWN,
+                relevance_method="NO_SEMANTIC_IDENTITY",
+                matched_subject_anchors=[],
+                structured_traces=[],
+                relevance_reason="Trusted semantic subject identity unavailable; deterministic relevance could not be evaluated.",
+            )
+
         structured_traces: List[RelevanceTraceItem] = []
         strong_matches: List[str] = []
         weak_category_matches: List[str] = []
@@ -440,6 +457,7 @@ class EvidenceBundleSemanticValidator:
 
         relevant_items: List[EvidenceItem] = []
         irrelevant_items: List[EvidenceItem] = []
+        unassessed_items: List[EvidenceItem] = []
 
         for item in bundle.evidence_items:
             assessment = EvidenceRelevanceGate.evaluate(item, subject)
@@ -450,6 +468,8 @@ class EvidenceBundleSemanticValidator:
 
             if assessment.relevance_status in (RelevanceStatus.RELEVANT, RelevanceStatus.LIKELY_RELEVANT):
                 relevant_items.append(item)
+            elif assessment.relevance_status == RelevanceStatus.UNKNOWN:
+                unassessed_items.append(item)
             else:
                 irrelevant_items.append(item)
                 rejection_manifest.append(
@@ -476,10 +496,14 @@ class EvidenceBundleSemanticValidator:
         bundle.collected_source_families = relevant_collected_families
         bundle.missing_source_families = missing_families
 
-        if not missing_families and len(irrelevant_items) == 0:
+        if not missing_families and len(irrelevant_items) == 0 and len(unassessed_items) == 0:
             coverage_status = ResearchSourceCoverage.PASS
             coherence_status = SemanticCoherenceStatus.PASS
             validation_notes.append("All substantive evidence items verified RELEVANT to subject. Source family coverage is PASS.")
+        elif not missing_families and len(irrelevant_items) == 0 and len(unassessed_items) > 0:
+            coverage_status = ResearchSourceCoverage.PASS
+            coherence_status = SemanticCoherenceStatus.PARTIAL
+            validation_notes.append(f"Coverage satisfied but {len(unassessed_items)} items have unassessed relevance (trusted semantic identity unavailable).")
         elif not missing_families and len(irrelevant_items) > 0:
             coverage_status = ResearchSourceCoverage.PASS
             coherence_status = SemanticCoherenceStatus.PARTIAL
@@ -488,13 +512,21 @@ class EvidenceBundleSemanticValidator:
             coverage_status = ResearchSourceCoverage.PARTIAL
             coherence_status = SemanticCoherenceStatus.PARTIAL
             validation_notes.append(f"Missing required source families: {[f.value for f in missing_families]}.")
+        elif len(unassessed_items) > 0 and len(irrelevant_items) == 0:
+            coverage_status = ResearchSourceCoverage.FAIL
+            coherence_status = SemanticCoherenceStatus.PARTIAL
+            validation_notes.append(f"All {len(unassessed_items)} evidence items have unassessed relevance (trusted semantic identity unavailable).")
         else:
             coverage_status = ResearchSourceCoverage.FAIL
             coherence_status = SemanticCoherenceStatus.FAIL
             validation_notes.append("Zero relevant evidence collected across requested source families.")
 
-        # Research Dimension Audit
-        cov_report = ResearchDimensionEvaluator.evaluate_bundle(bundle, bundle.research_question)
+        # Research Dimension Audit — only RELEVANT/LIKELY_RELEVANT items are
+        # eligible to support coverage. UNKNOWN and IRRELEVANT are excluded.
+        eligible_items = [item for item in bundle.evidence_items
+                          if item.relevance_status in (RelevanceStatus.RELEVANT, RelevanceStatus.LIKELY_RELEVANT)]
+        eligible_bundle = bundle.model_copy(update={"evidence_items": eligible_items})
+        cov_report = ResearchDimensionEvaluator.evaluate_bundle(eligible_bundle, bundle.research_question)
         bundle.research_dimensions = cov_report.dimensions
         bundle.video_substantive_coverage = cov_report.video_substantive_coverage
         bundle.research_dimension_coverage = cov_report.research_dimension_coverage
