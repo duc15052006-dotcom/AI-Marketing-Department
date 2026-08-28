@@ -50,7 +50,12 @@ class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
 
 
 def get_backend_state_file_path() -> Path:
-    runtime_dir = REPO_ROOT / "runtime"
+    app_data = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+    if app_data:
+        runtime_dir = Path(app_data) / "AI-Marketing-Department" / "runtime"
+    else:
+        # Non-Windows fallback: use XDG_RUNTIME_DIR or home
+        runtime_dir = Path.home() / ".ai-marketing-department" / "runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     return runtime_dir / "backend_instance.json"
 

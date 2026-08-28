@@ -413,8 +413,21 @@ pub struct BackendStateFile {
     pub root_dir: Option<String>,
 }
 
-pub fn read_backend_state(root: &std::path::Path) -> Option<BackendStateFile> {
-    let state_path = root.join("runtime").join("backend_instance.json");
+fn get_backend_state_dir() -> Option<std::path::PathBuf> {
+    if let Ok(app_data) = std::env::var("APPDATA") {
+        Some(std::path::PathBuf::from(app_data).join("AI-Marketing-Department").join("runtime"))
+    } else if let Ok(app_data) = std::env::var("LOCALAPPDATA") {
+        Some(std::path::PathBuf::from(app_data).join("AI-Marketing-Department").join("runtime"))
+    } else if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        Some(std::path::PathBuf::from(home).join(".ai-marketing-department").join("runtime"))
+    } else {
+        None
+    }
+}
+
+pub fn read_backend_state(_root: &std::path::Path) -> Option<BackendStateFile> {
+    let state_dir = get_backend_state_dir()?;
+    let state_path = state_dir.join("backend_instance.json");
     if state_path.is_file() {
         if let Ok(content) = std::fs::read_to_string(&state_path) {
             if let Ok(state) = serde_json::from_str::<BackendStateFile>(&content) {
@@ -425,10 +438,12 @@ pub fn read_backend_state(root: &std::path::Path) -> Option<BackendStateFile> {
     None
 }
 
-pub fn clear_backend_state_file(root: &std::path::Path) {
-    let state_path = root.join("runtime").join("backend_instance.json");
-    if state_path.is_file() {
-        let _ = std::fs::remove_file(state_path);
+pub fn clear_backend_state_file(_root: &std::path::Path) {
+    if let Some(state_dir) = get_backend_state_dir() {
+        let state_path = state_dir.join("backend_instance.json");
+        if state_path.is_file() {
+            let _ = std::fs::remove_file(state_path);
+        }
     }
 }
 
@@ -1640,12 +1655,21 @@ mod tests {
 
     #[test]
     fn test_read_backend_state_valid_and_invalid() {
-        let temp_dir = std::env::temp_dir().join(format!("test_aimktg_state_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
-        let runtime_dir = temp_dir.join("runtime");
-        std::fs::create_dir_all(&runtime_dir).unwrap();
+        let state_dir = get_backend_state_dir().expect("APPDATA or HOME must be available");
+        std::fs::create_dir_all(&state_dir).unwrap();
+        let state_path = state_dir.join("backend_instance.json");
 
-        // 1. Missing file -> None
-        assert_eq!(read_backend_state(&temp_dir), None);
+        // Save any pre-existing state file to restore later
+        let backup = if state_path.is_file() {
+            Some(std::fs::read_to_string(&state_path).unwrap())
+        } else {
+            None
+        };
+
+        // 1. Clean slate -> None
+        let _ = std::fs::remove_file(&state_path);
+        let dummy_root = std::path::PathBuf::from("C:\\AI-Marketing-Department");
+        assert_eq!(read_backend_state(&dummy_root), None);
 
         // 2. Valid file -> Some
         let valid_json = r#"{
@@ -1655,17 +1679,25 @@ mod tests {
             "service": "AI Marketing Department API",
             "root_dir": "C:\\AI-Marketing-Department"
         }"#;
-        std::fs::write(runtime_dir.join("backend_instance.json"), valid_json).unwrap();
-        let state = read_backend_state(&temp_dir).expect("Expected valid state");
+        std::fs::write(&state_path, valid_json).unwrap();
+        let state = read_backend_state(&dummy_root).expect("Expected valid state");
         assert_eq!(state.pid, 12345);
         assert_eq!(state.service.as_deref(), Some("AI Marketing Department API"));
 
-        // 3. Clear file
-        clear_backend_state_file(&temp_dir);
-        assert_eq!(read_backend_state(&temp_dir), None);
+        // 3. State path must NOT be inside repo
+        let state_str = state_path.to_string_lossy().to_lowercase();
+        assert!(!state_str.contains("ai-marketing-department\\runtime\\backend_instance.json")
+                || state_str.contains("appdata"),
+            "State file must be in APPDATA, not repo root");
 
-        // Clean up temp dir
-        let _ = std::fs::remove_dir_all(temp_dir);
+        // 4. Clear file
+        clear_backend_state_file(&dummy_root);
+        assert_eq!(read_backend_state(&dummy_root), None);
+
+        // Restore backup if any
+        if let Some(content) = backup {
+            std::fs::write(&state_path, content).unwrap();
+        }
     }
 
     #[test]
