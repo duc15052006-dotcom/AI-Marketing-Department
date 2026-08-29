@@ -1,7 +1,8 @@
 """Backend Streaming Transport & SSE Bridge for AI Marketing Department.
 
 Provides clean, typed, and isolated Server-Sent Events (SSE) streaming transport:
-- Separates trusted runtime progress events (B2) from user-visible model text deltas (B1).
+- Separates trusted runtime progress events from user-visible model text deltas.
+- Preserves the canonical safe runtime/provider error contract end-to-end.
 - Enforces strict UTF-8 serialization, immediate flushes, and finite SSE event types.
 - Isolates run-scoped streams with bounded thread-safe queues.
 - Resilient client disconnect handling without server crashes or leaked threads.
@@ -17,6 +18,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, Optional, Union
 
 from runtime.progress import RuntimeProgressEvent
+from runtime.public_errors import PublicRuntimeError
 
 logger = logging.getLogger("app_api.streaming")
 
@@ -32,10 +34,7 @@ class SSEEventType(str, Enum):
 
 
 def format_sse_event(event_type: Union[SSEEventType, str], data: Any) -> bytes:
-    """Format an SSE message block with event type, JSON-encoded data, and blank line termination.
-
-    Rejects newline injection in event types and safely serializes structured data to UTF-8.
-    """
+    """Format an SSE message block with event type, JSON data, and blank-line termination."""
     event_str = event_type.value if isinstance(event_type, SSEEventType) else str(event_type).strip()
     if "\n" in event_str or "\r" in event_str:
         raise ValueError("SECURITY_ERROR: Event type must not contain newline characters.")
@@ -45,39 +44,77 @@ def format_sse_event(event_type: Union[SSEEventType, str], data: Any) -> bytes:
     elif isinstance(data, (dict, list, str, int, float, bool)) or data is None:
         json_payload = json.dumps(data, ensure_ascii=False, default=str)
     else:
-        json_payload = json.dumps(str(data), ensure_ascii=False)
+        # Non-public objects must never expose repr/exception details through SSE.
+        json_payload = json.dumps({"type": "UNSERIALIZABLE_PUBLIC_PAYLOAD"}, ensure_ascii=False)
 
     frame = f"event: {event_str}\ndata: {json_payload}\n\n"
     return frame.encode("utf-8")
 
 
-def sanitize_error_for_stream(error: Any) -> Dict[str, str]:
-    """Sanitize technical exception details to prevent leaking internal stack traces, API keys, or OS errors."""
-    err_str = str(error) if error else "INTERNAL_SERVER_ERROR"
+def _bounded_text(value: Any, max_chars: int) -> str:
+    return value[:max_chars] if isinstance(value, str) else ""
 
-    # Remove WinError / socket details
-    if "WinError" in err_str or "HTTP 599" in err_str or "Connection refused" in err_str:
-        return {
-            "error": "PROVIDER_UNAVAILABLE",
-            "message": "Không thể kết nối đến nhà cung cấp mô hình AI. Vui lòng kiểm tra lại cấu hình hoặc kết nối mạng.",
+
+def _canonical_error_dict(error: PublicRuntimeError) -> Dict[str, Any]:
+    payload = error.model_dump()
+    # Compatibility aliases retained for existing desktop consumers while the
+    # canonical fields remain authoritative.
+    payload["error"] = payload["code"]
+    payload["message"] = payload["safe_message"]
+    return payload
+
+
+def sanitize_error_for_stream(error: Any) -> Dict[str, Any]:
+    """Return a finite, credential-safe public error payload.
+
+    Typed PublicRuntimeError instances pass through unchanged apart from
+    compatibility aliases.  Legacy dictionaries are accepted only through a
+    strict allow-list.  Arbitrary exception/string detail is never reflected
+    to the client.
+    """
+    if isinstance(error, PublicRuntimeError):
+        return _canonical_error_dict(error)
+
+    if isinstance(error, dict):
+        code = _bounded_text(error.get("code") or error.get("error"), 80)
+        category = _bounded_text(error.get("category"), 80)
+        safe_message = _bounded_text(error.get("safe_message") or error.get("message"), 500)
+        retryable_raw = error.get("retryable", False)
+        status_raw = error.get("http_status")
+        provider = _bounded_text(error.get("provider"), 120)
+        model_name = _bounded_text(error.get("model_name"), 160)
+        stage = _bounded_text(error.get("stage"), 80)
+        agent = _bounded_text(error.get("agent"), 80)
+
+        payload: Dict[str, Any] = {
+            "code": code or "EXECUTION_ERROR",
+            "category": category or "INTERNAL",
+            "safe_message": safe_message or "The agent run could not be completed.",
+            "retryable": retryable_raw if type(retryable_raw) is bool else False,
+            "http_status": status_raw if type(status_raw) is int and 100 <= status_raw <= 599 else None,
+            "provider": provider,
+            "model_name": model_name,
+            "stage": stage,
+            "agent": agent,
         }
+        payload["error"] = payload["code"]
+        payload["message"] = payload["safe_message"]
+        return payload
 
-    # Hide API keys / Auth tokens if any were present in raw message
-    if "key" in err_str.lower() and "invalid" in err_str.lower():
-        return {
-            "error": "AUTHENTICATION_FAILED",
-            "message": "Xác thực với nhà cung cấp mô hình AI thất bại. Vui lòng kiểm tra lại cấu hình khóa API.",
-        }
-
-    if "rate limit" in err_str.lower() or "429" in err_str:
-        return {
-            "error": "RATE_LIMITED",
-            "message": "Đã vượt quá giới hạn tần suất yêu cầu (Rate Limit). Vui lòng thử lại sau.",
-        }
-
+    # Fail closed for arbitrary exceptions and strings.  Never echo str(error)
+    # because it may contain API keys, raw provider bodies, URLs, or OS paths.
     return {
+        "code": "EXECUTION_ERROR",
+        "category": "INTERNAL",
+        "safe_message": "The agent run could not be completed.",
+        "retryable": False,
+        "http_status": None,
+        "provider": "",
+        "model_name": "",
+        "stage": "",
+        "agent": "",
         "error": "EXECUTION_ERROR",
-        "message": err_str,
+        "message": "The agent run could not be completed.",
     }
 
 
@@ -91,7 +128,7 @@ class StreamState(str, Enum):
 
 
 class StreamingChatBridge:
-    """Run-scoped queue bridge connecting worker thread execution with HTTP SSE response writer."""
+    """Run-scoped queue bridge connecting worker execution with HTTP SSE response writer."""
 
     def __init__(self, max_queue_size: int = 1000) -> None:
         self.max_queue_size = max_queue_size
@@ -152,24 +189,23 @@ class StreamingChatBridge:
             self._cond.notify_all()
 
     def send_error(self, error: Any) -> None:
-        """Enqueue terminal ERROR event outside normal capacity failure."""
+        """Enqueue one terminal, typed, sanitized ERROR event."""
         with self._cond:
             if self.state != StreamState.OPEN:
                 return
-            sanitized = sanitize_error_for_stream(error)
-            self._terminal_event = (SSEEventType.ERROR, sanitized)
+            self._terminal_event = (SSEEventType.ERROR, sanitize_error_for_stream(error))
             self.state = StreamState.TERMINAL_PENDING
             self._cond.notify_all()
 
     def close(self) -> None:
-        """Mark bridge disconnected / closed and unblock any waiting producers/consumers."""
+        """Mark bridge disconnected / closed and unblock waiting producers/consumers."""
         with self._cond:
             if self.state in (StreamState.OPEN, StreamState.TERMINAL_PENDING):
                 self.state = StreamState.DISCONNECTED
             self._cond.notify_all()
 
     def drain_to_writer(self, write_fn: Callable[[bytes], None], flush_fn: Callable[[], None]) -> None:
-        """Synchronously drain normal queue events in strict FIFO order, followed by the terminal event."""
+        """Drain normal queue events in FIFO order, followed by the terminal event."""
         try:
             while True:
                 with self._cond:
@@ -180,10 +216,8 @@ class StreamingChatBridge:
                         item = self.queue.get_nowait()
                         self._cond.notify_all()
                     elif self.state == StreamState.TERMINAL_PENDING:
-                        # Queue is drained; proceed to terminal frame emission
                         break
                     else:
-                        # Disconnected, error, or complete
                         return
 
                 event_type, data = item
@@ -191,7 +225,6 @@ class StreamingChatBridge:
                 write_fn(frame_bytes)
                 flush_fn()
 
-            # Normal queue is now completely drained. Deliver the terminal event outside normal capacity limits.
             with self._cond:
                 if self.state == StreamState.TERMINAL_PENDING and self._terminal_event is not None:
                     term_type, term_data = self._terminal_event
@@ -210,12 +243,12 @@ class StreamingChatBridge:
                 self._cond.notify_all()
 
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError) as ex:
-            logger.info(f"Client disconnected during streaming: {ex}")
+            logger.info("Client disconnected during streaming: %s", type(ex).__name__)
             with self._cond:
                 self.state = StreamState.DISCONNECTED
                 self._cond.notify_all()
         except Exception as ex:
-            logger.warning(f"Error during SSE queue draining: {ex}")
+            logger.warning("Error during SSE queue draining: %s", type(ex).__name__)
             with self._cond:
                 self.state = StreamState.DISCONNECTED
                 self._cond.notify_all()
