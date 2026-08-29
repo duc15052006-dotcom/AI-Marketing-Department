@@ -1,10 +1,10 @@
 """Canonical skill contracts for the five permanent marketing agents.
 
 This module is intentionally deterministic and contains no provider, connector,
-or model-specific implementation.  It gives the production runtime one bounded
+or model-specific implementation. It gives the production runtime one bounded
 source of truth for the professional skills each permanent agent may exercise.
 
-Permanent logical agent count is exactly five.  Final CMO is the CMO's second
+Permanent logical agent count is exactly five. Final CMO is the CMO's second
 workflow pass, not a sixth agent.
 """
 from __future__ import annotations
@@ -20,6 +20,12 @@ PERMANENT_AGENT_IDS: Tuple[str, ...] = (
     "creative",
     "performance",
 )
+
+_AGENT_ALIASES = {
+    "cmo_initial": "cmo",
+    "cmo_final": "cmo",
+    "final_cmo": "cmo",
+}
 
 
 @dataclass(frozen=True)
@@ -145,9 +151,15 @@ SKILL_CONTRACTS: Dict[str, AgentSkillContract] = {
 }
 
 
+def canonical_agent_id(agent_id: str) -> str:
+    """Normalize runtime/stage aliases without creating another logical agent."""
+    normalized = (agent_id or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return _AGENT_ALIASES.get(normalized, normalized)
+
+
 def get_agent_skill_contract(agent_id: str) -> AgentSkillContract:
     """Return the canonical skill contract for one of the five permanent agents."""
-    normalized = (agent_id or "").strip().lower()
+    normalized = canonical_agent_id(agent_id)
     if normalized not in SKILL_CONTRACTS:
         raise KeyError(f"UNKNOWN_PERMANENT_AGENT: {agent_id!r}")
     return SKILL_CONTRACTS[normalized]
