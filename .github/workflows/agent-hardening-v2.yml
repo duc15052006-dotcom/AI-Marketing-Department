@@ -64,7 +64,7 @@ jobs:
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "4189822+github-actions[bot]@users.noreply.github.com"
           git add runtime/engine.py chat/engine.py app_api/server.py
           git diff --cached --check
           git diff --cached --name-only
@@ -73,5 +73,4 @@ jobs:
             exit 0
           fi
           git commit -m "fix: wire skills context errors and followups into production"
-          git pull --rebase origin phase/agent-hardening-v2
           git push origin HEAD:phase/agent-hardening-v2
