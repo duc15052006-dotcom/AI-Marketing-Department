@@ -1,0 +1,24 @@
+diff --git a/integrations/models/__init__.py b/integrations/models/__init__.py
+index 209dcae..f40d1dd 100644
+--- a/integrations/models/__init__.py
++++ b/integrations/models/__init__.py
+@@ -12,7 +12,9 @@ from integrations.models.base import (
+     ModelResponse,
+     ModelResponseStatus,
+     ModelRole,
++    ModelStreamError,
+     ModelUsage,
++    StreamDelta,
+ )
+ from integrations.models.agent_loader import AgentDefinition, AgentLoader, PERMANENT_AGENT_IDS
+ from integrations.models.cost_governance import CostGovernanceConfig, CostTracker
+@@ -64,7 +66,9 @@ __all__ = [
+     "ModelResponse",
+     "ModelResponseStatus",
+     "ModelRole",
++    "ModelStreamError",
+     "ModelUsage",
++    "StreamDelta",
+     "AgentDefinition",
+     "AgentLoader",
+     "PERMANENT_AGENT_IDS",
