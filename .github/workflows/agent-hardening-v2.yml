@@ -2,75 +2,79 @@ name: Agent Hardening V2
 
 on:
   push:
-    branches:
-      - phase/agent-hardening-v2
+    branches: [phase/agent-hardening-v2]
 
 permissions:
   contents: write
 
 jobs:
-  apply-and-verify:
-    if: contains(github.event.head_commit.message, '[agent-hardening-patch]')
+  defect-sweep:
+    if: contains(github.event.head_commit.message, '[full-defect-sweep]')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: phase/agent-hardening-v2
           fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install focused test dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest
-
-      - name: Apply asserted patch R1
-        run: python tools/dev/apply_agent_hardening_v2_r1.py
-
-      - name: Compile production modules
+      - name: Apply asserted production migration
+        run: python tools/dev/apply_full_defect_sweep_v2_r1.py
+      - name: Compile all production Python
         run: python -m compileall -q runtime chat app_api integrations tools connectors
-
-      - name: Run focused Python contract tests
+      - name: Focused defect regression
         run: |
           python -m pytest -q \
             tests/test_agent_skills_v2.py \
             tests/test_followup_task_resolver_v2.py \
             tests/test_runtime_public_errors_v2.py \
-            tests/test_app_streaming_typed_errors_v2.py
-
-      - name: Static safety assertions
-        shell: bash
-        run: |
-          ! grep -R '"target_value": 150.0' runtime/engine.py
-          ! grep -R 'return None, str(e)' runtime/engine.py
-          grep -q 'render_agent_skill_context(agent_name)' runtime/engine.py
-          test "$(grep -c 'resolve_followup(user_text, session.messages)' app_api/server.py)" -eq 2
-          grep -q 'ChatMessage, ChatRole' app_api/server.py
-          test "$(grep -c 'objective=effective_text' app_api/server.py)" -eq 4
-          git diff --check
-
-      - name: Build frontend
+            tests/test_app_streaming_typed_errors_v2.py \
+            tests/test_research_loop_v2.py \
+            tests/test_prod_workflow_failure_semantics_01.py \
+            tests/test_prod_runtime_01_single_run_authority.py
+      - name: Full Python regression
+        run: python -m pytest -q
+      - name: Frontend tests and build
         working-directory: frontend
         run: |
           npm install
+          npm test
           npm run build
-
-      - name: Commit verified production patch
+      - name: Rust native bridge check
+        working-directory: src-tauri
+        run: |
+          cargo check --locked
+          cargo test --locked
+      - name: Static truth and safety assertions
+        shell: bash
+        run: |
+          grep -q 'BoundedResearchLoop' runtime/engine.py
+          grep -q 'research_depth=resolved_followup.research_depth.value' app_api/server.py
+          grep -q 'STREAM_TRUNCATED' frontend/src/api/streaming.ts
+          ! grep -q 'handleTerminalComplete({});' frontend/src/api/streaming.ts
+          ! grep -q 'return None, str(e)' runtime/engine.py
+          ! grep -q 'str(last_exc)' tools/tool_gateway.py
+          ! grep -q '"target_value": 150.0' runtime/engine.py
+          ! grep -q '"paid_search": 0.42' connectors/analytics_connector.py
+          ! grep -q '"p_value": 0.008' connectors/analytics_connector.py
+          ! grep -q 'mock-search.example.com' connectors/web_connector.py
+          grep -q 'cost_tier = CostPolicy.UNKNOWN' integrations/models/gateway.py
+          grep -q 'error_http_status' frontend/src/chat/streamState.ts
+          grep -q 'isTableSeparator' frontend/src/components/MarkdownView.tsx
+          git diff --check
+      - name: Commit verified migration
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "4189822+github-actions[bot]@users.noreply.github.com"
-          git add runtime/engine.py chat/engine.py app_api/server.py
+          git add runtime/engine.py chat/engine.py app_api/server.py tools/tool_gateway.py integrations/models/registry.py integrations/models/gateway.py frontend/src/chat/streamState.ts frontend/src/App.tsx
           git diff --cached --check
-          git diff --cached --name-only
-          if git diff --cached --quiet; then
-            echo "No production changes to commit"
-            exit 0
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: complete conversation research cost and error wiring"
+            git push origin HEAD:phase/agent-hardening-v2
           fi
-          git commit -m "fix: wire skills context errors and followups into production"
-          git push origin HEAD:phase/agent-hardening-v2
