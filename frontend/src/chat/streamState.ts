@@ -1,29 +1,29 @@
 /**
- * Production Stream State Management (PROD-STREAMING-IMPLEMENTATION-01-B5-R2 / PROD-UAT-CHAT-ERROR-PERSISTENCE-01).
- *
- * Pure, deterministic state helpers and transitions for React streaming chat.
+ * Deterministic production streaming state helpers.
  *
  * Invariants:
- * 1. Exactly 5 Logical Agents: CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE.
- * 2. Exactly 6 Workflow Stages: CMO_INITIAL, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE, FINAL_CMO.
- * 3. FINAL_CMO belongs to the CMO agent (not a 6th agent).
- * 4. Error preserves truthful stage history (completed remain COMPLETED, active becomes FAILED, unreached remain PENDING).
- * 5. Exactly one assistant placeholder per turn; deltas concatenate without trimming/duplication.
- * 6. Session migration from temporary ID to authoritative backend real ID preserves messages atomically.
- * 7. Error persistence: failed turns and unpersisted TEMP sessions survive backend refresh.
+ * - exactly five permanent logical agents;
+ * - exactly six workflow stages; FINAL_CMO is the CMO second pass;
+ * - first reached failure is truthful; unreached later stages are NOT_REACHED;
+ * - failed/local temporary turns survive backend refresh.
  */
 
 export type AgentId = 'cmo' | 'intelligence' | 'strategist' | 'creative' | 'performance';
+export type StageId = 'CMO_INITIAL' | 'INTELLIGENCE' | 'STRATEGIST' | 'CREATIVE' | 'PERFORMANCE' | 'FINAL_CMO';
+export type StageStatus = 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'NOT_REACHED';
 
-export type StageId =
-  | 'CMO_INITIAL'
-  | 'INTELLIGENCE'
-  | 'STRATEGIST'
-  | 'CREATIVE'
-  | 'PERFORMANCE'
-  | 'FINAL_CMO';
-
-export type StageStatus = 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'FAILED';
+export interface PublicStreamErrorLike {
+  code?: string;
+  category?: string;
+  safe_message?: string;
+  message?: string;
+  stage?: string;
+  agent?: string;
+  retryable?: boolean;
+  http_status?: number | null;
+  provider?: string;
+  model_name?: string;
+}
 
 export interface WorkflowStageState {
   stage: StageId;
@@ -47,11 +47,7 @@ export interface ChatMessageItem {
   status?: string;
   error_code?: string;
   error_detail?: string;
-  attachments?: Array<{
-    attachment_id: string;
-    filename_or_url: string;
-    attachment_type: string;
-  }>;
+  attachments?: Array<{ attachment_id: string; filename_or_url: string; attachment_type: string }>;
 }
 
 export interface ChatSessionItem {
@@ -74,13 +70,10 @@ export const CANONICAL_WORKFLOW_STAGES: Array<{ stage: StageId; agent: AgentId; 
   { stage: 'FINAL_CMO', agent: 'cmo', label: 'Final CMO Synthesis' },
 ];
 
+const AGENT_IDS: AgentId[] = ['cmo', 'intelligence', 'strategist', 'creative', 'performance'];
+
 export function createInitialWorkflowStages(): WorkflowStageState[] {
-  return CANONICAL_WORKFLOW_STAGES.map((s) => ({
-    stage: s.stage,
-    agent: s.agent,
-    label: s.label,
-    status: 'PENDING',
-  }));
+  return CANONICAL_WORKFLOW_STAGES.map((s) => ({ ...s, status: 'PENDING' }));
 }
 
 export function createDefaultAgentStates(): Record<AgentId, AgentLiveState> {
@@ -93,30 +86,14 @@ export function createDefaultAgentStates(): Record<AgentId, AgentLiveState> {
   };
 }
 
-/**
- * Checks submission eligibility before performing any message insertion or network invoke.
- */
 export function canSubmitTurn(isProcessing: boolean, chatInput: string, attachmentsCount: number): boolean {
-  if (isProcessing) return false;
-  return Boolean(chatInput.trim().length > 0 || attachmentsCount > 0);
+  return !isProcessing && Boolean(chatInput.trim().length > 0 || attachmentsCount > 0);
 }
 
-/**
- * Instantiates exactly one assistant placeholder message for a new streaming turn.
- */
 export function createAssistantPlaceholder(assistantMsgId: string): ChatMessageItem {
-  return {
-    message_id: assistantMsgId,
-    role: 'assistant',
-    sender_name: 'AI Assistant',
-    content: '',
-    status: 'STREAMING',
-  };
+  return { message_id: assistantMsgId, role: 'assistant', sender_name: 'AI Assistant', content: '', status: 'STREAMING' };
 }
 
-/**
- * Appends streaming delta text directly to the assistant message in the matching session.
- */
 export function applyDeltaToSessions(
   sessions: ChatSessionItem[],
   targetChatIds: string[],
@@ -124,66 +101,39 @@ export function applyDeltaToSessions(
   deltaText: string
 ): ChatSessionItem[] {
   const targetSet = new Set(targetChatIds.filter(Boolean));
-  return sessions.map((s) => {
-    if (!targetSet.has(s.chat_id)) return s;
-    return {
-      ...s,
-      messages: s.messages.map((m) => {
-        if (m.message_id !== assistantMsgId) return m;
-        return {
-          ...m,
-          content: m.content + deltaText,
-        };
-      }),
-    };
-  });
+  return sessions.map((s) => targetSet.has(s.chat_id) ? {
+    ...s,
+    messages: s.messages.map((m) => m.message_id === assistantMsgId ? { ...m, content: m.content + deltaText } : m),
+  } : s);
 }
 
-/**
- * Updates 6-stage workflow presentation state based on trusted runtime progress events.
- */
 export function applyProgressToWorkflow(
   currentStages: WorkflowStageState[],
   progress: { event_type: string; stage?: string | null; agent?: string | null; message?: string }
 ): WorkflowStageState[] {
   if (!progress.stage) return currentStages;
-
   const rawStage = progress.stage.toUpperCase() as StageId;
-  const isKnownStage = CANONICAL_WORKFLOW_STAGES.some((s) => s.stage === rawStage);
-  if (!isKnownStage) return currentStages;
-
+  if (!CANONICAL_WORKFLOW_STAGES.some((s) => s.stage === rawStage)) return currentStages;
   const isFailed = progress.event_type.includes('FAILED') || progress.event_type.includes('ERROR');
   const isCompleted = progress.event_type.includes('COMPLETED');
   const isStarted = progress.event_type.includes('STARTED');
-
-  return currentStages.map((st) => {
-    if (st.stage !== rawStage) return st;
-    return {
-      ...st,
-      status: isFailed ? 'FAILED' : isCompleted ? 'COMPLETED' : isStarted ? 'ACTIVE' : st.status,
-      detail: progress.message || st.detail,
-    };
-  });
+  return currentStages.map((st) => st.stage === rawStage ? {
+    ...st,
+    status: isFailed ? 'FAILED' : isCompleted ? 'COMPLETED' : isStarted ? 'ACTIVE' : st.status,
+    detail: progress.message || st.detail,
+  } : st);
 }
 
-/**
- * Updates 5 permanent agent live states based on trusted runtime progress events.
- */
 export function applyProgressToAgents(
   currentAgents: Record<string, AgentLiveState>,
   progress: { event_type: string; agent?: string | null; message?: string }
 ): Record<string, AgentLiveState> {
   if (!progress.agent) return currentAgents;
-
   const rawAgent = progress.agent.toLowerCase() as AgentId;
-  if (!['cmo', 'intelligence', 'strategist', 'creative', 'performance'].includes(rawAgent)) {
-    return currentAgents;
-  }
-
+  if (!AGENT_IDS.includes(rawAgent)) return currentAgents;
   const isFailed = progress.event_type.includes('FAILED') || progress.event_type.includes('ERROR');
   const isCompleted = progress.event_type.includes('COMPLETED');
   const isStarted = progress.event_type.includes('STARTED');
-
   return {
     ...currentAgents,
     [rawAgent]: {
@@ -193,17 +143,19 @@ export function applyProgressToAgents(
   };
 }
 
-/**
- * Ensures any working agent is transitioned to ERROR (if it was active) on terminal error,
- * guaranteeing no agent remains stuck in WORKING.
- */
 export function applyTerminalErrorToAgents(
-  currentAgents: Record<string, AgentLiveState>
+  currentAgents: Record<string, AgentLiveState>,
+  error?: PublicStreamErrorLike
 ): Record<string, AgentLiveState> {
+  const failedAgent = (error?.agent || '').toLowerCase() as AgentId;
+  const hasAuthoritativeAgent = AGENT_IDS.includes(failedAgent);
   const updated: Record<string, AgentLiveState> = {};
   for (const [key, state] of Object.entries(currentAgents)) {
-    if (state.status === 'WORKING') {
-      updated[key] = { ...state, status: 'ERROR', detail: state.detail || 'Execution stopped' };
+    if ((hasAuthoritativeAgent && key === failedAgent) || (!hasAuthoritativeAgent && state.status === 'WORKING')) {
+      updated[key] = { ...state, status: 'ERROR', detail: error?.safe_message || error?.message || state.detail || 'Execution stopped' };
+    } else if (state.status === 'WORKING') {
+      // A terminal run error must never leave another agent stuck in WORKING.
+      updated[key] = { ...state, status: 'READY' };
     } else {
       updated[key] = state;
     }
@@ -211,9 +163,6 @@ export function applyTerminalErrorToAgents(
   return updated;
 }
 
-/**
- * Finalizes assistant placeholder and adopts authoritative backend session ID without duplicating text.
- */
 export function applyTerminalCompleteToSessions(
   sessions: ChatSessionItem[],
   turnChatId: string,
@@ -223,34 +172,23 @@ export function applyTerminalCompleteToSessions(
 ): { sessions: ChatSessionItem[]; finalChatId: string } {
   const finalChatId = completePayload.chat_id || assignedChatId || turnChatId;
   const finalTitle = completePayload.session?.title;
-
   const updatedSessions = sessions.map((s) => {
-    if (s.chat_id !== turnChatId && s.chat_id !== assignedChatId && s.chat_id !== finalChatId) {
-      return s;
-    }
+    if (s.chat_id !== turnChatId && s.chat_id !== assignedChatId && s.chat_id !== finalChatId) return s;
     return {
       ...s,
       chat_id: finalChatId,
       title: finalTitle || s.title,
-      messages: s.messages.map((m) => {
-        if (m.message_id !== assistantMsgId) return m;
-        return {
-          ...m,
-          status: 'COMPLETED',
-          run_id: completePayload.run_id || m.run_id,
-        };
-      }),
+      messages: s.messages.map((m) => m.message_id === assistantMsgId ? {
+        ...m,
+        status: 'COMPLETED',
+        run_id: completePayload.run_id || m.run_id,
+      } : m),
       updated_at: new Date().toISOString(),
     };
   });
-
   return { sessions: updatedSessions, finalChatId };
 }
 
-/**
- * Handles terminal error: preserves partial streamed text if present, sets status to ERROR,
- * and attaches safe error diagnostic code and detail.
- */
 export function applyTerminalErrorToSessions(
   sessions: ChatSessionItem[],
   targetChatIds: string[],
@@ -260,78 +198,61 @@ export function applyTerminalErrorToSessions(
   errorDetail?: string
 ): ChatSessionItem[] {
   const targetSet = new Set(targetChatIds.filter(Boolean));
-  return sessions.map((s) => {
-    if (!targetSet.has(s.chat_id)) return s;
-    return {
-      ...s,
-      messages: s.messages.map((m) => {
-        if (m.message_id !== assistantMsgId) return m;
-        return {
-          ...m,
-          status: 'ERROR',
-          content: m.content ? m.content : errorMessage,
-          error_code: errorCode || 'REQUEST_FAILED',
-          error_detail: errorDetail || errorMessage,
-        };
-      }),
-      updated_at: new Date().toISOString(),
-    };
+  return sessions.map((s) => !targetSet.has(s.chat_id) ? s : {
+    ...s,
+    messages: s.messages.map((m) => m.message_id === assistantMsgId ? {
+      ...m,
+      status: 'ERROR',
+      content: m.content || errorMessage,
+      error_code: errorCode || 'REQUEST_FAILED',
+      error_detail: errorDetail || errorMessage,
+    } : m),
+    updated_at: new Date().toISOString(),
   });
 }
 
-/**
- * Preserves truthful stage failure history:
- * - Active stage becomes FAILED.
- * - Completed stages remain COMPLETED.
- * - Unreached stages remain PENDING.
- */
-export function applyTerminalErrorToStages(currentStages: WorkflowStageState[]): WorkflowStageState[] {
-  return currentStages.map((st) => {
-    if (st.status === 'ACTIVE') {
-      return { ...st, status: 'FAILED' };
+export function applyTerminalErrorToStages(
+  currentStages: WorkflowStageState[],
+  error?: PublicStreamErrorLike
+): WorkflowStageState[] {
+  const requestedStage = (error?.stage || '').toUpperCase() as StageId;
+  let failedIndex = CANONICAL_WORKFLOW_STAGES.findIndex((s) => s.stage === requestedStage);
+  if (failedIndex < 0) failedIndex = currentStages.findIndex((s) => s.status === 'ACTIVE');
+
+  // A transport failure before any stage is reached must not invent a failed agent stage.
+  if (failedIndex < 0) return currentStages;
+
+  return currentStages.map((st, idx) => {
+    if (idx === failedIndex) {
+      return { ...st, status: 'FAILED', detail: error?.safe_message || error?.message || st.detail };
+    }
+    if (idx > failedIndex && (st.status === 'PENDING' || st.status === 'ACTIVE')) {
+      return { ...st, status: 'NOT_REACHED', detail: st.detail || 'Not reached because an earlier stage failed.' };
     }
     return st;
   });
 }
 
-/**
- * Merges authoritative backend sessions with local sessions, guaranteeing:
- * 1. Unpersisted local temporary sessions (e.g. CHAT-TEMP-*) are NEVER deleted by backend refresh.
- * 2. Unpersisted / failed messages in existing sessions are retained and not wiped out by older backend state.
- * 3. Migrated / persisted sessions adopt backend data cleanly without duplicating items.
- */
 export function mergeBackendSessionsWithLocal(
   localSessions: ChatSessionItem[],
   backendSessions: ChatSessionItem[]
 ): ChatSessionItem[] {
   const backendMap = new Map<string, ChatSessionItem>();
-  for (const bs of backendSessions) {
-    backendMap.set(bs.chat_id, bs);
-  }
-
+  backendSessions.forEach((bs) => backendMap.set(bs.chat_id, bs));
   const merged: ChatSessionItem[] = [];
   const processedBackendIds = new Set<string>();
 
   for (const ls of localSessions) {
     if (ls.chat_id.startsWith('CHAT-TEMP-')) {
-      // Retain unpersisted / failed local TEMP sessions
       merged.push(ls);
       continue;
     }
-
     const backendMatch = backendMap.get(ls.chat_id);
     if (backendMatch) {
       processedBackendIds.add(ls.chat_id);
-      // Check if local session contains unpersisted/failed/streaming messages that backend does not have
-      const hasLocalActiveOrFailedTurn = ls.messages.some(
-        (m) => m.status === 'ERROR' || m.status === 'STREAMING'
-      );
+      const hasLocalActiveOrFailedTurn = ls.messages.some((m) => m.status === 'ERROR' || m.status === 'STREAMING');
       if (hasLocalActiveOrFailedTurn || ls.messages.length > backendMatch.messages.length) {
-        merged.push({
-          ...backendMatch,
-          title: backendMatch.title || ls.title,
-          messages: ls.messages,
-        });
+        merged.push({ ...backendMatch, title: backendMatch.title || ls.title, messages: ls.messages });
       } else {
         merged.push(backendMatch);
       }
@@ -340,11 +261,8 @@ export function mergeBackendSessionsWithLocal(
     }
   }
 
-  for (const bs of backendSessions) {
-    if (!processedBackendIds.has(bs.chat_id)) {
-      merged.push(bs);
-    }
-  }
-
+  backendSessions.forEach((bs) => {
+    if (!processedBackendIds.has(bs.chat_id)) merged.push(bs);
+  });
   return merged;
 }
