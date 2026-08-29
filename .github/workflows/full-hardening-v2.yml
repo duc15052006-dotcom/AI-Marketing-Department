@@ -54,7 +54,7 @@ jobs:
             set -e
             cat /tmp/hardening-r2.log
             if [ "$r2_status" -ne 0 ]; then
-              grep -q 'Synchronous generation path' /tmp/hardening-r2.log || { echo "Unexpected R2 patch failure"; exit "$r2_status"; }
+              grep -q 'end marker missing' /tmp/hardening-r2.log || { echo "Unexpected R2 patch failure"; exit "$r2_status"; }
             fi
 
             python scripts/full_hardening_apply_r3.py
