@@ -16,17 +16,24 @@ jobs:
         with:
           ref: phase/agent-hardening-v2
           fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest
-      - name: Apply asserted production migration
-        run: python tools/dev/apply_full_defect_sweep_v2_r4.py
+
+      - name: Apply asserted consolidated migrations
+        run: |
+          python tools/dev/apply_full_defect_sweep_v2_r4.py
+          python tools/dev/apply_full_defect_sweep_v2_post.py
+
       - name: Compile all production Python
         run: python -m compileall -q runtime chat app_api integrations tools connectors
+
       - name: Focused defect regression
         run: |
           python -m pytest -q \
@@ -35,49 +42,75 @@ jobs:
             tests/test_runtime_public_errors_v2.py \
             tests/test_app_streaming_typed_errors_v2.py \
             tests/test_research_loop_v2.py \
+            tests/test_no_fake_default_tool_success_v2.py \
+            tests/test_tool_gateway_safe_exception_v2.py \
+            tests/test_model_cost_truth_v2.py \
             tests/test_prod_workflow_failure_semantics_01.py \
             tests/test_prod_runtime_01_single_run_authority.py
+
       - name: Full Python regression
         run: python -m pytest -q
+
       - name: Frontend tests and build
         working-directory: frontend
         run: |
           npm install
           npm test
           npm run build
+
       - name: Rust native bridge check
         working-directory: src-tauri
         run: |
           cargo check --locked
           cargo test --locked
+
       - name: Static truth and safety assertions
         shell: bash
         run: |
           grep -q 'BoundedResearchLoop' runtime/engine.py
           grep -q 'research_depth=resolved_followup.research_depth.value' app_api/server.py
+          grep -q 'render_agent_skill_context(agent_name)' runtime/engine.py
+          grep -q 'isTableSeparator' frontend/src/components/MarkdownView.tsx
+          grep -q 'error_http_status' frontend/src/chat/streamState.ts
           grep -q 'STREAM_TRUNCATED' frontend/src/api/streaming.ts
+
           ! grep -q 'handleTerminalComplete({});' frontend/src/api/streaming.ts
           ! grep -q 'return None, str(e)' runtime/engine.py
-          ! grep -q 'str(last_exc)' tools/tool_gateway.py
           ! grep -q '"target_value": 150.0' runtime/engine.py
+          ! grep -q 'PREVIOUS_STAGE_FAILED' runtime/engine.py
+          ! grep -q '"status": "RENDERED"' tools/adapters.py
+          ! grep -q '"p_value": 0.012' tools/adapters.py
           ! grep -q '"paid_search": 0.42' connectors/analytics_connector.py
           ! grep -q '"p_value": 0.008' connectors/analytics_connector.py
           ! grep -q 'mock-search.example.com' connectors/web_connector.py
-          ! grep -q '"status": "RENDERED"' tools/adapters.py
-          ! grep -q '"p_value": 0.012' tools/adapters.py
+          ! grep -q 'str(last_exc)' tools/tool_gateway.py
+          ! grep -q 'UNEXPECTED_PIPELINE_CRASH.*reason' tests/test_prod_runtime_01_single_run_authority.py
+          ! grep -q 'ADAPTER_INVOCATION_EXCEPTION: {str(e)' integrations/models/gateway.py
+
           grep -q 'REAL_MEDIA_CONNECTOR_REQUIRED' tools/adapters.py
+          grep -q 'REAL_ANALYTICS_CONNECTOR_REQUIRED' tools/adapters.py
           grep -q 'cost_tier = CostPolicy.UNKNOWN' integrations/models/gateway.py
-          grep -q 'error_http_status' frontend/src/chat/streamState.ts
-          grep -q 'isTableSeparator' frontend/src/components/MarkdownView.tsx
           git diff --check
-      - name: Commit verified migration
+
+      - name: Commit verified production batch
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "4189822+github-actions[bot]@users.noreply.github.com"
-          git add runtime/engine.py chat/engine.py app_api/server.py tools/tool_gateway.py tools/adapters.py integrations/models/registry.py integrations/models/gateway.py frontend/src/chat/streamState.ts frontend/src/App.tsx tests/test_prod_workflow_failure_semantics_01.py tests/test_prod_runtime_01_single_run_authority.py
+          git add \
+            runtime/engine.py \
+            chat/engine.py \
+            app_api/server.py \
+            tools/tool_gateway.py \
+            tools/adapters.py \
+            integrations/models/registry.py \
+            integrations/models/gateway.py \
+            frontend/src/chat/streamState.ts \
+            frontend/src/App.tsx \
+            tests/test_prod_workflow_failure_semantics_01.py \
+            tests/test_prod_runtime_01_single_run_authority.py
           git diff --cached --check
           if ! git diff --cached --quiet; then
-            git commit -m "fix: complete conversation research cost and error wiring"
+            git commit -m "fix: complete consolidated production defect sweep"
             git push origin HEAD:phase/agent-hardening-v2
           fi
