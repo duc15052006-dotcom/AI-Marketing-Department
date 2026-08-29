@@ -38,6 +38,20 @@ import {
   ExecutionReceiptItem,
 } from './types/index.ts';
 import { apiFetch } from './api/client.ts';
+import { streamChatTurn, RuntimeProgressData } from './api/streaming.ts';
+import {
+  canSubmitTurn,
+  createAssistantPlaceholder,
+  createInitialWorkflowStages,
+  createDefaultAgentStates,
+  applyDeltaToSessions,
+  applyProgressToWorkflow,
+  applyProgressToAgents,
+  applyTerminalCompleteToSessions,
+  applyTerminalErrorToSessions,
+  applyTerminalErrorToStages,
+  WorkflowStageState,
+} from './chat/streamState.ts';
 
 const API_BASE = '';
 
@@ -142,13 +156,13 @@ export default function App() {
   const [urlInput, setUrlInput] = useState<string>('');
 
   // Agent live states (5 Permanent Agents)
-  const [agentStates, setAgentStates] = useState<Record<string, { status: string; detail: string }>>({
-    cmo: { status: 'READY', detail: 'Strategy governance & master synthesis' },
-    intelligence: { status: 'READY', detail: 'Market intelligence & evidence mining' },
-    strategist: { status: 'READY', detail: 'Positioning architectures & messaging' },
-    creative: { status: 'READY', detail: 'Concepts, hooks & script synthesis' },
-    performance: { status: 'READY', detail: 'Analytics, attribution & allocation' },
-  });
+  const [agentStates, setAgentStates] = useState<Record<string, any>>(
+    createDefaultAgentStates()
+  );
+  // 6 Workflow Stages (CMO_INITIAL, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE, FINAL_CMO)
+  const [workflowStages, setWorkflowStages] = useState<WorkflowStageState[]>(
+    createInitialWorkflowStages()
+  );
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editMsgTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -160,48 +174,66 @@ export default function App() {
 
   const fetchCoreData = async () => {
     try {
-      const resHealth = await apiFetch(`${API_BASE}/api/health`);
-      if (resHealth.ok) {
-        setBackendState('BACKEND_READY');
-        setBackendErrorDetail('');
-      } else {
-        setBackendState('BACKEND_FAILED');
-        setBackendErrorDetail('BACKEND_UNHEALTHY: Dịch vụ backend phản hồi lỗi kết nối.');
-      }
+      const [sessRes, projRes, wsRes, connRes, appRes, recRes] = await Promise.allSettled([
+        apiFetch(`${API_BASE}/api/chat/sessions`),
+        apiFetch(`${API_BASE}/api/projects`),
+        apiFetch(`${API_BASE}/api/business_workspaces`),
+        apiFetch(`${API_BASE}/api/connectors/health`),
+        apiFetch(`${API_BASE}/api/approvals`),
+        apiFetch(`${API_BASE}/api/execution_receipts`),
+      ]);
 
-      const resHealthSys = await apiFetch(`${API_BASE}/api/system/health`);
-      if (resHealthSys.ok) setConnectorHealth(await resHealthSys.json());
-
-      const resChats = await apiFetch(`${API_BASE}/api/chat/sessions`);
-      if (resChats.ok) {
-        const list: ChatSessionItem[] = await resChats.json();
-        setChatSessions(list);
-        if (list.length > 0) {
-          setActiveChatId((curr) => {
-            if (curr === '') return '';
-            const exists = list.some((s) => s.chat_id === curr);
-            return exists ? curr : list[0].chat_id;
-          });
+      if (sessRes.status === 'fulfilled' && sessRes.value.ok) {
+        const data = await sessRes.value.json();
+        const items = data.sessions || [];
+        setChatSessions(items);
+        if (items.length > 0 && !activeChatId) {
+          setActiveChatId(items[0].chat_id);
         }
       }
-
-      const resProj = await apiFetch(`${API_BASE}/api/projects`);
-      if (resProj.ok) setProjects(await resProj.json());
-
-      const resBiz = await apiFetch(`${API_BASE}/api/workspaces`);
-      if (resBiz.ok) setWorkspaces(await resBiz.json());
-
-      const resAppr = await apiFetch(`${API_BASE}/api/approvals`);
-      if (resAppr.ok) setPendingApprovals(await resAppr.json());
-
-      const resRec = await apiFetch(`${API_BASE}/api/activity/receipts`);
-      if (resRec.ok) setReceipts(await resRec.json());
-    } catch (e: any) {
-      console.warn('Local API fetch warning:', e);
-      setBackendState('BACKEND_FAILED');
-      setBackendErrorDetail(e?.message ? `BACKEND_UNAVAILABLE: ${e.message}` : 'BACKEND_UNAVAILABLE: Không thể kết nối với dịch vụ backend cục bộ.');
+      if (projRes.status === 'fulfilled' && projRes.value.ok) {
+        const data = await projRes.value.json();
+        setProjects(data.projects || []);
+      }
+      if (wsRes.status === 'fulfilled' && wsRes.value.ok) {
+        const data = await wsRes.value.json();
+        setWorkspaces(data.workspaces || []);
+      }
+      if (connRes.status === 'fulfilled' && connRes.value.ok) {
+        const data = await connRes.value.json();
+        setConnectorHealth(data.connectors || {});
+      }
+      if (appRes.status === 'fulfilled' && appRes.value.ok) {
+        const data = await appRes.value.json();
+        setPendingApprovals(data.approvals || []);
+      }
+      if (recRes.status === 'fulfilled' && recRes.value.ok) {
+        const data = await recRes.value.json();
+        setReceipts(data.receipts || []);
+      }
+    } catch (e) {
+      console.warn('Background core data refresh skipped:', e);
     }
   };
+
+  useEffect(() => {
+    const initApp = async () => {
+      try {
+        const res = await apiFetch(`${API_BASE}/api/health`);
+        if (res.ok) {
+          setBackendState('BACKEND_READY');
+          fetchCoreData();
+        } else {
+          setBackendState('BACKEND_FAILED');
+          setBackendErrorDetail(`Backend health check failed (${res.status})`);
+        }
+      } catch (err: any) {
+        setBackendState('BACKEND_FAILED');
+        setBackendErrorDetail(classifyErrorMessage(err, 'Cannot connect to local backend service.'));
+      }
+    };
+    initApp();
+  }, []);
 
   useEffect(() => {
     fetchCoreData();
@@ -263,6 +295,7 @@ export default function App() {
     setAttachments([]);
     setChatInput('');
     setEditingMsgId(null);
+    resetAgentStates();
     setTimeout(() => textareaRef.current?.focus(), 50);
   };
 
@@ -314,53 +347,48 @@ export default function App() {
       return remaining;
     });
   };
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        const ext = file.name.split('.').pop()?.toUpperCase() || 'TXT';
-        const type = ['PDF', 'CSV', 'JSON', 'MARKDOWN'].includes(ext) ? ext : 'TEXT';
-
-        const newAtt: ChatAttachmentItem = {
-          attachment_id: `ATT-${Date.now()}-${i}`,
-          filename_or_url: file.name,
-          type: type,
-          content: content || `[File Content: ${file.name}]`,
-        };
-        setAttachments((prev) => [...prev, newAtt]);
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const newAtt: ChatAttachmentItem = {
+        attachment_id: `ATT-${Date.now()}`,
+        filename_or_url: file.name,
+        type: file.type || 'text/plain',
+        content: content || '',
       };
-      reader.readAsText(file);
-    }
+      setAttachments((prev) => [...prev, newAtt]);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
     setShowAttachmentMenu(false);
   };
 
-  const handleAddUrlAttachment = () => {
+
+  const handleSaveUrlAttachment = () => {
     if (!urlInput.trim()) return;
-    const urlAtt: ChatAttachmentItem = {
+    const newAtt: ChatAttachmentItem = {
       attachment_id: `ATT-URL-${Date.now()}`,
       filename_or_url: urlInput.trim(),
-      type: 'URL',
-      content: `[Content fetched from URL: ${urlInput.trim()}]`,
+      type: 'url_reference',
+      content: urlInput.trim(),
     };
-    setAttachments((prev) => [...prev, urlAtt]);
-    setUrlInput('');
+    setAttachments((prev) => [...prev, newAtt]);
     setUrlModalOpen(false);
-    setShowAttachmentMenu(false);
+    setUrlInput('');
   };
 
   const handleSavePastedText = () => {
     if (!pasteModalContent.trim()) return;
+    const title = pasteModalTitle.trim() || 'Pasted Note';
     const noteAtt: ChatAttachmentItem = {
       attachment_id: `ATT-NOTE-${Date.now()}`,
-      filename_or_url: pasteModalTitle.trim() || 'Pasted Note',
-      type: 'TEXT',
-      content: pasteModalContent.trim(),
+      filename_or_url: `${title}.txt`,
+      type: 'text/plain',
+      content: pasteModalContent,
     };
     setAttachments((prev) => [...prev, noteAtt]);
     setPasteModalContent('');
@@ -368,13 +396,18 @@ export default function App() {
     setShowAttachmentMenu(false);
   };
 
+  const resetAgentStates = () => {
+    setAgentStates(createDefaultAgentStates());
+    setWorkflowStages(createInitialWorkflowStages());
+  };
+
   const handleSendMessage = async () => {
-    if (!chatInput.trim() && attachments.length === 0) return;
-    if (isProcessing) return;
+    if (!canSubmitTurn(isProcessing, chatInput, attachments.length)) return;
 
     const textToSend = chatInput.trim();
     const sentAttachments = [...attachments];
     const userMsgId = `MSG-U-${Date.now()}`;
+    const assistantMsgId = `MSG-A-${Date.now()}`;
 
     const userMsg: ChatMessageItem = {
       message_id: userMsgId,
@@ -388,195 +421,105 @@ export default function App() {
       })),
     };
 
+    const assistantPlaceholder = createAssistantPlaceholder(assistantMsgId);
+
     setChatInput('');
     setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     setIsProcessing(true);
-    setAgentProgress('Processing request...');
+    setAgentProgress('Connecting...');
+    setWorkflowStages(createInitialWorkflowStages());
 
-    // Flow 1: Lazy Auto-Creation on First Message (Single Send Action)
-    if (!activeChatId) {
+    let turnChatId = activeChatId;
+    let path = '';
+    let body: any = { content: textToSend, attachments: sentAttachments };
+
+    // Flow 1: Lazy Auto-Creation on First Message
+    if (!turnChatId) {
       const pendingTitle = textToSend.split('\n')[0].substring(0, 30) || (sentAttachments[0]?.filename_or_url || 'New Chat');
       const tempChatId = `CHAT-TEMP-${Date.now()}`;
+      turnChatId = tempChatId;
+
       const tempSession: ChatSessionItem = {
         chat_id: tempChatId,
         title: pendingTitle,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         status: 'ACTIVE',
-        messages: [userMsg],
+        messages: [userMsg, assistantPlaceholder],
       };
 
       setChatSessions((prev) => [tempSession, ...prev]);
       setActiveChatId(tempChatId);
-      setTimeout(() => scrollToBottom(true), 50);
-
-      try {
-        const res = await apiFetch(`${API_BASE}/api/chat/sessions/first_turn`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: textToSend,
-            attachments: sentAttachments,
-            auto_execute: true,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const realChatId = data.chat_id || (data.session && data.session.chat_id) || tempChatId;
-          const realTitle = (data.session && data.session.title) || pendingTitle;
-          const realUserMsg = data.user_message || userMsg;
-          const realAssistantMsg = data.message;
-
-          setChatSessions((prev) =>
-            prev.map((s) =>
-              s.chat_id === tempChatId
-                ? {
-                    ...s,
-                    chat_id: realChatId,
-                    title: realTitle,
-                    messages: realAssistantMsg ? [realUserMsg, realAssistantMsg] : [realUserMsg],
-                    updated_at: new Date().toISOString(),
-                  }
-                : s
-            )
-          );
-          setActiveChatId(realChatId);
-        } else {
-          let errPayload: any = null;
-          try {
-            errPayload = await res.json();
-          } catch {}
-          const errorMsg = classifyErrorMessage(errPayload?.error || res.status, 'Không thể nhận phản hồi từ backend.');
-          const honestErrorMsg: ChatMessageItem = {
-            message_id: `MSG-E-${Date.now()}`,
-            role: 'assistant',
-            sender_name: 'AI Assistant',
-            content: errorMsg,
-            status: 'ERROR',
-          };
-          setChatSessions((prev) =>
-            prev.map((s) =>
-              s.chat_id === tempChatId
-                ? { ...s, messages: [userMsg, honestErrorMsg] }
-                : s
-            )
-          );
-        }
-      } catch (e: any) {
-        console.warn('First message send error:', e);
-        const errorMsg = classifyErrorMessage(e, 'Không thể kết nối đến backend cục bộ.');
-        const honestErrorMsg: ChatMessageItem = {
-          message_id: `MSG-E-${Date.now()}`,
-          role: 'assistant',
-          sender_name: 'AI Assistant',
-          content: errorMsg,
-          status: 'ERROR',
-        };
-        setChatSessions((prev) =>
-          prev.map((s) =>
-            s.chat_id === tempChatId
-              ? { ...s, messages: [userMsg, honestErrorMsg] }
-              : s
-          )
-        );
-      }
+      path = '/api/chat/stream';
     } else {
       // Flow 2: Existing Active Chat Turn
-      const targetChatId = activeChatId;
       setChatSessions((prev) =>
         prev.map((s) =>
-          s.chat_id === targetChatId
+          s.chat_id === turnChatId
             ? {
                 ...s,
-                messages: [...s.messages, userMsg],
+                messages: [...s.messages, userMsg, assistantPlaceholder],
                 updated_at: new Date().toISOString(),
               }
             : s
         )
       );
-      setTimeout(() => scrollToBottom(true), 50);
-
-      try {
-        const res = await apiFetch(`${API_BASE}/api/chat/sessions/${targetChatId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: textToSend,
-            attachments: sentAttachments,
-            auto_execute: true,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.message) {
-            setChatSessions((prev) =>
-              prev.map((s) =>
-                s.chat_id === targetChatId
-                  ? {
-                      ...s,
-                      messages: [...s.messages, data.message],
-                      updated_at: new Date().toISOString(),
-                    }
-                  : s
-              )
-            );
-          }
-        } else {
-          let errPayload: any = null;
-          try {
-            errPayload = await res.json();
-          } catch {}
-          const errorMsg = classifyErrorMessage(errPayload?.error || res.status, 'Không thể nhận phản hồi từ backend.');
-          const honestErrorMsg: ChatMessageItem = {
-            message_id: `MSG-E-${Date.now()}`,
-            role: 'assistant',
-            sender_name: 'AI Assistant',
-            content: errorMsg,
-            status: 'ERROR',
-          };
-          setChatSessions((prev) =>
-            prev.map((s) =>
-              s.chat_id === targetChatId
-                ? { ...s, messages: [...s.messages, honestErrorMsg] }
-                : s
-            )
-          );
-        }
-      } catch (e: any) {
-        console.warn('Send message error:', e);
-        const errorMsg = classifyErrorMessage(e, 'Không thể kết nối đến backend cục bộ.');
-        const honestErrorMsg: ChatMessageItem = {
-          message_id: `MSG-E-${Date.now()}`,
-          role: 'assistant',
-          sender_name: 'AI Assistant',
-          content: errorMsg,
-          status: 'ERROR',
-        };
-        setChatSessions((prev) =>
-          prev.map((s) =>
-            s.chat_id === targetChatId
-              ? { ...s, messages: [...s.messages, honestErrorMsg] }
-              : s
-          )
-        );
-      }
+      path = `/api/chat/sessions/${turnChatId}/stream`;
     }
+    setTimeout(() => scrollToBottom(true), 50);
 
-    setIsProcessing(false);
-    setAgentProgress('');
-    setAgentStates({
-      cmo: { status: 'READY', detail: 'Strategy governance & master synthesis' },
-      intelligence: { status: 'READY', detail: 'Market intelligence & evidence mining' },
-      strategist: { status: 'READY', detail: 'Positioning architectures & messaging' },
-      creative: { status: 'READY', detail: 'Concepts, hooks & script synthesis' },
-      performance: { status: 'READY', detail: 'Analytics, attribution & allocation' },
+    let assignedChatId = turnChatId;
+
+    await streamChatTurn({
+      path,
+      body,
+      onProgress: (progress: RuntimeProgressData) => {
+        if (progress.message) {
+          setAgentProgress(progress.message);
+        }
+        setWorkflowStages((prev) => applyProgressToWorkflow(prev, progress));
+        setAgentStates((prev) => applyProgressToAgents(prev, progress));
+      },
+      onDelta: (delta) => {
+        setChatSessions((prev) =>
+          applyDeltaToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, delta.content)
+        );
+        scrollToBottom(true);
+      },
+      onComplete: (complete) => {
+        let finalChatId = assignedChatId;
+        setChatSessions((prev) => {
+          const res = applyTerminalCompleteToSessions(
+            prev,
+            turnChatId,
+            assignedChatId,
+            assistantMsgId,
+            complete
+          );
+          finalChatId = res.finalChatId;
+          assignedChatId = res.finalChatId;
+          return res.sessions;
+        });
+        if (finalChatId && finalChatId !== activeChatId) {
+          setActiveChatId(finalChatId);
+        }
+        setIsProcessing(false);
+        setAgentProgress('');
+        fetchCoreData();
+      },
+      onError: (err) => {
+        const errorMsg = classifyErrorMessage(err.message || err.code, 'Không thể nhận phản hồi từ backend.');
+        setChatSessions((prev) =>
+          applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg)
+        );
+        setWorkflowStages((prev) => applyTerminalErrorToStages(prev));
+        setIsProcessing(false);
+        setAgentProgress('');
+        fetchCoreData();
+      },
     });
-    setTimeout(() => scrollToBottom(true), 100);
-    fetchCoreData();
   };
 
   // Edit User Message & Resend
@@ -1060,12 +1003,22 @@ export default function App() {
                           </div>
                         </div>
                       ) : isError ? (
-                        /* Compact Error State with Retry and Copy Error */
+                        /* Compact Error State with Retry and Copy Error (Preserves partial streamed text if present) */
                         <div style={{ width: '100%', background: '#0E0E0E', border: '1px solid #2E2020', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#EF4444', fontSize: '13px', fontWeight: 500 }}>
-                            <IconAlertCircle size={15} />
-                            <span>{m.content}</span>
-                          </div>
+                          {m.content && !m.content.startsWith('⚠️') && !m.content.startsWith('Lỗi') ? (
+                            <div style={{ marginBottom: '6px' }}>
+                              <MarkdownView content={m.content} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#EF4444', fontSize: '12px', marginTop: '8px', fontWeight: 500 }}>
+                                <IconAlertCircle size={13} />
+                                <span>Luồng phản hồi bị gián đoạn (STREAM_INTERRUPTED).</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#EF4444', fontSize: '13px', fontWeight: 500 }}>
+                              <IconAlertCircle size={15} />
+                              <span>{m.content || 'Đã xảy ra lỗi trong quá trình xử lý.'}</span>
+                            </div>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                             <button
                               onClick={handleRetry}
@@ -1083,7 +1036,7 @@ export default function App() {
                               onMouseLeave={(e) => (e.currentTarget.style.color = '#888888')}
                             >
                               {copiedMsgId === m.message_id ? <IconCheck size={12} /> : <IconCopy size={12} />}
-                              <span>{copiedMsgId === m.message_id ? 'Đã sao chép' : 'Sao chép lỗi'}</span>
+                              <span>{copiedMsgId === m.message_id ? 'Đã sao chép' : 'Sao chép'}</span>
                             </button>
                           </div>
                         </div>
@@ -1101,6 +1054,10 @@ export default function App() {
                           {isUser ? (
                             <div style={{ color: '#F2F2F2', fontSize: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                               {m.content}
+                            </div>
+                          ) : m.status === 'STREAMING' && !m.content ? (
+                            <div style={{ color: '#8E8E8E', fontSize: '13px', fontStyle: 'italic' }}>
+                              Đang nhận phản hồi...
                             </div>
                           ) : (
                             <MarkdownView content={m.content} />
@@ -1506,6 +1463,43 @@ export default function App() {
             })}
           </div>
 
+          {/* 6 Workflow Stages (Active / Truthful Execution) */}
+          {workflowStages.some((s) => s.status !== 'PENDING') && (
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px', color: '#666666', textTransform: 'uppercase', marginBottom: '8px' }}>
+                WORKFLOW STAGES
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {workflowStages.map((st) => {
+                  const isDone = st.status === 'COMPLETED';
+                  const isActive = st.status === 'ACTIVE';
+                  const isFailed = st.status === 'FAILED';
+                  return (
+                    <div
+                      key={st.stage}
+                      style={{
+                        background: '#0D0D0D',
+                        border: `1px solid ${isFailed ? '#451A1A' : isActive ? '#282828' : '#141414'}`,
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ fontSize: '11.5px', color: isFailed ? '#EF4444' : isDone ? '#4ADE80' : isActive ? '#F59E0B' : '#777777', fontWeight: 500 }}>
+                        {st.label}
+                      </span>
+                      <span style={{ fontSize: '10px', color: isFailed ? '#EF4444' : isDone ? '#4ADE80' : isActive ? '#F59E0B' : '#555555', fontWeight: 600 }}>
+                        {st.status}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Session Attachments Section */}
           <div>
             <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.5px', color: '#666666', textTransform: 'uppercase', marginBottom: '8px' }}>
@@ -1586,7 +1580,7 @@ export default function App() {
                 Cancel
               </button>
               <button
-                onClick={handleAddUrlAttachment}
+                onClick={handleSaveUrlAttachment}
                 style={{ background: '#ECECEC', border: 'none', borderRadius: '6px', color: '#050505', fontSize: '12px', fontWeight: 600, padding: '6px 14px', cursor: 'pointer' }}
               >
                 Attach URL
