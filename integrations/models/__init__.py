@@ -12,7 +12,9 @@ from integrations.models.base import (
     ModelResponse,
     ModelResponseStatus,
     ModelRole,
+    ModelStreamError,
     ModelUsage,
+    StreamDelta,
 )
 from integrations.models.agent_loader import AgentDefinition, AgentLoader, PERMANENT_AGENT_IDS
 from integrations.models.cost_governance import CostGovernanceConfig, CostTracker
@@ -64,7 +66,9 @@ __all__ = [
     "ModelResponse",
     "ModelResponseStatus",
     "ModelRole",
+    "ModelStreamError",
     "ModelUsage",
+    "StreamDelta",
     "AgentDefinition",
     "AgentLoader",
     "PERMANENT_AGENT_IDS",

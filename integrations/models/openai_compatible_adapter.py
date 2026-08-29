@@ -28,6 +28,7 @@ from integrations.models.base import (
     ModelResponse,
     ModelResponseStatus,
     ModelRole,
+    ModelStreamError,
     ModelUsage,
     StreamDelta,
     normalize_model_request,
@@ -36,6 +37,7 @@ from integrations.models.transport import (
     DEFAULT_USER_AGENT,
     OpenAICompatibleTransport,
     classify_transport_error,
+    classify_transport_to_stream_error,
     sanitize_secrets,
 )
 
@@ -256,13 +258,20 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
             secret_to_redact=self._api_key,
         )
 
+        metadata = dict(classified.get("metadata", {}))
+        metadata["error_code"] = classified["code"]
+        metadata["error_category"] = classified["category"]
+        metadata["retryable"] = classified["retryable"]
+        metadata["http_status"] = classified["http_status"]
+        metadata["safe_message"] = classified["safe_message"]
+
         return ModelResponse(
             request_id=norm_req.request_id,
             provider=self.provider_name,
             model_name=model_name,
             status=classified["status"],
             error=classified["error"],
-            metadata=classified.get("metadata", {}),
+            metadata=metadata,
             usage=ModelUsage(usage_source="NOT_AVAILABLE"),
             latency_ms=latency_ms,
         )
@@ -273,15 +282,24 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
         Yields StreamDelta instances with visible-only content deltas.
         Uses same request construction as synchronous generate().
         Adds "stream": True to payload.
+        Emits structured ModelStreamError on failures.
         """
         try:
             norm_req = normalize_model_request(request)
         except Exception as e:
+            clean_err = sanitize_secrets(str(e))
             yield StreamDelta(
                 content="",
                 finish_reason="error",
                 provider=self.provider_name,
                 model_name=getattr(request, "model_name", self._default_model),
+                error=ModelStreamError(
+                    code="REQUEST_SCHEMA_ERROR",
+                    category="VALIDATION",
+                    safe_message=clean_err,
+                    retryable=False,
+                    http_status=None,
+                ),
             )
             return
 
@@ -291,6 +309,13 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                 finish_reason="error",
                 provider=self.provider_name,
                 model_name=norm_req.model_name if norm_req.model_name not in ("default", "", None) else self._default_model,
+                error=ModelStreamError(
+                    code="NO_CREDENTIAL",
+                    category="CONFIGURATION",
+                    safe_message=f"NO_CREDENTIAL: Provider '{self.provider_name}' has no API key configured.",
+                    retryable=False,
+                    http_status=None,
+                ),
             )
             return
 
@@ -319,18 +344,58 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
 
         timeout = norm_req.timeout_seconds if norm_req.timeout_seconds else self._timeout_seconds
 
+        received_visible_content = False
+        received_valid_completion = False
+
         for sse_event in self._transport.post_json_stream(
             endpoint_path=self._chat_completions_path,
             payload=payload,
             timeout_seconds=timeout,
         ):
             if sse_event.get("_error"):
+                stream_err = classify_transport_to_stream_error(
+                    status_code=sse_event.get("status_code"),
+                    headers=sse_event.get("headers", {}),
+                    body_str=sse_event.get("body", ""),
+                    provider_name=self.provider_name,
+                    secret_to_redact=self._api_key,
+                    is_timeout=sse_event.get("is_timeout", False),
+                    is_network_err=sse_event.get("is_network", False),
+                    is_internal_err=sse_event.get("is_internal", False),
+                )
                 yield StreamDelta(
                     content="",
                     finish_reason="error",
                     provider=self.provider_name,
                     model_name=model_name,
+                    error=stream_err,
                 )
+                return
+
+            if sse_event.get("_done"):
+                received_valid_completion = True
+                if not received_visible_content:
+                    yield StreamDelta(
+                        content="",
+                        finish_reason="error",
+                        provider=self.provider_name,
+                        model_name=model_name,
+                        error=ModelStreamError(
+                            code="EMPTY_RESPONSE",
+                            category="RESPONSE_ERROR",
+                            safe_message=f"EMPTY_RESPONSE: Provider '{self.provider_name}' completed stream without emitting visible assistant content.",
+                            retryable=True,
+                            http_status=None,
+                        ),
+                    )
+                else:
+                    yield StreamDelta(
+                        content="",
+                        finish_reason="stop",
+                        provider=self.provider_name,
+                        model_name=model_name,
+                        error=None,
+                    )
                 return
 
             choices = sse_event.get("choices", [])
@@ -343,6 +408,7 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
 
             content = delta.get("content", "")
             if content:
+                received_visible_content = True
                 yield StreamDelta(
                     content=content,
                     finish_reason=None,
@@ -351,10 +417,72 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                 )
 
             if finish_reason:
+                received_valid_completion = True
+                if finish_reason == "error":
+                    yield StreamDelta(
+                        content="",
+                        finish_reason="error",
+                        provider=self.provider_name,
+                        model_name=sse_event.get("model", model_name),
+                        error=ModelStreamError(
+                            code="PROVIDER_RESPONSE_ERROR",
+                            category="RESPONSE_ERROR",
+                            safe_message=f"PROVIDER_RESPONSE_ERROR: Provider '{self.provider_name}' returned finish_reason='error'.",
+                            retryable=False,
+                            http_status=None,
+                        ),
+                    )
+                elif not received_visible_content:
+                    yield StreamDelta(
+                        content="",
+                        finish_reason="error",
+                        provider=self.provider_name,
+                        model_name=sse_event.get("model", model_name),
+                        error=ModelStreamError(
+                            code="EMPTY_RESPONSE",
+                            category="RESPONSE_ERROR",
+                            safe_message=f"EMPTY_RESPONSE: Provider '{self.provider_name}' returned finish_reason='{finish_reason}' without emitting visible assistant content.",
+                            retryable=True,
+                            http_status=None,
+                        ),
+                    )
+                else:
+                    yield StreamDelta(
+                        content="",
+                        finish_reason=finish_reason,
+                        provider=self.provider_name,
+                        model_name=sse_event.get("model", model_name),
+                        error=None,
+                    )
+                return
+
+        # Handle unexpected stream truncation (EOF without [DONE] or finish_reason)
+        if not received_valid_completion:
+            if not received_visible_content:
                 yield StreamDelta(
                     content="",
-                    finish_reason=finish_reason,
+                    finish_reason="error",
                     provider=self.provider_name,
-                    model_name=sse_event.get("model", model_name),
+                    model_name=model_name,
+                    error=ModelStreamError(
+                        code="STREAM_TRUNCATED",
+                        category="STREAM_PROTOCOL",
+                        safe_message=f"STREAM_TRUNCATED: Provider '{self.provider_name}' stream closed unexpectedly without completion signal.",
+                        retryable=True,
+                        http_status=None,
+                    ),
                 )
-                return
+            else:
+                yield StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    provider=self.provider_name,
+                    model_name=model_name,
+                    error=ModelStreamError(
+                        code="STREAM_TRUNCATED",
+                        category="STREAM_PROTOCOL",
+                        safe_message=f"STREAM_TRUNCATED: Provider '{self.provider_name}' stream truncated after partial output.",
+                        retryable=False,
+                        http_status=None,
+                    ),
+                )

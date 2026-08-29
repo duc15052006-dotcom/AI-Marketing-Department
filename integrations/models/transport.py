@@ -11,30 +11,142 @@ with:
 
 from __future__ import annotations
 
+import errno
+import http.client
 import json
 import logging
 import re
+import socket
 import time
 from typing import Any, Dict, Generator, Optional, Tuple
 import urllib.error
 import urllib.request
 
-from integrations.models.base import ModelResponseStatus
+from integrations.models.base import ModelResponseStatus, ModelStreamError
 
 logger = logging.getLogger("openai_compatible_transport")
 
 DEFAULT_USER_AGENT = "AI-Marketing-Department/1.0 (OpenAI-Compatible-Client)"
 
+NETWORK_ERRNOS = {
+    errno.ECONNRESET,
+    errno.ECONNREFUSED,
+    errno.ECONNABORTED,
+    errno.ENETUNREACH,
+    errno.EHOSTUNREACH,
+    errno.ETIMEDOUT,
+    errno.EPIPE,
+    errno.ENETDOWN,
+    errno.ENETRESET,
+    errno.ESHUTDOWN,
+    errno.EHOSTDOWN,
+}
+for wsa_code in (10051, 10052, 10053, 10054, 10057, 10058, 10060, 10061, 10064, 10065):
+    NETWORK_ERRNOS.add(wsa_code)
+
+NON_NETWORK_OS_ERRORS = (
+    PermissionError,
+    FileNotFoundError,
+    IsADirectoryError,
+    FileExistsError,
+    NotADirectoryError,
+    ProcessLookupError,
+    InterruptedError,
+)
+
+
+def is_timeout_exception(exc: BaseException) -> bool:
+    """Return True only if exc is a true timeout exception."""
+    if isinstance(exc, NON_NETWORK_OS_ERRORS):
+        return False
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, (socket.timeout, TimeoutError)):
+            return True
+        if isinstance(reason, BaseException):
+            return is_timeout_exception(reason)
+        return False
+    if isinstance(exc, (socket.error, OSError)):
+        err_no = getattr(exc, "errno", None) or getattr(exc, "winerror", None)
+        if err_no in (errno.ETIMEDOUT, 10060):
+            return True
+    return False
+
+
+def is_network_exception(exc: BaseException) -> bool:
+    """Return True only if exc is a true network/socket/transport exception."""
+    if isinstance(exc, NON_NETWORK_OS_ERRORS):
+        return False
+    if is_timeout_exception(exc):
+        return False
+    if isinstance(exc, (ConnectionError, BrokenPipeError, ConnectionResetError, ConnectionRefusedError, ConnectionAbortedError, http.client.RemoteDisconnected, http.client.IncompleteRead, http.client.HTTPException)):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, "reason", None)
+        if reason is not None:
+            if isinstance(reason, (socket.timeout, TimeoutError)):
+                return False
+            if isinstance(reason, BaseException):
+                return is_network_exception(reason)
+            # Plain string reason on URLError is generic transport network failure
+            if isinstance(reason, str):
+                return True
+        return True
+    if isinstance(exc, (socket.gaierror, socket.herror)):
+        return True
+    if isinstance(exc, (socket.error, OSError)):
+        err_no = getattr(exc, "errno", None) or getattr(exc, "winerror", None)
+        if err_no in NETWORK_ERRNOS:
+            return True
+    return False
+
 
 def sanitize_secrets(text: str, secret: Optional[str] = None) -> str:
-    """Sanitize secret API keys and Bearer tokens from text/logs."""
+    """Sanitize secret API keys, tokens, and credentials from text/logs."""
     if not text:
         return ""
-    sanitized = text
+    sanitized = str(text)
     if secret and len(secret.strip()) > 0:
         sanitized = sanitized.replace(secret.strip(), "[REDACTED_API_KEY]")
-    # Redact any Bearer tokens
-    sanitized = re.sub(r"(Bearer\s+)[A-Za-z0-9_\-\.]{8,}", r"\1[REDACTED_TOKEN]", sanitized, flags=re.IGNORECASE)
+
+    # 1. Bearer and Basic Authorization headers / tokens (no minimum length requirement)
+    sanitized = re.sub(
+        r"""((?:Authorization\s*:\s*)?Bearer\s+)[^\s,;}{"']+""",
+        r"\1[REDACTED_TOKEN]",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+    sanitized = re.sub(
+        r"""((?:Authorization\s*:\s*)?Basic\s+)[^\s,;}{"']+""",
+        r"\1[REDACTED_BASIC_AUTH]",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+
+    # 2. URL query parameters (?access_token=... / &api_key=... / ?token=...)
+    sanitized = re.sub(
+        r"([?&](?:api[_\-]?key|apiKey|access[_\-]?token|accessToken|token|secret|password)=)[^&\s]+",
+        r"\1[REDACTED]",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+
+    # 3. Quoted JSON / Dict / Config key-value pairs (e.g. {"api_key": "secret"} or 'password': 'foo' or key = "val")
+    sanitized = re.sub(
+        r"""(?i)(["']?(?:api[_\-]?key|apiKey|access[_\-]?token|accessToken|token|secret|password)["']?\s*[:=]\s*["'])([^"'\r\n]+)(["'])""",
+        r"\1[REDACTED]\3",
+        sanitized,
+    )
+
+    # 4. Unquoted key-value assignments (e.g. api_key=secret or password: foo or secret = foo)
+    sanitized = re.sub(
+        r"""(?i)(["']?(?:api[_\-]?key|apiKey|access[_\-]?token|accessToken|token|secret|password)["']?\s*[:=]\s*)([^\s,;}{"'&?]+)""",
+        r"\1[REDACTED]",
+        sanitized,
+    )
+
     return sanitized
 
 
@@ -120,10 +232,12 @@ class OpenAICompatibleTransport:
                 body_str = ""
             return status_code, resp_headers, body_str
 
-        except (TimeoutError, urllib.error.URLError) as e:
-            is_timeout = isinstance(e, TimeoutError) or "timed out" in str(e).lower()
-            status_code = 408 if is_timeout else 599
-            return status_code, {}, str(e)
+        except Exception as e:
+            if is_timeout_exception(e):
+                return 408, {}, str(e)
+            elif is_network_exception(e):
+                return 599, {}, str(e)
+            raise
 
     def post_json_stream(
         self,
@@ -159,7 +273,37 @@ class OpenAICompatibleTransport:
             while True:
                 try:
                     chunk = resp.read(1)
-                except Exception:
+                except Exception as read_err:
+                    if is_timeout_exception(read_err):
+                        yield {
+                            "_error": True,
+                            "status_code": 408,
+                            "headers": {},
+                            "body": str(read_err),
+                            "is_timeout": True,
+                            "is_network": False,
+                            "is_internal": False,
+                        }
+                    elif is_network_exception(read_err):
+                        yield {
+                            "_error": True,
+                            "status_code": 599,
+                            "headers": {},
+                            "body": str(read_err),
+                            "is_timeout": False,
+                            "is_network": True,
+                            "is_internal": False,
+                        }
+                    else:
+                        yield {
+                            "_error": True,
+                            "status_code": None,
+                            "headers": {},
+                            "body": str(read_err),
+                            "is_timeout": False,
+                            "is_network": False,
+                            "is_internal": True,
+                        }
                     break
 
                 if not chunk:
@@ -177,6 +321,7 @@ class OpenAICompatibleTransport:
                     data_str = line[6:].strip()
 
                     if data_str == "[DONE]":
+                        yield {"_done": True}
                         return
 
                     try:
@@ -185,18 +330,68 @@ class OpenAICompatibleTransport:
                     except json.JSONDecodeError:
                         continue
 
+            # Process any remaining unparsed buffer at EOF (e.g. [DONE] without trailing newline)
+            if buffer:
+                line = buffer.decode("utf-8", errors="replace").rstrip("\r")
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        yield {"_done": True}
+                        return
+                    try:
+                        parsed = json.loads(data_str)
+                        yield parsed
+                    except json.JSONDecodeError:
+                        pass
+
         except urllib.error.HTTPError as e:
             error_body = ""
             try:
                 error_body = e.read().decode("utf-8", errors="replace")
             except Exception:
                 pass
-            yield {"_error": True, "status_code": e.code, "body": error_body}
+            resp_headers = {k.lower(): v for k, v in e.headers.items()} if hasattr(e, "headers") and e.headers else {}
+            yield {
+                "_error": True,
+                "status_code": e.code,
+                "headers": resp_headers,
+                "body": error_body,
+                "is_timeout": False,
+                "is_network": False,
+                "is_internal": False,
+            }
 
-        except (TimeoutError, urllib.error.URLError) as e:
-            is_timeout = isinstance(e, TimeoutError) or "timed out" in str(e).lower()
-            status_code = 408 if is_timeout else 599
-            yield {"_error": True, "status_code": status_code, "body": str(e)}
+        except Exception as e:
+            if is_timeout_exception(e):
+                yield {
+                    "_error": True,
+                    "status_code": 408,
+                    "headers": {},
+                    "body": str(e),
+                    "is_timeout": True,
+                    "is_network": False,
+                    "is_internal": False,
+                }
+            elif is_network_exception(e):
+                yield {
+                    "_error": True,
+                    "status_code": 599,
+                    "headers": {},
+                    "body": str(e),
+                    "is_timeout": False,
+                    "is_network": True,
+                    "is_internal": False,
+                }
+            else:
+                yield {
+                    "_error": True,
+                    "status_code": None,
+                    "headers": {},
+                    "body": str(e),
+                    "is_timeout": False,
+                    "is_network": False,
+                    "is_internal": True,
+                }
 
         finally:
             if resp is not None:
@@ -289,6 +484,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.ERROR,
             "error": msg,
+            "code": "PROVIDER_ACCESS_DENIED",
+            "category": "AUTHORIZATION",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 403,
             "metadata": {
                 "http_status": 403,
                 **cf_meta,
@@ -301,6 +501,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.RATE_LIMITED,
             "error": msg,
+            "code": "RATE_LIMITED",
+            "category": "RATE_LIMIT",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": 403,
             "metadata": {
                 "http_status": 403,
                 **cf_meta,
@@ -313,6 +518,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.ERROR,
             "error": msg,
+            "code": "AUTH_ERROR",
+            "category": "AUTHENTICATION",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 401,
             "metadata": {
                 "http_status": 401,
                 "error_category": "invalid_credentials",
@@ -328,6 +538,11 @@ def classify_transport_error(
             return {
                 "status": ModelResponseStatus.ERROR,
                 "error": msg,
+                "code": "PROVIDER_ACCESS_DENIED",
+                "category": "AUTHORIZATION",
+                "safe_message": msg,
+                "retryable": False,
+                "http_status": 403,
                 "metadata": {
                     "http_status": 403,
                     **cf_meta,
@@ -337,6 +552,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.ERROR,
             "error": msg,
+            "code": "AUTHORIZATION_ERROR",
+            "category": "AUTHORIZATION",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 403,
             "metadata": {
                 "http_status": 403,
                 "error_category": "permission_denied",
@@ -351,6 +571,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.RATE_LIMITED,
             "error": msg,
+            "code": "RATE_LIMITED",
+            "category": "RATE_LIMIT",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": 429,
             "metadata": {
                 "http_status": 429,
                 "error_category": "rate_limited",
@@ -364,6 +589,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.TIMEOUT,
             "error": msg,
+            "code": "TIMEOUT",
+            "category": "TIMEOUT",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": 408,
             "metadata": {
                 "http_status": 408,
                 "error_category": "timeout",
@@ -377,6 +607,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.ERROR,
             "error": msg,
+            "code": "PROVIDER_UNAVAILABLE",
+            "category": "SERVER_ERROR",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": status_code,
             "metadata": {
                 "http_status": status_code,
                 "error_category": "server_error",
@@ -390,6 +625,11 @@ def classify_transport_error(
         return {
             "status": ModelResponseStatus.ERROR,
             "error": msg,
+            "code": "INVALID_REQUEST",
+            "category": "BAD_REQUEST",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 400,
             "metadata": {
                 "http_status": 400,
                 "error_category": "bad_request",
@@ -402,9 +642,74 @@ def classify_transport_error(
     return {
         "status": ModelResponseStatus.ERROR,
         "error": msg,
+        "code": "PROVIDER_RESPONSE_ERROR",
+        "category": "RESPONSE_ERROR",
+        "safe_message": msg,
+        "retryable": False,
+        "http_status": status_code,
         "metadata": {
             "http_status": status_code,
             "error_category": "response_error",
             "retryable": False,
         },
     }
+
+
+def classify_transport_to_stream_error(
+    status_code: Optional[int],
+    headers: Dict[str, str],
+    body_str: str,
+    provider_name: str,
+    secret_to_redact: Optional[str] = None,
+    is_timeout: bool = False,
+    is_network_err: bool = False,
+    is_internal_err: bool = False,
+) -> ModelStreamError:
+    """Deterministic, machine-driven conversion of transport error evidence into ModelStreamError."""
+    clean_detail = sanitize_secrets(str(body_str or ""), secret_to_redact)
+    if len(clean_detail) > 200:
+        clean_detail = clean_detail[:200] + "..."
+
+    if is_timeout:
+        return ModelStreamError(
+            code="TIMEOUT",
+            category="TIMEOUT",
+            safe_message=f"TIMEOUT: {provider_name} request timed out.",
+            retryable=True,
+            http_status=408 if status_code == 408 else None,
+        )
+
+    if is_network_err:
+        return ModelStreamError(
+            code="NETWORK_ERROR",
+            category="NETWORK",
+            safe_message=f"NETWORK_ERROR: Failed to connect to {provider_name}. Detail: {clean_detail}",
+            retryable=True,
+            http_status=None,
+        )
+
+    if is_internal_err:
+        return ModelStreamError(
+            code="STREAM_INTERNAL_ERROR",
+            category="INTERNAL",
+            safe_message=f"STREAM_INTERNAL_ERROR: Internal streaming error on {provider_name}. Detail: {clean_detail}",
+            retryable=False,
+            http_status=None,
+        )
+
+    # HTTP error response
+    classified = classify_transport_error(
+        status_code=status_code or 500,
+        headers=headers,
+        body_str=body_str or "",
+        provider_name=provider_name,
+        secret_to_redact=secret_to_redact,
+    )
+
+    return ModelStreamError(
+        code=classified["code"],
+        category=classified["category"],
+        safe_message=classified["safe_message"],
+        retryable=classified["retryable"],
+        http_status=classified["http_status"],
+    )
