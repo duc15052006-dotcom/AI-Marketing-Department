@@ -157,7 +157,8 @@ get_runtime_config()
 from chat.engine import ChatConversationEngine
 from chat.knowledge import SessionKnowledgeStore
 from chat.router import ConversationIntent, ConversationRouter
-from chat.session import AttachmentType, ChatAttachment, ChatSessionManager
+from chat.task_resolver import resolve_followup
+from chat.session import AttachmentType, ChatAttachment, ChatMessage, ChatRole, ChatSessionManager
 from integrations.models.config_service import GLOBAL_PROVIDER_CONFIG, ProviderConfigService
 from connectors.analytics_connector import RealAnalyticsConnector
 from connectors.file_connector import RealFileConnector
@@ -416,13 +417,25 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
         def _worker() -> None:
             try:
+                resolved_followup = resolve_followup(user_text, session.messages)
+                effective_text = resolved_followup.resolved_objective
                 decision = APP_BACKEND.conversation_router.route(
-                    message=user_text,
+                    message=effective_text,
                     attachments=parsed_attachments,
                     chat_history=session.messages,
                     project_id=session.optional_project_id,
                     business_id=session.optional_business_id,
                 )
+                if resolved_followup.route_hint:
+                    decision.intent = ConversationIntent(resolved_followup.route_hint)
+                    decision.confidence = 0.99
+                    decision.reason_code = resolved_followup.reason_code
+                    decision.metadata = dict(decision.metadata or {})
+                    decision.metadata.update({
+                        "followup_kind": resolved_followup.kind.value,
+                        "research_depth": resolved_followup.research_depth.value,
+                        "referenced_message_ids": list(resolved_followup.referenced_message_ids),
+                    })
 
                 if decision.intent == ConversationIntent.GENERAL_CONVERSATION:
                     res = APP_BACKEND.chat_engine.generate_chat_response(
@@ -488,7 +501,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
                 elif decision.intent == ConversationIntent.RESEARCH_INQUIRY:
                     ctx, intel_out, artifact = APP_BACKEND.runtime.run_research_inquiry(
-                        objective=user_text,
+                        objective=effective_text,
                         business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                         chat_id=chat_id,
                         project_id=session.optional_project_id,
@@ -523,11 +536,20 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                             "five_agent_call_count": 1,
                         })
                     else:
-                        bridge.send_error(intel_out.get("error") or "RESEARCH_FAILED")
+                        bridge.send_error(
+                            context_error if (context_error := ctx.working_state.get("last_model_error")) else {
+                                "code": intel_out.get("error") or "RESEARCH_FAILED",
+                                "category": "RUNTIME",
+                                "safe_message": "Không thể hoàn tất nghiên cứu.",
+                                "retryable": False,
+                                "stage": "INTELLIGENCE",
+                                "agent": "INTELLIGENCE",
+                            }
+                        )
 
                 else: # MARKETING_WORKFLOW
                     ctx, cmo_final, artifact = APP_BACKEND.runtime.run_workflow(
-                        objective=user_text,
+                        objective=effective_text,
                         business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                         chat_id=chat_id,
                         project_id=session.optional_project_id,
@@ -561,17 +583,27 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                             "five_agent_call_count": 5,
                         })
                     else:
-                        root_err = cmo_final.get("error") or cmo_final.get("reason") or "WORKFLOW_FAILED"
-                        failed_stg = cmo_final.get("failed_stage")
-                        if failed_stg and root_err and not str(root_err).startswith(failed_stg):
-                            err_msg = f"{failed_stg}: {root_err}"
-                        else:
-                            err_msg = str(root_err)
-                        bridge.send_error(err_msg)
+                        bridge.send_error(
+                            context_error if (context_error := ctx.working_state.get("last_model_error")) else {
+                                "code": cmo_final.get("error") or cmo_final.get("reason") or "WORKFLOW_FAILED",
+                                "category": "RUNTIME",
+                                "safe_message": "Không thể hoàn tất quy trình marketing.",
+                                "retryable": False,
+                                "stage": cmo_final.get("failed_stage") or "",
+                                "agent": "",
+                            }
+                        )
 
             except Exception as ex:
-                logger.exception(f"Streaming execution error for chat {chat_id}: {ex}")
-                bridge.send_error(ex)
+                logger.error("Streaming execution error for chat %s: %s", chat_id, type(ex).__name__)
+                bridge.send_error({
+                    "code": "RUNTIME_INTERNAL_ERROR",
+                    "category": "INTERNAL",
+                    "safe_message": "Không thể hoàn tất phản hồi do lỗi nội bộ.",
+                    "retryable": False,
+                    "stage": "",
+                    "agent": "",
+                })
 
         worker_t = threading.Thread(target=_worker, daemon=True)
         worker_t.start()
@@ -588,13 +620,25 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         user_msg: Optional[ChatMessage] = None,
     ) -> None:
         try:
+            resolved_followup = resolve_followup(user_text, session.messages)
+            effective_text = resolved_followup.resolved_objective
             decision = APP_BACKEND.conversation_router.route(
-                message=user_text,
+                message=effective_text,
                 attachments=parsed_attachments,
                 chat_history=session.messages,
                 project_id=session.optional_project_id,
                 business_id=session.optional_business_id,
             )
+            if resolved_followup.route_hint:
+                decision.intent = ConversationIntent(resolved_followup.route_hint)
+                decision.confidence = 0.99
+                decision.reason_code = resolved_followup.reason_code
+                decision.metadata = dict(decision.metadata or {})
+                decision.metadata.update({
+                    "followup_kind": resolved_followup.kind.value,
+                    "research_depth": resolved_followup.research_depth.value,
+                    "referenced_message_ids": list(resolved_followup.referenced_message_ids),
+                })
 
             # Route A: General Conversation (0 Five-Agent Calls)
             if decision.intent == ConversationIntent.GENERAL_CONVERSATION:
@@ -657,7 +701,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             # Route C: Research Inquiry — Intelligence-only fast path (1 model call)
             elif decision.intent == ConversationIntent.RESEARCH_INQUIRY:
                 ctx, intel_out, artifact = APP_BACKEND.runtime.run_research_inquiry(
-                    objective=user_text,
+                    objective=effective_text,
                     business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                     chat_id=chat_id,
                     project_id=session.optional_project_id,
@@ -697,7 +741,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             # Route D: Full Supervised Five-Agent Marketing Workflow
             else:
                 ctx, cmo_final, artifact = APP_BACKEND.runtime.run_workflow(
-                    objective=user_text,
+                    objective=effective_text,
                     business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                     chat_id=chat_id,
                     project_id=session.optional_project_id,
@@ -734,10 +778,11 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 return
 
         except Exception as ex:
-            logger.exception(f"Execution error for chat {chat_id}: {ex}")
+            logger.error("Execution error for chat %s: %s", chat_id, type(ex).__name__)
+            safe_message = "Không thể hoàn tất phản hồi do lỗi nội bộ. Tin nhắn của bạn đã được lưu trong lịch sử phiên."
             err_msg = APP_BACKEND.chat_mgr.add_assistant_response(
                 chat_id=chat_id,
-                content=f"⚠️ Không thể hoàn tất phản hồi: {str(ex)}\nTin nhắn của bạn đã được lưu trong lịch sử phiên.",
+                content=f"⚠️ {safe_message}",
                 status="ERROR",
             )
             self._send_json(
@@ -746,7 +791,12 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     "session": session.model_dump() if hasattr(session, "model_dump") else None,
                     "user_message": user_msg.model_dump() if user_msg else None,
                     "message": err_msg.model_dump() if err_msg else {},
-                    "error": str(ex),
+                    "error": {
+                        "code": "RUNTIME_INTERNAL_ERROR",
+                        "category": "INTERNAL",
+                        "safe_message": safe_message,
+                        "retryable": False,
+                    },
                 },
                 201,
             )

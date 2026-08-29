@@ -19,7 +19,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from governance.access_matrix import AgentAccessMatrix
 from governance.claim_safety import FinalClaimAuditGateResult, ValidationDecision
@@ -60,6 +60,8 @@ from runtime.progress import (
     runtime_stage_to_progress_stage,
 )
 from runtime.context_compiler import ContextCompiler
+from runtime.agent_skills import render_agent_skill_context
+from runtime.public_errors import from_model_response, from_stream_delta, internal_runtime_error
 from runtime.handoff import (
     HANDOFF_PROMPT_INSTRUCTION,
     HandoffStreamFilter,
@@ -395,7 +397,13 @@ class FiveAgentDepartmentRuntime:
 
         # COLLAB-05: every stage may append the optional machine handoff block
         # to the SAME single response (no second agent, no second model call).
-        system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
+        skill_context = render_agent_skill_context(agent_name)
+        system_instruction = (
+            system_instruction
+            + "\n\n"
+            + skill_context
+            + HANDOFF_PROMPT_INSTRUCTION
+        )
 
         req = ModelRequest(
             messages=[
@@ -464,15 +472,16 @@ class FiveAgentDepartmentRuntime:
                     provider_snapshot=provider_snapshot_obj,
                 )
                 chunks: List[str] = []
-                had_error = False
+                public_error = None
+                runtime_stage = str(getattr(getattr(context, "current_stage", None), "value", getattr(context, "current_stage", ""))) if context else ""
                 for delta in stream_gen:
                     if delta.content:
                         chunks.append(delta.content)
                         filter_sink.on_delta(delta.content)
                     if delta.finish_reason == "error":
-                        had_error = True
+                        public_error = from_stream_delta(delta, stage=runtime_stage, agent=agent_upper)
                 filter_sink.flush()
-                if chunks and not had_error:
+                if chunks and public_error is None:
                     if emitter:
                         emitter.emit(
                             ProgressEventType.MODEL_COMPLETED,
@@ -481,9 +490,12 @@ class FiveAgentDepartmentRuntime:
                             message=f"Hoàn tất thực thi mô hình cho {agent_upper}",
                         )
                     return "".join(chunks).strip(), None
-                err = "STREAM_GENERATION_FAILED"
-                logger.warning(f"Agent {agent_name} LLM stream call failed: {err}")
-                return None, err
+                if public_error is None:
+                    public_error = internal_runtime_error(stage=runtime_stage, agent=agent_upper)
+                if context is not None:
+                    context.working_state["last_model_error"] = public_error.model_dump()
+                logger.warning("Agent %s LLM stream call failed: %s", agent_name, public_error.code)
+                return None, public_error.code
 
             resp = self.model_gateway.generate(
                 req,
@@ -500,12 +512,21 @@ class FiveAgentDepartmentRuntime:
                         message=f"Hoàn tất thực thi mô hình cho {agent_upper}",
                     )
                 return resp.content.strip(), None
-            err = resp.error or f"MODEL_RESPONSE_{resp.status.value}"
-            logger.warning(f"Agent {agent_name} LLM call failed: {err}")
-            return None, err
-        except Exception as e:
-            logger.warning(f"Agent {agent_name} LLM call exception: {e}")
-            return None, str(e)
+            runtime_stage = str(getattr(getattr(context, "current_stage", None), "value", getattr(context, "current_stage", ""))) if context else ""
+            public_error = from_model_response(resp, stage=runtime_stage, agent=agent_upper)
+            if context is not None:
+                context.working_state["last_model_error"] = public_error.model_dump()
+            logger.warning("Agent %s LLM call failed: %s", agent_name, public_error.code)
+            return None, public_error.code
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception as exc:
+            runtime_stage = str(getattr(getattr(context, "current_stage", None), "value", getattr(context, "current_stage", ""))) if context else ""
+            public_error = internal_runtime_error(stage=runtime_stage, agent=agent_upper)
+            if context is not None:
+                context.working_state["last_model_error"] = public_error.model_dump()
+            logger.warning("Agent %s LLM call exception type: %s", agent_name, type(exc).__name__)
+            return None, public_error.code
 
     def start_run(
         self,
@@ -1210,28 +1231,39 @@ class FiveAgentDepartmentRuntime:
         for m in m_res.memories:
             context.memory_refs.append(m.memory_id)
 
-        # Invoke ToolGateway for analytics calculation
-        idem_key = f"{context.run_id}:performance:kpi_calculation:cac"
-        if idem_key in self._executed_tool_idempotency_keys:
-            calc_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
-            calc_req = ToolRequest(
-                run_id=context.run_id,
-                agent_id="performance",
-                capability_id="kpi_calculation",
-                parameters={"metric_name": "target_cac", "target_value": 150.0},
-                business_id=context.business_id,
-                project_id=context.project_id,
-                chat_id=context.chat_id,
+        # Measurement and planning are separate.  A deterministic KPI tool
+        # may run only when upstream code supplied real measurement inputs.
+        measurement_inputs = context.working_state.get("performance_measurement_inputs")
+        calc_receipt = None
+        if isinstance(measurement_inputs, dict) and measurement_inputs:
+            idem_key = f"{context.run_id}:performance:kpi_calculation:measurement"
+            if idem_key in self._executed_tool_idempotency_keys:
+                calc_receipt = self._executed_tool_idempotency_keys[idem_key]
+            else:
+                calc_req = ToolRequest(
+                    run_id=context.run_id,
+                    agent_id="performance",
+                    capability_id="kpi_calculation",
+                    parameters=dict(measurement_inputs),
+                    business_id=context.business_id,
+                    project_id=context.project_id,
+                    chat_id=context.chat_id,
+                )
+                calc_receipt = self.tool_gateway.execute(calc_req)
+                self._executed_tool_idempotency_keys[idem_key] = calc_receipt
+
+            context.execution_receipt_refs.append(calc_receipt.execution_id)
+            self.lineage_inspector.add_receipt(calc_receipt)
+            context.working_state["performance_measurement_status"] = (
+                "MEASURED" if calc_receipt.status == ExecutionStatus.SUCCESS else "MEASUREMENT_TOOL_FAILED"
             )
-            calc_receipt = self.tool_gateway.execute(calc_req)
-            self._executed_tool_idempotency_keys[idem_key] = calc_receipt
+        else:
+            context.working_state["performance_measurement_status"] = "MISSING_INPUTS"
 
-        context.execution_receipt_refs.append(calc_receipt.execution_id)
-        self.lineage_inspector.add_receipt(calc_receipt)
-
-        # Grounded Context Compilation with KPI calc tool receipt
-        grounded_pkg = self.context_compiler.compile_grounded_package("performance", context, tool_receipts=[calc_receipt])
+        # Grounded context receives a computation receipt only when one really ran.
+        grounded_pkg = self.context_compiler.compile_grounded_package(
+            "performance", context, tool_receipts=[calc_receipt] if calc_receipt is not None else []
+        )
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1253,7 +1285,7 @@ class FiveAgentDepartmentRuntime:
                 "error": "PREVIOUS_STAGE_FAILED",
                 "funnel_kpi": "",
                 "experiment_blueprint": {},
-                "calc_receipt_id": calc_receipt.execution_id,
+                "calc_receipt_id": calc_receipt.execution_id if calc_receipt is not None else None,
                 "citations": [c.citation_id for c in k_res.citations],
             }
             context.stage_outputs["performance"] = output
@@ -1298,7 +1330,7 @@ class FiveAgentDepartmentRuntime:
                 "error": err or "MODEL_PROVIDER_FAILURE",
                 "funnel_kpi": "",
                 "experiment_blueprint": {},
-                "calc_receipt_id": calc_receipt.execution_id,
+                "calc_receipt_id": calc_receipt.execution_id if calc_receipt is not None else None,
                 "citations": [c.citation_id for c in k_res.citations],
             }
             context.stage_outputs["performance"] = output
@@ -1313,7 +1345,7 @@ class FiveAgentDepartmentRuntime:
             # COLLAB-04: no structured experiment was actually produced;
             # blueprint stays empty instead of an invented hypothesis/metric.
             "experiment_blueprint": {},
-            "calc_receipt_id": calc_receipt.execution_id,
+            "calc_receipt_id": calc_receipt.execution_id if calc_receipt is not None else None,
             "field_origins": {
                 "funnel_kpi": "AGENT_DERIVED",
                 "experiment_blueprint": "NOT_PROVIDED",
