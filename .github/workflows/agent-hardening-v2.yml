@@ -24,19 +24,24 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Apply asserted patch
-        run: python tools/dev/apply_agent_hardening_v2.py
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Apply asserted patch R1
+        run: python tools/dev/apply_agent_hardening_v2_r1.py
 
       - name: Compile production modules
         run: python -m compileall -q runtime chat app_api integrations tools connectors
 
-      - name: Run focused contract tests
+      - name: Run focused Python contract tests
         run: |
-          python -m unittest \
-            tests.test_agent_skills_v2 \
-            tests.test_followup_task_resolver_v2 \
-            tests.test_runtime_public_errors_v2 \
-            tests.test_app_streaming_typed_errors_v2 -v
+          python -m pytest -q \
+            tests/test_agent_skills_v2.py \
+            tests/test_followup_task_resolver_v2.py \
+            tests/test_runtime_public_errors_v2.py \
+            tests/test_app_streaming_typed_errors_v2.py
 
       - name: Static safety assertions
         shell: bash
@@ -44,9 +49,16 @@ jobs:
           ! grep -R '"target_value": 150.0' runtime/engine.py
           ! grep -R 'return None, str(e)' runtime/engine.py
           grep -q 'render_agent_skill_context(agent_name)' runtime/engine.py
-          grep -q 'resolve_followup(user_text, session.messages)' app_api/server.py
+          test "$(grep -c 'resolve_followup(user_text, session.messages)' app_api/server.py)" -eq 2
           grep -q 'ChatMessage, ChatRole' app_api/server.py
+          grep -q 'objective=effective_text' app_api/server.py
           git diff --check
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
 
       - name: Commit verified production patch
         shell: bash
@@ -61,4 +73,5 @@ jobs:
             exit 0
           fi
           git commit -m "fix: wire skills context errors and followups into production"
+          git pull --rebase origin phase/agent-hardening-v2
           git push origin HEAD:phase/agent-hardening-v2
