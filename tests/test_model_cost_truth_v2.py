@@ -51,7 +51,7 @@ def test_unknown_model_on_free_tier_aggregator_fails_closed_to_unknown():
 def test_free_only_gateway_does_not_execute_unknown_cost_model():
     adapter = CountingAdapter()
     registry = ProviderRegistry()
-    registry.register_adapter("agg", adapter)
+    registry.register_custom_adapter(adapter)
     gateway = UniversalModelGateway(
         provider_registry=registry,
         model_policy=ModelPolicy(
