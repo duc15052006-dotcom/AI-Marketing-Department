@@ -1,0 +1,112 @@
+name: Full Hardening V2
+
+on:
+  push:
+    branches:
+      - phase/full-hardening-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: full-hardening-v2
+  cancel-in-progress: false
+
+jobs:
+  harden-and-certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest
+
+      - name: Apply deterministic hardening patch once
+        id: patch
+        shell: bash
+        run: |
+          if [ -f scripts/full_hardening_apply.py ] && grep -q 'STREAM_GENERATION_FAILED' runtime/engine.py; then
+            python scripts/full_hardening_apply.py
+            echo "applied=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "applied=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compile production Python
+        run: |
+          python -m compileall -q runtime chat app_api integrations tools connectors
+
+      - name: Focused hardening contract
+        run: |
+          pytest -q tests/test_prod_structured_provider_stream_error_01.py tests/test_full_hardening_v2.py
+
+      - name: Static truth and authority checks
+        shell: bash
+        run: |
+          ! grep -R --line-number 'target_value.*150\.0' runtime/engine.py
+          ! grep -R --line-number 'STREAM_GENERATION_FAILED' runtime/engine.py
+          ! grep -R --line-number '"status": "RENDERED"' tools/adapters.py
+          ! grep -R --line-number '"p_value": 0\.008' connectors/analytics_connector.py
+          ! grep -R --line-number '"value": 3\.45' tools/adapters.py
+          python - <<'PY'
+          from runtime.agent_skills import PERMANENT_AGENT_IDS, get_agent_skill_contract
+          assert PERMANENT_AGENT_IDS == ('cmo','intelligence','strategist','creative','performance')
+          assert get_agent_skill_contract('final_cmo').agent_id == 'cmo'
+          PY
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend tests and production build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Diff whitespace validation
+        run: git diff --check
+
+      - name: Commit production hardening batch
+        if: steps.patch.outputs.applied == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py chat/engine.py app_api/server.py tools/adapters.py tools/tool_gateway.py connectors/analytics_connector.py frontend/src/App.tsx
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: full production hardening batch [hardening-applied]"
+            git push origin HEAD:phase/full-hardening-v2
+          fi
+
+      - name: Full Python regression sweep
+        run: pytest -q
+
+      - name: Optional Rust/Tauri check
+        shell: bash
+        run: |
+          cargo_file="$(find . -name Cargo.toml -not -path './.git/*' -print -quit || true)"
+          if [ -n "$cargo_file" ]; then
+            cargo_dir="$(dirname "$cargo_file")"
+            echo "Checking Rust project at $cargo_dir"
+            (cd "$cargo_dir" && cargo check && cargo test)
+          else
+            echo "No Cargo.toml found in repository; Rust/Tauri validation requires packaged desktop source or Windows UAT."
+          fi
