@@ -51,7 +51,7 @@ jobs:
           grep -q 'render_agent_skill_context(agent_name)' runtime/engine.py
           test "$(grep -c 'resolve_followup(user_text, session.messages)' app_api/server.py)" -eq 2
           grep -q 'ChatMessage, ChatRole' app_api/server.py
-          grep -q 'objective=effective_text' app_api/server.py
+          test "$(grep -c 'objective=effective_text' app_api/server.py)" -eq 4
           git diff --check
 
       - name: Build frontend
