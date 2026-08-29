@@ -1,7 +1,7 @@
 """R1 launcher for the asserted Agent Hardening V2 production patch.
 
 The first workflow proved that the two routing sites have different indentation
-because they live in different methods.  Keep the original migration immutable
+because they live in different methods. Keep the original migration immutable
 for auditability, execute it with the corrected expected count in-memory, then
 patch the second (synchronous) route explicitly and fail closed on drift.
 """
@@ -17,6 +17,19 @@ if source.count(needle) != 1:
     raise RuntimeError("R1_PATCH_ASSERTION_FAILED: original route-count assertion changed")
 source = source.replace(needle, replacement)
 exec(compile(source, str(ORIGINAL), "exec"), {"__name__": "__main__", "__file__": str(ORIGINAL)})
+
+# The original migration intentionally remains an audit record. Its generated
+# skill separator contained escaped quote characters; normalize the generated
+# production source before syntax validation.
+engine_path = ROOT / "runtime" / "engine.py"
+engine = engine_path.read_text(encoding="utf-8")
+bad_separator = '            + \\"\\n\\n\\"\n'
+good_separator = '            + "\\n\\n"\n'
+if engine.count(bad_separator) != 1:
+    raise RuntimeError(
+        f"R1_PATCH_ASSERTION_FAILED runtime/engine.py skill separator: expected 1, found {engine.count(bad_separator)}"
+    )
+engine_path.write_text(engine.replace(bad_separator, good_separator), encoding="utf-8")
 
 server_path = ROOT / "app_api" / "server.py"
 server = server_path.read_text(encoding="utf-8")
