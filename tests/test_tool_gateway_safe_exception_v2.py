@@ -28,4 +28,4 @@ def test_connector_exception_is_not_reflected_into_receipt():
     assert "tiny" not in serialized
     assert "SUPER_SECRET_TOKEN" not in serialized
     assert "private/key" not in serialized
-    assert receipt.error_message == "Tool execution failed inside the connector boundary."
+    assert receipt.error_message == "Adapter execution failed unexpectedly."
