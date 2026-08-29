@@ -28,6 +28,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install repository dependencies
+        run: python -m pip install -r requirements.txt
+
       - name: Reconstruct exact reviewed A1 sources
         shell: bash
         run: |
