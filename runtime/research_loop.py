@@ -1,6 +1,6 @@
 """Bounded research planning/execution for Intelligence.
 
-This is not a second tool stack.  It plans calls to the existing production
+This is not a second tool stack. It plans calls to the existing production
 ToolGateway capabilities (web_search/read_page), retains immutable receipts,
 and exposes only REAL page reads as page evidence. Search snippets remain
 DISCOVERY signals and are never relabeled as verified facts.
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Iterable, List, Tuple
 
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 from tools.tool_gateway import ToolGateway, ToolRequest
@@ -38,10 +38,7 @@ class ResearchExecution:
 
     @property
     def real_page_count(self) -> int:
-        return sum(
-            1 for r in self.page_receipts
-            if r.status == ExecutionStatus.SUCCESS and r.execution_mode == ExecutionMode.REAL
-        )
+        return sum(1 for r in self.page_receipts if r.status == ExecutionStatus.SUCCESS and r.execution_mode == ExecutionMode.REAL)
 
     def render_page_context(self, max_chars: int = 24000) -> str:
         blocks: List[str] = []
@@ -55,9 +52,7 @@ class ResearchExecution:
                 continue
             blocks.append(
                 "<source_read execution_id=\"{}\" url=\"{}\">\n{}\n</source_read>".format(
-                    receipt.execution_id,
-                    url.replace('"', '%22'),
-                    text[:6000],
+                    receipt.execution_id, url.replace('"', '%22'), text[:6000]
                 )
             )
         if not blocks:
@@ -74,7 +69,7 @@ def infer_language(text: str) -> str:
     if re.search(r"[ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]", lower):
         return "vi"
     tokens = set(re.findall(r"[a-zA-ZÀ-ỹ]+", lower))
-    if tokens.intersection({"nghien", "cứu", "ngành", "nganh", "thị", "thi", "trường", "truong", "tăng", "tang", "trưởng", "truong", "đối", "doi", "thủ", "khách", "hang"}):
+    if tokens.intersection({"nghien", "cứu", "ngành", "nganh", "thị", "thi", "trường", "truong", "tăng", "tang", "trưởng", "đối", "doi", "thủ", "khách", "hang"}):
         return "vi"
     return "en"
 
@@ -92,6 +87,7 @@ def build_research_plan(objective: str, depth: str = "STANDARD") -> ResearchPlan
             "đối thủ thị phần báo cáo ngành",
             "dữ liệu mới nhất thống kê nghiên cứu",
         )
+        contra_suffix = "rủi ro suy giảm dữ liệu phản biện"
     else:
         suffixes = (
             "market growth statistics official sources",
@@ -99,21 +95,28 @@ def build_research_plan(objective: str, depth: str = "STANDARD") -> ResearchPlan
             "competitors market share industry report",
             "latest data statistics research",
         )
-    count = 1 if normalized_depth == "QUICK" else (3 if normalized_depth == "STANDARD" else 5)
+        contra_suffix = "decline risks contradictory evidence"
+
     queries: List[str] = [clean]
-    for suffix in suffixes:
+    if normalized_depth == "QUICK":
+        selected_suffixes = ()
+    elif normalized_depth == "STANDARD":
+        selected_suffixes = suffixes[:2]
+    else:
+        # Keep one slot in the five-query deep budget for disconfirming evidence.
+        selected_suffixes = suffixes[:3]
+    for suffix in selected_suffixes:
         candidate = f"{clean} {suffix}".strip()
         if candidate not in queries:
             queries.append(candidate)
-    # Fifth query for deep mode deliberately emphasizes disconfirming evidence.
     if normalized_depth == "DEEP":
-        contra = f"{clean} " + ("rủi ro suy giảm dữ liệu phản biện" if lang == "vi" else "decline risks contradictory evidence")
-        queries.append(contra)
+        queries.append(f"{clean} {contra_suffix}".strip())
+
     return ResearchPlan(
         objective=clean,
         depth=normalized_depth,
         language=lang,
-        queries=tuple(queries[:count]),
+        queries=tuple(queries),
         max_page_reads=2 if normalized_depth == "QUICK" else (5 if normalized_depth == "STANDARD" else 8),
     )
 
@@ -131,35 +134,18 @@ def _extract_urls(data: Any) -> Iterable[str]:
 
 
 class BoundedResearchLoop:
-    """Deterministic planner around the existing production ToolGateway."""
-
     def __init__(self, tool_gateway: ToolGateway) -> None:
         self.tool_gateway = tool_gateway
 
-    def execute(
-        self,
-        *,
-        run_id: str,
-        agent_id: str,
-        objective: str,
-        business_id: str,
-        project_id: str | None,
-        chat_id: str | None,
-        depth: str = "STANDARD",
-    ) -> ResearchExecution:
+    def execute(self, *, run_id: str, agent_id: str, objective: str, business_id: str, project_id: str | None, chat_id: str | None, depth: str = "STANDARD") -> ResearchExecution:
         plan = build_research_plan(objective, depth)
         out = ResearchExecution(plan=plan)
         seen_urls: set[str] = set()
-
-        for idx, query in enumerate(plan.queries):
+        for query in plan.queries:
             receipt = self.tool_gateway.execute(ToolRequest(
-                run_id=run_id,
-                agent_id=agent_id,
-                capability_id="web_search",
+                run_id=run_id, agent_id=agent_id, capability_id="web_search",
                 parameters={"query": query, "language": plan.language, "max_results": 10},
-                business_id=business_id,
-                project_id=project_id,
-                chat_id=chat_id,
+                business_id=business_id, project_id=project_id, chat_id=chat_id,
             ))
             out.search_receipts.append(receipt)
             if receipt.status != ExecutionStatus.SUCCESS:
@@ -170,16 +156,11 @@ class BoundedResearchLoop:
                 if url not in seen_urls:
                     seen_urls.add(url)
                     out.source_urls.append(url)
-
-        for url in out.source_urls[: plan.max_page_reads]:
+        for url in out.source_urls[:plan.max_page_reads]:
             receipt = self.tool_gateway.execute(ToolRequest(
-                run_id=run_id,
-                agent_id=agent_id,
-                capability_id="read_page",
-                parameters={"url": url},
-                business_id=business_id,
-                project_id=project_id,
-                chat_id=chat_id,
+                run_id=run_id, agent_id=agent_id, capability_id="read_page",
+                parameters={"url": url}, business_id=business_id,
+                project_id=project_id, chat_id=chat_id,
             ))
             out.page_receipts.append(receipt)
             if receipt.status != ExecutionStatus.SUCCESS and receipt.error_class:
