@@ -1,0 +1,172 @@
+            return self.profile_manager.get_models_for_profile(profile)
+
+        if provider_id:
+            cfg = self.provider_registry.get_config(provider_id)
+            m_id = model_id or (cfg.default_model if cfg else "default")
+            return [(provider_id.lower(), m_id)]
+
+        effective_policy = model_policy or self.model_policy
+
+        # Explicit Injected Adapter Chain (Generic DI Mode):
+        # When adapters are explicitly injected and no explicit policy override exists,
+        # route through the injected adapter chain.
+        has_injected = getattr(self.provider_registry, "_has_custom_adapters", False) or bool(getattr(self.provider_registry, "_injected_adapters", None))
+        if has_injected and not profile and not provider_id and not self._has_explicit_policy:
+            adapters = getattr(self.provider_registry, "_injected_adapters", {}) or getattr(self.provider_registry, "_adapters", {})
+            if adapters:
+                return [
+                    (pid, getattr(adapter, "default_model", "default"))
+                    for pid, adapter in adapters.items()
+                ]
+
+        # Explicit Policy Authority (Production / Governed Policy):
+        targets = effective_policy.get_candidate_chain_for_agent(agent_id)
+        return [(t.provider_id, t.model_id) for t in targets]
+
+    def generate(
+        self,
+        request: ModelRequest,
+        profile: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        model_policy: Optional[ModelPolicy] = None,
+        provider_snapshot: Optional[Any] = None,
+        strict_model_pin: bool = False,
+        allow_paid: bool = False,
+    ) -> ModelResponse:
+        """Execute model generation with cost policy enforcement and production fallback."""
+        start_time = time.perf_counter()
+
+        # Canonical request normalization
+        try:
+            norm_req = normalize_model_request(request)
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            return ModelResponse(
+                request_id=getattr(request, "request_id", "REQ-UNKNOWN"),
+                provider=provider_id or "gateway",
+                model_name=getattr(request, "model_name", "unknown"),
+                status=ModelResponseStatus.ERROR,
+                error=f"REQUEST_SCHEMA_ERROR: {str(e)}",
+                usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                latency_ms=latency_ms,
+            )
+
+        candidates = self.resolve_candidate_chain(
+            profile=profile,
+            provider_id=provider_id,
+            model_id=norm_req.model_name if norm_req.model_name not in ("default", "", None) else None,
+            agent_id=agent_id,
+            model_policy=model_policy,
+        )
+
+        if not candidates:
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            return ModelResponse(
+                request_id=norm_req.request_id,
+                provider="gateway",
+                model_name=norm_req.model_name,
+                status=ModelResponseStatus.ERROR,
+                error="NO_CANDIDATE_MODELS: No candidate models resolved for request.",
+                usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                latency_ms=latency_ms,
+            )
+
+        if norm_req.timeout_seconds is not None:
+            total_timeout = norm_req.timeout_seconds
+        else:
+            total_timeout = 180.0
+        last_error_resp: Optional[ModelResponse] = None
+        attempt_count = 0
+        policy_blocked_count = 0
+        executed_any = False
+
+        for cand_provider, cand_model in candidates:
+            elapsed = time.perf_counter() - start_time
+            remaining_timeout = total_timeout - elapsed
+            if remaining_timeout <= 0.001 and attempt_count > 0:
+                logger.warning("Gateway timeout budget exhausted across fallback candidates.")
+                break
+
+            attempt_count += 1
+
+            # 1. Retrieve / Check Provider & Adapter Definition
+            if provider_snapshot is not None:
+                prov_def = provider_snapshot.get_provider(cand_provider) if hasattr(provider_snapshot, "get_provider") else provider_snapshot.get(cand_provider)
+            else:
+                prov_def = self.provider_registry.get_provider(cand_provider)
+
+            if prov_def is not None and not prov_def.enabled:
+                err_msg = f"PROVIDER_DISABLED: Provider '{cand_provider}' is disabled."
+                last_error_resp = ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider=cand_provider,
+                    model_name=cand_model,
+                    status=ModelResponseStatus.ERROR,
+                    error=err_msg,
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
+                if strict_model_pin or len(candidates) == 1:
+                    return last_error_resp
+                continue
+
+            # 2. Active-run adapter binding + Cost Policy & FREE_ONLY_MODE Gate
+            # When executing under a run-scoped snapshot, resolve the adapter
+            # PINNED to the snapshot's provider definition (full execution
+            # fingerprint) so mid-run settings changes cannot drift an active
+            # run onto a new credential or endpoint.
+            if provider_snapshot is not None and prov_def is not None:
+                adapter = self.provider_registry.get_pinned_adapter(prov_def)
+            else:
+                adapter = self.provider_registry.get_adapter(cand_provider)
+            model_meta = self.model_registry.get_model(cand_provider, cand_model)
+            # ProviderDefinition-declared cost policy is authoritative when a
+            # definition exists (including explicit UNKNOWN = unverified);
+            # model metadata is only a fallback for undefined providers.
+            if prov_def is not None:
+                cost_tier = prov_def.cost_policy
+            else:
+                cost_tier = (
+                    model_meta.cost_tier if model_meta
+                    else (adapter.cost_policy if adapter else CostPolicy.UNKNOWN)
+                )
+
+            # Effective cost-governance authority: an explicitly supplied
+            # run-scoped ModelPolicy governs its own runs; live gateway state
+            # applies only when no pinned policy exists. No second authority.
+            effective_free_only = (
+                bool(model_policy.free_only_mode)
+                if model_policy is not None and getattr(model_policy, "free_only_mode", None) is not None
+                else self._free_only_mode
+            )
+
+            if effective_free_only and not allow_paid:
+                if cost_tier == CostPolicy.PAID or cost_tier == CostPolicy.UNKNOWN:
+                    policy_reason = (
+                        f"Requesting paid model {cand_provider}::{cand_model} is blocked when FREE_ONLY_MODE=True."
+                        if cost_tier == CostPolicy.PAID
+                        else f"Unverified cost model {cand_provider}::{cand_model} is blocked when FREE_ONLY_MODE=True."
+                    )
+                    logger.warning(
+                        f"Skipping {'paid' if cost_tier == CostPolicy.PAID else 'unverified cost'} model "
+                        f"{cand_provider}::{cand_model} under FREE_ONLY_MODE (allow_paid=False)."
+                    )
+                    policy_blocked_count += 1
+                    if strict_model_pin or len(candidates) == 1:
+                        latency_ms = (time.perf_counter() - start_time) * 1000.0
+                        return ModelResponse(
+                            request_id=norm_req.request_id,
+                            provider=cand_provider,
+                            model_name=cand_model,
+                            status=ModelResponseStatus.ERROR,
+                            error=f"FREE_ONLY_POLICY_VIOLATION: {policy_reason}",
+                            usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                            latency_ms=latency_ms,
+                        )
+                    continue
+
+            if adapter is None:
+                err_msg = f"PROVIDER_NOT_CONFIGURED: Provider '{cand_provider}' is not registered."
+                last_error_resp = ModelResponse(
+                    request_id=norm_req.request_id,

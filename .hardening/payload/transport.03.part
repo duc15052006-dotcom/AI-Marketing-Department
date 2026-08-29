@@ -1,0 +1,245 @@
+        if isinstance(parsed, dict) and "error" in parsed:
+            err_obj = parsed["error"]
+            if isinstance(err_obj, dict):
+                json_error_detail = err_obj.get("message") or err_obj.get("code")
+            elif isinstance(err_obj, str):
+                json_error_detail = err_obj
+    except Exception:
+        pass
+
+    detail_snippet = json_error_detail or clean_body[:200]
+
+    # 1. Cloudflare 1010 / Access Denied
+    if cf_meta and cf_meta.get("edge_error_code") == "1010":
+        msg = f"PROVIDER_ACCESS_DENIED: {provider_name} HTTP 403: Cloudflare Error 1010 (Access Denied). Ray ID: {cf_meta.get('ray_id') or 'N/A'}"
+        return {
+            "status": ModelResponseStatus.ERROR,
+            "error": msg,
+            "code": "PROVIDER_ACCESS_DENIED",
+            "category": "AUTHORIZATION",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 403,
+            "metadata": {
+                "http_status": 403,
+                **cf_meta,
+            },
+        }
+
+    # 2. Cloudflare 1015 / Rate Limited
+    if cf_meta and cf_meta.get("edge_error_code") == "1015":
+        msg = f"RATE_LIMITED: {provider_name} HTTP 403: Cloudflare Error 1015 (Rate Limited). Ray ID: {cf_meta.get('ray_id') or 'N/A'}"
+        return {
+            "status": ModelResponseStatus.RATE_LIMITED,
+            "error": msg,
+            "code": "RATE_LIMITED",
+            "category": "RATE_LIMIT",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": 403,
+            "metadata": {
+                "http_status": 403,
+                **cf_meta,
+            },
+        }
+
+    # 3. HTTP 401 Unauthorized (Invalid API Key)
+    if status_code == 401:
+        msg = f"AUTH_ERROR: {provider_name} HTTP 401 Unauthorized. Detail: {detail_snippet}"
+        return {
+            "status": ModelResponseStatus.ERROR,
+            "error": msg,
+            "code": "AUTH_ERROR",
+            "category": "AUTHENTICATION",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 401,
+            "metadata": {
+                "http_status": 401,
+                "error_category": "invalid_credentials",
+                "retryable": False,
+                "auth_error": True,
+            },
+        }
+
+    # 4. HTTP 403 Forbidden (Permission / Authorization Error)
+    if status_code == 403:
+        if cf_meta:
+            msg = f"PROVIDER_ACCESS_DENIED: {provider_name} HTTP 403 Cloudflare Access Denied. Detail: {detail_snippet}"
+            return {
+                "status": ModelResponseStatus.ERROR,
+                "error": msg,
+                "code": "PROVIDER_ACCESS_DENIED",
+                "category": "AUTHORIZATION",
+                "safe_message": msg,
+                "retryable": False,
+                "http_status": 403,
+                "metadata": {
+                    "http_status": 403,
+                    **cf_meta,
+                },
+            }
+        msg = f"AUTHORIZATION_ERROR: {provider_name} HTTP 403 Forbidden (Permission Denied). Detail: {detail_snippet}"
+        return {
+            "status": ModelResponseStatus.ERROR,
+            "error": msg,
+            "code": "AUTHORIZATION_ERROR",
+            "category": "AUTHORIZATION",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 403,
+            "metadata": {
+                "http_status": 403,
+                "error_category": "permission_denied",
+                "retryable": False,
+                "auth_error": False,
+            },
+        }
+
+    # 5. HTTP 429 Rate Limited
+    if status_code == 429:
+        msg = f"RATE_LIMITED: {provider_name} HTTP 429 Too Many Requests. Detail: {detail_snippet}"
+        return {
+            "status": ModelResponseStatus.RATE_LIMITED,
+            "error": msg,
+            "code": "RATE_LIMITED",
+            "category": "RATE_LIMIT",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": 429,
+            "metadata": {
+                "http_status": 429,
+                "error_category": "rate_limited",
+                "retryable": True,
+            },
+        }
+
+    # 6. HTTP 408 / Timeout
+    if status_code == 408:
+        msg = f"TIMEOUT: {provider_name} request timed out."
+        return {
+            "status": ModelResponseStatus.TIMEOUT,
+            "error": msg,
+            "code": "TIMEOUT",
+            "category": "TIMEOUT",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": 408,
+            "metadata": {
+                "http_status": 408,
+                "error_category": "timeout",
+                "retryable": True,
+            },
+        }
+
+    # 7. HTTP 5xx Server Errors
+    if status_code in (500, 502, 503, 504, 599):
+        msg = f"PROVIDER_UNAVAILABLE: {provider_name} HTTP {status_code} Server Error. Detail: {detail_snippet}"
+        return {
+            "status": ModelResponseStatus.ERROR,
+            "error": msg,
+            "code": "PROVIDER_UNAVAILABLE",
+            "category": "SERVER_ERROR",
+            "safe_message": msg,
+            "retryable": True,
+            "http_status": status_code,
+            "metadata": {
+                "http_status": status_code,
+                "error_category": "server_error",
+                "retryable": True,
+            },
+        }
+
+    # 8. HTTP 400 Bad Request
+    if status_code == 400:
+        msg = f"INVALID_REQUEST: {provider_name} HTTP 400 Bad Request. Detail: {detail_snippet}"
+        return {
+            "status": ModelResponseStatus.ERROR,
+            "error": msg,
+            "code": "INVALID_REQUEST",
+            "category": "BAD_REQUEST",
+            "safe_message": msg,
+            "retryable": False,
+            "http_status": 400,
+            "metadata": {
+                "http_status": 400,
+                "error_category": "bad_request",
+                "retryable": False,
+            },
+        }
+
+    # 9. Generic Fallback
+    msg = f"PROVIDER_RESPONSE_ERROR: {provider_name} HTTP {status_code}. Detail: {detail_snippet}"
+    return {
+        "status": ModelResponseStatus.ERROR,
+        "error": msg,
+        "code": "PROVIDER_RESPONSE_ERROR",
+        "category": "RESPONSE_ERROR",
+        "safe_message": msg,
+        "retryable": False,
+        "http_status": status_code,
+        "metadata": {
+            "http_status": status_code,
+            "error_category": "response_error",
+            "retryable": False,
+        },
+    }
+
+
+def classify_transport_to_stream_error(
+    status_code: Optional[int],
+    headers: Dict[str, str],
+    body_str: str,
+    provider_name: str,
+    secret_to_redact: Optional[str] = None,
+    is_timeout: bool = False,
+    is_network_err: bool = False,
+    is_internal_err: bool = False,
+) -> ModelStreamError:
+    """Deterministic, machine-driven conversion of transport error evidence into ModelStreamError."""
+    clean_detail = sanitize_secrets(str(body_str or ""), secret_to_redact)
+    if len(clean_detail) > 200:
+        clean_detail = clean_detail[:200] + "..."
+
+    if is_timeout:
+        return ModelStreamError(
+            code="TIMEOUT",
+            category="TIMEOUT",
+            safe_message=f"TIMEOUT: {provider_name} request timed out.",
+            retryable=True,
+            http_status=408 if status_code == 408 else None,
+        )
+
+    if is_network_err:
+        return ModelStreamError(
+            code="NETWORK_ERROR",
+            category="NETWORK",
+            safe_message=f"NETWORK_ERROR: Failed to connect to {provider_name}. Detail: {clean_detail}",
+            retryable=True,
+            http_status=None,
+        )
+
+    if is_internal_err:
+        return ModelStreamError(
+            code="STREAM_INTERNAL_ERROR",
+            category="INTERNAL",
+            safe_message=f"STREAM_INTERNAL_ERROR: Internal streaming error on {provider_name}. Detail: {clean_detail}",
+            retryable=False,
+            http_status=None,
+        )
+
+    # HTTP error response
+    classified = classify_transport_error(
+        status_code=status_code or 500,
+        headers=headers,
+        body_str=body_str or "",
+        provider_name=provider_name,
+        secret_to_redact=secret_to_redact,
+    )
+
+    return ModelStreamError(
+        code=classified["code"],
+        category=classified["category"],
+        safe_message=classified["safe_message"],
+        retryable=classified["retryable"],
+        http_status=classified["http_status"],

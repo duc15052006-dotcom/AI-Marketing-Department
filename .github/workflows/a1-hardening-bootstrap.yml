@@ -1,0 +1,112 @@
+name: A1 Half-1 exact-source bootstrap
+
+on:
+  push:
+    branches:
+      - phase/agent-hardening-v2
+    paths:
+      - '.hardening/payload/**'
+      - '.github/workflows/a1-hardening-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reconstruct-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase/agent-hardening-v2
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Reconstruct exact reviewed A1 sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .hardening/payload/transport.01.part .hardening/payload/transport.02.part .hardening/payload/transport.03.part .hardening/payload/transport.04.part > integrations/models/transport.py
+          cat .hardening/payload/adapter.01.part .hardening/payload/adapter.02.part .hardening/payload/adapter.03.part > integrations/models/openai_compatible_adapter.py
+          cat .hardening/payload/gateway.01.part .hardening/payload/gateway.02.part .hardening/payload/gateway.03.part .hardening/payload/gateway.04.part .hardening/payload/gateway.05.part .hardening/payload/gateway.06.part .hardening/payload/gateway.07.part > integrations/models/gateway.py
+
+      - name: Verify exact reviewed source hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '9f1aaf72d3c01803728922f6c63d4d5be6fec7124a51148e6ebde3f0d4d80ecc  integrations/models/__init__.py' | sha256sum -c -
+          echo '5ba845b0e10689356e899e1162e3a729d2aa857ab36b5bc7f23f907653543139  integrations/models/base.py' | sha256sum -c -
+          echo '7d2f65fcc3580b3a7734bf0d286dca00bd37a5955263325ae51643bf1762e47c  integrations/models/transport.py' | sha256sum -c -
+          echo '9337b504193beef6584d15d86f6039ba5aa5b50ba8f644a577dd1a28441f0b4e  integrations/models/openai_compatible_adapter.py' | sha256sum -c -
+          echo 'd8c1068b71130b06369b11c6cc349f7362411e01a93b91bbdcae73a89f59a867  integrations/models/gateway.py' | sha256sum -c -
+
+      - name: Compile A1 model package
+        run: python -m compileall integrations/models
+
+      - name: Run existing streaming and gateway regressions
+        run: python -m unittest tests.test_prod_model_streaming_01 tests.test_prod_model_gateway_01_provider_registry tests.test_universal_model_gateway -v
+
+      - name: Verify RC1 strict retryable production path
+        shell: bash
+        run: |
+          python - <<'PY'
+          from types import SimpleNamespace
+          from integrations.models.gateway import model_response_to_stream_error
+
+          cases = [
+              ('false', False),
+              ('true', False),
+              (1, False),
+              (True, True),
+              (False, False),
+              (0, False),
+              (None, False),
+              ({}, False),
+              ([], False),
+          ]
+          for raw, expected in cases:
+              resp = SimpleNamespace(
+                  metadata={
+                      'error_code': 'INVALID_REQUEST',
+                      'error_category': 'BAD_REQUEST',
+                      'safe_message': 'safe',
+                      'retryable': raw,
+                      'http_status': 400,
+                  },
+                  error='safe',
+                  status=None,
+              )
+              actual = model_response_to_stream_error(resp, provider_name='test').retryable
+              assert actual is expected, (raw, actual, expected)
+          print('STRICT_RETRYABLE_MATRIX=PASS')
+          PY
+
+      - name: Diff hygiene
+        run: git diff --check
+
+      - name: Remove bootstrap-only payload
+        shell: bash
+        run: |
+          rm -rf .hardening
+          rm -f .github/workflows/a1-hardening-bootstrap.yml
+
+      - name: Commit exact A1 Half-1 source checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add integrations/models/__init__.py integrations/models/base.py integrations/models/transport.py integrations/models/openai_compatible_adapter.py integrations/models/gateway.py .hardening .github/workflows/a1-hardening-bootstrap.yml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'feat: preserve structured provider stream error truth'
+          git push origin HEAD:phase/agent-hardening-v2

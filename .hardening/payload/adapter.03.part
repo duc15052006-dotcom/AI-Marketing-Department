@@ -1,0 +1,50 @@
+                        provider=self.provider_name,
+                        model_name=sse_event.get("model", model_name),
+                        error=ModelStreamError(
+                            code="EMPTY_RESPONSE",
+                            category="RESPONSE_ERROR",
+                            safe_message=f"EMPTY_RESPONSE: Provider '{self.provider_name}' returned finish_reason='{finish_reason}' without emitting visible assistant content.",
+                            retryable=True,
+                            http_status=None,
+                        ),
+                    )
+                else:
+                    yield StreamDelta(
+                        content="",
+                        finish_reason=finish_reason,
+                        provider=self.provider_name,
+                        model_name=sse_event.get("model", model_name),
+                        error=None,
+                    )
+                return
+
+        # Handle unexpected stream truncation (EOF without [DONE] or finish_reason)
+        if not received_valid_completion:
+            if not received_visible_content:
+                yield StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    provider=self.provider_name,
+                    model_name=model_name,
+                    error=ModelStreamError(
+                        code="STREAM_TRUNCATED",
+                        category="STREAM_PROTOCOL",
+                        safe_message=f"STREAM_TRUNCATED: Provider '{self.provider_name}' stream closed unexpectedly without completion signal.",
+                        retryable=True,
+                        http_status=None,
+                    ),
+                )
+            else:
+                yield StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    provider=self.provider_name,
+                    model_name=model_name,
+                    error=ModelStreamError(
+                        code="STREAM_TRUNCATED",
+                        category="STREAM_PROTOCOL",
+                        safe_message=f"STREAM_TRUNCATED: Provider '{self.provider_name}' stream truncated after partial output.",
+                        retryable=False,
+                        http_status=None,
+                    ),
+                )

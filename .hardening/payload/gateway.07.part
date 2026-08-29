@@ -1,0 +1,154 @@
+                            candidate_terminal_seen = True
+                            return
+
+                # 5. Process remaining deltas from stream_gen
+                for delta in stream_gen:
+                    if delta.content:
+                        candidate_visible_content = True
+                        has_emitted_visible_content = True
+
+                    if delta.finish_reason:
+                        candidate_terminal_seen = True
+                        if delta.finish_reason == "error":
+                            if delta.content:
+                                yield normalize_public_stream_delta(
+                                    StreamDelta(content=delta.content, finish_reason=None),
+                                    cand_provider,
+                                    cand_model,
+                                )
+                            yield normalize_public_stream_delta(
+                                StreamDelta(
+                                    content="",
+                                    finish_reason="error",
+                                    error=normalize_public_stream_error(delta.error, default_provider=cand_provider),
+                                ),
+                                cand_provider,
+                                cand_model,
+                            )
+                            return
+                        else:
+                            yield normalize_public_stream_delta(delta, cand_provider, cand_model)
+                            return
+                    else:
+                        yield normalize_public_stream_delta(delta, cand_provider, cand_model)
+
+                # 6. Generator finished. Check if candidate finished without a terminal delta (Silent EOF)!
+                if not candidate_terminal_seen:
+                    if candidate_visible_content:
+                        # Visible content was emitted, but stream dropped without finish_reason -> STREAM_TRUNCATED (NO fallback)
+                        yield normalize_public_stream_delta(
+                            StreamDelta(
+                                content="",
+                                finish_reason="error",
+                                error=ModelStreamError(
+                                    code="STREAM_TRUNCATED",
+                                    category="STREAM_PROTOCOL",
+                                    safe_message=f"STREAM_TRUNCATED: Provider '{cand_provider}' stream closed unexpectedly after partial output.",
+                                    retryable=False,
+                                    http_status=None,
+                                ),
+                            ),
+                            cand_provider,
+                            cand_model,
+                        )
+                        return
+                    else:
+                        # No visible content and no finish_reason -> STREAM_TRUNCATED (fallback allowed)
+                        trunc_err = ModelStreamError(
+                            code="STREAM_TRUNCATED",
+                            category="STREAM_PROTOCOL",
+                            safe_message=f"STREAM_TRUNCATED: Provider '{cand_provider}' stream closed unexpectedly without completion signal.",
+                            retryable=True,
+                            http_status=None,
+                        )
+                        last_error = trunc_err
+                        last_error_provider = cand_provider
+                        last_error_model = cand_model
+                        if strict_model_pin or len(candidates) == 1:
+                            yield normalize_public_stream_delta(
+                                StreamDelta(content="", finish_reason="error", error=trunc_err),
+                                cand_provider,
+                                cand_model,
+                            )
+                            return
+                        continue
+
+                return
+
+            except Exception as e:
+                is_timeout = is_timeout_exception(e)
+                is_net = is_network_exception(e)
+
+                if is_timeout:
+                    err_code = "TIMEOUT"
+                    err_cat = "TIMEOUT"
+                    safe_msg = f"TIMEOUT: Model call to '{cand_provider}' timed out."
+                    ret = True
+                    st = 408
+                elif is_net:
+                    err_code = "NETWORK_ERROR"
+                    err_cat = "NETWORK"
+                    safe_msg = f"NETWORK_ERROR: Network connection failure communicating with '{cand_provider}'."
+                    ret = True
+                    st = None
+                else:
+                    err_code = "STREAM_INTERNAL_ERROR"
+                    err_cat = "INTERNAL"
+                    safe_msg = f"STREAM_INTERNAL_ERROR: Internal model streaming failure on '{cand_provider}'."
+                    ret = False
+                    st = None
+
+                err = ModelStreamError(
+                    code=err_code,
+                    category=err_cat,
+                    safe_message=safe_msg,
+                    retryable=ret,
+                    http_status=st,
+                )
+                last_error = err
+                last_error_provider = cand_provider
+                last_error_model = cand_model
+                if candidate_visible_content or has_emitted_visible_content:
+                    yield normalize_public_stream_delta(
+                        StreamDelta(content="", finish_reason="error", error=err),
+                        cand_provider,
+                        cand_model,
+                    )
+                    return
+                if strict_model_pin or len(candidates) == 1:
+                    yield normalize_public_stream_delta(
+                        StreamDelta(content="", finish_reason="error", error=err),
+                        cand_provider,
+                        cand_model,
+                    )
+                    return
+                continue
+
+        # All candidates exhausted without visible content
+        if not has_emitted_visible_content:
+            if last_error is not None and last_error_provider is not None:
+                yield normalize_public_stream_delta(
+                    StreamDelta(
+                        content="",
+                        finish_reason="error",
+                        error=last_error,
+                    ),
+                    last_error_provider,
+                    last_error_model or norm_req.model_name,
+                )
+            else:
+                yield normalize_public_stream_delta(
+                    StreamDelta(
+                        content="",
+                        finish_reason="error",
+                        error=ModelStreamError(
+                            code="ALL_CANDIDATES_EXHAUSTED",
+                            category="ROUTING",
+                            safe_message=f"ALL_CANDIDATES_EXHAUSTED: All {len(candidates)} candidate models exhausted without successful completion.",
+                            retryable=False,
+                            http_status=None,
+                        ),
+                    ),
+                    "gateway",
+                    norm_req.model_name,
+                )

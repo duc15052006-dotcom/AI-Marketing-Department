@@ -1,0 +1,193 @@
+                    provider=cand_provider,
+                    model_name=cand_model,
+                    status=ModelResponseStatus.ERROR,
+                    error=err_msg,
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
+                if strict_model_pin or len(candidates) == 1:
+                    return last_error_resp
+                continue
+
+            # 3. Construct Request Copy with Targeted Model and Remaining Timeout Budget
+            # Timeout authority: the ProviderDefinition (run-pinned snapshot def
+            # for active runs, live definition otherwise) bounds the execution
+            # timeout, always capped by the overall request/gateway budget.
+            # The legacy GLOBAL_PROVIDER_CONFIG does not override Model Settings.
+            if provider_snapshot is not None and prov_def is not None and prov_def.timeout_seconds:
+                definition_timeout = float(prov_def.timeout_seconds)
+            elif prov_def is not None and prov_def.timeout_seconds:
+                definition_timeout = float(prov_def.timeout_seconds)
+            else:
+                definition_timeout = None
+
+            request_budget = (
+                float(norm_req.timeout_seconds)
+                if getattr(norm_req, "timeout_seconds", None)
+                else float(total_timeout)
+            )
+            if definition_timeout is not None:
+                adapter_timeout = min(definition_timeout, request_budget, remaining_timeout)
+            else:
+                adapter_timeout = min(request_budget, remaining_timeout)
+            req_copy = normalize_model_request(norm_req)
+            req_copy.model_name = cand_model
+            req_copy.timeout_seconds = max(adapter_timeout, 0.001)
+
+            # 4. Execute Invocation
+            executed_any = True
+            try:
+                resp = adapter.generate(req_copy)
+            except Exception as e:
+                resp = ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider=cand_provider,
+                    model_name=cand_model,
+                    status=ModelResponseStatus.ERROR,
+                    error=f"ADAPTER_INVOCATION_EXCEPTION: {str(e)[:200]}",
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
+
+            # Record fallback and resolution metadata
+            resp.metadata["resolved_provider"] = cand_provider
+            resp.metadata["resolved_model"] = cand_model
+            resp.metadata["attempt_count"] = attempt_count
+
+            # 5. Success Path
+            if resp.status == ModelResponseStatus.SUCCESS:
+                self.update_provider_health(cand_provider, ProviderHealth.AVAILABLE)
+                return resp
+
+            # 6. Failure Path Handling
+            last_error_resp = resp
+            err_code = classify_error(resp.error)
+            self.config_service.record_error(cand_provider, err_code)
+
+            if resp.status == ModelResponseStatus.RATE_LIMITED:
+                self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED, detail=resp.error)
+            elif "AUTH_ERROR" in str(resp.error) or err_code == ProviderErrorCode.AUTH_401:
+                self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR, detail=resp.error)
+            else:
+                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=resp.error)
+
+            # Strict Benchmark Mode blocks any fallback
+            if strict_model_pin:
+                logger.info(
+                    f"Benchmark strict mode active: stopping immediately on failure of {cand_provider}::{cand_model} without fallback."
+                )
+                return resp
+
+            logger.warning(
+                f"Model call to {cand_provider}::{cand_model} failed ({resp.status.value}: {resp.error}). Attempting next candidate in profile chain..."
+            )
+
+        # All candidates exhausted
+        if last_error_resp is not None:
+            return last_error_resp
+
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
+        if policy_blocked_count >= len(candidates) and not executed_any:
+            # Every candidate was rejected by cost policy and none executed:
+            # report a truthful policy violation, never fake success.
+            return ModelResponse(
+                request_id=norm_req.request_id,
+                provider="gateway",
+                model_name=request.model_name,
+                status=ModelResponseStatus.ERROR,
+                error="FREE_ONLY_POLICY_VIOLATION: All candidate models are blocked under FREE_ONLY_MODE (allow_paid=False).",
+                usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                latency_ms=latency_ms,
+            )
+        return ModelResponse(
+            request_id=request.request_id,
+            provider="gateway",
+            model_name=request.model_name,
+            status=ModelResponseStatus.ERROR,
+            error="ALL_CANDIDATES_EXHAUSTED: All candidate providers failed or were unavailable.",
+            latency_ms=latency_ms,
+        )
+
+    def generate_stream(
+        self,
+        request: ModelRequest,
+        profile: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        model_policy: Optional[ModelPolicy] = None,
+        provider_snapshot: Optional[Any] = None,
+        strict_model_pin: bool = False,
+        allow_paid: bool = False,
+    ) -> Generator[StreamDelta, None, None]:
+        """Execute model generation with streaming and production fallback.
+
+        Fallback semantics:
+        - BEFORE first visible content delta: fallback is safe (try next candidate).
+        - AFTER first visible content delta: fallback is FORBIDDEN (provider committed).
+
+        Non-streaming providers are handled via synchronous generate() degradation:
+        the complete response is emitted as a single StreamDelta.
+        """
+        try:
+            norm_req = normalize_model_request(request)
+        except Exception as e:
+            clean_err = sanitize_secrets(str(e))
+            yield normalize_public_stream_delta(
+                StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    error=ModelStreamError(
+                        code="REQUEST_SCHEMA_ERROR",
+                        category="VALIDATION",
+                        safe_message=clean_err,
+                        retryable=False,
+                        http_status=None,
+                    ),
+                ),
+                "gateway",
+                getattr(request, "model_name", "unknown"),
+            )
+            return
+
+        candidates = self.resolve_candidate_chain(
+            profile=profile,
+            provider_id=provider_id,
+            model_id=norm_req.model_name if norm_req.model_name not in ("default", "", None) else None,
+            agent_id=agent_id,
+            model_policy=model_policy,
+        )
+
+        if not candidates:
+            yield normalize_public_stream_delta(
+                StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    error=ModelStreamError(
+                        code="NO_CANDIDATE_MODELS",
+                        category="ROUTING",
+                        safe_message=f"NO_CANDIDATE_MODELS: No candidate models available for request '{norm_req.model_name}'.",
+                        retryable=False,
+                        http_status=None,
+                    ),
+                ),
+                "gateway",
+                norm_req.model_name,
+            )
+            return
+
+        if norm_req.timeout_seconds is not None:
+            total_timeout = norm_req.timeout_seconds
+        else:
+            total_timeout = 180.0
+
+        start_time = time.perf_counter()
+        has_emitted_visible_content = False
+        last_error: Optional[ModelStreamError] = None
+        last_error_provider: Optional[str] = None
+        last_error_model: Optional[str] = None
+
+        for cand_idx, (cand_provider, cand_model) in enumerate(candidates):
+            if has_emitted_visible_content:
+                break
+
+            elapsed = time.perf_counter() - start_time

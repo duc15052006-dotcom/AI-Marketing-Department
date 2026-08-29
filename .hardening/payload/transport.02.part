@@ -1,0 +1,241 @@
+            try:
+                body_str = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                body_str = ""
+            return status_code, resp_headers, body_str
+
+        except Exception as e:
+            if is_timeout_exception(e):
+                return 408, {}, str(e)
+            elif is_network_exception(e):
+                return 599, {}, str(e)
+            raise
+
+    def post_json_stream(
+        self,
+        endpoint_path: str,
+        payload: Dict[str, Any],
+        timeout_seconds: Optional[float] = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """Execute HTTP POST with streaming SSE response.
+
+        Yields parsed JSON objects from `data: {...}` lines.
+        Handles `data: [DONE]` termination signal.
+        Closes HTTP response on generator exhaustion or early termination.
+
+        Does NOT use whole-body resp.read().
+        """
+        url = f"{self.base_url}/{endpoint_path.lstrip('/')}"
+        timeout = timeout_seconds if timeout_seconds is not None else self.timeout_seconds
+        req_bytes = json.dumps(payload).encode("utf-8")
+        headers = self.build_headers()
+
+        http_req = urllib.request.Request(
+            url=url,
+            data=req_bytes,
+            headers=headers,
+            method="POST",
+        )
+
+        resp = None
+        try:
+            resp = urllib.request.urlopen(http_req, timeout=timeout)
+            buffer = b""
+
+            while True:
+                try:
+                    chunk = resp.read(1)
+                except Exception as read_err:
+                    if is_timeout_exception(read_err):
+                        yield {
+                            "_error": True,
+                            "status_code": 408,
+                            "headers": {},
+                            "body": str(read_err),
+                            "is_timeout": True,
+                            "is_network": False,
+                            "is_internal": False,
+                        }
+                    elif is_network_exception(read_err):
+                        yield {
+                            "_error": True,
+                            "status_code": 599,
+                            "headers": {},
+                            "body": str(read_err),
+                            "is_timeout": False,
+                            "is_network": True,
+                            "is_internal": False,
+                        }
+                    else:
+                        yield {
+                            "_error": True,
+                            "status_code": None,
+                            "headers": {},
+                            "body": str(read_err),
+                            "is_timeout": False,
+                            "is_network": False,
+                            "is_internal": True,
+                        }
+                    break
+
+                if not chunk:
+                    break
+
+                buffer += chunk
+
+                while b"\n" in buffer:
+                    line_bytes, buffer = buffer.split(b"\n", 1)
+                    line = line_bytes.decode("utf-8", errors="replace").rstrip("\r")
+
+                    if not line.startswith("data: "):
+                        continue
+
+                    data_str = line[6:].strip()
+
+                    if data_str == "[DONE]":
+                        yield {"_done": True}
+                        return
+
+                    try:
+                        parsed = json.loads(data_str)
+                        yield parsed
+                    except json.JSONDecodeError:
+                        continue
+
+            # Process any remaining unparsed buffer at EOF (e.g. [DONE] without trailing newline)
+            if buffer:
+                line = buffer.decode("utf-8", errors="replace").rstrip("\r")
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        yield {"_done": True}
+                        return
+                    try:
+                        parsed = json.loads(data_str)
+                        yield parsed
+                    except json.JSONDecodeError:
+                        pass
+
+        except urllib.error.HTTPError as e:
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                pass
+            resp_headers = {k.lower(): v for k, v in e.headers.items()} if hasattr(e, "headers") and e.headers else {}
+            yield {
+                "_error": True,
+                "status_code": e.code,
+                "headers": resp_headers,
+                "body": error_body,
+                "is_timeout": False,
+                "is_network": False,
+                "is_internal": False,
+            }
+
+        except Exception as e:
+            if is_timeout_exception(e):
+                yield {
+                    "_error": True,
+                    "status_code": 408,
+                    "headers": {},
+                    "body": str(e),
+                    "is_timeout": True,
+                    "is_network": False,
+                    "is_internal": False,
+                }
+            elif is_network_exception(e):
+                yield {
+                    "_error": True,
+                    "status_code": 599,
+                    "headers": {},
+                    "body": str(e),
+                    "is_timeout": False,
+                    "is_network": True,
+                    "is_internal": False,
+                }
+            else:
+                yield {
+                    "_error": True,
+                    "status_code": None,
+                    "headers": {},
+                    "body": str(e),
+                    "is_timeout": False,
+                    "is_network": False,
+                    "is_internal": True,
+                }
+
+        finally:
+            if resp is not None:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+
+
+def extract_cloudflare_error(status_code: int, headers: Dict[str, str], body_str: str) -> Optional[Dict[str, Any]]:
+    """Inspect response for Cloudflare WAF/Edge error signatures (1010, 1015, 1020, etc.)."""
+    lower_body = body_str.lower()
+    is_cf = (
+        "cloudflare" in lower_body
+        or "cf-ray" in headers
+        or "server" in headers and "cloudflare" in headers["server"].lower()
+    )
+
+    ray_id = headers.get("cf-ray")
+    if not ray_id:
+        ray_match = re.search(r"ray\s*id:\s*([a-f0-9]+)", body_str, flags=re.IGNORECASE)
+        if ray_match:
+            ray_id = ray_match.group(1)
+
+    # Cloudflare 1010: Access Denied / User-Agent or IP block
+    if "1010" in body_str or "error code: 1010" in lower_body or ("access denied" in lower_body and is_cf and status_code == 403):
+        return {
+            "edge_provider": "cloudflare",
+            "edge_error_code": "1010",
+            "error_category": "access_denied",
+            "ray_id": ray_id,
+            "retryable": False,
+            "auth_error": False,
+        }
+
+    # Cloudflare 1015: Rate Limited
+    if "1015" in body_str or "error code: 1015" in lower_body or ("rate limit" in lower_body and is_cf):
+        return {
+            "edge_provider": "cloudflare",
+            "edge_error_code": "1015",
+            "error_category": "rate_limited",
+            "ray_id": ray_id,
+            "retryable": True,
+            "auth_error": False,
+        }
+
+    # Generic Cloudflare block
+    if is_cf and status_code == 403:
+        return {
+            "edge_provider": "cloudflare",
+            "edge_error_code": "generic_403",
+            "error_category": "access_denied",
+            "ray_id": ray_id,
+            "retryable": False,
+            "auth_error": False,
+        }
+
+    return None
+
+
+def classify_transport_error(
+    status_code: int,
+    headers: Dict[str, str],
+    body_str: str,
+    provider_name: str,
+    secret_to_redact: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Normalize HTTP error responses into structured categories and standardized messages."""
+    clean_body = sanitize_secrets(body_str, secret_to_redact)
+    cf_meta = extract_cloudflare_error(status_code, headers, clean_body)
+
+    # Try parsing JSON error body if available
+    json_error_detail = None
+    try:
+        parsed = json.loads(clean_body)
