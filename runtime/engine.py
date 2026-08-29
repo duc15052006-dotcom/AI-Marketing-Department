@@ -382,6 +382,7 @@ class FiveAgentDepartmentRuntime:
         temperature: float = 0.3,
         timeout_seconds: Optional[float] = None,
         context: Optional[RuntimeContext] = None,
+        text_delta_sink: Optional[Callable[[str], None]] = None,
     ) -> tuple[Optional[str], Optional[str]]:
         """Helper to invoke UniversalModelGateway for an agent stage.
 
@@ -420,7 +421,10 @@ class FiveAgentDepartmentRuntime:
             elif isinstance(raw_pol, dict):
                 try:
                     from integrations.models.registry import ModelPolicy
-                    model_policy_obj = ModelPolicy(**raw_pol)
+                    valid_keys = set(ModelPolicy.model_fields.keys()) if hasattr(ModelPolicy, "model_fields") else set()
+                    filtered_pol = {k: v for k, v in raw_pol.items() if k in valid_keys} if valid_keys else raw_pol
+                    if filtered_pol:
+                        model_policy_obj = ModelPolicy(**filtered_pol)
                 except Exception as exc:
                     raise RuntimeError(
                         f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ModelPolicy: {exc}"
@@ -449,6 +453,34 @@ class FiveAgentDepartmentRuntime:
             )
 
         try:
+            if text_delta_sink is not None and hasattr(self.model_gateway, "generate_stream"):
+                stream_gen = self.model_gateway.generate_stream(
+                    req,
+                    agent_id=agent_name,
+                    model_policy=model_policy_obj,
+                    provider_snapshot=provider_snapshot_obj,
+                )
+                chunks: List[str] = []
+                had_error = False
+                for delta in stream_gen:
+                    if delta.content:
+                        chunks.append(delta.content)
+                        text_delta_sink(delta.content)
+                    if delta.finish_reason == "error":
+                        had_error = True
+                if chunks and not had_error:
+                    if emitter:
+                        emitter.emit(
+                            ProgressEventType.MODEL_COMPLETED,
+                            stage=stage_obj,
+                            agent=agent_upper,
+                            message=f"Hoàn tất thực thi mô hình cho {agent_upper}",
+                        )
+                    return "".join(chunks).strip(), None
+                err = "STREAM_GENERATION_FAILED"
+                logger.warning(f"Agent {agent_name} LLM stream call failed: {err}")
+                return None, err
+
             resp = self.model_gateway.generate(
                 req,
                 agent_id=agent_name,
@@ -634,7 +666,11 @@ class FiveAgentDepartmentRuntime:
         context.create_checkpoint()
         return output
 
-    def execute_stage_intelligence(self, context: RuntimeContext) -> Dict[str, Any]:
+    def execute_stage_intelligence(
+        self,
+        context: RuntimeContext,
+        text_delta_sink: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, Any]:
         """Stage 2: Intelligence Research & Sensory Tool Invocation."""
         context.current_stage = RuntimeStage.INTELLIGENCE
         emitter = self._get_emitter(context)
@@ -832,7 +868,13 @@ class FiveAgentDepartmentRuntime:
         prompt_parts.append(evidence_section)
         user_prompt = "\n\n".join(prompt_parts).strip()
         user_prompt = self._append_governance_block(context, user_prompt)
-        llm_findings, err = self._call_agent_llm("intelligence", sys_prompt, user_prompt, context=context)
+        llm_findings, err = self._call_agent_llm(
+            "intelligence",
+            sys_prompt,
+            user_prompt,
+            context=context,
+            text_delta_sink=text_delta_sink
+        )
 
         if not llm_findings:
             context.status = RuntimeStatus.FAILED
@@ -1969,7 +2011,11 @@ class FiveAgentDepartmentRuntime:
             claim_actions={"audit": "FAIL_CLOSED"},
         )
 
-    def execute_stage_final_cmo(self, context: RuntimeContext) -> Dict[str, Any]:
+    def execute_stage_final_cmo(
+        self,
+        context: RuntimeContext,
+        text_delta_sink: Optional[Callable[[str], None]] = None,
+    ) -> Dict[str, Any]:
         """Stage 6: Governed Final CMO Synthesis & Master GTM Plan."""
         context.current_stage = RuntimeStage.FINAL_CMO
         emitter = self._get_emitter(context)
@@ -2049,7 +2095,13 @@ class FiveAgentDepartmentRuntime:
         ).strip()
         user_prompt = self._append_governance_block(context, user_prompt)
 
-        llm_report, err = self._call_agent_llm("cmo", sys_prompt, user_prompt, context=context)
+        llm_report, err = self._call_agent_llm(
+            "cmo",
+            sys_prompt,
+            user_prompt,
+            context=context,
+            text_delta_sink=text_delta_sink,
+        )
 
         if not llm_report:
             fail_reason = err or "MODEL_PROVIDER_FAILURE"
@@ -2274,16 +2326,16 @@ class FiveAgentDepartmentRuntime:
         self,
         context: RuntimeContext,
         progress_sink: Optional[ProgressSink] = None,
+        text_delta_sink: Optional[Callable[[str], None]] = None,
     ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
-        """Canonical 6-stage supervised execution for an initialized RuntimeContext.
+        """Execute all workflow stages sequentially under strict runtime authority.
 
-        Enforces:
+        Invariants:
         1. Context belongs to this runtime and is registered in active contexts.
         2. Strict 6-stage execution invariant with cooperative cancellation checks:
            CMO_INITIAL -> INTELLIGENCE -> STRATEGIST -> CREATIVE -> PERFORMANCE -> FINAL_CMO
         3. Exception and failure ownership: unhandled errors mark context FAILED and do not skip to complete.
         4. Final CMO is the same CMO second pass (never Agent 6).
-        5. Final sealed DepartmentRunArtifact generated via complete_run(context).
         """
         with self._lock:
             if context.run_id not in self._active_contexts and context.run_id not in self._completed_runs:
@@ -2365,7 +2417,16 @@ class FiveAgentDepartmentRuntime:
                 raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
 
             # Stage 6: Final CMO (Governed Synthesis & Master GTM Plan)
-            cmo_final = self.execute_stage_final_cmo(context)
+            if text_delta_sink is not None:
+                try:
+                    cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=text_delta_sink)
+                except TypeError:
+                    cmo_final = self.execute_stage_final_cmo(context)
+            else:
+                try:
+                    cmo_final = self.execute_stage_final_cmo(context)
+                except TypeError:
+                    cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=None)
 
         except Exception as exc:
             if str(exc) == "RUN_CANCELLED_BY_OPERATOR" or _check_cancellation():
@@ -2438,6 +2499,7 @@ class FiveAgentDepartmentRuntime:
         project_id: Optional[str] = None,
         constraints: Optional[List[str]] = None,
         progress_sink: Optional[ProgressSink] = None,
+        text_delta_sink: Optional[Callable[[str], None]] = None,
     ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
         """Convenience canonical entrypoint: start_run + execute_run."""
         context = self.start_run(
@@ -2458,8 +2520,13 @@ class FiveAgentDepartmentRuntime:
                 if c not in context.constraints:
                     context.constraints.append(c)
             self._sync_constraint_state(context)
-        if progress_sink is not None:
-            return self.execute_run(context, progress_sink=progress_sink)
+        if progress_sink is not None or text_delta_sink is not None:
+            kwargs: Dict[str, Any] = {}
+            if progress_sink is not None:
+                kwargs["progress_sink"] = progress_sink
+            if text_delta_sink is not None:
+                kwargs["text_delta_sink"] = text_delta_sink
+            return self.execute_run(context, **kwargs)
         return self.execute_run(context)
 
     def run_research_inquiry(
@@ -2469,6 +2536,7 @@ class FiveAgentDepartmentRuntime:
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
         progress_sink: Optional[ProgressSink] = None,
+        text_delta_sink: Optional[Callable[[str], None]] = None,
     ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
         """Research-only fast path: Intelligence stage only, no full workflow.
 
@@ -2509,7 +2577,16 @@ class FiveAgentDepartmentRuntime:
 
         try:
             # Execute Intelligence stage only — search, evidence, grounding, synthesis
-            intel_out = self.execute_stage_intelligence(context)
+            if text_delta_sink is not None:
+                try:
+                    intel_out = self.execute_stage_intelligence(context, text_delta_sink=text_delta_sink)
+                except TypeError:
+                    intel_out = self.execute_stage_intelligence(context)
+            else:
+                try:
+                    intel_out = self.execute_stage_intelligence(context)
+                except TypeError:
+                    intel_out = self.execute_stage_intelligence(context, text_delta_sink=None)
 
             # Set terminal status based on Intelligence outcome
             if intel_out.get("status") == "FAILED" or context.status == RuntimeStatus.FAILED:

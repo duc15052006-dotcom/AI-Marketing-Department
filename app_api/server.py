@@ -14,6 +14,7 @@ import logging
 import os
 import secrets
 import sys
+import threading
 import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +24,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from app_api.streaming import StreamingChatBridge
 
 def get_secure_session_token() -> str:
     """Generate a cryptographically fresh API session token (>=256 bits entropy) per process launch."""
@@ -381,6 +384,194 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         self._set_cors_and_json(status_code, length=len(payload))
         self.wfile.write(payload)
         self.wfile.flush()
+
+    def _set_cors_and_sse(self, status_code: int = 200) -> None:
+        self.send_response(status_code)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "close")
+        self.send_header("X-Accel-Buffering", "no")
+
+        origin = self.headers.get("Origin")
+        if origin:
+            clean_origin = origin.strip().rstrip("/")
+            if any(clean_origin == allowed.rstrip("/") for allowed in ALLOWED_LOCAL_ORIGINS):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Credentials", "true")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Token")
+        self.end_headers()
+
+    def _execute_stream_turn(
+        self,
+        chat_id: str,
+        user_text: str,
+        parsed_attachments: List[ChatAttachment],
+        session: Any,
+        user_msg: Optional[ChatMessage] = None,
+    ) -> None:
+        self._set_cors_and_sse(200)
+        bridge = StreamingChatBridge()
+
+        def _worker() -> None:
+            try:
+                decision = APP_BACKEND.conversation_router.route(
+                    message=user_text,
+                    attachments=parsed_attachments,
+                    chat_history=session.messages,
+                    project_id=session.optional_project_id,
+                    business_id=session.optional_business_id,
+                )
+
+                if decision.intent == ConversationIntent.GENERAL_CONVERSATION:
+                    res = APP_BACKEND.chat_engine.generate_chat_response(
+                        session=session,
+                        user_message=user_text,
+                        attachments=parsed_attachments,
+                        is_document_analysis=False,
+                        progress_sink=bridge.send_progress,
+                        text_delta_sink=bridge.send_delta,
+                    )
+                    status_val = "COMPLETED" if res.get("success", True) else "ERROR"
+                    resp_msg = APP_BACKEND.chat_mgr.add_assistant_response(
+                        chat_id=chat_id,
+                        content=res.get("content", ""),
+                        status=status_val,
+                    )
+                    if res.get("success", True):
+                        bridge.send_complete({
+                            "status": "COMPLETED",
+                            "chat_id": chat_id,
+                            "session": session.model_dump() if hasattr(session, "model_dump") else None,
+                            "user_message": user_msg.model_dump() if user_msg else None,
+                            "message": resp_msg.model_dump() if resp_msg else {},
+                            "content": res.get("content", ""),
+                            "route": "GENERAL_CONVERSATION",
+                            "intent": decision.intent.value,
+                            "reason_code": decision.reason_code,
+                            "five_agent_call_count": 0,
+                        })
+                    else:
+                        bridge.send_error(res.get("error") or "Execution failed")
+
+                elif decision.intent == ConversationIntent.DOCUMENT_ANALYSIS:
+                    res = APP_BACKEND.chat_engine.generate_chat_response(
+                        session=session,
+                        user_message=user_text,
+                        attachments=parsed_attachments,
+                        is_document_analysis=True,
+                        progress_sink=bridge.send_progress,
+                        text_delta_sink=bridge.send_delta,
+                    )
+                    status_val = "COMPLETED" if res.get("success", True) else "ERROR"
+                    resp_msg = APP_BACKEND.chat_mgr.add_assistant_response(
+                        chat_id=chat_id,
+                        content=res.get("content", ""),
+                        status=status_val,
+                    )
+                    if res.get("success", True):
+                        bridge.send_complete({
+                            "status": "COMPLETED",
+                            "chat_id": chat_id,
+                            "session": session.model_dump() if hasattr(session, "model_dump") else None,
+                            "user_message": user_msg.model_dump() if user_msg else None,
+                            "message": resp_msg.model_dump() if resp_msg else {},
+                            "content": res.get("content", ""),
+                            "route": "DOCUMENT_ANALYSIS",
+                            "intent": decision.intent.value,
+                            "reason_code": decision.reason_code,
+                            "five_agent_call_count": 0,
+                        })
+                    else:
+                        bridge.send_error(res.get("error") or "Execution failed")
+
+                elif decision.intent == ConversationIntent.RESEARCH_INQUIRY:
+                    ctx, intel_out, artifact = APP_BACKEND.runtime.run_research_inquiry(
+                        objective=user_text,
+                        business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
+                        chat_id=chat_id,
+                        project_id=session.optional_project_id,
+                        progress_sink=bridge.send_progress,
+                        text_delta_sink=bridge.send_delta,
+                    )
+                    is_failed = intel_out.get("status") == "FAILED" or ctx.status == RuntimeStatus.FAILED
+                    status_val = "ERROR" if is_failed else "COMPLETED"
+                    research_content = intel_out.get("research_findings") or intel_out.get("master_gtm_plan_markdown") or (
+                        "⚠️ Không thể hoàn tất nghiên cứu do lỗi kết nối mô hình." if is_failed else "Research completed."
+                    )
+                    resp_msg = APP_BACKEND.chat_mgr.add_assistant_response(
+                        chat_id=chat_id,
+                        content=research_content,
+                        status=status_val,
+                        run_id=ctx.run_id,
+                        agent_outputs=artifact.agent_outputs,
+                    )
+                    if not is_failed:
+                        bridge.send_complete({
+                            "status": "COMPLETED",
+                            "chat_id": chat_id,
+                            "session": session.model_dump() if hasattr(session, "model_dump") else None,
+                            "user_message": user_msg.model_dump() if user_msg else None,
+                            "message": resp_msg.model_dump() if resp_msg else {},
+                            "run_id": ctx.run_id,
+                            "artifact_hash": artifact.final_artifact_hash,
+                            "content": research_content,
+                            "route": "RESEARCH_INQUIRY",
+                            "intent": decision.intent.value,
+                            "reason_code": decision.reason_code,
+                            "five_agent_call_count": 1,
+                        })
+                    else:
+                        bridge.send_error(intel_out.get("error") or "RESEARCH_FAILED")
+
+                else: # MARKETING_WORKFLOW
+                    ctx, cmo_final, artifact = APP_BACKEND.runtime.run_workflow(
+                        objective=user_text,
+                        business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
+                        chat_id=chat_id,
+                        project_id=session.optional_project_id,
+                        constraints=extract_explicit_user_constraints(user_text),
+                        progress_sink=bridge.send_progress,
+                        text_delta_sink=bridge.send_delta,
+                    )
+                    is_failed = (artifact.status == RuntimeStatus.FAILED) or (cmo_final.get("status") == "FAILED")
+                    status_val = "ERROR" if is_failed else "COMPLETED"
+                    final_markdown = cmo_final.get("master_gtm_plan_markdown") or ("⚠️ Không thể hoàn tất chiến dịch do lỗi kết nối mô hình." if is_failed else "Plan completed.")
+                    resp_msg = APP_BACKEND.chat_mgr.add_assistant_response(
+                        chat_id=chat_id,
+                        content=final_markdown,
+                        status=status_val,
+                        run_id=ctx.run_id,
+                        agent_outputs=artifact.agent_outputs,
+                    )
+                    if not is_failed:
+                        bridge.send_complete({
+                            "status": "COMPLETED",
+                            "chat_id": chat_id,
+                            "session": session.model_dump() if hasattr(session, "model_dump") else None,
+                            "user_message": user_msg.model_dump() if user_msg else None,
+                            "message": resp_msg.model_dump() if resp_msg else {},
+                            "run_id": ctx.run_id,
+                            "artifact_hash": artifact.final_artifact_hash,
+                            "content": final_markdown,
+                            "route": "MARKETING_WORKFLOW",
+                            "intent": decision.intent.value,
+                            "reason_code": decision.reason_code,
+                            "five_agent_call_count": 5,
+                        })
+                    else:
+                        bridge.send_error(cmo_final.get("reason") or "WORKFLOW_FAILED")
+
+            except Exception as ex:
+                logger.exception(f"Streaming execution error for chat {chat_id}: {ex}")
+                bridge.send_error(ex)
+
+        worker_t = threading.Thread(target=_worker, daemon=True)
+        worker_t.start()
+
+        bridge.drain_to_writer(self.wfile.write, self.wfile.flush)
+        worker_t.join(timeout=10.0)
 
     def _execute_routed_turn(
         self,
@@ -986,13 +1177,13 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "FORBIDDEN_ORIGIN", "message": "Untrusted cross-origin request rejected"}, 403)
             return
 
-        if not self._is_authenticated():
-            self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
-            return
-
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
         body = self._read_body_json()
+
+        if not self._is_authenticated():
+            self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
+            return
 
         def _require_expected_revision() -> int:
             """Settings concurrency contract: every persisted mutation MUST carry
@@ -1118,6 +1309,54 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             # Connection test responses carry only safe status metadata.
             forbidden = {"credential", "credential_ref", "authorization", "api_key", "secret"}
             self._send_json({k: v for k, v in res.items() if str(k).lower() not in forbidden})
+            return
+
+        # Streaming Chat Execution
+        if path in ("/api/chat/stream", "/api/chat/sessions/stream") or (path.endswith("/stream") and "/api/chat/sessions/" in path):
+            user_text = body.get("content", "").strip()
+            raw_attachments = body.get("attachments", [])
+            proj_id = body.get("project_id")
+            biz_id = body.get("business_id")
+
+            chat_id = body.get("chat_id")
+            if not chat_id and "/api/chat/sessions/" in path:
+                parts = path.split("/")
+                chat_id = parts[parts.index("sessions") + 1]
+
+            session = None
+            if chat_id and chat_id not in ("new", "null", "undefined", ""):
+                session = APP_BACKEND.chat_mgr.get_session(chat_id)
+
+            if not session:
+                clean_title = user_text.split("\n")[0][:30] if user_text else (
+                    raw_attachments[0].get("filename_or_url", "New Chat") if raw_attachments else "New Chat"
+                )
+                session = APP_BACKEND.chat_mgr.create_session(
+                    title=clean_title,
+                    project_id=proj_id,
+                    business_id=biz_id,
+                )
+                chat_id = session.chat_id
+
+            parsed_attachments: List[ChatAttachment] = []
+            for att in raw_attachments:
+                att_obj = ChatAttachment(
+                    chat_id=chat_id,
+                    filename_or_url=att.get("filename_or_url", "attachment.txt"),
+                    attachment_type=AttachmentType[att.get("type", "TEXT").upper()] if att.get("type", "TEXT").upper() in AttachmentType.__members__ else AttachmentType.TEXT,
+                    content=att.get("content", ""),
+                )
+                parsed_attachments.append(att_obj)
+                APP_BACKEND.session_knowledge.index_attachment(att_obj)
+
+            user_msg = APP_BACKEND.chat_mgr.add_user_message(chat_id, user_text, attachments=parsed_attachments)
+
+            if session.title in ("New Chat", "Cuộc trò chuyện mới", "New Conversation") and user_text.strip():
+                clean_title = user_text.strip().split("\n")[0][:30]
+                if clean_title:
+                    APP_BACKEND.chat_mgr.update_session(chat_id, title=clean_title)
+
+            self._execute_stream_turn(chat_id, user_text, parsed_attachments, session, user_msg=user_msg)
             return
 
         # 1. Create / Manage Chat Sessions

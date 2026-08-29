@@ -1,0 +1,221 @@
+"""Backend Streaming Transport & SSE Bridge for AI Marketing Department.
+
+Provides clean, typed, and isolated Server-Sent Events (SSE) streaming transport:
+- Separates trusted runtime progress events (B2) from user-visible model text deltas (B1).
+- Enforces strict UTF-8 serialization, immediate flushes, and finite SSE event types.
+- Isolates run-scoped streams with bounded thread-safe queues.
+- Resilient client disconnect handling without server crashes or leaked threads.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import queue
+import threading
+from enum import Enum
+from typing import Any, Callable, Dict, Optional, Union
+
+from runtime.progress import RuntimeProgressEvent
+
+logger = logging.getLogger("app_api.streaming")
+
+TextDeltaSink = Callable[[str], None]
+
+
+class SSEEventType(str, Enum):
+    """Finite canonical SSE event types for backend-to-desktop transport."""
+    PROGRESS = "progress"
+    DELTA = "delta"
+    COMPLETE = "complete"
+    ERROR = "error"
+
+
+def format_sse_event(event_type: Union[SSEEventType, str], data: Any) -> bytes:
+    """Format an SSE message block with event type, JSON-encoded data, and blank line termination.
+
+    Rejects newline injection in event types and safely serializes structured data to UTF-8.
+    """
+    event_str = event_type.value if isinstance(event_type, SSEEventType) else str(event_type).strip()
+    if "\n" in event_str or "\r" in event_str:
+        raise ValueError("SECURITY_ERROR: Event type must not contain newline characters.")
+
+    if hasattr(data, "model_dump") and callable(data.model_dump):
+        json_payload = json.dumps(data.model_dump(), ensure_ascii=False, default=str)
+    elif isinstance(data, (dict, list, str, int, float, bool)) or data is None:
+        json_payload = json.dumps(data, ensure_ascii=False, default=str)
+    else:
+        json_payload = json.dumps(str(data), ensure_ascii=False)
+
+    frame = f"event: {event_str}\ndata: {json_payload}\n\n"
+    return frame.encode("utf-8")
+
+
+def sanitize_error_for_stream(error: Any) -> Dict[str, str]:
+    """Sanitize technical exception details to prevent leaking internal stack traces, API keys, or OS errors."""
+    err_str = str(error) if error else "INTERNAL_SERVER_ERROR"
+
+    # Remove WinError / socket details
+    if "WinError" in err_str or "HTTP 599" in err_str or "Connection refused" in err_str:
+        return {
+            "error": "PROVIDER_UNAVAILABLE",
+            "message": "Không thể kết nối đến nhà cung cấp mô hình AI. Vui lòng kiểm tra lại cấu hình hoặc kết nối mạng.",
+        }
+
+    # Hide API keys / Auth tokens if any were present in raw message
+    if "key" in err_str.lower() and "invalid" in err_str.lower():
+        return {
+            "error": "AUTHENTICATION_FAILED",
+            "message": "Xác thực với nhà cung cấp mô hình AI thất bại. Vui lòng kiểm tra lại cấu hình khóa API.",
+        }
+
+    if "rate limit" in err_str.lower() or "429" in err_str:
+        return {
+            "error": "RATE_LIMITED",
+            "message": "Đã vượt quá giới hạn tần suất yêu cầu (Rate Limit). Vui lòng thử lại sau.",
+        }
+
+    return {
+        "error": "EXECUTION_ERROR",
+        "message": err_str,
+    }
+
+
+class StreamState(str, Enum):
+    """Explicit lifecycle state machine for SSE streaming bridge."""
+    OPEN = "OPEN"
+    TERMINAL_PENDING = "TERMINAL_PENDING"
+    COMPLETE = "COMPLETE"
+    ERROR = "ERROR"
+    DISCONNECTED = "DISCONNECTED"
+
+
+class StreamingChatBridge:
+    """Run-scoped queue bridge connecting worker thread execution with HTTP SSE response writer."""
+
+    def __init__(self, max_queue_size: int = 1000) -> None:
+        self.max_queue_size = max_queue_size
+        self.queue: queue.Queue[tuple[SSEEventType, Any]] = queue.Queue(maxsize=max_queue_size)
+        self.state: StreamState = StreamState.OPEN
+        self._terminal_event: Optional[tuple[SSEEventType, Any]] = None
+        self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
+
+    @property
+    def is_closed(self) -> bool:
+        with self._lock:
+            return self.state in (StreamState.COMPLETE, StreamState.ERROR, StreamState.DISCONNECTED)
+
+    @property
+    def is_connected(self) -> bool:
+        with self._lock:
+            return self.state in (StreamState.OPEN, StreamState.TERMINAL_PENDING)
+
+    def send_progress(self, event: RuntimeProgressEvent) -> None:
+        """Enqueue a certified RuntimeProgressEvent with zero-drop backpressure."""
+        with self._cond:
+            while self.state == StreamState.OPEN and self.queue.full():
+                self._cond.wait(timeout=0.1)
+
+            if self.state != StreamState.OPEN:
+                return
+
+            self.queue.put_nowait((SSEEventType.PROGRESS, event))
+            self._cond.notify_all()
+
+    def send_delta(self, delta_text: str, provider: str = "", model_name: str = "") -> None:
+        """Enqueue a user-visible assistant text delta with zero-drop backpressure."""
+        if not delta_text:
+            return
+        payload = {
+            "content": delta_text,
+            "provider": provider,
+            "model_name": model_name,
+        }
+        with self._cond:
+            while self.state == StreamState.OPEN and self.queue.full():
+                self._cond.wait(timeout=0.1)
+
+            if self.state != StreamState.OPEN:
+                return
+
+            self.queue.put_nowait((SSEEventType.DELTA, payload))
+            self._cond.notify_all()
+
+    def send_complete(self, payload: Dict[str, Any]) -> None:
+        """Enqueue terminal COMPLETE event outside normal capacity failure."""
+        with self._cond:
+            if self.state != StreamState.OPEN:
+                return
+            self._terminal_event = (SSEEventType.COMPLETE, payload)
+            self.state = StreamState.TERMINAL_PENDING
+            self._cond.notify_all()
+
+    def send_error(self, error: Any) -> None:
+        """Enqueue terminal ERROR event outside normal capacity failure."""
+        with self._cond:
+            if self.state != StreamState.OPEN:
+                return
+            sanitized = sanitize_error_for_stream(error)
+            self._terminal_event = (SSEEventType.ERROR, sanitized)
+            self.state = StreamState.TERMINAL_PENDING
+            self._cond.notify_all()
+
+    def close(self) -> None:
+        """Mark bridge disconnected / closed and unblock any waiting producers/consumers."""
+        with self._cond:
+            if self.state in (StreamState.OPEN, StreamState.TERMINAL_PENDING):
+                self.state = StreamState.DISCONNECTED
+            self._cond.notify_all()
+
+    def drain_to_writer(self, write_fn: Callable[[bytes], None], flush_fn: Callable[[], None]) -> None:
+        """Synchronously drain normal queue events in strict FIFO order, followed by the terminal event."""
+        try:
+            while True:
+                with self._cond:
+                    while self.queue.empty() and self.state == StreamState.OPEN:
+                        self._cond.wait(timeout=0.1)
+
+                    if not self.queue.empty():
+                        item = self.queue.get_nowait()
+                        self._cond.notify_all()
+                    elif self.state == StreamState.TERMINAL_PENDING:
+                        # Queue is drained; proceed to terminal frame emission
+                        break
+                    else:
+                        # Disconnected, error, or complete
+                        return
+
+                event_type, data = item
+                frame_bytes = format_sse_event(event_type, data)
+                write_fn(frame_bytes)
+                flush_fn()
+
+            # Normal queue is now completely drained. Deliver the terminal event outside normal capacity limits.
+            with self._cond:
+                if self.state == StreamState.TERMINAL_PENDING and self._terminal_event is not None:
+                    term_type, term_data = self._terminal_event
+                else:
+                    return
+
+            frame_bytes = format_sse_event(term_type, term_data)
+            write_fn(frame_bytes)
+            flush_fn()
+
+            with self._cond:
+                if term_type == SSEEventType.COMPLETE:
+                    self.state = StreamState.COMPLETE
+                else:
+                    self.state = StreamState.ERROR
+                self._cond.notify_all()
+
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError) as ex:
+            logger.info(f"Client disconnected during streaming: {ex}")
+            with self._cond:
+                self.state = StreamState.DISCONNECTED
+                self._cond.notify_all()
+        except Exception as ex:
+            logger.warning(f"Error during SSE queue draining: {ex}")
+            with self._cond:
+                self.state = StreamState.DISCONNECTED
+                self._cond.notify_all()

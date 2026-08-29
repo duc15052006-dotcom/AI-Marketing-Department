@@ -49,6 +49,7 @@ class ChatConversationEngine:
         attachments: Optional[List[ChatAttachment]] = None,
         is_document_analysis: bool = False,
         progress_sink: Optional[ProgressSink] = None,
+        text_delta_sink: Optional[Callable[[str], None]] = None,
     ) -> Dict[str, Any]:
         """Generate conversational or document-grounded response with multi-turn context."""
         # 1. Build System Instruction — TRUSTED POLICY ONLY, no untrusted content
@@ -136,6 +137,89 @@ class ChatConversationEngine:
             max_tokens=4096,
         )
 
+        doc_context_str = "\n\n".join(doc_context_parts) if doc_context_parts else ""
+
+        # Streaming execution path
+        if text_delta_sink is not None:
+            chunks: List[str] = []
+            last_provider = "unknown"
+            last_model_name = "default"
+            had_error = False
+            error_detail = ""
+
+            try:
+                stream_gen = self.model_gateway.generate_stream(req)
+                for delta in stream_gen:
+                    if delta.provider:
+                        last_provider = delta.provider
+                    if delta.model_name:
+                        last_model_name = delta.model_name
+                    if delta.content:
+                        chunks.append(delta.content)
+                        text_delta_sink(delta.content)
+                    if delta.finish_reason == "error":
+                        had_error = True
+                        error_detail = "Model provider streaming encountered an error."
+            except Exception as ex:
+                had_error = True
+                error_detail = str(ex)
+
+            if chunks and not had_error:
+                if emitter:
+                    emitter.emit(
+                        ProgressEventType.MODEL_COMPLETED,
+                        message="Mô hình ngôn ngữ phản hồi thành công",
+                    )
+                    emitter.emit(
+                        ProgressEventType.RUN_COMPLETED,
+                        message="Hoàn tất xử lý tin nhắn",
+                    )
+                return {
+                    "success": True,
+                    "content": "".join(chunks).strip(),
+                    "provider": last_provider,
+                    "model_name": last_model_name,
+                }
+
+            if not chunks:
+                fallback_content = self._generate_offline_conversational_fallback(user_message, doc_context_str)
+                if fallback_content:
+                    text_delta_sink(fallback_content)
+                    if emitter:
+                        emitter.emit(
+                            ProgressEventType.MODEL_COMPLETED,
+                            message="Phản hồi từ bộ nhớ đàm thoại cục bộ",
+                        )
+                        emitter.emit(
+                            ProgressEventType.RUN_COMPLETED,
+                            message="Hoàn tất xử lý tin nhắn",
+                        )
+                    return {
+                        "success": True,
+                        "content": fallback_content,
+                        "provider": "local_conversational_core",
+                        "model_name": "conversational-v1",
+                        "latency_ms": 1.0,
+                    }
+
+            sanitized_error = (
+                "Không thể kết nối đến nhà cung cấp mô hình AI (Model Provider). Vui lòng kiểm tra cấu hình provider hoặc chọn model khác."
+                if ("WinError" in error_detail or "HTTP 599" in error_detail or "refused" in error_detail.lower())
+                else (error_detail or "Model provider streaming failed.")
+            )
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    message=f"Không thể kết nối đến nhà cung cấp mô hình AI: {sanitized_error}",
+                    metadata={"error": error_detail},
+                )
+            return {
+                "success": False,
+                "error": error_detail or sanitized_error,
+                "content": f"⚠️ Không thể hoàn tất phản hồi: {sanitized_error}\nTin nhắn của bạn đã được lưu trong lịch sử phiên.",
+            }
+
+        # Synchronous generation path
         resp = self.model_gateway.generate(req)
 
         # 5. Handle Gateway Response
@@ -163,7 +247,6 @@ class ChatConversationEngine:
         logger.warning(f"UniversalModelGateway chat generation error: {error_detail}")
 
         # If user is asking a basic deterministic test / greeting offline:
-        doc_context_str = "\n\n".join(doc_context_parts) if doc_context_parts else ""
         fallback_content = self._generate_offline_conversational_fallback(user_message, doc_context_str)
         if fallback_content:
             if emitter:
