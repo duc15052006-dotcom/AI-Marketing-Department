@@ -1,24 +1,20 @@
-"""Real Web and Observation Connector (Phase 6.1).
-
-Implements real read-oriented HTTP fetching, HTML text extraction,
-and search querying with SSRF protection and sanitized error handling.
-"""
-
+"""Real read-only web connector with SSRF protection and safe errors."""
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
+
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
 from tools.receipts import ExecutionMode
 
 
 class RealWebConnector(BaseCapabilityAdapter):
-    """Real HTTP reading and observation connector with strict read-only safety."""
-
     def __init__(self, timeout_seconds: float = 15.0, user_agent: str = "AI-Marketing-Department/1.0") -> None:
         self._timeout_seconds = timeout_seconds
         self._user_agent = user_agent
@@ -26,6 +22,53 @@ class RealWebConnector(BaseCapabilityAdapter):
     @property
     def adapter_name(self) -> str:
         return "system_http_reader"
+
+    @staticmethod
+    def _is_forbidden_ip(raw: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(raw)
+        except ValueError:
+            return True
+        return bool(
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        )
+
+    @classmethod
+    def _validate_public_url(cls, url: str) -> tuple[bool, str]:
+        try:
+            parsed = urllib.parse.urlparse(url)
+        except Exception:
+            return False, "INVALID_URL"
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False, "INVALID_URL"
+        if parsed.username or parsed.password:
+            return False, "URL_CREDENTIALS_FORBIDDEN"
+        hostname = parsed.hostname.rstrip(".").lower()
+        if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".localhost"):
+            return False, "SSRF_BLOCKED"
+        try:
+            infos = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            return False, "DNS_RESOLUTION_FAILED"
+        addresses = {info[4][0] for info in infos if info and info[4]}
+        if not addresses or any(cls._is_forbidden_ip(addr) for addr in addresses):
+            return False, "SSRF_BLOCKED"
+        return True, ""
+
+    @staticmethod
+    def _failure(start: float, code: str, message: str) -> AdapterResult:
+        return AdapterResult(
+            success=False,
+            error_code=code,
+            error_message=message,
+            latency_ms=(time.perf_counter() - start) * 1000.0,
+            execution_mode=ExecutionMode.REAL,
+        )
 
     def execute(
         self,
@@ -37,109 +80,63 @@ class RealWebConnector(BaseCapabilityAdapter):
         business_id: str = "",
         project_id: str = "",
     ) -> AdapterResult:
-        start_time = time.perf_counter()
+        start = time.perf_counter()
         cap = capability_id.lower()
 
         if cap in ("read_page", "analyze_url"):
-            url = parameters.get("url", "")
+            url = str(parameters.get("url") or "").strip()
             if not url:
-                return AdapterResult(
-                    success=False,
-                    error_code="INVALID_URL",
-                    error_message="Missing required parameter 'url'.",
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                )
-
-            # Validate URL format & block local network SSRF
-            parsed = urllib.parse.urlparse(url)
-            if parsed.scheme not in ("http", "https"):
-                return AdapterResult(
-                    success=False,
-                    error_code="INVALID_SCHEME",
-                    error_message=f"Unsupported URL scheme '{parsed.scheme}'. Only http and https are allowed.",
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                )
-            if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254"):
-                return AdapterResult(
-                    success=False,
-                    error_code="SSRF_BLOCKED",
-                    error_message="Targeting internal loopback and cloud metadata addresses is strictly forbidden.",
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                )
+                return self._failure(start, "INVALID_URL", "A public http(s) URL is required.")
+            allowed, reason = self._validate_public_url(url)
+            if not allowed:
+                return self._failure(start, reason, "The URL is invalid, unavailable, or targets a non-public network address.")
 
             try:
                 req = urllib.request.Request(
                     url,
                     headers={"User-Agent": self._user_agent, "Accept": "text/html,application/xhtml+xml,text/plain"},
                 )
+                # Redirects are validated by checking the final URL too.  This
+                # blocks public->private redirect chains at the application boundary.
                 with urllib.request.urlopen(req, timeout=min(timeout_seconds, self._timeout_seconds)) as resp:
-                    raw_bytes = resp.read(250000)  # Max 250KB
-                    content_type = resp.headers.get("Content-Type", "text/html")
+                    final_url = resp.geturl()
+                    final_allowed, final_reason = self._validate_public_url(final_url)
+                    if not final_allowed:
+                        return self._failure(start, final_reason, "A redirect targeted a non-public network address.")
+                    content_type = str(resp.headers.get("Content-Type", ""))[:200]
+                    if not any(t in content_type.lower() for t in ("text/", "html", "json", "xml")):
+                        return self._failure(start, "UNSUPPORTED_CONTENT_TYPE", "The page did not return a supported textual content type.")
+                    raw_bytes = resp.read(500_000)
                     text_body = raw_bytes.decode("utf-8", errors="replace")
 
-                # Basic HTML stripping
-                clean_text = re.sub(r"<script.*?</script>", "", text_body, flags=re.DOTALL | re.IGNORECASE)
-                clean_text = re.sub(r"<style.*?</style>", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
-                clean_text = re.sub(r"<[^>]+>", " ", clean_text)
-                clean_text = " ".join(clean_text.split())
-
+                clean = re.sub(r"<script\b.*?</script>", " ", text_body, flags=re.DOTALL | re.IGNORECASE)
+                clean = re.sub(r"<style\b.*?</style>", " ", clean, flags=re.DOTALL | re.IGNORECASE)
+                clean = re.sub(r"<[^>]+>", " ", clean)
+                clean = " ".join(clean.split())
                 return AdapterResult(
                     success=True,
                     data={
-                        "url": url,
+                        "url": final_url,
                         "content_type": content_type,
                         "raw_length": len(text_body),
-                        "extracted_text": clean_text[:4000],
+                        "extracted_text": clean[:20_000],
+                        "truncated": len(clean) > 20_000,
                     },
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    latency_ms=(time.perf_counter() - start) * 1000.0,
                     execution_mode=ExecutionMode.REAL,
                 )
-            except urllib.error.HTTPError as e:
-                return AdapterResult(
-                    success=False,
-                    error_code=f"HTTP_{e.code}",
-                    error_message=f"HTTP request failed with status {e.code}: {e.reason}",
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                    execution_mode=ExecutionMode.MOCK,
-                )
-            except Exception as e:
-                return AdapterResult(
-                    success=False,
-                    error_code="NETWORK_ERROR",
-                    error_message=str(e),
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                    execution_mode=ExecutionMode.MOCK,
-                )
+            except urllib.error.HTTPError as exc:
+                return self._failure(start, f"HTTP_{exc.code}", f"The remote page returned HTTP {exc.code}.")
+            except urllib.error.URLError:
+                return self._failure(start, "NETWORK_ERROR", "The remote page could not be reached.")
+            except (TimeoutError, socket.timeout):
+                return self._failure(start, "TIMEOUT", "The remote page request timed out.")
+            except Exception:
+                return self._failure(start, "NETWORK_ERROR", "The remote page could not be read safely.")
 
-        elif cap == "web_search":
-            query = parameters.get("query", "")
-            if not query:
-                return AdapterResult(
-                    success=False,
-                    error_code="INVALID_PARAMETERS",
-                    error_message="Missing query parameter.",
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                    execution_mode=ExecutionMode.MOCK,
-                )
-            # Simulated search mock (live search backend unconfigured in local sandbox)
-            results = [
-                {
-                    "title": f"Industry Research: {query}",
-                    "snippet": f"Simulated market telemetry and analysis for '{query}'.",
-                    "url": f"https://mock-search.example.com/topic?q={urllib.parse.quote(query)}",
-                }
-            ]
-            return AdapterResult(
-                success=True,
-                data={"query": query, "results": results, "count": len(results)},
-                latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                execution_mode=ExecutionMode.MOCK,
-            )
+        if cap == "web_search":
+            # Real search is provided by ObservationSearchAdapter.  Never
+            # fabricate an example.com result when that backend is absent.
+            return self._failure(start, "SEARCH_BACKEND_NOT_CONFIGURED", "Web search must use the configured observation search backend.")
 
-        return AdapterResult(
-            success=False,
-            error_code="UNSUPPORTED_CAPABILITY",
-            error_message=f"Capability '{capability_id}' not handled by RealWebConnector.",
-            latency_ms=(time.perf_counter() - start_time) * 1000.0,
-            execution_mode=ExecutionMode.MOCK,
-        )
+        return self._failure(start, "UNSUPPORTED_CAPABILITY", f"Capability '{capability_id}' is not handled by this connector.")
