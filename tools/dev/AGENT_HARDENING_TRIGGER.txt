@@ -1,0 +1,3 @@
+Agent Hardening V2 asserted production patch trigger.
+Revision: R3
+Purpose: rerun after deterministic follow-up subject resolution fix.
