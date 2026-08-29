@@ -1,3 +1,3 @@
 Full defect sweep V2 trigger.
-Revision: BATCH-4
-Purpose: certify scoped regression repairs and production defect batch.
+Revision: BATCH-5
+Purpose: apply consolidated production fixes, full regression, frontend build, and native bridge checks.
