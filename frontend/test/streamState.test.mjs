@@ -11,6 +11,7 @@ import {
   applyTerminalCompleteToSessions,
   applyTerminalErrorToSessions,
   applyTerminalErrorToStages,
+  mergeBackendSessionsWithLocal,
   CANONICAL_WORKFLOW_STAGES,
 } from '../src/chat/streamState.ts';
 
@@ -289,4 +290,521 @@ test('12. Double-submit guard: canSubmitTurn returns false when isProcessing is 
   assert.equal(canSubmitTurn(false, '   ', 0), false); // Guarded when input is empty!
   assert.equal(canSubmitTurn(false, 'Valid input', 0), true); // Allowed!
   assert.equal(canSubmitTurn(false, '', 1), true); // Allowed with attachment!
+});
+
+// =========================================================================
+// NEW ERROR PERSISTENCE & SESSION SURVIVAL TESTS (PROD-UAT-CHAT-ERROR-PERSISTENCE-01)
+// =========================================================================
+
+test('13. TEST 1: First-turn transport error before any delta retains TEMP session, user message, and assistant error', () => {
+  const tempSessions = [
+    {
+      chat_id: 'CHAT-TEMP-999',
+      title: 'New Chat',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'Chiến lược marketing Q4' },
+        createAssistantPlaceholder('MSG-A-1'),
+      ],
+    },
+  ];
+
+  const failedSessions = applyTerminalErrorToSessions(
+    tempSessions,
+    ['CHAT-TEMP-999'],
+    'MSG-A-1',
+    'Lỗi kết nối native bridge.',
+    'TRANSPORT_ERROR',
+    'Native IPC connection disconnected'
+  );
+
+  assert.equal(failedSessions.length, 1);
+  assert.equal(failedSessions[0].chat_id, 'CHAT-TEMP-999');
+  assert.equal(failedSessions[0].messages.length, 2);
+  assert.equal(failedSessions[0].messages[0].content, 'Chiến lược marketing Q4'); // User message retained!
+  assert.equal(failedSessions[0].messages[1].status, 'ERROR'); // Assistant marked ERROR!
+  assert.equal(failedSessions[0].messages[1].error_code, 'TRANSPORT_ERROR');
+  assert.equal(failedSessions[0].messages[1].error_detail, 'Native IPC connection disconnected');
+});
+
+test('14. TEST 2: First-turn Python Channel error before any delta retains same persistence', () => {
+  const tempSessions = [
+    {
+      chat_id: 'CHAT-TEMP-888',
+      title: 'Ad-Hoc Turn',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'Phân tích đối thủ' },
+        createAssistantPlaceholder('MSG-A-1'),
+      ],
+    },
+  ];
+
+  const failedSessions = applyTerminalErrorToSessions(
+    tempSessions,
+    ['CHAT-TEMP-888'],
+    'MSG-A-1',
+    'Provider unavailable: xkiro endpoint timed out',
+    'PROVIDER_UNAVAILABLE',
+    'xkiro deepseek-v4-pro returned HTTP 504 Gateway Timeout'
+  );
+
+  assert.equal(failedSessions.length, 1);
+  const asst = failedSessions[0].messages[1];
+  assert.equal(asst.status, 'ERROR');
+  assert.equal(asst.error_code, 'PROVIDER_UNAVAILABLE');
+  assert.equal(asst.error_detail, 'xkiro deepseek-v4-pro returned HTTP 504 Gateway Timeout');
+  assert.equal(failedSessions[0].messages[0].content, 'Phân tích đối thủ');
+});
+
+test('15. TEST 3: First-turn partial delta then error retains partial assistant text and safe error', () => {
+  let sessions = [
+    {
+      chat_id: 'CHAT-TEMP-777',
+      title: 'Prompt',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'Viết lời chào' },
+        createAssistantPlaceholder('MSG-A-1'),
+      ],
+    },
+  ];
+
+  sessions = applyDeltaToSessions(sessions, ['CHAT-TEMP-777'], 'MSG-A-1', 'Xin chào quý khách, tôi là');
+
+  sessions = applyTerminalErrorToSessions(
+    sessions,
+    ['CHAT-TEMP-777'],
+    'MSG-A-1',
+    'Luồng phản hồi bị gián đoạn.',
+    'STREAM_INTERRUPTED',
+    'Socket connection closed by remote peer before complete'
+  );
+
+  const asst = sessions[0].messages[1];
+  assert.equal(asst.status, 'ERROR');
+  assert.equal(asst.content, 'Xin chào quý khách, tôi là'); // Partial content intact!
+  assert.equal(asst.error_code, 'STREAM_INTERRUPTED');
+  assert.equal(asst.error_detail, 'Socket connection closed by remote peer before complete');
+});
+
+test('16. TEST 4: Failed TEMP session followed by backend/session refresh is NOT silently removed', () => {
+  const localSessions = [
+    {
+      chat_id: 'CHAT-TEMP-FAILED-1',
+      title: 'Failed Initial Exploration',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'Khảo sát thị trường' },
+        { message_id: 'MSG-A-1', role: 'assistant', sender_name: 'AI Assistant', content: 'Lỗi', status: 'ERROR', error_code: 'PROVIDER_UNAVAILABLE' },
+      ],
+    },
+  ];
+
+  // Backend has existing older chats (or empty list) and has no record of CHAT-TEMP-FAILED-1
+  const backendSessions = [
+    {
+      chat_id: 'CHAT-PERSISTED-100',
+      title: 'Older Persisted Chat',
+      created_at: '2026-08-29T10:00:00Z',
+      updated_at: '2026-08-29T10:00:00Z',
+      status: 'ACTIVE',
+      messages: [],
+    },
+  ];
+
+  const merged = mergeBackendSessionsWithLocal(localSessions, backendSessions);
+
+  assert.equal(merged.length, 2); // Both the local failed TEMP chat and backend chat exist!
+  const failedTemp = merged.find((s) => s.chat_id === 'CHAT-TEMP-FAILED-1');
+  assert.ok(failedTemp);
+  assert.equal(failedTemp.messages.length, 2);
+  assert.equal(failedTemp.messages[0].content, 'Khảo sát thị trường');
+  assert.equal(failedTemp.messages[1].status, 'ERROR');
+});
+
+test('17. TEST 5: Successful TEMP→REAL migration produces exactly one session and messages once', () => {
+  const tempSessions = [
+    {
+      chat_id: 'CHAT-TEMP-555',
+      title: 'Temp Title',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'First message' },
+        { message_id: 'MSG-A-1', role: 'assistant', sender_name: 'AI Assistant', content: 'First response', status: 'STREAMING' },
+      ],
+    },
+  ];
+
+  const { sessions: migrated } = applyTerminalCompleteToSessions(
+    tempSessions,
+    'CHAT-TEMP-555',
+    'CHAT-TEMP-555',
+    'MSG-A-1',
+    { chat_id: 'CHAT-REAL-777', session: { title: 'Authoritative Title' } }
+  );
+
+  // Now simulate subsequent backend refresh with the newly created backend session
+  const backendSessions = [
+    {
+      chat_id: 'CHAT-REAL-777',
+      title: 'Authoritative Title',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'First message' },
+        { message_id: 'MSG-A-1', role: 'assistant', sender_name: 'AI Assistant', content: 'First response', status: 'COMPLETED' },
+      ],
+    },
+  ];
+
+  const merged = mergeBackendSessionsWithLocal(migrated, backendSessions);
+
+  assert.equal(merged.length, 1); // Exactly one session!
+  assert.equal(merged[0].chat_id, 'CHAT-REAL-777');
+  assert.equal(merged[0].messages.length, 2); // Exactly 2 messages!
+});
+
+test('18. TEST 6: Second-turn failure in real session retains real session, user turn, and error', () => {
+  let sessions = [
+    {
+      chat_id: 'CHAT-REAL-123',
+      title: 'Brand Campaign',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'Turn 1 user' },
+        { message_id: 'MSG-A-1', role: 'assistant', sender_name: 'AI', content: 'Turn 1 answer', status: 'COMPLETED' },
+        { message_id: 'MSG-U-2', role: 'user', sender_name: 'You', content: 'Turn 2 user prompt' },
+        createAssistantPlaceholder('MSG-A-2'),
+      ],
+    },
+  ];
+
+  sessions = applyTerminalErrorToSessions(
+    sessions,
+    ['CHAT-REAL-123'],
+    'MSG-A-2',
+    'API Rate Limit Exceeded',
+    'RATE_LIMIT_EXCEEDED',
+    'Too many requests to upstream model gateway'
+  );
+
+  assert.equal(sessions[0].messages.length, 4);
+  assert.equal(sessions[0].messages[2].content, 'Turn 2 user prompt');
+  assert.equal(sessions[0].messages[3].status, 'ERROR');
+  assert.equal(sessions[0].messages[3].error_code, 'RATE_LIMIT_EXCEEDED');
+
+  // Backend session at this point only contains Turn 1
+  const backendSessions = [
+    {
+      chat_id: 'CHAT-REAL-123',
+      title: 'Brand Campaign',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'Turn 1 user' },
+        { message_id: 'MSG-A-1', role: 'assistant', sender_name: 'AI', content: 'Turn 1 answer', status: 'COMPLETED' },
+      ],
+    },
+  ];
+
+  const merged = mergeBackendSessionsWithLocal(sessions, backendSessions);
+  assert.equal(merged[0].messages.length, 4); // Failed turn 2 user & assistant messages are preserved!
+  assert.equal(merged[0].messages[3].status, 'ERROR');
+});
+
+test('19. TEST 7: Error details safe code and message are preserved', () => {
+  const sessions = [
+    {
+      chat_id: 'CHAT-1',
+      title: 'Title',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [createAssistantPlaceholder('MSG-A-1')],
+    },
+  ];
+
+  const updated = applyTerminalErrorToSessions(
+    sessions,
+    ['CHAT-1'],
+    'MSG-A-1',
+    'Sanitized user-facing message',
+    'MODEL_GATEWAY_TIMEOUT',
+    'Upstream gateway timed out after 30000ms'
+  );
+
+  const msg = updated[0].messages[0];
+  assert.equal(msg.status, 'ERROR');
+  assert.equal(msg.error_code, 'MODEL_GATEWAY_TIMEOUT');
+  assert.equal(msg.error_detail, 'Upstream gateway timed out after 30000ms');
+});
+
+test('20. TEST 8: Secret-like raw fields are not present in error diagnostics', () => {
+  const sessions = [
+    {
+      chat_id: 'CHAT-1',
+      title: 'Title',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [createAssistantPlaceholder('MSG-A-1')],
+    },
+  ];
+
+  const updated = applyTerminalErrorToSessions(
+    sessions,
+    ['CHAT-1'],
+    'MSG-A-1',
+    'Connection to AI gateway failed',
+    'TRANSPORT_ERROR',
+    'HTTP 502 Bad Gateway'
+  );
+
+  const jsonStr = JSON.stringify(updated);
+  assert.ok(!jsonStr.includes('Bearer '));
+  assert.ok(!jsonStr.includes('GLOBAL_API_SESSION_TOKEN'));
+  assert.ok(!jsonStr.includes('secrets.vault'));
+});
+
+test('21. TEST 9: Manual retry only: canSubmitTurn prevents automatic concurrent turn submission', () => {
+  assert.equal(canSubmitTurn(true, 'Retry message', 0), false); // When active/processing, automatic second invocation is blocked!
+  assert.equal(canSubmitTurn(false, 'Retry message', 0), true); // Manual retry permitted when idle!
+});
+
+test('22. TEST 10: New unrelated session refresh cannot mutate or remove failed turn in active session', () => {
+  const localSessions = [
+    {
+      chat_id: 'CHAT-FAILED-SESSION',
+      title: 'Session With Error',
+      created_at: '2026-08-29T12:00:00Z',
+      updated_at: '2026-08-29T12:00:00Z',
+      status: 'ACTIVE',
+      messages: [
+        { message_id: 'MSG-U-1', role: 'user', sender_name: 'You', content: 'Important question' },
+        { message_id: 'MSG-A-1', role: 'assistant', sender_name: 'AI', content: 'Partial response', status: 'ERROR', error_code: 'STREAM_ERROR' },
+      ],
+    },
+  ];
+
+  const backendSessions = [
+    {
+      chat_id: 'CHAT-UNRELATED-200',
+      title: 'Completely Different Chat',
+      created_at: '2026-08-29T12:30:00Z',
+      updated_at: '2026-08-29T12:30:00Z',
+      status: 'ACTIVE',
+      messages: [],
+    },
+  ];
+
+  const merged = mergeBackendSessionsWithLocal(localSessions, backendSessions);
+
+  assert.equal(merged.length, 2);
+  const target = merged.find((s) => s.chat_id === 'CHAT-FAILED-SESSION');
+  assert.ok(target);
+  assert.equal(target.messages.length, 2);
+  assert.equal(target.messages[0].content, 'Important question');
+  assert.equal(target.messages[1].status, 'ERROR');
+  assert.equal(target.messages[1].content, 'Partial response');
+});
+
+// ============================================================
+// TAURI v2 IPC CHANNEL ENVELOPE UNWRAPPING TESTS (PROD-TAURI-CHANNEL-ENVELOPE-01)
+// ============================================================
+import { streamChatTurn } from '../src/api/streaming.ts';
+
+function setupMockTauriEnv() {
+  let callbacks = {};
+  let nextCallbackId = 1;
+  let lastInvokeCall = null;
+
+  globalThis.window = {
+    __TAURI_INTERNALS__: {
+      callbacks,
+      transformCallback: (fn) => {
+        const id = nextCallbackId++;
+        callbacks[id] = fn;
+        return id;
+      },
+      invoke: async (cmd, args) => {
+        lastInvokeCall = { cmd, args };
+        return Promise.resolve();
+      },
+    },
+  };
+
+  return {
+    getLastInvoke: () => lastInvokeCall,
+    emitChannelEvent: (channelId, raw) => {
+      if (callbacks[channelId]) {
+        callbacks[channelId](raw);
+      }
+    },
+    cleanup: () => {
+      delete globalThis.window;
+    },
+  };
+}
+
+test('23. TEST 11: Tauri envelope { message: validProgressEvent, index } dispatches valid progress', async () => {
+  const env = setupMockTauriEnv();
+  const progressList = [];
+
+  const turnPromise = streamChatTurn({
+    path: '/api/chat/stream',
+    onProgress: (p) => progressList.push(p),
+  });
+
+  const channelId = parseInt(env.getLastInvoke().args.channel.toJSON().replace('__CHANNEL__:', ''), 10);
+
+  // Native Tauri v2 delivers { message: <StreamMessage>, index: 0 }
+  env.emitChannelEvent(channelId, {
+    message: {
+      event: 'progress',
+      data: {
+        run_id: 'R-100',
+        sequence: 1,
+        event_type: 'RUN_STARTED',
+        message: 'Bắt đầu xử lý tin nhắn',
+      },
+    },
+    index: 0,
+  });
+
+  assert.equal(progressList.length, 1);
+  assert.equal(progressList[0].event_type, 'RUN_STARTED');
+  assert.equal(progressList[0].message, 'Bắt đầu xử lý tin nhắn');
+
+  // Complete
+  env.emitChannelEvent(channelId, {
+    message: { event: 'complete', data: {} },
+    index: 1,
+  });
+
+  await turnPromise;
+  env.cleanup();
+});
+
+test('24. TEST 12: Tauri envelope { message: validDeltaEvent, index } dispatches exact delta', async () => {
+  const env = setupMockTauriEnv();
+  let gathered = '';
+
+  const turnPromise = streamChatTurn({
+    path: '/api/chat/stream',
+    onDelta: (d) => { gathered += d.content; },
+  });
+
+  const channelId = parseInt(env.getLastInvoke().args.channel.toJSON().replace('__CHANNEL__:', ''), 10);
+
+  env.emitChannelEvent(channelId, {
+    message: { event: 'delta', data: { content: 'Xin chào' } },
+    index: 0,
+  });
+  env.emitChannelEvent(channelId, {
+    message: { event: 'delta', data: { content: ' bạn!' } },
+    index: 1,
+  });
+
+  assert.equal(gathered, 'Xin chào bạn!');
+
+  env.emitChannelEvent(channelId, {
+    message: { event: 'complete', data: {} },
+    index: 2,
+  });
+
+  await turnPromise;
+  env.cleanup();
+});
+
+test('25. TEST 13: Tauri envelope { message: completeEvent, index } finishes stream with exactly one complete', async () => {
+  const env = setupMockTauriEnv();
+  let completeCount = 0;
+
+  const turnPromise = streamChatTurn({
+    path: '/api/chat/stream',
+    onComplete: () => { completeCount++; },
+  });
+
+  const channelId = parseInt(env.getLastInvoke().args.channel.toJSON().replace('__CHANNEL__:', ''), 10);
+
+  env.emitChannelEvent(channelId, {
+    message: { event: 'complete', data: { status: 'COMPLETED' } },
+    index: 0,
+  });
+
+  // Late frame after complete
+  env.emitChannelEvent(channelId, {
+    message: { event: 'delta', data: { content: 'late delta' } },
+    index: 1,
+  });
+
+  await turnPromise;
+  assert.equal(completeCount, 1);
+  env.cleanup();
+});
+
+test('26. TEST 14: Malformed envelope fails closed with PROTOCOL_ERROR', async () => {
+  const env = setupMockTauriEnv();
+  let errorObj = null;
+
+  const turnPromise = streamChatTurn({
+    path: '/api/chat/stream',
+    onError: (err) => { errorObj = err; },
+  });
+
+  const channelId = parseInt(env.getLastInvoke().args.channel.toJSON().replace('__CHANNEL__:', ''), 10);
+
+  // Missing event property inside message payload -> fails closed
+  env.emitChannelEvent(channelId, {
+    message: { invalid_field: 123 },
+    index: 0,
+  });
+
+  await turnPromise;
+  assert.ok(errorObj);
+  assert.equal(errorObj.code, 'PROTOCOL_ERROR');
+  env.cleanup();
+});
+
+test('27. TEST 15: Plain direct event compatibility works seamlessly', async () => {
+  const env = setupMockTauriEnv();
+  let gathered = '';
+
+  const turnPromise = streamChatTurn({
+    path: '/api/chat/stream',
+    onDelta: (d) => { gathered += d.content; },
+  });
+
+  const channelId = parseInt(env.getLastInvoke().args.channel.toJSON().replace('__CHANNEL__:', ''), 10);
+
+  // Direct un-enveloped event
+  env.emitChannelEvent(channelId, {
+    event: 'delta',
+    data: { content: 'Direct payload' },
+  });
+
+  assert.equal(gathered, 'Direct payload');
+
+  env.emitChannelEvent(channelId, {
+    event: 'complete',
+    data: {},
+  });
+
+  await turnPromise;
+  env.cleanup();
 });

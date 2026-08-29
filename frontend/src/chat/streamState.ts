@@ -1,5 +1,5 @@
 /**
- * Production Stream State Management (PROD-STREAMING-IMPLEMENTATION-01-B5-R2).
+ * Production Stream State Management (PROD-STREAMING-IMPLEMENTATION-01-B5-R2 / PROD-UAT-CHAT-ERROR-PERSISTENCE-01).
  *
  * Pure, deterministic state helpers and transitions for React streaming chat.
  *
@@ -10,6 +10,7 @@
  * 4. Error preserves truthful stage history (completed remain COMPLETED, active becomes FAILED, unreached remain PENDING).
  * 5. Exactly one assistant placeholder per turn; deltas concatenate without trimming/duplication.
  * 6. Session migration from temporary ID to authoritative backend real ID preserves messages atomically.
+ * 7. Error persistence: failed turns and unpersisted TEMP sessions survive backend refresh.
  */
 
 export type AgentId = 'cmo' | 'intelligence' | 'strategist' | 'creative' | 'performance';
@@ -44,6 +45,8 @@ export interface ChatMessageItem {
   content: string;
   run_id?: string;
   status?: string;
+  error_code?: string;
+  error_detail?: string;
   attachments?: Array<{
     attachment_id: string;
     filename_or_url: string;
@@ -225,13 +228,16 @@ export function applyTerminalCompleteToSessions(
 }
 
 /**
- * Handles terminal error: preserves partial streamed text if present, sets status to ERROR.
+ * Handles terminal error: preserves partial streamed text if present, sets status to ERROR,
+ * and attaches safe error diagnostic code and detail.
  */
 export function applyTerminalErrorToSessions(
   sessions: ChatSessionItem[],
   targetChatIds: string[],
   assistantMsgId: string,
-  errorMessage: string
+  errorMessage: string,
+  errorCode?: string,
+  errorDetail?: string
 ): ChatSessionItem[] {
   const targetSet = new Set(targetChatIds.filter(Boolean));
   return sessions.map((s) => {
@@ -244,8 +250,11 @@ export function applyTerminalErrorToSessions(
           ...m,
           status: 'ERROR',
           content: m.content ? m.content : errorMessage,
+          error_code: errorCode || 'REQUEST_FAILED',
+          error_detail: errorDetail || errorMessage,
         };
       }),
+      updated_at: new Date().toISOString(),
     };
   });
 }
@@ -263,4 +272,59 @@ export function applyTerminalErrorToStages(currentStages: WorkflowStageState[]):
     }
     return st;
   });
+}
+
+/**
+ * Merges authoritative backend sessions with local sessions, guaranteeing:
+ * 1. Unpersisted local temporary sessions (e.g. CHAT-TEMP-*) are NEVER deleted by backend refresh.
+ * 2. Unpersisted / failed messages in existing sessions are retained and not wiped out by older backend state.
+ * 3. Migrated / persisted sessions adopt backend data cleanly without duplicating items.
+ */
+export function mergeBackendSessionsWithLocal(
+  localSessions: ChatSessionItem[],
+  backendSessions: ChatSessionItem[]
+): ChatSessionItem[] {
+  const backendMap = new Map<string, ChatSessionItem>();
+  for (const bs of backendSessions) {
+    backendMap.set(bs.chat_id, bs);
+  }
+
+  const merged: ChatSessionItem[] = [];
+  const processedBackendIds = new Set<string>();
+
+  for (const ls of localSessions) {
+    if (ls.chat_id.startsWith('CHAT-TEMP-')) {
+      // Retain unpersisted / failed local TEMP sessions
+      merged.push(ls);
+      continue;
+    }
+
+    const backendMatch = backendMap.get(ls.chat_id);
+    if (backendMatch) {
+      processedBackendIds.add(ls.chat_id);
+      // Check if local session contains unpersisted/failed/streaming messages that backend does not have
+      const hasLocalActiveOrFailedTurn = ls.messages.some(
+        (m) => m.status === 'ERROR' || m.status === 'STREAMING'
+      );
+      if (hasLocalActiveOrFailedTurn || ls.messages.length > backendMatch.messages.length) {
+        merged.push({
+          ...backendMatch,
+          title: backendMatch.title || ls.title,
+          messages: ls.messages,
+        });
+      } else {
+        merged.push(backendMatch);
+      }
+    } else {
+      merged.push(ls);
+    }
+  }
+
+  for (const bs of backendSessions) {
+    if (!processedBackendIds.has(bs.chat_id)) {
+      merged.push(bs);
+    }
+  }
+
+  return merged;
 }

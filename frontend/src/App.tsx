@@ -50,6 +50,7 @@ import {
   applyTerminalCompleteToSessions,
   applyTerminalErrorToSessions,
   applyTerminalErrorToStages,
+  mergeBackendSessionsWithLocal,
   WorkflowStageState,
 } from './chat/streamState.ts';
 
@@ -69,6 +70,8 @@ interface ChatMessageItem {
   content: string;
   run_id?: string;
   status?: string;
+  error_code?: string;
+  error_detail?: string;
   attachments?: Array<{
     attachment_id: string;
     filename_or_url: string;
@@ -186,7 +189,7 @@ export default function App() {
       if (sessRes.status === 'fulfilled' && sessRes.value.ok) {
         const data = await sessRes.value.json();
         const items = data.sessions || [];
-        setChatSessions(items);
+        setChatSessions((prev) => mergeBackendSessionsWithLocal(prev, items));
         if (items.length > 0 && !activeChatId) {
           setActiveChatId(items[0].chat_id);
         }
@@ -510,9 +513,11 @@ export default function App() {
         fetchCoreData();
       },
       onError: (err) => {
-        const errorMsg = classifyErrorMessage(err.message || err.code, 'Không thể nhận phản hồi từ backend.');
+        const safeCode = err.code || 'STREAM_ERROR';
+        const safeDetail = err.message || 'Không thể nhận phản hồi từ backend.';
+        const errorMsg = classifyErrorMessage(safeCode, safeDetail);
         setChatSessions((prev) =>
-          applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg)
+          applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg, safeCode, safeDetail)
         );
         setWorkflowStages((prev) => applyTerminalErrorToStages(prev));
         setIsProcessing(false);
@@ -637,13 +642,99 @@ export default function App() {
   };
 
   // Retry Failed Request
-  const handleRetry = async () => {
+  const handleRetry = async (failedMsgId?: string) => {
     if (!activeChatId || isProcessing) return;
+    const currentChat = chatSessions.find((s) => s.chat_id === activeChatId);
+    if (!currentChat) return;
+
+    if (activeChatId.startsWith('CHAT-TEMP-')) {
+      const userMsg = currentChat.messages.find((m) => m.role === 'user');
+      if (!userMsg) return;
+
+      const assistantMsgId = `MSG-A-${Date.now()}`;
+      const assistantPlaceholder = createAssistantPlaceholder(assistantMsgId);
+
+      setIsProcessing(true);
+      setAgentProgress('Connecting...');
+      setWorkflowStages(createInitialWorkflowStages());
+
+      setChatSessions((prev) =>
+        prev.map((s) =>
+          s.chat_id === activeChatId
+            ? {
+                ...s,
+                messages: [userMsg, assistantPlaceholder],
+                updated_at: new Date().toISOString(),
+              }
+            : s
+        )
+      );
+
+      let turnChatId = activeChatId;
+      let assignedChatId = activeChatId;
+
+      await streamChatTurn({
+        path: '/api/chat/stream',
+        body: { content: userMsg.content, attachments: userMsg.attachments },
+        onProgress: (progress: RuntimeProgressData) => {
+          if (progress.message) {
+            setAgentProgress(progress.message);
+          }
+          setWorkflowStages((prev) => applyProgressToWorkflow(prev, progress));
+          setAgentStates((prev) => applyProgressToAgents(prev, progress));
+        },
+        onDelta: (delta) => {
+          setChatSessions((prev) =>
+            applyDeltaToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, delta.content)
+          );
+          scrollToBottom(true);
+        },
+        onComplete: (complete) => {
+          let finalChatId = assignedChatId;
+          setChatSessions((prev) => {
+            const res = applyTerminalCompleteToSessions(
+              prev,
+              turnChatId,
+              assignedChatId,
+              assistantMsgId,
+              complete
+            );
+            finalChatId = res.finalChatId;
+            assignedChatId = res.finalChatId;
+            return res.sessions;
+          });
+          if (finalChatId && finalChatId !== activeChatId) {
+            setActiveChatId(finalChatId);
+          }
+          setIsProcessing(false);
+          setAgentProgress('');
+          fetchCoreData();
+        },
+        onError: (err) => {
+          const safeCode = err.code || 'STREAM_ERROR';
+          const safeDetail = err.message || 'Không thể nhận phản hồi từ backend.';
+          const errorMsg = classifyErrorMessage(safeCode, safeDetail);
+          setChatSessions((prev) =>
+            applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg, safeCode, safeDetail)
+          );
+          setWorkflowStages((prev) => applyTerminalErrorToStages(prev));
+          setIsProcessing(false);
+          setAgentProgress('');
+          fetchCoreData();
+        },
+      });
+      return;
+    }
+
     setIsProcessing(true);
     setAgentProgress('Retrying request...');
 
     try {
-      const res = await apiFetch(`${API_BASE}/api/chat/sessions/${activeChatId}/retry`, {
+      const endpoint = failedMsgId
+        ? `${API_BASE}/api/chat/sessions/${activeChatId}/messages/${failedMsgId}/retry`
+        : `${API_BASE}/api/chat/sessions/${activeChatId}/retry`;
+
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto_execute: true }),
@@ -659,7 +750,7 @@ export default function App() {
                     ...s,
                     // Remove error placeholder and append new response
                     messages: [
-                      ...s.messages.filter((m) => m.status !== 'ERROR'),
+                      ...s.messages.filter((m) => m.message_id !== failedMsgId && m.status !== 'ERROR'),
                       data.message,
                     ],
                     updated_at: new Date().toISOString(),
@@ -1003,25 +1094,33 @@ export default function App() {
                           </div>
                         </div>
                       ) : isError ? (
-                        /* Compact Error State with Retry and Copy Error (Preserves partial streamed text if present) */
-                        <div style={{ width: '100%', background: '#0E0E0E', border: '1px solid #2E2020', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        /* Persistent Error State with Safe Diagnostics and Retry (Preserves partial streamed text if present) */
+                        <div style={{ width: '100%', background: '#0E0E0E', border: '1px solid #382020', borderRadius: '10px', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {m.content && !m.content.startsWith('⚠️') && !m.content.startsWith('Lỗi') ? (
                             <div style={{ marginBottom: '6px' }}>
                               <MarkdownView content={m.content} />
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#EF4444', fontSize: '12px', marginTop: '8px', fontWeight: 500 }}>
                                 <IconAlertCircle size={13} />
-                                <span>Luồng phản hồi bị gián đoạn (STREAM_INTERRUPTED).</span>
+                                <span>Phản hồi bị gián đoạn (STREAM_INTERRUPTED).</span>
                               </div>
                             </div>
                           ) : (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#EF4444', fontSize: '13px', fontWeight: 500 }}>
                               <IconAlertCircle size={15} />
-                              <span>{m.content || 'Đã xảy ra lỗi trong quá trình xử lý.'}</span>
+                              <span>{m.content || 'Không thể hoàn thành yêu cầu.'}</span>
                             </div>
                           )}
+
+                          {/* Safe Error Details Box */}
+                          <div style={{ background: '#141010', border: '1px solid #281818', borderRadius: '6px', padding: '8px 12px', fontSize: '11.5px', color: '#B0A0A0', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ fontWeight: 600, color: '#E07070', marginBottom: '2px' }}>Chi tiết lỗi:</div>
+                            <div><span style={{ color: '#888888' }}>Mã lỗi (Code):</span> <span style={{ fontFamily: 'monospace', color: '#F2F2F2' }}>{m.error_code || 'REQUEST_FAILED'}</span></div>
+                            <div><span style={{ color: '#888888' }}>Thông điệp (Message):</span> <span>{m.error_detail || m.content || 'Lỗi không xác định trong quá trình giao tiếp.'}</span></div>
+                          </div>
+
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                             <button
-                              onClick={handleRetry}
+                              onClick={() => handleRetry(m.message_id)}
                               style={{ background: '#1C1C1C', border: '1px solid #2C2C2C', borderRadius: '6px', color: '#F2F2F2', fontSize: '12px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}
                               onMouseEnter={(e) => (e.currentTarget.style.background = '#252525')}
                               onMouseLeave={(e) => (e.currentTarget.style.background = '#1C1C1C')}
@@ -1030,13 +1129,16 @@ export default function App() {
                               <span>Thử lại</span>
                             </button>
                             <button
-                              onClick={() => handleCopyText(m.content, m.message_id)}
+                              onClick={() => {
+                                const errorSummary = `Lỗi: [${m.error_code || 'REQUEST_FAILED'}] ${m.error_detail || m.content || ''}`;
+                                handleCopyText(errorSummary, m.message_id);
+                              }}
                               style={{ background: 'transparent', border: '1px solid #222222', borderRadius: '6px', color: '#888888', fontSize: '12px', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}
                               onMouseEnter={(e) => (e.currentTarget.style.color = '#F2F2F2')}
                               onMouseLeave={(e) => (e.currentTarget.style.color = '#888888')}
                             >
                               {copiedMsgId === m.message_id ? <IconCheck size={12} /> : <IconCopy size={12} />}
-                              <span>{copiedMsgId === m.message_id ? 'Đã sao chép' : 'Sao chép'}</span>
+                              <span>{copiedMsgId === m.message_id ? 'Đã sao chép lỗi' : 'Sao chép lỗi'}</span>
                             </button>
                           </div>
                         </div>

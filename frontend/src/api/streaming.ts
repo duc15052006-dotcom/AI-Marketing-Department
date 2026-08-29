@@ -47,8 +47,14 @@ export class TauriChannel<T = any> {
     this.onmessage = onmessage || (() => {});
     const internals = typeof window !== 'undefined' ? (window as any).__TAURI_INTERNALS__ : null;
     if (internals?.transformCallback) {
-      this.id = internals.transformCallback((response: T) => {
-        if (this.onmessage) {
+      this.id = internals.transformCallback((response: any) => {
+        if (response && typeof response === 'object' && 'message' in response) {
+          if (this.onmessage) {
+            this.onmessage(response.message);
+          }
+        } else if (response && typeof response === 'object' && response.end) {
+          // Channel end marker from Tauri v2
+        } else if (this.onmessage) {
           this.onmessage(response);
         }
       });
