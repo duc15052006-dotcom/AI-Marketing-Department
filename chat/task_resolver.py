@@ -1,7 +1,7 @@
 """Deterministic conversation follow-up and reference resolution.
 
 This module resolves only high-confidence conversational references before the
-normal intent router runs.  It never calls an LLM and never changes authority,
+normal intent router runs. It never calls an LLM and never changes authority,
 provider, tool, or evidence semantics.
 
 The purpose is deliberately narrow:
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-import re
 from typing import Any, List, Optional, Sequence, Tuple
 
 from chat.router import normalize_for_routing
@@ -140,8 +139,12 @@ def _message_id(message: Any) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _contains_any(text: str, markers: Sequence[str]) -> bool:
+    return any(marker in text for marker in markers)
+
+
 def _previous_messages(chat_history: Optional[Sequence[Any]], raw_user_text: str) -> List[Any]:
-    """Return bounded same-chat history, defensively excluding a just-appended current turn."""
+    """Return bounded same-chat history, excluding a just-appended current turn."""
     if not chat_history:
         return []
     items = list(chat_history)[-16:]
@@ -157,19 +160,31 @@ def _latest_by_role(messages: Sequence[Any], role: str) -> Optional[Any]:
     return None
 
 
+def _is_referential_transform(normalized: str) -> bool:
+    """True when a turn asks to reshape prior output rather than define a new research subject."""
+    return _contains_any(normalized, _TRANSFORM_MARKERS) and _contains_any(normalized, _REFERENCE_MARKERS)
+
+
 def _latest_research_user_message(messages: Sequence[Any]) -> Optional[Any]:
+    """Find the latest subject-bearing research turn, skipping referential transforms.
+
+    A message such as "đưa các chỉ số mức độ tăng trưởng này thành bảng" contains
+    the words "mức độ tăng trưởng" but does not own the research subject. Without
+    this exclusion a later "tìm kỹ cho tôi" incorrectly deepens the table request
+    instead of the original decor research objective.
+    """
     for item in reversed(messages):
         if _role_value(item) != "user":
             continue
         text = _content(item).strip()
+        if not text:
+            continue
         normalized = normalize_for_routing(text)
-        if text and any(marker in normalized for marker in _RESEARCH_SUBJECT_MARKERS):
+        if _is_referential_transform(normalized):
+            continue
+        if any(marker in normalized for marker in _RESEARCH_SUBJECT_MARKERS):
             return item
     return None
-
-
-def _contains_any(text: str, markers: Sequence[str]) -> bool:
-    return any(marker in text for marker in markers)
 
 
 def resolve_followup(
@@ -179,7 +194,7 @@ def resolve_followup(
     """Resolve only deterministic high-confidence follow-ups.
 
     Unknown/ambiguous inputs deliberately return NONE so the existing router
-    remains authoritative.  The resolver never invents a missing topic.
+    remains authoritative. The resolver never invents a missing topic.
     """
     raw = (raw_user_text or "").strip()
     normalized = normalize_for_routing(raw)
@@ -195,10 +210,10 @@ def resolve_followup(
 
     previous_assistant = _latest_by_role(history, "assistant")
 
-    # Transform an answer that already exists in this chat.  This must not
+    # Transform an answer that already exists in this chat. This must not
     # trigger a fresh research/tool run; the general chat engine already has
     # bounded same-chat history and can perform the requested transformation.
-    if previous_assistant and _contains_any(normalized, _TRANSFORM_MARKERS) and _contains_any(normalized, _REFERENCE_MARKERS):
+    if previous_assistant and _is_referential_transform(normalized):
         ref_id = _message_id(previous_assistant)
         return ResolvedFollowup(
             kind=FollowupKind.TRANSFORM_EXISTING,
@@ -211,7 +226,7 @@ def resolve_followup(
         )
 
     # A short/deictic deepen request inherits the latest explicit research
-    # objective.  Never web-search the literal phrase "tìm kỹ cho tôi".
+    # subject. Never web-search the literal phrase "tìm kỹ cho tôi".
     if _contains_any(normalized, _DEEPEN_MARKERS):
         research_msg = _latest_research_user_message(history)
         if research_msg is not None:
