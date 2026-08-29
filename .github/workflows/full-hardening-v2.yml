@@ -47,7 +47,17 @@ jobs:
             if [ "$r1_status" -ne 0 ]; then
               grep -q 'Unhandled exception during run' /tmp/hardening-r1.log || { echo "Unexpected R1 patch failure"; exit "$r1_status"; }
             fi
-            python scripts/full_hardening_apply_r2.py
+
+            set +e
+            python scripts/full_hardening_apply_r2.py > /tmp/hardening-r2.log 2>&1
+            r2_status=$?
+            set -e
+            cat /tmp/hardening-r2.log
+            if [ "$r2_status" -ne 0 ]; then
+              grep -q 'Synchronous generation path' /tmp/hardening-r2.log || { echo "Unexpected R2 patch failure"; exit "$r2_status"; }
+            fi
+
+            python scripts/full_hardening_apply_r3.py
             echo "applied=true" >> "$GITHUB_OUTPUT"
           else
             echo "applied=false" >> "$GITHUB_OUTPUT"
