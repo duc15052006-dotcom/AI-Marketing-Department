@@ -63,6 +63,9 @@ jobs:
           ! grep -q '"paid_search": 0.42' connectors/analytics_connector.py
           ! grep -q '"p_value": 0.008' connectors/analytics_connector.py
           ! grep -q 'mock-search.example.com' connectors/web_connector.py
+          ! grep -q '"status": "RENDERED"' tools/adapters.py
+          ! grep -q '"p_value": 0.012' tools/adapters.py
+          grep -q 'REAL_MEDIA_CONNECTOR_REQUIRED' tools/adapters.py
           grep -q 'cost_tier = CostPolicy.UNKNOWN' integrations/models/gateway.py
           grep -q 'error_http_status' frontend/src/chat/streamState.ts
           grep -q 'isTableSeparator' frontend/src/components/MarkdownView.tsx
@@ -72,7 +75,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "4189822+github-actions[bot]@users.noreply.github.com"
-          git add runtime/engine.py chat/engine.py app_api/server.py tools/tool_gateway.py integrations/models/registry.py integrations/models/gateway.py frontend/src/chat/streamState.ts frontend/src/App.tsx
+          git add runtime/engine.py chat/engine.py app_api/server.py tools/tool_gateway.py tools/adapters.py integrations/models/registry.py integrations/models/gateway.py frontend/src/chat/streamState.ts frontend/src/App.tsx tests/test_prod_workflow_failure_semantics_01.py tests/test_prod_runtime_01_single_run_authority.py
           git diff --cached --check
           if ! git diff --cached --quiet; then
             git commit -m "fix: complete conversation research cost and error wiring"
