@@ -146,7 +146,10 @@ class TestProdModelSettings01(unittest.TestCase):
     """Deterministic, comprehensive test suite for Model & Provider Settings."""
 
     def setUp(self) -> None:
+        self.orig_config_dir = os.environ.get("AI_MARKETING_CONFIG_DIR")
         self.test_dir = tempfile.mkdtemp(prefix="ai_mktg_settings_test_")
+        os.environ["AI_MARKETING_CONFIG_DIR"] = self.test_dir
+
         self.vault_path = Path(self.test_dir) / "secrets.vault"
         self.settings_path = Path(self.test_dir) / "model_settings.json"
 
@@ -160,12 +163,29 @@ class TestProdModelSettings01(unittest.TestCase):
             gateway=self.gateway,
         )
 
+        from app_api.server import APP_BACKEND
+        self.orig_backend_settings_mgr = APP_BACKEND.settings_manager
+        # Install isolated settings manager on APP_BACKEND bound to APP_BACKEND's runtime gateway
+        APP_BACKEND.settings_manager = ModelSettingsManager(
+            settings_file_path=self.settings_path,
+            secret_store=self.secret_store,
+            gateway=APP_BACKEND.runtime.model_gateway,
+        )
+
         # Setup test server for API endpoint testing
         self.server_port = 0
         self.http_server = None
         self.server_thread = None
 
     def tearDown(self) -> None:
+        from app_api.server import APP_BACKEND
+        APP_BACKEND.settings_manager = self.orig_backend_settings_mgr
+
+        if self.orig_config_dir is not None:
+            os.environ["AI_MARKETING_CONFIG_DIR"] = self.orig_config_dir
+        else:
+            os.environ.pop("AI_MARKETING_CONFIG_DIR", None)
+
         DepartmentAPIHandler.allow_testserver_for_testing = False
         if self.http_server:
             self.http_server.shutdown()
@@ -2502,7 +2522,7 @@ class TestProdModelSettings01(unittest.TestCase):
     def test_95_stale_revision_matrix_all_routes(self):
         self._start_test_api_server()
         self._seed_backend_provider("stale_matrix")
-        stale = self._backend_rev() - 10  # guaranteed stale
+        stale = max(1, self._backend_rev() - 1)  # guaranteed stale positive integer
         cases = [
             ("POST", "/api/settings/model", {"expected_revision": stale, "free_only_mode": False}),
             ("POST", "/api/settings/providers/upsert", {

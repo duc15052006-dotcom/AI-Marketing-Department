@@ -140,31 +140,37 @@ class ChatConversationEngine:
                 "latency_ms": 1.0,
             }
 
-        # Otherwise return honest error
+        # Otherwise return honest error with sanitized user-facing message
+        sanitized_error = (
+            "Không thể kết nối đến nhà cung cấp mô hình AI (Model Provider). Vui lòng kiểm tra cấu hình provider hoặc chọn model khác."
+            if ("WinError" in error_detail or "HTTP 599" in error_detail or "refused" in error_detail.lower())
+            else error_detail
+        )
         return {
             "success": False,
             "error": error_detail,
-            "content": f"⚠️ Không thể hoàn tất phản hồi: {error_detail}\nTin nhắn của bạn đã được lưu trong lịch sử phiên.",
+            "content": f"⚠️ Không thể hoàn tất phản hồi: {sanitized_error}\nTin nhắn của bạn đã được lưu trong lịch sử phiên.",
         }
 
     def _generate_offline_conversational_fallback(self, text: str, doc_context: str = "") -> Optional[str]:
         """Provides high-quality offline response for common greetings/QA if external API keys are unset."""
-        t = text.lower().strip()
+        from chat.router import normalize_for_routing
+        norm = normalize_for_routing(text)
 
         # Vietnamese language inquiry
-        if "biết tiếng việt" in t or "tiếng việt không" in t:
+        if norm in ("biet tieng viet", "tieng viet khong", "do you speak vietnamese", "biet tieng viet khong"):
             return "Có chứ! Tôi hoàn toàn có thể hiểu và giao tiếp thành thạo bằng tiếng Việt. Tôi có thể giúp gì cho bạn hôm nay?"
 
         # Basic greetings
-        if t in ("xin chào", "chào", "chào bạn", "hello", "hi", "hey"):
+        if norm in ("xin chao", "chao", "chao ban", "hello", "hi", "hey"):
             return "Xin chào! Tôi là trợ lý AI thuộc phòng Marketing. Tôi có thể giúp bạn trò chuyện, giải đáp thắc mắc, phân tích tài liệu hoặc khởi chạy các chiến dịch tiếp thị khi bạn cần."
 
         # Identity & capability
-        if "bạn là ai" in t or "who are you" in t:
+        if norm in ("ban la ai", "who are you", "ban ten gi"):
             return "Tôi là hệ thống trợ lý AI Marketing Department. Tôi có thể hỗ trợ bạn đàm thoại thông thường, đọc và phân tích tài liệu đính kèm, hoặc phối hợp cùng 5 Agent chuyên sâu (CMO, Intelligence, Strategist, Creative, Performance) để giải quyết các bài toán tiếp thị toàn diện."
 
-        # Common marketing definition
-        if "cpa là gì" in t or "what is cpa" in t:
+        # Common marketing definition (strict exact query only)
+        if norm in ("cpa la gi", "what is cpa"):
             return (
                 "**CPA (Cost Per Acquisition / Cost Per Action)** là chi phí để có được một khách hàng mới hoặc một hành động cụ thể (mua hàng, điền form, đăng ký dùng thử).\n\n"
                 "$$\\text{CPA} = \\frac{\\text{Tổng chi phí quảng cáo}}{\\text{Tổng số lượt chuyển đổi (Acquisitions)}}$$\n\n"
@@ -172,5 +178,5 @@ class ChatConversationEngine:
                 "- **Mục tiêu**: Tối ưu hóa CPA thấp hơn Giá trị vòng đời khách hàng (LTV) để đảm bảo lợi nhuận bền vững."
             )
 
-        # Document analysis is NOT possible offline — return None to trigger honest error
+        # Document analysis & arbitrary questions are NOT possible offline — return None to trigger honest error
         return None

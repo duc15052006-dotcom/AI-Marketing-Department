@@ -49,6 +49,42 @@ def fold_vietnamese(text: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
+def normalize_for_routing(text: str) -> str:
+    """Normalize text ONLY for deterministic routing classification.
+
+    1. Unicode normalization (NFC)
+    2. Lowercase & Vietnamese diacritic folding (đ/Đ -> d/D, remove marks)
+    3. Bounded short-token canonicalization at word boundaries
+       (e.g. xjn -> xin, bn -> ban, chaoban -> chao ban, helo -> hello, aii -> ai)
+    4. Strip excessive punctuation & collapse repeated whitespace
+
+    Raw user text is NEVER modified by this function.
+    """
+    if not text:
+        return ""
+    s = unicodedata.normalize("NFC", text)
+    s = fold_vietnamese(s).lower()
+    words = s.split()
+    norm_words: List[str] = []
+    for w in words:
+        clean_w = re.sub(r"^[^\w]+|[^\w]+$", "", w)
+        if clean_w == "bn":
+            norm_words.append("ban")
+        elif clean_w == "xjn":
+            norm_words.append("xin")
+        elif clean_w == "helo":
+            norm_words.append("hello")
+        elif clean_w.startswith("ai") and len(clean_w) > 2 and set(clean_w) == {"a", "i"}:
+            norm_words.append("ai")
+        elif clean_w == "chaoban":
+            norm_words.extend(["chao", "ban"])
+        elif clean_w == "xinchao":
+            norm_words.extend(["xin", "chao"])
+        elif clean_w:
+            norm_words.append(clean_w)
+    return " ".join(norm_words)
+
+
 class ConversationIntent(str, Enum):
     """Execution route for an incoming chat message."""
     GENERAL_CONVERSATION = "GENERAL_CONVERSATION"
@@ -113,11 +149,11 @@ class ConversationRouter:
         )
 
         self._marketing_explicit_pattern = re.compile(
-            r"\b(lập\s+kế\s+hoạch\s+marketing|lập\s+chiến\s+lược|xây\s*(dựng)?\s*chiến\s+lược|chiến\s+lược\s+marketing|chiến\s+lược\s+gtm|"
+            r"\b(lập\s+kế\s+hoạch\s+marketing|kế\s+hoạch\s+marketing|lập\s+chiến\s+lược|xây\s*(dựng)?\s*chiến\s+lược|chiến\s+lược\s+marketing|chiến\s+lược\s+gtm|"
             r"tạo\s+chiến\s+lược\s+gtm|lập\s+campaign|chạy\s+campaign|chiến\s+dịch\s+tiktok|chiến\s+dịch\s+meta|"
             r"chiến\s+dịch\s+quảng\s+cáo|phân\s+tích\s+thị\s+trường|nghiên\s+cứu\s+đối\s+thủ|định\s+vị\s+sản\s+phẩm|"
-            r"cấu\s+trúc\s+định\s+vị|tạo\s+\d+\s+concepts|kịch\s+bản\s+video\s+ngắn|kịch\s+bản\s+quảng\s+cáo|"
-            r"phân\s+bổ\s+ngân\s+sách|mô\s+hình\s+phân\s+bổ|marketing\s+strategy|gtm\s+strategy|gtm\s+plan|"
+            r"phân\s+tích\s+thương\s+hiệu|cấu\s+trúc\s+định\s+vị|tạo\s+\d+\s+concepts|kịch\s+bản\s+video\s+ngắn|kịch\s+bản\s+quảng\s+cáo|"
+            r"phân\s+bổ\s+ngân\s+sách|mô\s+hình\s+phân\s+bổ|marketing\s+strategy|gtm\s+strategy|gtm\s+plan|marketing\s+plan|"
             r"build\s+marketing\s+plan|launch\s+campaign|create\s+ad\s+concepts|competitor\s+intelligence|"
             r"positioning\s+architecture|creative\s+hooks|budget\s+allocation|five-agent\s+department|5\s+agents)\b",
             re.IGNORECASE,
@@ -127,7 +163,7 @@ class ConversationRouter:
         # These indicate the user wants research/evidence, NOT a full marketing plan.
         self._research_keywords_pattern = re.compile(
             r"\b(tìm\s+thông\s+tin|tìm\s+kiếm|nghiên\s+cứu\s+thị\s+trường|nghiên\s+cứu\s+giá|"
-            r"nghiên\s+cứu\s+xu\s+hướng|thông\s+tin\s+mới\s+nhất|nguồn\s+dữ\s+liệu|dữ\s+liệu\s+mới|"
+            r"nghiên\s+cứu\s+xu\s+hướng|tìm\s+xu\s+hướng|thông\s+tin\s+mới\s+nhất|nguồn\s+dữ\s+liệu|dữ\s+liệu\s+mới|"
             r"xu\s+hướng\s+hiện\s+tại|giá\s+hiện\s+nay|market\s+data|latest\s+research|"
             r"search\s+for|find\s+information|research\s+the|look\s+up|"
             r"tìm\s+nguồn|tìm\s+dữ\s+liệu|xu\s+hướng\s+đèn|giá\s+thị\s+trường|"
@@ -139,10 +175,10 @@ class ConversationRouter:
         # When present, the request MUST go through the full 6-stage workflow regardless
         # of whether research keywords also appear.
         self._full_workflow_pattern = re.compile(
-            r"\b(xây\s*(dựng)?\s*chiến\s+lược|lập\s+kế\s+hoạch\s+marketing|lập\s+chiến\s+lược|"
+            r"\b(xây\s*(dựng)?\s*chiến\s+lược|lập\s+kế\s+hoạch\s+marketing|kế\s+hoạch\s+marketing|lập\s+chiến\s+lược|"
             r"chiến\s+lược\s+marketing|chiến\s+lược\s+gtm|tạo\s+chiến\s+lược|"
             r"lập\s+campaign|chạy\s+campaign|chiến\s+dịch|"
-            r"content\s+plan|media\s+plan|kpi|ngân\s+sách|budget|"
+            r"content\s+plan|media\s+plan|kpi|ngân\s+sách|budget|marketing\s+plan|"
             r"phân\s+bổ|positioning|creative\s+hooks|launch\s+campaign|"
             r"build\s+marketing|create\s+ad|competitor\s+intelligence|"
             r"five-agent|5\s+agents)\b",
@@ -151,6 +187,15 @@ class ConversationRouter:
 
         # Accent-insensitive companions built from the SAME keyword sources.
         # Matching-layer folding only; raw user text is never modified.
+        self._greetings_pattern_folded = re.compile(
+            fold_vietnamese(self._greetings_pattern.pattern), re.IGNORECASE
+        )
+        self._identity_history_pattern_folded = re.compile(
+            fold_vietnamese(self._identity_history_pattern.pattern), re.IGNORECASE
+        )
+        self._qa_general_pattern_folded = re.compile(
+            fold_vietnamese(self._qa_general_pattern.pattern), re.IGNORECASE
+        )
         self._marketing_explicit_pattern_folded = re.compile(
             fold_vietnamese(self._marketing_explicit_pattern.pattern), re.IGNORECASE
         )
@@ -163,6 +208,26 @@ class ConversationRouter:
         self._full_workflow_pattern_folded = re.compile(
             fold_vietnamese(self._full_workflow_pattern.pattern), re.IGNORECASE
         )
+
+    def _matches_greetings(self, raw_text: str, routing_text: str) -> bool:
+        """Greeting match, tolerant to accents, abbreviations, and typos."""
+        if self._greetings_pattern.match(raw_text):
+            return True
+        if self._greetings_pattern_folded.match(routing_text):
+            return True
+        return False
+
+    def _matches_identity(self, raw_text: str, routing_text: str) -> bool:
+        """Identity/history match, tolerant to accents and typos."""
+        if self._identity_history_pattern.match(raw_text):
+            return True
+        if self._identity_history_pattern_folded.match(routing_text):
+            return True
+        return False
+
+    def _matches_qa(self, raw_text: str, routing_text: str) -> bool:
+        """QA/explanation match (raw text matching)."""
+        return bool(self._qa_general_pattern.search(raw_text))
 
     def _matches_marketing_explicit(self, text: str) -> bool:
         """Explicit marketing match, tolerant to missing Vietnamese diacritics."""
@@ -210,61 +275,35 @@ class ConversationRouter:
         business_id: Optional[str] = None,
     ) -> RoutingDecision:
         """Evaluate input and return deterministic or model-assisted routing decision."""
-        text = (message or "").strip()
+        raw_user_text = (message or "").strip()
+        routing_text = normalize_for_routing(raw_user_text)
         has_attachments = bool(attachments and len(attachments) > 0)
 
-        # 1. System Command Route
-        if text.startswith("/"):
+        # 1. System Command Route (strictly from raw text)
+        if raw_user_text.startswith("/"):
             return RoutingDecision(
                 intent=ConversationIntent.SYSTEM_COMMAND,
                 confidence=1.0,
                 reason_code="SYSTEM_SLASH_COMMAND",
             )
 
-        # 2. Explicit Greetings & Basic Identity Multi-turn Checks
-        if self._greetings_pattern.match(text):
-            return RoutingDecision(
-                intent=ConversationIntent.GENERAL_CONVERSATION,
-                confidence=0.99,
-                reason_code="DETERMINISTIC_GREETING",
-            )
-
-        if self._identity_history_pattern.match(text):
-            return RoutingDecision(
-                intent=ConversationIntent.GENERAL_CONVERSATION,
-                confidence=0.98,
-                reason_code="DETERMINISTIC_IDENTITY_OR_HISTORY",
-            )
-
-        if self._qa_general_pattern.search(text):
-            return RoutingDecision(
-                intent=ConversationIntent.GENERAL_CONVERSATION,
-                confidence=0.95,
-                reason_code="DETERMINISTIC_QA_OR_EXPLANATION",
-            )
-
-        # 3. Document Analysis Checks (when attachments are present or doc keywords used)
+        # 2. Document Analysis Checks (when attachments are present)
         if has_attachments:
-            # If user explicitly requests full marketing workflow on document:
-            # e.g., "Đọc tài liệu này và xây chiến lược marketing"
-            if self._matches_marketing_explicit(text):
+            if self._matches_full_workflow(routing_text) or self._matches_marketing_explicit(routing_text):
                 return RoutingDecision(
                     intent=ConversationIntent.MARKETING_WORKFLOW,
                     confidence=0.92,
                     reason_code="DOC_AUGMENTED_MARKETING_WORKFLOW",
                     metadata={"has_attachments": True},
                 )
-            # High-confidence explicit document request on the attachment:
-            if self._matches_doc_keywords(text):
+            if self._matches_doc_keywords(routing_text):
                 return RoutingDecision(
                     intent=ConversationIntent.DOCUMENT_ANALYSIS,
                     confidence=0.95,
                     reason_code="ATTACHMENT_DOCUMENT_ANALYSIS",
                     metadata={"has_attachments": True},
                 )
-            # Ambiguous/noisy attachment text: let semantic classification
-            # decide (it may legitimately escalate to MARKETING_WORKFLOW).
-            llm_intent = self._try_semantic_classification(text)
+            llm_intent = self._try_semantic_classification(raw_user_text)
             if llm_intent == ConversationIntent.MARKETING_WORKFLOW:
                 return RoutingDecision(
                     intent=ConversationIntent.MARKETING_WORKFLOW,
@@ -272,8 +311,6 @@ class ConversationRouter:
                     reason_code="MODEL_CLASSIFICATION",
                     metadata={"has_attachments": True},
                 )
-            # Semantic classifier unavailable/failed/answered DOC or GENERAL:
-            # attachment present, so safe document-analysis fallback.
             return RoutingDecision(
                 intent=ConversationIntent.DOCUMENT_ANALYSIS,
                 confidence=0.90,
@@ -281,34 +318,54 @@ class ConversationRouter:
                 metadata={"has_attachments": True, "semantic_fallback": True},
             )
 
-        if self._matches_doc_keywords(text):
-            return RoutingDecision(
-                intent=ConversationIntent.DOCUMENT_ANALYSIS,
-                confidence=0.90,
-                reason_code="DOCUMENT_QUERY_KEYWORDS",
-            )
-
-        # 4. Explicit Marketing Workflow Triggers
-        if self._matches_marketing_explicit(text):
+        # 3. Explicit Marketing Workflow Triggers (Highest deterministic precedence for text)
+        if self._matches_full_workflow(routing_text) or self._matches_marketing_explicit(routing_text):
             return RoutingDecision(
                 intent=ConversationIntent.MARKETING_WORKFLOW,
                 confidence=0.95,
                 reason_code="DETERMINISTIC_MARKETING_KEYWORD",
             )
 
-        # 4b. Research Inquiry — pure information-seeking, no full workflow deliverables.
-        # Full workflow markers take precedence over research keywords (already handled above).
-        if self._matches_research_keywords(text):
+        # 4. Research Inquiry — Pure information seeking (Precedence over greetings)
+        if self._matches_research_keywords(routing_text):
             return RoutingDecision(
                 intent=ConversationIntent.RESEARCH_INQUIRY,
                 confidence=0.93,
                 reason_code="DETERMINISTIC_RESEARCH_KEYWORD",
             )
 
-        # 5. Semantic classification for ALL ambiguous/unmatched input.
-        # NOTE: no short-message cutoff here anymore - SHORT_GENERAL_QUERY is
-        # only a FINAL fail-safe fallback below, never a preemptive return.
-        llm_intent = self._try_semantic_classification(text)
+        # 5. Explicit Greetings & Basic Identity Multi-turn Checks (when no marketing/research intent)
+        if self._matches_greetings(raw_user_text, routing_text):
+            return RoutingDecision(
+                intent=ConversationIntent.GENERAL_CONVERSATION,
+                confidence=0.99,
+                reason_code="DETERMINISTIC_GREETING",
+            )
+
+        if self._matches_identity(raw_user_text, routing_text):
+            return RoutingDecision(
+                intent=ConversationIntent.GENERAL_CONVERSATION,
+                confidence=0.98,
+                reason_code="DETERMINISTIC_IDENTITY_OR_HISTORY",
+            )
+
+        if self._matches_qa(raw_user_text, routing_text):
+            return RoutingDecision(
+                intent=ConversationIntent.GENERAL_CONVERSATION,
+                confidence=0.95,
+                reason_code="DETERMINISTIC_QA_OR_EXPLANATION",
+            )
+
+        # 6. Document keywords (unattached text query about documents)
+        if self._matches_doc_keywords(routing_text):
+            return RoutingDecision(
+                intent=ConversationIntent.DOCUMENT_ANALYSIS,
+                confidence=0.90,
+                reason_code="DOCUMENT_QUERY_KEYWORDS",
+            )
+
+        # 7. Semantic classification for ambiguous/unmatched input
+        llm_intent = self._try_semantic_classification(raw_user_text)
         if llm_intent is not None:
             return RoutingDecision(
                 intent=llm_intent,
@@ -316,8 +373,8 @@ class ConversationRouter:
                 reason_code="MODEL_CLASSIFICATION",
             )
 
-        # 6. Fail-safe deterministic fallback (semantic path unavailable/failed)
-        word_count = len(text.split())
+        # 8. Fail-safe deterministic fallback
+        word_count = len(routing_text.split())
         if word_count < 8:
             return RoutingDecision(
                 intent=ConversationIntent.GENERAL_CONVERSATION,
