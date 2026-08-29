@@ -39,19 +39,25 @@ jobs:
         shell: bash
         run: |
           if [ -f scripts/full_hardening_apply.py ] && grep -q 'STREAM_GENERATION_FAILED' runtime/engine.py; then
-            python scripts/full_hardening_apply.py
+            set +e
+            python scripts/full_hardening_apply.py > /tmp/hardening-r1.log 2>&1
+            r1_status=$?
+            set -e
+            cat /tmp/hardening-r1.log
+            if [ "$r1_status" -ne 0 ]; then
+              grep -q 'Unhandled exception during run' /tmp/hardening-r1.log || { echo "Unexpected R1 patch failure"; exit "$r1_status"; }
+            fi
+            python scripts/full_hardening_apply_r2.py
             echo "applied=true" >> "$GITHUB_OUTPUT"
           else
             echo "applied=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Compile production Python
-        run: |
-          python -m compileall -q runtime chat app_api integrations tools connectors
+        run: python -m compileall -q runtime chat app_api integrations tools connectors
 
       - name: Focused hardening contract
-        run: |
-          pytest -q tests/test_prod_structured_provider_stream_error_01.py tests/test_full_hardening_v2.py
+        run: pytest -q tests/test_prod_structured_provider_stream_error_01.py tests/test_full_hardening_v2.py
 
       - name: Static truth and authority checks
         shell: bash
