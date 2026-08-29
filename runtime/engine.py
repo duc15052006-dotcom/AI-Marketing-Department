@@ -62,11 +62,13 @@ from runtime.progress import (
 from runtime.context_compiler import ContextCompiler
 from runtime.handoff import (
     HANDOFF_PROMPT_INSTRUCTION,
+    HandoffStreamFilter,
     build_creative_spec,
     build_performance_evaluation,
     build_stage_handoff,
     extract_handoff_payload,
     render_handoff_sections,
+    strip_handoff_block,
 )
 from runtime.knowledge_builder import KnowledgeContextBuilder
 from runtime.lineage import LineageInspector
@@ -454,6 +456,7 @@ class FiveAgentDepartmentRuntime:
 
         try:
             if text_delta_sink is not None and hasattr(self.model_gateway, "generate_stream"):
+                filter_sink = HandoffStreamFilter(sink=text_delta_sink)
                 stream_gen = self.model_gateway.generate_stream(
                     req,
                     agent_id=agent_name,
@@ -465,9 +468,10 @@ class FiveAgentDepartmentRuntime:
                 for delta in stream_gen:
                     if delta.content:
                         chunks.append(delta.content)
-                        text_delta_sink(delta.content)
+                        filter_sink.on_delta(delta.content)
                     if delta.finish_reason == "error":
                         had_error = True
+                filter_sink.flush()
                 if chunks and not had_error:
                     if emitter:
                         emitter.emit(
@@ -641,7 +645,7 @@ class FiveAgentDepartmentRuntime:
             "stage": "CMO_INITIAL",
             "agent": "cmo",
             "status": "COMPLETED",
-            "strategic_intent": llm_output,
+            "strategic_intent": strip_handoff_block(llm_output),
             "delegation_plan": {
                 # COLLAB-05: directives reference the objective without
                 # re-quoting it (single-occurrence contract in prompts).
@@ -904,7 +908,7 @@ class FiveAgentDepartmentRuntime:
             "stage": "INTELLIGENCE",
             "agent": "intelligence",
             "status": "COMPLETED",
-            "market_findings": llm_findings,
+            "market_findings": strip_handoff_block(llm_findings),
             "search_receipt_id": search_receipt.execution_id,
             "citations": [c.citation_id for c in k_res.citations],
             "research_grounding_bundle_id": context.working_state.get("research_grounding_bundle_id"),
@@ -1017,7 +1021,7 @@ class FiveAgentDepartmentRuntime:
             "stage": "STRATEGIST",
             "agent": "strategist",
             "status": "COMPLETED",
-            "positioning": llm_strategy,
+            "positioning": strip_handoff_block(llm_strategy),
             # COLLAB-04: no structured segment/proposition parser contract
             # exists; fields stay honestly empty instead of fabricated.
             "target_segments": [],
@@ -1157,7 +1161,7 @@ class FiveAgentDepartmentRuntime:
             # concept_name/headlines stay absent unless actually produced.
             "concept_name": None,
             "visual_asset_receipt": img_receipt.execution_id,
-            "creative_synthesis": llm_creative,
+            "creative_synthesis": strip_handoff_block(llm_creative),
             "copy_headlines": [],
             "field_origins": {
                 "creative_synthesis": "AGENT_DERIVED",
@@ -1305,7 +1309,7 @@ class FiveAgentDepartmentRuntime:
             "stage": "PERFORMANCE",
             "agent": "performance",
             "status": "COMPLETED",
-            "funnel_kpi": llm_perf,
+            "funnel_kpi": strip_handoff_block(llm_perf),
             # COLLAB-04: no structured experiment was actually produced;
             # blueprint stays empty instead of an invented hypothesis/metric.
             "experiment_blueprint": {},
@@ -2128,8 +2132,10 @@ class FiveAgentDepartmentRuntime:
             context.create_checkpoint()
             return output
 
-        if not llm_report.strip().startswith("#"):
-            llm_report = f"# BÁO CÁO CHIẾN LƯỢC GTM — {context.objective}\n\n{llm_report}"
+        raw_llm_report = llm_report
+        clean_llm_report = strip_handoff_block(llm_report)
+        if not clean_llm_report.strip().startswith("#"):
+            clean_llm_report = f"# BÁO CÁO CHIẾN LƯỢC GTM — {context.objective}\n\n{clean_llm_report}"
 
         # ------------------------------------------------------------------
         # COLLAB-02: Fail-closed authorization gate (runs exactly once).
@@ -2139,7 +2145,7 @@ class FiveAgentDepartmentRuntime:
         # preserved verbatim regardless of the decision.
         # ------------------------------------------------------------------
         try:
-            audit_res = self._evaluate_final_authorization(context, perf_out, crtv_out, llm_report)
+            audit_res = self._evaluate_final_authorization(context, perf_out, crtv_out, raw_llm_report)
         except Exception as audit_err:
             audit_res = self._fail_closed_audit("AUDIT_GATE_ERROR", str(audit_err))
         if audit_res is None:
@@ -2172,9 +2178,9 @@ class FiveAgentDepartmentRuntime:
                 "creative": crtv_out,
                 "performance": perf_out,
             },
-            "master_gtm_plan_markdown": llm_report,
+            "master_gtm_plan_markdown": clean_llm_report,
         }
-        output, _payload, _parse_status = self._finalize_stage_handoff(context, "final_cmo", "cmo", llm_report, output)
+        output, _payload, _parse_status = self._finalize_stage_handoff(context, "final_cmo", "cmo", raw_llm_report, output)
         if emitter and approved_for_deployment:
             emitter.emit(
                 ProgressEventType.STAGE_COMPLETED,
@@ -2417,16 +2423,42 @@ class FiveAgentDepartmentRuntime:
                 raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
 
             # Stage 6: Final CMO (Governed Synthesis & Master GTM Plan)
-            if text_delta_sink is not None:
-                try:
-                    cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=text_delta_sink)
-                except TypeError:
-                    cmo_final = self.execute_stage_final_cmo(context)
+            if context.status != RuntimeStatus.FAILED:
+                if text_delta_sink is not None:
+                    try:
+                        cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=text_delta_sink)
+                    except TypeError:
+                        cmo_final = self.execute_stage_final_cmo(context)
+                else:
+                    try:
+                        cmo_final = self.execute_stage_final_cmo(context)
+                    except TypeError:
+                        cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=None)
             else:
-                try:
-                    cmo_final = self.execute_stage_final_cmo(context)
-                except TypeError:
-                    cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=None)
+                # Early stage failed -> Final CMO is NOT executed.
+                # Preserve the first failing stage's error information honestly.
+                failing_stage = None
+                first_error = "WORKFLOW_FAILED"
+                for stg_key in ("cmo_initial", "intelligence", "strategist", "creative", "performance"):
+                    stg_out = context.stage_outputs.get(stg_key, {})
+                    if stg_out.get("status") == "FAILED":
+                        failing_stage = stg_key.upper()
+                        first_error = stg_out.get("error") or stg_out.get("reason") or "STAGE_FAILED"
+                        break
+
+                cmo_final = {
+                    "stage": "FINAL_CMO",
+                    "agent": "cmo",
+                    "status": "NOT_REACHED",
+                    "approval_status": "NOT_EVALUATED",
+                    "reason": first_error,
+                    "failed_stage": failing_stage,
+                    "error": first_error,
+                    "master_gtm_plan": {},
+                    "master_gtm_plan_markdown": f"# BÁO CÁO PHÊ DUYỆT THẤT BẠI — FIVE-AGENT DEPARTMENT\n\n**Trạng thái phê duyệt**: KHÔNG ĐƯỢC PHÊ DUYỆT ({first_error})\n\nQuy trình dừng lại do giai đoạn {failing_stage or 'trước'} gặp sự cố: {first_error}",
+                }
+                context.stage_outputs["final_cmo"] = cmo_final
+                context.create_checkpoint()
 
         except Exception as exc:
             if str(exc) == "RUN_CANCELLED_BY_OPERATOR" or _check_cancellation():

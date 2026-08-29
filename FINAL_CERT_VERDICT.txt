@@ -1,0 +1,30 @@
+=== FINAL-CORE-E2E-01 CERTIFICATION VERDICT ===
+
+HEAD:                          88568ee fix: unify capability scope and chat authority
+Working tree:                  CLEAN
+
+PROTECTED EVALUATION ARTIFACTS:
+  blind_three_way_identity_key.json: d0765b304d2af9fd85a3069a148d02ba432d6bf2e096cc6dd7a983e8be03982b  MATCH
+  blind_three_way_review_packet.md:  6d6bc9a8381838988f04b1a42c1be1d4cb29f348b3b06be4ecb90e5414e9430b  MATCH
+  phase4_2_1_claim_safety_report.md: cc602e690d0c7553e9bcf1762331491d6f8421d794f1ebabcedb6c59da35eec7  MATCH
+
+01B SUITE:                     44 PASS, 0 FAIL, 0 ERROR
+01A REGRESSION:                33 PASS, 0 FAIL, 0 ERROR
+
+FULL PYTHON DISCOVERY:         1644 tests
+  PASS:                        1643
+  FAIL:                        0
+  ERROR:                       1 (pre-existing flaky test isolation, passes individually)
+  SKIP:                        14 (intentional)
+
+AGENT_MANIFEST_CAN_SELF_AUTHORIZE:  NO
+R2 production changes:               NONE
+Frontend build:                    PASS (0 errors)
+cargo test:                        19 passed, 0 failed
+cargo check:                       0 errors
+Worktree mutated by tests:         NO
+
+CERTIFICATION VERDICT:           PASS
+
+RESIDUAL BACKLOG:              preserved (including PROD-TEST-DISCOVERY-TRANSIENT-FLAKE)
+DO NOT START FINAL CORE E2E.

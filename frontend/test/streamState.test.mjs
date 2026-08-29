@@ -11,6 +11,7 @@ import {
   applyTerminalCompleteToSessions,
   applyTerminalErrorToSessions,
   applyTerminalErrorToStages,
+  applyTerminalErrorToAgents,
   mergeBackendSessionsWithLocal,
   CANONICAL_WORKFLOW_STAGES,
 } from '../src/chat/streamState.ts';
@@ -808,3 +809,92 @@ test('27. TEST 15: Plain direct event compatibility works seamlessly', async () 
   await turnPromise;
   env.cleanup();
 });
+
+test('28. TEST 16: RUN_FAILED transitions active agent to ERROR without leaving it stuck in WORKING', () => {
+  let agents = createDefaultAgentStates();
+
+  // Agent starts working
+  agents = applyProgressToAgents(agents, {
+    event_type: 'STAGE_STARTED',
+    stage: 'CMO_INITIAL',
+    agent: 'CMO',
+    message: 'Bắt đầu phân tích sơ bộ (CMO)',
+  });
+  assert.equal(agents.cmo.status, 'WORKING');
+  assert.equal(agents.intelligence.status, 'READY');
+
+  // Agent fails
+  agents = applyProgressToAgents(agents, {
+    event_type: 'RUN_FAILED',
+    stage: 'CMO_INITIAL',
+    agent: 'CMO',
+    message: 'Giai đoạn CMO Initial thất bại: MODEL_PROVIDER_FAILURE',
+  });
+
+  // CMO must NOT remain stuck in WORKING!
+  assert.equal(agents.cmo.status, 'ERROR');
+  assert.match(agents.cmo.detail, /MODEL_PROVIDER_FAILURE/);
+
+  // Unrelated never-started agents remain in READY!
+  assert.equal(agents.intelligence.status, 'READY');
+  assert.equal(agents.strategist.status, 'READY');
+  assert.equal(agents.creative.status, 'READY');
+  assert.equal(agents.performance.status, 'READY');
+});
+
+test('29. TEST 17: applyTerminalErrorToAgents ensures no agent remains WORKING on terminal failure', () => {
+  let agents = createDefaultAgentStates();
+  agents.cmo.status = 'WORKING';
+  agents.cmo.detail = 'Connecting to model...';
+
+  const cleaned = applyTerminalErrorToAgents(agents);
+  assert.equal(cleaned.cmo.status, 'ERROR');
+  assert.equal(cleaned.intelligence.status, 'READY');
+});
+
+test('30. TEST 18: applyProgressToWorkflow handles RUN_FAILED for failing stage and preserves unreached stages as PENDING', () => {
+  let stages = createInitialWorkflowStages();
+
+  // CMO_INITIAL starts
+  stages = applyProgressToWorkflow(stages, {
+    event_type: 'STAGE_STARTED',
+    stage: 'CMO_INITIAL',
+    agent: 'CMO',
+  });
+  assert.equal(stages[0].status, 'ACTIVE');
+
+  // CMO_INITIAL fails
+  stages = applyProgressToWorkflow(stages, {
+    event_type: 'RUN_FAILED',
+    stage: 'CMO_INITIAL',
+    agent: 'CMO',
+    message: 'Giai đoạn CMO Initial thất bại',
+  });
+
+  assert.equal(stages[0].status, 'FAILED');
+  assert.equal(stages[1].status, 'PENDING'); // Intelligence
+  assert.equal(stages[2].status, 'PENDING'); // Strategist
+  assert.equal(stages[3].status, 'PENDING'); // Creative
+  assert.equal(stages[4].status, 'PENDING'); // Performance
+  assert.equal(stages[5].status, 'PENDING'); // Final CMO remains PENDING!
+});
+
+test('31. TEST 19: Full workflow early failure maintains truthful 6-stage history with zero Final CMO execution', () => {
+  let stages = createInitialWorkflowStages();
+
+  // CMO starts and fails
+  stages = applyProgressToWorkflow(stages, { event_type: 'STAGE_STARTED', stage: 'CMO_INITIAL', agent: 'CMO' });
+  stages = applyProgressToWorkflow(stages, { event_type: 'RUN_FAILED', stage: 'CMO_INITIAL', agent: 'CMO' });
+
+  // Terminal stream error occurs
+  stages = applyTerminalErrorToStages(stages);
+
+  assert.equal(stages.length, 6);
+  assert.equal(stages[0].stage, 'CMO_INITIAL');
+  assert.equal(stages[0].status, 'FAILED');
+
+  for (let i = 1; i < 6; i++) {
+    assert.equal(stages[i].status, 'PENDING', `Stage ${stages[i].stage} must remain PENDING`);
+  }
+});
+

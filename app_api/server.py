@@ -561,7 +561,13 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                             "five_agent_call_count": 5,
                         })
                     else:
-                        bridge.send_error(cmo_final.get("reason") or "WORKFLOW_FAILED")
+                        root_err = cmo_final.get("error") or cmo_final.get("reason") or "WORKFLOW_FAILED"
+                        failed_stg = cmo_final.get("failed_stage")
+                        if failed_stg and root_err and not str(root_err).startswith(failed_stg):
+                            err_msg = f"{failed_stg}: {root_err}"
+                        else:
+                            err_msg = str(root_err)
+                        bridge.send_error(err_msg)
 
             except Exception as ex:
                 logger.exception(f"Streaming execution error for chat {chat_id}: {ex}")

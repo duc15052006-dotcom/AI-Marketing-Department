@@ -50,6 +50,7 @@ import {
   applyTerminalCompleteToSessions,
   applyTerminalErrorToSessions,
   applyTerminalErrorToStages,
+  applyTerminalErrorToAgents,
   mergeBackendSessionsWithLocal,
   WorkflowStageState,
 } from './chat/streamState.ts';
@@ -520,6 +521,7 @@ export default function App() {
           applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg, safeCode, safeDetail)
         );
         setWorkflowStages((prev) => applyTerminalErrorToStages(prev));
+        setAgentStates((prev) => applyTerminalErrorToAgents(prev));
         setIsProcessing(false);
         setAgentProgress('');
         fetchCoreData();
@@ -718,6 +720,7 @@ export default function App() {
             applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg, safeCode, safeDetail)
           );
           setWorkflowStages((prev) => applyTerminalErrorToStages(prev));
+          setAgentStates((prev) => applyTerminalErrorToAgents(prev));
           setIsProcessing(false);
           setAgentProgress('');
           fetchCoreData();

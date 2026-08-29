@@ -152,6 +152,7 @@ export function applyProgressToWorkflow(
   const isKnownStage = CANONICAL_WORKFLOW_STAGES.some((s) => s.stage === rawStage);
   if (!isKnownStage) return currentStages;
 
+  const isFailed = progress.event_type.includes('FAILED') || progress.event_type.includes('ERROR');
   const isCompleted = progress.event_type.includes('COMPLETED');
   const isStarted = progress.event_type.includes('STARTED');
 
@@ -159,7 +160,7 @@ export function applyProgressToWorkflow(
     if (st.stage !== rawStage) return st;
     return {
       ...st,
-      status: isCompleted ? 'COMPLETED' : isStarted ? 'ACTIVE' : st.status,
+      status: isFailed ? 'FAILED' : isCompleted ? 'COMPLETED' : isStarted ? 'ACTIVE' : st.status,
       detail: progress.message || st.detail,
     };
   });
@@ -179,16 +180,35 @@ export function applyProgressToAgents(
     return currentAgents;
   }
 
+  const isFailed = progress.event_type.includes('FAILED') || progress.event_type.includes('ERROR');
   const isCompleted = progress.event_type.includes('COMPLETED');
   const isStarted = progress.event_type.includes('STARTED');
 
   return {
     ...currentAgents,
     [rawAgent]: {
-      status: isCompleted ? 'READY' : isStarted ? 'WORKING' : currentAgents[rawAgent]?.status || 'READY',
+      status: isFailed ? 'ERROR' : isCompleted ? 'READY' : isStarted ? 'WORKING' : currentAgents[rawAgent]?.status || 'READY',
       detail: progress.message || currentAgents[rawAgent]?.detail || '',
     },
   };
+}
+
+/**
+ * Ensures any working agent is transitioned to ERROR (if it was active) on terminal error,
+ * guaranteeing no agent remains stuck in WORKING.
+ */
+export function applyTerminalErrorToAgents(
+  currentAgents: Record<string, AgentLiveState>
+): Record<string, AgentLiveState> {
+  const updated: Record<string, AgentLiveState> = {};
+  for (const [key, state] of Object.entries(currentAgents)) {
+    if (state.status === 'WORKING') {
+      updated[key] = { ...state, status: 'ERROR', detail: state.detail || 'Execution stopped' };
+    } else {
+      updated[key] = state;
+    }
+  }
+  return updated;
 }
 
 /**

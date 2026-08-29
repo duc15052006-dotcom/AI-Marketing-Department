@@ -42,6 +42,71 @@ HANDOFF_PROMPT_INSTRUCTION = (
 )
 
 
+def strip_handoff_block(raw_text: str) -> str:
+    """Remove the internal machine handoff block from user-visible prose."""
+    if not raw_text or not isinstance(raw_text, str):
+        return ""
+    idx = raw_text.find(HANDOFF_SENTINEL)
+    if idx != -1:
+        return raw_text[:idx].rstrip()
+    return raw_text
+
+
+class HandoffStreamFilter:
+    """Streaming filter that drops the internal machine handoff block from delta sinks.
+
+    Features:
+    - Incremental streaming for all visible prose with bounded lookahead buffer.
+    - Handles arbitrary chunk fragmentation across the sentinel boundary.
+    - Prevents partial delimiter leaks without buffering the whole response.
+    """
+
+    def __init__(self, sink: Any, sentinel: str = HANDOFF_SENTINEL) -> None:
+        self.sink = sink
+        self.sentinel = sentinel
+        self._buffer = ""
+        self._blocked = False
+
+    def on_delta(self, chunk: str) -> None:
+        if self._blocked or not chunk:
+            return
+
+        self._buffer += chunk
+
+        if self.sentinel in self._buffer:
+            idx = self._buffer.find(self.sentinel)
+            visible_prefix = self._buffer[:idx]
+            if visible_prefix:
+                self.sink(visible_prefix)
+            self._buffer = ""
+            self._blocked = True
+            return
+
+        # Find the longest suffix of _buffer that is a strict prefix of sentinel
+        max_overlap = min(len(self._buffer), len(self.sentinel) - 1)
+        overlap = 0
+        for k in range(max_overlap, 0, -1):
+            if self.sentinel.startswith(self._buffer[-k:]):
+                overlap = k
+                break
+
+        if overlap > 0:
+            flushable = self._buffer[:-overlap]
+            self._buffer = self._buffer[-overlap:]
+            if flushable:
+                self.sink(flushable)
+        else:
+            flushable = self._buffer
+            self._buffer = ""
+            if flushable:
+                self.sink(flushable)
+
+    def flush(self) -> None:
+        if not self._blocked and self._buffer:
+            self.sink(self._buffer)
+            self._buffer = ""
+
+
 class EpistemicType(str, Enum):
     """Typed epistemic categories for handoff items."""
     FACT = "FACT"
