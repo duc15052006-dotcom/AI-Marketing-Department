@@ -51,6 +51,14 @@ from runtime.context import (
     RuntimeStage,
     RuntimeStatus,
 )
+from runtime.progress import (
+    ProgressEmitter,
+    ProgressEventType,
+    ProgressMode,
+    ProgressSink,
+    RuntimeProgressEvent,
+    runtime_stage_to_progress_stage,
+)
 from runtime.context_compiler import ContextCompiler
 from runtime.handoff import (
     HANDOFF_PROMPT_INSTRUCTION,
@@ -213,7 +221,7 @@ class FiveAgentDepartmentRuntime:
         max_completed_runs_cache: int = 1000,
     ) -> None:
         self.model_gateway = model_gateway or UniversalModelGateway(free_only_mode=True)
-        self.tool_gateway = tool_gateway
+        self.tool_gateway = tool_gateway or ToolGateway(capability_registry=CapabilityRegistry())
         self.knowledge_repo = knowledge_repo or LocalKnowledgeRepository()
         self.memory_repo = memory_repo or LocalMemoryRepository()
         self.learning_repo = learning_repo or LocalLearningRepository()
@@ -234,6 +242,8 @@ class FiveAgentDepartmentRuntime:
         self._lock = threading.Lock()
         self._active_contexts: Dict[str, RuntimeContext] = {}
         self._completed_runs: OrderedDict[str, DepartmentRunArtifact] = OrderedDict()
+        self._active_emitters: Dict[str, ProgressEmitter] = {}
+        self._completed_progress: OrderedDict[str, Tuple[RuntimeProgressEvent, ...]] = OrderedDict()
         self._reserved_run_ids: Set[str] = set()
         self._cancelled_run_ids: Set[str] = set()
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
@@ -248,6 +258,30 @@ class FiveAgentDepartmentRuntime:
                 )
             except Exception:
                 pass
+
+    def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:
+        """Retrieve active ProgressEmitter for run."""
+        rid = context.run_id if context else run_id
+        if not rid:
+            return None
+        with self._lock:
+            return self._active_emitters.get(rid)
+
+    def _register_emitter(self, run_id: str, emitter: ProgressEmitter) -> None:
+        """Register an active ProgressEmitter for a run."""
+        with self._lock:
+            self._active_emitters[run_id] = emitter
+
+    def get_progress_events(self, run_id: str) -> Tuple[RuntimeProgressEvent, ...]:
+        """Retrieve immutable copy of progress events emitted for a run."""
+        with self._lock:
+            active = self._active_emitters.get(run_id)
+            if active:
+                return tuple(active.events)
+            completed = self._completed_progress.get(run_id)
+            if completed is not None:
+                return completed
+        return ()
 
     def _is_credential_ref_in_use(self, credential_ref: str) -> bool:
         """True when any non-terminal active run's pinned provider snapshot
@@ -402,6 +436,18 @@ class FiveAgentDepartmentRuntime:
                         f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ProviderRegistrySnapshot: {exc}"
                     ) from exc
 
+        emitter = self._get_emitter(context)
+        agent_upper = agent_name.upper()
+        stage_obj = runtime_stage_to_progress_stage(context.current_stage) if context else None
+
+        if emitter:
+            emitter.emit(
+                ProgressEventType.MODEL_STARTED,
+                stage=stage_obj,
+                agent=agent_upper,
+                message=f"Bắt đầu thực thi mô hình cho {agent_upper}",
+            )
+
         try:
             resp = self.model_gateway.generate(
                 req,
@@ -410,6 +456,13 @@ class FiveAgentDepartmentRuntime:
                 provider_snapshot=provider_snapshot_obj,
             )
             if resp.status == ModelResponseStatus.SUCCESS and resp.content:
+                if emitter:
+                    emitter.emit(
+                        ProgressEventType.MODEL_COMPLETED,
+                        stage=stage_obj,
+                        agent=agent_upper,
+                        message=f"Hoàn tất thực thi mô hình cho {agent_upper}",
+                    )
                 return resp.content.strip(), None
             err = resp.error or f"MODEL_RESPONSE_{resp.status.value}"
             logger.warning(f"Agent {agent_name} LLM call failed: {err}")
@@ -429,6 +482,8 @@ class FiveAgentDepartmentRuntime:
         trusted_run_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
+        progress_sink: Optional[ProgressSink] = None,
+        mode: str = ProgressMode.FULL_WORKFLOW.value,
     ) -> RuntimeContext:
         """Initialize a new supervised department run under authoritative runtime ownership."""
         with self._lock:
@@ -479,12 +534,23 @@ class FiveAgentDepartmentRuntime:
                 record_constraint(context, extracted, origin="USER_CONSTRAINT", source="raw_user_objective")
             self._sync_constraint_state(context)
             self._active_contexts[rid] = context
+            emitter = ProgressEmitter(run_id=rid, mode=mode, sink=progress_sink)
+            self._active_emitters[rid] = emitter
             context.create_checkpoint()
             return context
 
     def execute_stage_cmo_initial(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 1: Initial CMO Strategic Framing and Task Decomposition."""
         context.current_stage = RuntimeStage.CMO_INITIAL
+        emitter = self._get_emitter(context)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_STARTED,
+                stage="CMO_INITIAL",
+                agent="CMO",
+                message="Bắt đầu giai đoạn CMO Initial (Strategic Framing)",
+            )
+
         k_res = self.knowledge_builder.build_context_for_agent("cmo", query_text=context.objective)
         m_res = self.memory_builder.build_context_for_agent("cmo", query_text=context.objective)
 
@@ -518,6 +584,14 @@ class FiveAgentDepartmentRuntime:
         if not llm_output:
             context.status = RuntimeStatus.FAILED
             context.risk_flags.append(f"CMO_INITIAL_FAILED: {err}")
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="CMO_INITIAL",
+                    agent="CMO",
+                    message=f"Giai đoạn CMO Initial thất bại: {err}",
+                    metadata={"error": str(err)},
+                )
             output = {
                 "stage": "CMO_INITIAL",
                 "agent": "cmo",
@@ -549,6 +623,13 @@ class FiveAgentDepartmentRuntime:
         output, _payload, _parse_status = self._finalize_stage_handoff(
             context, "cmo_initial", "cmo", llm_output, output, delegation=output.get("delegation_plan"),
         )
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_COMPLETED,
+                stage="CMO_INITIAL",
+                agent="CMO",
+                message="Hoàn tất giai đoạn CMO Initial",
+            )
         context.stage_outputs["cmo_initial"] = output
         context.create_checkpoint()
         return output
@@ -556,6 +637,15 @@ class FiveAgentDepartmentRuntime:
     def execute_stage_intelligence(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 2: Intelligence Research & Sensory Tool Invocation."""
         context.current_stage = RuntimeStage.INTELLIGENCE
+        emitter = self._get_emitter(context)
+        is_research_mode = bool(emitter and emitter.mode == ProgressMode.RESEARCH_INQUIRY.value)
+        if emitter and not is_research_mode:
+            emitter.emit(
+                ProgressEventType.STAGE_STARTED,
+                stage="INTELLIGENCE",
+                agent="INTELLIGENCE",
+                message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",
+            )
 
         k_res = self.knowledge_builder.build_context_for_agent("intelligence", query_text=context.objective)
         for c in k_res.citations:
@@ -563,6 +653,15 @@ class FiveAgentDepartmentRuntime:
             self.lineage_inspector.add_citation(c)
 
         # Invoke ToolGateway for search observation
+        if emitter:
+            emitter.emit(
+                ProgressEventType.RESEARCH_SEARCH_STARTED,
+                stage="INTELLIGENCE",
+                agent="INTELLIGENCE",
+                message="Bắt đầu tìm kiếm dữ liệu thị trường qua ToolGateway",
+                metadata={"capability": "web_search"},
+            )
+
         idem_key = f"{context.run_id}:intelligence:web_search:{context.objective}"
         if idem_key in self._executed_tool_idempotency_keys:
             search_receipt = self._executed_tool_idempotency_keys[idem_key]
@@ -581,6 +680,15 @@ class FiveAgentDepartmentRuntime:
 
         context.execution_receipt_refs.append(search_receipt.execution_id)
         self.lineage_inspector.add_receipt(search_receipt)
+
+        if emitter:
+            emitter.emit(
+                ProgressEventType.RESEARCH_SEARCH_COMPLETED,
+                stage="INTELLIGENCE",
+                agent="INTELLIGENCE",
+                message="Hoàn tất tìm kiếm dữ liệu thị trường",
+                metadata={"execution_id": search_receipt.execution_id, "status": search_receipt.status.value},
+            )
 
         # Grounded Context Compilation with actual Tool Receipt content
         grounded_pkg = self.context_compiler.compile_grounded_package("intelligence", context, tool_receipts=[search_receipt])
@@ -653,8 +761,49 @@ class FiveAgentDepartmentRuntime:
             context.working_state["research_grounding_rejected_count"] = rejected_count
             context.working_state["research_grounding_coherence"] = coherence_status.value
 
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RESEARCH_EVIDENCE_READY,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message="Tập chứng cứ nghiên cứu đã sẵn sàng và được kiểm định",
+                    metadata={
+                        "bundle_id": ev_bundle.bundle_id,
+                        "context_id": grounding_ctx.context_id,
+                        "usable_evidence_count": usable_count,
+                        "coherence": coherence_status.value,
+                    },
+                )
+
+        if emitter and not any(e.event_type == ProgressEventType.RESEARCH_EVIDENCE_READY for e in emitter.events):
+            emitter.emit(
+                ProgressEventType.RESEARCH_EVIDENCE_READY,
+                stage="INTELLIGENCE",
+                agent="INTELLIGENCE",
+                message="Tập chứng cứ nghiên cứu đã sẵn sàng và được kiểm định",
+                metadata={
+                    "evidence_count": len(grounded_pkg.evidence_items) if hasattr(grounded_pkg, "evidence_items") else 0,
+                },
+            )
+
+        if is_research_mode and emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_STARTED,
+                stage="INTELLIGENCE",
+                agent="INTELLIGENCE",
+                message="Bắt đầu tổng hợp nghiên cứu thị trường (Intelligence)",
+            )
+
         if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":
             context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
             output = {
                 "stage": "INTELLIGENCE",
                 "agent": "intelligence",
@@ -688,6 +837,14 @@ class FiveAgentDepartmentRuntime:
         if not llm_findings:
             context.status = RuntimeStatus.FAILED
             context.risk_flags.append(f"INTELLIGENCE_FAILED: {err}")
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message=f"Giai đoạn Intelligence thất bại: {err}",
+                    metadata={"error": str(err)},
+                )
             output = {
                 "stage": "INTELLIGENCE",
                 "agent": "intelligence",
@@ -712,6 +869,13 @@ class FiveAgentDepartmentRuntime:
             "research_grounding_context_id": context.working_state.get("research_grounding_context_id"),
         }
         output, _payload, _parse_status = self._finalize_stage_handoff(context, "intelligence", "intelligence", llm_findings, output)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_COMPLETED,
+                stage="INTELLIGENCE",
+                agent="INTELLIGENCE",
+                message="Hoàn tất giai đoạn Intelligence",
+            )
         context.stage_outputs["intelligence"] = output
         context.create_checkpoint()
         return output
@@ -719,6 +883,15 @@ class FiveAgentDepartmentRuntime:
     def execute_stage_strategist(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 3: Strategist Positioning & Value Architecture."""
         context.current_stage = RuntimeStage.STRATEGIST
+        emitter = self._get_emitter(context)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_STARTED,
+                stage="STRATEGIST",
+                agent="STRATEGIST",
+                message="Bắt đầu giai đoạn Strategist (Positioning & Value Architecture)",
+            )
+
         k_res = self.knowledge_builder.build_context_for_agent("strategist", query_text=context.objective)
         m_res = self.memory_builder.build_context_for_agent("strategist", query_text=context.objective)
 
@@ -736,6 +909,14 @@ class FiveAgentDepartmentRuntime:
 
         if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("intelligence", {}).get("status") == "FAILED":
             context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="STRATEGIST",
+                    agent="STRATEGIST",
+                    message="Giai đoạn Strategist thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
             output = {
                 "stage": "STRATEGIST",
                 "agent": "strategist",
@@ -768,6 +949,14 @@ class FiveAgentDepartmentRuntime:
         if not llm_strategy:
             context.status = RuntimeStatus.FAILED
             context.risk_flags.append(f"STRATEGIST_FAILED: {err}")
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="STRATEGIST",
+                    agent="STRATEGIST",
+                    message=f"Giai đoạn Strategist thất bại: {err}",
+                    metadata={"error": str(err)},
+                )
             output = {
                 "stage": "STRATEGIST",
                 "agent": "strategist",
@@ -799,6 +988,13 @@ class FiveAgentDepartmentRuntime:
             "citations": [c.citation_id for c in k_res.citations],
         }
         output, _payload, _parse_status = self._finalize_stage_handoff(context, "strategist", "strategist", llm_strategy, output)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_COMPLETED,
+                stage="STRATEGIST",
+                agent="STRATEGIST",
+                message="Hoàn tất giai đoạn Strategist",
+            )
         context.stage_outputs["strategist"] = output
         context.create_checkpoint()
         return output
@@ -806,6 +1002,15 @@ class FiveAgentDepartmentRuntime:
     def execute_stage_creative(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 4: Creative Generation & Asset Synthesis."""
         context.current_stage = RuntimeStage.CREATIVE
+        emitter = self._get_emitter(context)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_STARTED,
+                stage="CREATIVE",
+                agent="CREATIVE",
+                message="Bắt đầu giai đoạn Creative (Hooks & Asset Synthesis)",
+            )
+
         k_res = self.knowledge_builder.build_context_for_agent("creative", query_text=context.objective)
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
@@ -841,6 +1046,14 @@ class FiveAgentDepartmentRuntime:
 
         if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
             context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="CREATIVE",
+                    agent="CREATIVE",
+                    message="Giai đoạn Creative thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
             output = {
                 "stage": "CREATIVE",
                 "agent": "creative",
@@ -871,6 +1084,14 @@ class FiveAgentDepartmentRuntime:
         if not llm_creative:
             context.status = RuntimeStatus.FAILED
             context.risk_flags.append(f"CREATIVE_FAILED: {err}")
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="CREATIVE",
+                    agent="CREATIVE",
+                    message=f"Giai đoạn Creative thất bại: {err}",
+                    metadata={"error": str(err)},
+                )
             output = {
                 "stage": "CREATIVE",
                 "agent": "creative",
@@ -911,6 +1132,13 @@ class FiveAgentDepartmentRuntime:
             "execution_mode": img_receipt.execution_mode.value,
         }
         output, _payload, _parse_status = self._finalize_stage_handoff(context, "creative", "creative", llm_creative, output)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_COMPLETED,
+                stage="CREATIVE",
+                agent="CREATIVE",
+                message="Hoàn tất giai đoạn Creative",
+            )
         context.stage_outputs["creative"] = output
         context.create_checkpoint()
         return output
@@ -918,6 +1146,15 @@ class FiveAgentDepartmentRuntime:
     def execute_stage_performance(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 5: Performance Analytics, Attribution & Experiment Portfolio."""
         context.current_stage = RuntimeStage.PERFORMANCE
+        emitter = self._get_emitter(context)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_STARTED,
+                stage="PERFORMANCE",
+                agent="PERFORMANCE",
+                message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",
+            )
+
         k_res = self.knowledge_builder.build_context_for_agent("performance", query_text=context.objective)
         m_res = self.memory_builder.build_context_for_agent("performance", query_text=context.objective)
 
@@ -955,6 +1192,14 @@ class FiveAgentDepartmentRuntime:
 
         if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("creative", {}).get("status") == "FAILED":
             context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="PERFORMANCE",
+                    agent="PERFORMANCE",
+                    message="Giai đoạn Performance thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
             output = {
                 "stage": "PERFORMANCE",
                 "agent": "performance",
@@ -992,6 +1237,14 @@ class FiveAgentDepartmentRuntime:
         if not llm_perf:
             context.status = RuntimeStatus.FAILED
             context.risk_flags.append(f"PERFORMANCE_FAILED: {err}")
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="PERFORMANCE",
+                    agent="PERFORMANCE",
+                    message=f"Giai đoạn Performance thất bại: {err}",
+                    metadata={"error": str(err)},
+                )
             output = {
                 "stage": "PERFORMANCE",
                 "agent": "performance",
@@ -1022,6 +1275,13 @@ class FiveAgentDepartmentRuntime:
             "citations": [c.citation_id for c in k_res.citations],
         }
         output, _payload, _parse_status = self._finalize_stage_handoff(context, "performance", "performance", llm_perf, output)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_COMPLETED,
+                stage="PERFORMANCE",
+                agent="PERFORMANCE",
+                message="Hoàn tất giai đoạn Performance",
+            )
         context.stage_outputs["performance"] = output
         context.create_checkpoint()
         return output
@@ -1712,6 +1972,14 @@ class FiveAgentDepartmentRuntime:
     def execute_stage_final_cmo(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 6: Governed Final CMO Synthesis & Master GTM Plan."""
         context.current_stage = RuntimeStage.FINAL_CMO
+        emitter = self._get_emitter(context)
+        if emitter:
+            emitter.emit(
+                ProgressEventType.STAGE_STARTED,
+                stage="FINAL_CMO",
+                agent="CMO",
+                message="Bắt đầu giai đoạn Final CMO (Governed Synthesis & GTM Plan)",
+            )
 
         cmo_init = context.stage_outputs.get("cmo_initial", {})
         intel_out = context.stage_outputs.get("intelligence", {})
@@ -1726,6 +1994,14 @@ class FiveAgentDepartmentRuntime:
         if has_stage_failure:
             fail_reason = "PREVIOUS_STAGE_FAILED"
             context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="FINAL_CMO",
+                    agent="CMO",
+                    message="Giai đoạn Final CMO không thể thực hiện do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
             output = {
                 "stage": "FINAL_CMO",
                 "agent": "cmo",
@@ -1779,6 +2055,14 @@ class FiveAgentDepartmentRuntime:
             fail_reason = err or "MODEL_PROVIDER_FAILURE"
             context.status = RuntimeStatus.FAILED
             context.risk_flags.append(f"FINAL_CMO_FAILED: {fail_reason}")
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="FINAL_CMO",
+                    agent="CMO",
+                    message=f"Giai đoạn Final CMO thất bại: {fail_reason}",
+                    metadata={"error": str(fail_reason)},
+                )
             output = {
                 "stage": "FINAL_CMO",
                 "agent": "cmo",
@@ -1814,6 +2098,14 @@ class FiveAgentDepartmentRuntime:
             context.status = RuntimeStatus.FAILED
             joined_reasons = "; ".join(audit_res.blocking_reasons)[:400]
             context.risk_flags.append(f"FINAL_CMO_NOT_AUTHORIZED: {joined_reasons}")
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="FINAL_CMO",
+                    agent="CMO",
+                    message=f"Giai đoạn Final CMO không được phê duyệt: {joined_reasons}",
+                    metadata={"authorization_status": audit_res.authorization_status},
+                )
 
         output = {
             "stage": "FINAL_CMO",
@@ -1831,6 +2123,14 @@ class FiveAgentDepartmentRuntime:
             "master_gtm_plan_markdown": llm_report,
         }
         output, _payload, _parse_status = self._finalize_stage_handoff(context, "final_cmo", "cmo", llm_report, output)
+        if emitter and approved_for_deployment:
+            emitter.emit(
+                ProgressEventType.STAGE_COMPLETED,
+                stage="FINAL_CMO",
+                agent="CMO",
+                message="Hoàn tất giai đoạn Final CMO và được phê duyệt triển khai",
+                metadata={"authorization_status": audit_res.authorization_status},
+            )
         context.stage_outputs["final_cmo"] = output
         context.create_checkpoint()
         return output
@@ -1956,6 +2256,13 @@ class FiveAgentDepartmentRuntime:
             while len(self._completed_runs) > self.max_completed_runs_cache:
                 self._completed_runs.popitem(last=False)
 
+            if context.run_id in self._active_emitters:
+                emitter = self._active_emitters.pop(context.run_id)
+                emitter.finalize()
+                self._completed_progress[context.run_id] = tuple(emitter.events)
+                while len(self._completed_progress) > self.max_completed_runs_cache:
+                    self._completed_progress.popitem(last=False)
+
             # Active context cleanup: remove terminal runs (COMPLETED, FAILED, CANCELLED) from active registry
             if context.status in (RuntimeStatus.COMPLETED, RuntimeStatus.FAILED, RuntimeStatus.CANCELLED):
                 self._active_contexts.pop(context.run_id, None)
@@ -1963,7 +2270,11 @@ class FiveAgentDepartmentRuntime:
 
             return artifact
 
-    def execute_run(self, context: RuntimeContext) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
+    def execute_run(
+        self,
+        context: RuntimeContext,
+        progress_sink: Optional[ProgressSink] = None,
+    ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
         """Canonical 6-stage supervised execution for an initialized RuntimeContext.
 
         Enforces:
@@ -1977,6 +2288,22 @@ class FiveAgentDepartmentRuntime:
         with self._lock:
             if context.run_id not in self._active_contexts and context.run_id not in self._completed_runs:
                 self._active_contexts[context.run_id] = context
+            if context.run_id not in self._active_emitters:
+                self._active_emitters[context.run_id] = ProgressEmitter(
+                    run_id=context.run_id,
+                    mode=ProgressMode.FULL_WORKFLOW.value,
+                    sink=progress_sink,
+                )
+            elif progress_sink is not None and self._active_emitters[context.run_id].sink is None:
+                self._active_emitters[context.run_id].sink = progress_sink
+
+        emitter = self._get_emitter(context)
+        if emitter and not any(e.event_type == ProgressEventType.RUN_STARTED for e in emitter.events):
+            emitter.emit(
+                ProgressEventType.RUN_STARTED,
+                mode=ProgressMode.FULL_WORKFLOW.value,
+                message="Khởi động quy trình thực thi Five-Agent Department",
+            )
 
         def _check_cancellation() -> bool:
             if self.is_cancelled(context.run_id) or context.status == RuntimeStatus.CANCELLED:
@@ -1996,6 +2323,14 @@ class FiveAgentDepartmentRuntime:
             }
             context.stage_outputs["final_cmo"] = cmo_final
             context.create_checkpoint()
+            if emitter and not any(e.event_type == ProgressEventType.RUN_FAILED for e in emitter.events):
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="FINAL_CMO",
+                    agent="CMO",
+                    message="Quy trình bị hủy bởi người vận hành",
+                    metadata={"reason": "RUN_CANCELLED_BY_OPERATOR"},
+                )
             artifact = self.complete_run(context)
             return context, cmo_final, artifact
 
@@ -2046,6 +2381,14 @@ class FiveAgentDepartmentRuntime:
                 }
                 context.stage_outputs["final_cmo"] = cmo_final
                 context.create_checkpoint()
+                if emitter and not any(e.event_type == ProgressEventType.RUN_FAILED for e in emitter.events):
+                    emitter.emit(
+                        ProgressEventType.RUN_FAILED,
+                        stage="FINAL_CMO",
+                        agent="CMO",
+                        message="Quy trình bị hủy bởi người vận hành",
+                        metadata={"reason": "RUN_CANCELLED_BY_OPERATOR"},
+                    )
             else:
                 logger.exception(f"Unhandled exception during run {context.run_id}: {exc}")
                 context.status = RuntimeStatus.FAILED
@@ -2061,6 +2404,23 @@ class FiveAgentDepartmentRuntime:
                 }
                 context.stage_outputs["final_cmo"] = cmo_final
                 context.create_checkpoint()
+                if emitter and not any(e.event_type == ProgressEventType.RUN_FAILED for e in emitter.events):
+                    stage_obj = runtime_stage_to_progress_stage(context.current_stage)
+                    emitter.emit(
+                        ProgressEventType.RUN_FAILED,
+                        stage=stage_obj,
+                        agent="CMO",
+                        message=f"Quy trình thực thi gặp lỗi: {str(exc)}",
+                        metadata={"error": str(exc)},
+                    )
+
+        if context.status not in (RuntimeStatus.FAILED, RuntimeStatus.CANCELLED) and cmo_final.get("status") in ("READY_FOR_DEPLOYMENT", "APPROVED", "COMPLETED"):
+            if emitter and not any(e.event_type in (ProgressEventType.RUN_COMPLETED, ProgressEventType.RUN_FAILED) for e in emitter.events):
+                emitter.emit(
+                    ProgressEventType.RUN_COMPLETED,
+                    agent="CMO",
+                    message="Hoàn tất toàn bộ quy trình Five-Agent Department",
+                )
 
         artifact = self.complete_run(context)
         return context, cmo_final, artifact
@@ -2077,6 +2437,7 @@ class FiveAgentDepartmentRuntime:
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
         constraints: Optional[List[str]] = None,
+        progress_sink: Optional[ProgressSink] = None,
     ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
         """Convenience canonical entrypoint: start_run + execute_run."""
         context = self.start_run(
@@ -2089,12 +2450,16 @@ class FiveAgentDepartmentRuntime:
             trusted_run_id=trusted_run_id,
             chat_id=chat_id,
             project_id=project_id,
+            progress_sink=progress_sink,
+            mode=ProgressMode.FULL_WORKFLOW.value,
         )
         if constraints:
             for c in constraints:
                 if c not in context.constraints:
                     context.constraints.append(c)
             self._sync_constraint_state(context)
+        if progress_sink is not None:
+            return self.execute_run(context, progress_sink=progress_sink)
         return self.execute_run(context)
 
     def run_research_inquiry(
@@ -2103,6 +2468,7 @@ class FiveAgentDepartmentRuntime:
         business_id: str = "BIZ_AD_HOC_EXPLORATION",
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
+        progress_sink: Optional[ProgressSink] = None,
     ) -> Tuple[RuntimeContext, Dict[str, Any], DepartmentRunArtifact]:
         """Research-only fast path: Intelligence stage only, no full workflow.
 
@@ -2121,17 +2487,49 @@ class FiveAgentDepartmentRuntime:
             business_id=business_id,
             chat_id=chat_id,
             project_id=project_id,
+            progress_sink=progress_sink,
+            mode=ProgressMode.RESEARCH_INQUIRY.value,
         )
+
+        emitter = self._get_emitter(context)
+        if emitter:
+            if not any(e.event_type == ProgressEventType.RUN_STARTED for e in emitter.events):
+                emitter.emit(
+                    ProgressEventType.RUN_STARTED,
+                    mode=ProgressMode.RESEARCH_INQUIRY.value,
+                    message="Khởi động truy vấn nghiên cứu thị trường",
+                )
+            if not any(e.event_type == ProgressEventType.RESEARCH_STARTED for e in emitter.events):
+                emitter.emit(
+                    ProgressEventType.RESEARCH_STARTED,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message="Bắt đầu thu thập dữ liệu nghiên cứu thị trường",
+                )
 
         try:
             # Execute Intelligence stage only — search, evidence, grounding, synthesis
             intel_out = self.execute_stage_intelligence(context)
 
             # Set terminal status based on Intelligence outcome
-            if intel_out.get("status") == "FAILED":
+            if intel_out.get("status") == "FAILED" or context.status == RuntimeStatus.FAILED:
                 context.status = RuntimeStatus.FAILED
+                if emitter and not any(e.event_type == ProgressEventType.RUN_FAILED for e in emitter.events):
+                    emitter.emit(
+                        ProgressEventType.RUN_FAILED,
+                        stage="INTELLIGENCE",
+                        agent="INTELLIGENCE",
+                        message="Truy vấn nghiên cứu thị trường thất bại",
+                        metadata={"error": intel_out.get("error", "STAGE_FAILED")},
+                    )
             else:
                 context.status = RuntimeStatus.COMPLETED
+                if emitter and not any(e.event_type in (ProgressEventType.RUN_COMPLETED, ProgressEventType.RUN_FAILED) for e in emitter.events):
+                    emitter.emit(
+                        ProgressEventType.RUN_COMPLETED,
+                        agent="INTELLIGENCE",
+                        message="Hoàn tất truy vấn nghiên cứu thị trường",
+                    )
 
             # Final CMO output for artifact compatibility — Intelligence findings as the response
             final_output = {
@@ -2151,6 +2549,14 @@ class FiveAgentDepartmentRuntime:
             logger.exception(f"Unhandled exception during research inquiry {context.run_id}: {exc}")
             context.status = RuntimeStatus.FAILED
             context.risk_flags.append(f"RESEARCH_INQUIRY_UNHANDLED_EXCEPTION: {str(exc)}")
+            if emitter and not any(e.event_type == ProgressEventType.RUN_FAILED for e in emitter.events):
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message=f"Truy vấn nghiên cứu thất bại: {str(exc)}",
+                    metadata={"error": str(exc)},
+                )
             final_output = {
                 "stage": "INTELLIGENCE_ONLY",
                 "agent": "intelligence",

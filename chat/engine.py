@@ -18,6 +18,13 @@ from chat.session import ChatAttachment, ChatMessage, ChatRole, ChatSession
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponseStatus, ModelRole
 from integrations.models.gateway import UniversalModelGateway
 from knowledge.repository import KnowledgeRepository, LocalKnowledgeRepository
+from runtime.progress import (
+    ProgressEmitter,
+    ProgressEventType,
+    ProgressMode,
+    ProgressSink,
+    RuntimeProgressEvent,
+)
 
 logger = logging.getLogger("chat_engine")
 
@@ -41,6 +48,7 @@ class ChatConversationEngine:
         user_message: str,
         attachments: Optional[List[ChatAttachment]] = None,
         is_document_analysis: bool = False,
+        progress_sink: Optional[ProgressSink] = None,
     ) -> Dict[str, Any]:
         """Generate conversational or document-grounded response with multi-turn context."""
         # 1. Build System Instruction — TRUSTED POLICY ONLY, no untrusted content
@@ -104,6 +112,23 @@ class ChatConversationEngine:
         # Add current user message
         messages_payload.append(ModelMessage(role=ModelRole.USER, content=user_message))
 
+        emitter: Optional[ProgressEmitter] = None
+        if progress_sink is not None:
+            emitter = ProgressEmitter(
+                run_id=session.chat_id or "CHAT-DIRECT",
+                mode=ProgressMode.GENERAL_CONVERSATION.value,
+                sink=progress_sink,
+            )
+            emitter.emit(
+                ProgressEventType.RUN_STARTED,
+                mode=ProgressMode.GENERAL_CONVERSATION.value,
+                message="Bắt đầu xử lý tin nhắn",
+            )
+            emitter.emit(
+                ProgressEventType.MODEL_STARTED,
+                message="Gửi yêu cầu đến mô hình ngôn ngữ",
+            )
+
         # 4. Invoke Universal Model Gateway
         req = ModelRequest(
             messages=messages_payload,
@@ -115,6 +140,15 @@ class ChatConversationEngine:
 
         # 5. Handle Gateway Response
         if resp.status == ModelResponseStatus.SUCCESS and resp.content:
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.MODEL_COMPLETED,
+                    message="Mô hình ngôn ngữ phản hồi thành công",
+                )
+                emitter.emit(
+                    ProgressEventType.RUN_COMPLETED,
+                    message="Hoàn tất xử lý tin nhắn",
+                )
             return {
                 "success": True,
                 "content": resp.content.strip(),
@@ -132,6 +166,15 @@ class ChatConversationEngine:
         doc_context_str = "\n\n".join(doc_context_parts) if doc_context_parts else ""
         fallback_content = self._generate_offline_conversational_fallback(user_message, doc_context_str)
         if fallback_content:
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.MODEL_COMPLETED,
+                    message="Phản hồi từ bộ nhớ đàm thoại cục bộ",
+                )
+                emitter.emit(
+                    ProgressEventType.RUN_COMPLETED,
+                    message="Hoàn tất xử lý tin nhắn",
+                )
             return {
                 "success": True,
                 "content": fallback_content,
@@ -146,6 +189,12 @@ class ChatConversationEngine:
             if ("WinError" in error_detail or "HTTP 599" in error_detail or "refused" in error_detail.lower())
             else error_detail
         )
+        if emitter:
+            emitter.emit(
+                ProgressEventType.RUN_FAILED,
+                message=f"Không thể kết nối đến nhà cung cấp mô hình AI: {sanitized_error}",
+                metadata={"error": error_detail},
+            )
         return {
             "success": False,
             "error": error_detail,
