@@ -1,14 +1,8 @@
 /**
- * Secure Frontend Streaming Client (PROD-STREAMING-IMPLEMENTATION-01-B5).
+ * Secure Frontend Streaming Client.
  *
- * Bridges the certified Tauri v2 native `api_stream` Channel to the React UI.
- *
- * Invariants:
- * 1. ZERO direct network/HTTP requests to Python backend. All traffic passes through Tauri IPC `api_stream`.
- * 2. JavaScript NEVER holds, receives, or transmits backend bearer tokens or API keys.
- * 3. Enforces a strict terminal lifecycle: exactly ONE terminal outcome (`COMPLETE` or `ERROR`).
- * 4. Preserves exact FIFO delta concatenation without token splitting or artificial formatting.
- * 5. Handles both Python Channel errors and Rust command invocation rejections with single sanitized UI errors.
+ * Traffic is Tauri IPC only. The browser never holds backend bearer tokens or
+ * provider credentials. Exactly one terminal outcome is accepted.
  */
 
 export interface RuntimeProgressData {
@@ -25,12 +19,21 @@ export interface RuntimeProgressData {
 
 export interface StreamDeltaData {
   content: string;
+  provider?: string;
+  model_name?: string;
 }
 
 export interface StreamErrorData {
   code: string;
+  category?: string;
+  safe_message?: string;
   message: string;
   retryable?: boolean;
+  http_status?: number | null;
+  provider?: string;
+  model_name?: string;
+  stage?: string;
+  agent?: string;
 }
 
 export type StreamEvent =
@@ -49,13 +52,12 @@ export class TauriChannel<T = any> {
     if (internals?.transformCallback) {
       this.id = internals.transformCallback((response: any) => {
         if (response && typeof response === 'object' && 'message' in response) {
-          if (this.onmessage) {
-            this.onmessage(response.message);
-          }
+          this.onmessage?.(response.message);
         } else if (response && typeof response === 'object' && response.end) {
-          // Channel end marker from Tauri v2
-        } else if (this.onmessage) {
-          this.onmessage(response);
+          // Native channel end is not success by itself. api_stream must still
+          // deliver an explicit COMPLETE or ERROR event before invoke resolves.
+        } else {
+          this.onmessage?.(response);
         }
       });
     } else {
@@ -89,43 +91,56 @@ function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
 }
 
-/**
- * Executes a streaming chat turn over Tauri v2 Channel.
- * Guarantees exactly one terminal callback (onComplete or onError) and enforces FIFO ordering.
- */
+function boundedString(value: unknown, fallback = '', max = 500): string {
+  return typeof value === 'string' && value ? value.slice(0, max) : fallback;
+}
+
+function normalizeStreamError(data: any): StreamErrorData {
+  const safeMessage = boundedString(data?.safe_message, '', 500) || boundedString(data?.message, 'Không thể hoàn tất yêu cầu.', 500);
+  return {
+    code: boundedString(data?.code || data?.error, 'STREAM_ERROR', 80),
+    category: boundedString(data?.category, 'INTERNAL', 80),
+    safe_message: safeMessage,
+    message: safeMessage,
+    retryable: typeof data?.retryable === 'boolean' ? data.retryable : false,
+    http_status: Number.isInteger(data?.http_status) && data.http_status >= 100 && data.http_status <= 599 ? data.http_status : null,
+    provider: boundedString(data?.provider, '', 120),
+    model_name: boundedString(data?.model_name, '', 160),
+    stage: boundedString(data?.stage, '', 80),
+    agent: boundedString(data?.agent, '', 80),
+  };
+}
+
+/** Execute one streaming turn over the Tauri v2 Channel. */
 export async function streamChatTurn(options: StreamChatTurnOptions): Promise<void> {
   const { path, body, headers, onProgress, onDelta, onComplete, onError } = options;
-
   let isTerminal = false;
+  let sawVisibleDelta = false;
+
+  let channel: TauriChannel<StreamEvent>;
 
   const handleTerminalComplete = (data: Record<string, any>) => {
     if (isTerminal) return;
     isTerminal = true;
-    channel.close();
-    if (onComplete) {
-      onComplete(data);
-    }
+    channel?.close();
+    onComplete?.(data);
   };
 
   const handleTerminalError = (err: StreamErrorData) => {
     if (isTerminal) return;
     isTerminal = true;
-    channel.close();
-    if (onError) {
-      onError(err);
-    }
+    channel?.close();
+    onError?.(normalizeStreamError(err));
   };
 
-  const channel = new TauriChannel<StreamEvent>((event) => {
-    if (isTerminal) {
-      // Reject any late frames after stream has terminated
-      return;
-    }
+  channel = new TauriChannel<StreamEvent>((event) => {
+    if (isTerminal) return;
 
     if (!event || typeof event !== 'object' || !('event' in event)) {
       handleTerminalError({
         code: 'PROTOCOL_ERROR',
-        message: 'Malformed stream event payload received from native bridge.',
+        category: 'STREAM_PROTOCOL',
+        message: 'Malformed stream event received from the native bridge.',
         retryable: false,
       });
       return;
@@ -133,45 +148,36 @@ export async function streamChatTurn(options: StreamChatTurnOptions): Promise<vo
 
     switch (event.event) {
       case 'progress':
-        if (onProgress && event.data) {
-          onProgress(event.data);
-        }
+        if (event.data) onProgress?.(event.data);
         break;
-
       case 'delta':
-        if (onDelta && event.data && typeof event.data.content === 'string') {
-          onDelta(event.data);
+        if (event.data && typeof event.data.content === 'string' && event.data.content) {
+          sawVisibleDelta = true;
+          onDelta?.(event.data);
         }
         break;
-
       case 'complete':
         handleTerminalComplete(event.data || {});
         break;
-
       case 'error':
-        handleTerminalError({
-          code: event.data?.code || 'STREAM_ERROR',
-          message: event.data?.message || 'Lỗi không xác định từ dịch vụ AI.',
-          retryable: event.data?.retryable ?? false,
-        });
+        handleTerminalError(normalizeStreamError(event.data));
         break;
-
       default:
-        // Unknown event type: fail closed
         handleTerminalError({
           code: 'UNKNOWN_EVENT_TYPE',
-          message: `Unknown stream event type received: ${(event as any).event}`,
+          category: 'STREAM_PROTOCOL',
+          message: 'Unknown stream event type received from native bridge.',
           retryable: false,
         });
         break;
     }
   });
 
-  // Verify Tauri runtime availability
   if (!isTauriEnvironment()) {
     handleTerminalError({
       code: 'TAURI_UNAVAILABLE',
-      message: 'Native desktop streaming requires Tauri runtime environment.',
+      category: 'CONFIGURATION',
+      message: 'Native desktop streaming requires the Tauri runtime.',
       retryable: false,
     });
     return;
@@ -184,7 +190,8 @@ export async function streamChatTurn(options: StreamChatTurnOptions): Promise<vo
   if (!invokeFn) {
     handleTerminalError({
       code: 'INVOKE_UNAVAILABLE',
-      message: 'Tauri invoke function is unavailable.',
+      category: 'CONFIGURATION',
+      message: 'Tauri invoke is unavailable.',
       retryable: false,
     });
     return;
@@ -196,27 +203,26 @@ export async function streamChatTurn(options: StreamChatTurnOptions): Promise<vo
 
   try {
     await invokeFn('api_stream', {
-      args: {
-        path,
-        body: stringBody,
-        headers: headers || {},
-      },
+      args: { path, body: stringBody, headers: headers || {} },
       channel,
     });
 
-    // If invoke resolves without receiving complete/error on channel (e.g. unexpected EOF),
-    // ensure the stream does not hang in active state.
+    // Explicit terminal event is mandatory. Native EOF is never success.
     if (!isTerminal) {
-      handleTerminalComplete({});
+      handleTerminalError({
+        code: 'STREAM_TRUNCATED',
+        category: 'STREAM_PROTOCOL',
+        message: 'The response stream ended before a terminal event was received.',
+        retryable: !sawVisibleDelta,
+      });
     }
-  } catch (rawError: any) {
-    // Rust command rejection before or during streaming (transport/network/header limit/frame limit failure)
+  } catch (_rawError: any) {
     if (!isTerminal) {
-      const errStr = typeof rawError === 'string' ? rawError : (rawError?.message || 'Lỗi kết nối stream native.');
       handleTerminalError({
         code: 'TRANSPORT_ERROR',
-        message: errStr,
-        retryable: false,
+        category: 'NETWORK',
+        message: 'The native streaming transport failed.',
+        retryable: !sawVisibleDelta,
       });
     }
   }
