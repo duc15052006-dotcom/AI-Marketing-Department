@@ -1,0 +1,64 @@
+name: Agent Hardening V2
+
+on:
+  push:
+    branches:
+      - phase/agent-hardening-v2
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: contains(github.event.head_commit.message, '[agent-hardening-patch]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase/agent-hardening-v2
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply asserted patch
+        run: python tools/dev/apply_agent_hardening_v2.py
+
+      - name: Compile production modules
+        run: python -m compileall -q runtime chat app_api integrations tools connectors
+
+      - name: Run focused contract tests
+        run: |
+          python -m unittest \
+            tests.test_agent_skills_v2 \
+            tests.test_followup_task_resolver_v2 \
+            tests.test_runtime_public_errors_v2 \
+            tests.test_app_streaming_typed_errors_v2 -v
+
+      - name: Static safety assertions
+        shell: bash
+        run: |
+          ! grep -R '"target_value": 150.0' runtime/engine.py
+          ! grep -R 'return None, str(e)' runtime/engine.py
+          grep -q 'render_agent_skill_context(agent_name)' runtime/engine.py
+          grep -q 'resolve_followup(user_text, session.messages)' app_api/server.py
+          grep -q 'ChatMessage, ChatRole' app_api/server.py
+          git diff --check
+
+      - name: Commit verified production patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py chat/engine.py app_api/server.py
+          git diff --cached --check
+          git diff --cached --name-only
+          if git diff --cached --quiet; then
+            echo "No production changes to commit"
+            exit 0
+          fi
+          git commit -m "fix: wire skills context errors and followups into production"
+          git push origin HEAD:phase/agent-hardening-v2
