@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest
       - name: Apply asserted production migration
-        run: python tools/dev/apply_full_defect_sweep_v2_r1.py
+        run: python tools/dev/apply_full_defect_sweep_v2_r4.py
       - name: Compile all production Python
         run: python -m compileall -q runtime chat app_api integrations tools connectors
       - name: Focused defect regression
