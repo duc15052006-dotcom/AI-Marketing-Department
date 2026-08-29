@@ -1,3 +1,3 @@
 Full defect sweep V2 trigger.
-Revision: BATCH-7
-Purpose: certify all consolidated defect fixes and updated truthful regression fixtures.
+Revision: BATCH-8
+Purpose: certify consolidated fixes after removing live-client test-discovery side effects.
