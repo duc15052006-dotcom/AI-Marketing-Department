@@ -30,6 +30,7 @@ jobs:
         run: |
           python tools/dev/apply_full_defect_sweep_v2_r4.py
           python tools/dev/apply_full_defect_sweep_v2_post.py
+          python tools/dev/apply_full_defect_sweep_v2_post2.py
 
       - name: Compile all production Python
         run: python -m compileall -q runtime chat app_api integrations tools connectors
@@ -45,6 +46,7 @@ jobs:
             tests/test_no_fake_default_tool_success_v2.py \
             tests/test_tool_gateway_safe_exception_v2.py \
             tests/test_model_cost_truth_v2.py \
+            tests/test_search_degradation_truth_v2.py \
             tests/test_prod_workflow_failure_semantics_01.py \
             tests/test_prod_runtime_01_single_run_authority.py
 
@@ -73,6 +75,7 @@ jobs:
           grep -q 'isTableSeparator' frontend/src/components/MarkdownView.tsx
           grep -q 'error_http_status' frontend/src/chat/streamState.ts
           grep -q 'STREAM_TRUNCATED' frontend/src/api/streaming.ts
+          grep -q 'NO_RESULTS_PARTIAL_DEGRADATION' tools/observation/search_backend.py
 
           ! grep -q 'handleTerminalComplete({});' frontend/src/api/streaming.ts
           ! grep -q 'return None, str(e)' runtime/engine.py
@@ -86,6 +89,8 @@ jobs:
           ! grep -q 'str(last_exc)' tools/tool_gateway.py
           ! grep -q 'UNEXPECTED_PIPELINE_CRASH.*reason' tests/test_prod_runtime_01_single_run_authority.py
           ! grep -q 'ADAPTER_INVOCATION_EXCEPTION: {str(e)' integrations/models/gateway.py
+          ! grep -q 'Failed to fetch DuckDuckGo search: {str(e)' tools/observation/search_backend.py
+          ! grep -q 'Failed to query Wikipedia OpenSearch API: {str(e)' tools/observation/search_backend.py
 
           grep -q 'REAL_MEDIA_CONNECTOR_REQUIRED' tools/adapters.py
           grep -q 'REAL_ANALYTICS_CONNECTOR_REQUIRED' tools/adapters.py
@@ -103,6 +108,7 @@ jobs:
             app_api/server.py \
             tools/tool_gateway.py \
             tools/adapters.py \
+            tools/observation/search_backend.py \
             integrations/models/registry.py \
             integrations/models/gateway.py \
             frontend/src/chat/streamState.ts \
