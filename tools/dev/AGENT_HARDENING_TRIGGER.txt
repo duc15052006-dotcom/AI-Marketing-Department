@@ -1,3 +1,3 @@
 Full defect sweep V2 trigger.
-Revision: BATCH-1
-Purpose: apply and certify the complete known-defect repair batch.
+Revision: BATCH-2
+Purpose: rerun asserted migration with path-scoped research wiring.
