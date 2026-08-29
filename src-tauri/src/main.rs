@@ -1250,6 +1250,471 @@ async fn api_request(
     perform_loopback_http_request(&host, port, &method, path, &token, args.body, args.headers)
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamEventType {
+    Progress,
+    Delta,
+    Complete,
+    Error,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq)]
+pub struct StreamMessage {
+    pub event: StreamEventType,
+    pub data: serde_json::Value,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct ApiStreamArgs {
+    pub path: String,
+    pub body: Option<String>,
+}
+
+pub fn is_allowed_stream_route(path: &str) -> bool {
+    let clean = path.trim();
+    if !is_safe_api_path(clean) {
+        return false;
+    }
+    if clean == "/api/chat/stream" {
+        return true;
+    }
+    if let Some(rest) = clean.strip_prefix("/api/chat/sessions/") {
+        if let Some(session_id) = rest.strip_suffix("/stream") {
+            if !session_id.is_empty()
+                && !session_id.contains('/')
+                && session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub const MAX_SSE_FRAME_BYTES: usize = 10 * 1024 * 1024; // 10MB per incomplete logical SSE frame
+
+pub struct SseParser {
+    buffer: Vec<u8>,
+    saw_terminal: bool,
+    max_frame_bytes: usize,
+}
+
+impl SseParser {
+    pub fn new() -> Self {
+        Self::with_max_frame_bytes(MAX_SSE_FRAME_BYTES)
+    }
+
+    pub fn with_max_frame_bytes(max_frame_bytes: usize) -> Self {
+        Self {
+            buffer: Vec::new(),
+            saw_terminal: false,
+            max_frame_bytes,
+        }
+    }
+
+    pub fn push_chunk(&mut self, chunk: &[u8]) -> Result<(), String> {
+        self.buffer.extend_from_slice(chunk);
+        if self.buffer.len() > self.max_frame_bytes {
+            let delim_info = if let Some(idx) = self.find_subsequence(b"\r\n\r\n") {
+                Some((idx, 4))
+            } else if let Some(idx) = self.find_subsequence(b"\n\n") {
+                Some((idx, 2))
+            } else {
+                None
+            };
+
+            match delim_info {
+                Some((idx, _)) if idx <= self.max_frame_bytes => {
+                    // Delimiter is within limit, next_event will drain it
+                }
+                _ => {
+                    let observed_len = self.buffer.len();
+                    return Err(format!(
+                        "SSE_FRAME_TOO_LARGE: Frame buffer length {} exceeds maximum allowed limit of {} bytes",
+                        observed_len, self.max_frame_bytes
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn next_event(&mut self) -> Result<Option<StreamMessage>, String> {
+        loop {
+            let delim_info = if let Some(idx) = self.find_subsequence(b"\r\n\r\n") {
+                Some((idx, 4))
+            } else if let Some(idx) = self.find_subsequence(b"\n\n") {
+                Some((idx, 2))
+            } else {
+                None
+            };
+
+            let (idx, delim_len) = match delim_info {
+                Some(info) => info,
+                None => return Ok(None),
+            };
+
+            if idx > self.max_frame_bytes {
+                return Err(format!(
+                    "SSE_FRAME_TOO_LARGE: Single frame size {} exceeds maximum allowed limit of {} bytes",
+                    idx, self.max_frame_bytes
+                ));
+            }
+
+            let frame_bytes: Vec<u8> = self.buffer.drain(..idx).collect();
+            self.buffer.drain(..delim_len);
+
+            let frame_str = match std::str::from_utf8(&frame_bytes) {
+                Ok(s) => s,
+                Err(e) => return Err(format!("INVALID_UTF8_IN_SSE_FRAME: {}", e)),
+            };
+
+            let trimmed = frame_str.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let mut event_name: Option<String> = None;
+            let mut data_str: Option<String> = None;
+
+            for line in frame_str.lines() {
+                let l = line.trim_end_matches(['\r', '\n']);
+                if l.is_empty() || l.starts_with(':') {
+                    continue;
+                }
+                if let Some(rest) = l.strip_prefix("event:") {
+                    event_name = Some(rest.trim().to_string());
+                } else if let Some(rest) = l.strip_prefix("data:") {
+                    let d = rest.strip_prefix(' ').unwrap_or(rest);
+                    data_str = Some(d.to_string());
+                }
+            }
+
+            let event_type = match event_name.as_deref() {
+                Some("progress") => StreamEventType::Progress,
+                Some("delta") => StreamEventType::Delta,
+                Some("complete") => StreamEventType::Complete,
+                Some("error") => StreamEventType::Error,
+                Some(other) => return Err(format!("UNKNOWN_SSE_EVENT_TYPE: {}", other)),
+                None => return Err("MISSING_EVENT_NAME_IN_SSE_FRAME".to_string()),
+            };
+
+            let raw_data = match data_str {
+                Some(d) => d,
+                None => return Err("MISSING_DATA_IN_SSE_FRAME".to_string()),
+            };
+
+            let parsed_data: serde_json::Value = match serde_json::from_str(&raw_data) {
+                Ok(v) => v,
+                Err(e) => return Err(format!("MALFORMED_SSE_JSON_DATA: {}", e)),
+            };
+
+            if event_type == StreamEventType::Complete || event_type == StreamEventType::Error {
+                self.saw_terminal = true;
+            }
+
+            return Ok(Some(StreamMessage {
+                event: event_type,
+                data: parsed_data,
+            }));
+        }
+    }
+
+    pub fn finish(&mut self) -> Result<Option<StreamMessage>, String> {
+        if self.buffer.len() > self.max_frame_bytes {
+            return Err(format!(
+                "SSE_FRAME_TOO_LARGE: Trailing frame buffer length {} exceeds maximum allowed limit of {} bytes",
+                self.buffer.len(), self.max_frame_bytes
+            ));
+        }
+        let has_content = self.buffer.iter().any(|&b| b != b' ' && b != b'\r' && b != b'\n' && b != b'\t');
+        if has_content {
+            let frame_bytes: Vec<u8> = self.buffer.drain(..).collect();
+            let frame_str = match std::str::from_utf8(&frame_bytes) {
+                Ok(s) => s,
+                Err(e) => return Err(format!("INVALID_UTF8_IN_TRAILING_SSE_FRAME: {}", e)),
+            };
+            let mut event_name: Option<String> = None;
+            let mut data_str: Option<String> = None;
+            for line in frame_str.lines() {
+                let l = line.trim_end_matches(['\r', '\n']);
+                if l.is_empty() || l.starts_with(':') {
+                    continue;
+                }
+                if let Some(rest) = l.strip_prefix("event:") {
+                    event_name = Some(rest.trim().to_string());
+                } else if let Some(rest) = l.strip_prefix("data:") {
+                    let d = rest.strip_prefix(' ').unwrap_or(rest);
+                    data_str = Some(d.to_string());
+                }
+            }
+            if let (Some(ev), Some(dt)) = (event_name, data_str) {
+                let event_type = match ev.as_str() {
+                    "progress" => StreamEventType::Progress,
+                    "delta" => StreamEventType::Delta,
+                    "complete" => StreamEventType::Complete,
+                    "error" => StreamEventType::Error,
+                    other => return Err(format!("UNKNOWN_SSE_EVENT_TYPE: {}", other)),
+                };
+                let parsed_data: serde_json::Value = match serde_json::from_str(&dt) {
+                    Ok(v) => v,
+                    Err(e) => return Err(format!("MALFORMED_SSE_JSON_DATA: {}", e)),
+                };
+                if event_type == StreamEventType::Complete || event_type == StreamEventType::Error {
+                    self.saw_terminal = true;
+                }
+                return Ok(Some(StreamMessage {
+                    event: event_type,
+                    data: parsed_data,
+                }));
+            }
+            return Err("INCOMPLETE_TRAILING_SSE_FRAME".to_string());
+        }
+        Ok(None)
+    }
+
+    fn find_subsequence(&self, needle: &[u8]) -> Option<usize> {
+        self.buffer
+            .windows(needle.len())
+            .position(|window| window == needle)
+    }
+}
+
+pub fn perform_loopback_sse_stream<F>(
+    host: &str,
+    port: u16,
+    path: &str,
+    token: &str,
+    body: Option<String>,
+    mut emit_fn: F,
+) -> Result<(), String>
+where
+    F: FnMut(StreamMessage) -> Result<(), String>,
+{
+    let addr = format!("{}:{}", host, port);
+    let mut stream = TcpStream::connect_timeout(
+        &addr.parse().map_err(|e| format!("INVALID_ADDRESS: {}", e))?,
+        Duration::from_secs(5),
+    )
+    .map_err(|e| format!("CONNECTION_FAILED: {}", e))?;
+
+    stream
+        .set_read_timeout(Some(Duration::from_secs(120)))
+        .map_err(|e| format!("TIMEOUT_SET_FAILED: {}", e))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .map_err(|e| format!("TIMEOUT_SET_FAILED: {}", e))?;
+
+    let body_bytes = body.as_deref().unwrap_or("{}").as_bytes();
+    let content_length = body_bytes.len();
+
+    let request_raw = format!(
+        "POST {} HTTP/1.0\r\nHost: {}:{}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        path, host, port, token, content_length
+    );
+
+    stream
+        .write_all(request_raw.as_bytes())
+        .map_err(|e| format!("WRITE_FAILED: {}", e))?;
+
+    if !body_bytes.is_empty() {
+        stream
+            .write_all(body_bytes)
+            .map_err(|e| format!("BODY_WRITE_FAILED: {}", e))?;
+    }
+
+    stream.flush().map_err(|e| format!("FLUSH_FAILED: {}", e))?;
+
+    let mut header_buf = Vec::new();
+    let mut found_header_end = false;
+    let mut initial_body_bytes = Vec::new();
+    let mut chunk_buf = [0u8; 1024];
+
+    loop {
+        match stream.read(&mut chunk_buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                header_buf.extend_from_slice(&chunk_buf[..n]);
+                if let Some(idx) = header_buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    found_header_end = true;
+                    initial_body_bytes = header_buf.split_off(idx + 4);
+                    header_buf.truncate(idx);
+                    break;
+                } else if let Some(idx) = header_buf.windows(2).position(|w| w == b"\n\n") {
+                    found_header_end = true;
+                    initial_body_bytes = header_buf.split_off(idx + 2);
+                    header_buf.truncate(idx);
+                    break;
+                }
+                if header_buf.len() > 16384 {
+                    return Err("HTTP_HEADERS_TOO_LARGE".to_string());
+                }
+            }
+            Err(e) => return Err(format!("READ_HEADERS_FAILED: {}", e)),
+        }
+    }
+
+    if !found_header_end {
+        return Err("MALFORMED_HTTP_RESPONSE: No header delimiter found".to_string());
+    }
+
+    let header_str = String::from_utf8_lossy(&header_buf);
+    let mut lines = header_str.lines();
+    let status_line = lines.next().ok_or_else(|| "EMPTY_STATUS_LINE".to_string())?;
+    let status_parts: Vec<&str> = status_line.split_whitespace().collect();
+    if status_parts.len() < 2 {
+        return Err(format!("INVALID_STATUS_LINE: {}", status_line));
+    }
+    let status_code: u16 = status_parts[1]
+        .parse()
+        .map_err(|_| format!("INVALID_STATUS_CODE: {}", status_parts[1]))?;
+
+    let mut response_headers = HashMap::new();
+    for line in lines {
+        if let Some((k, v)) = line.split_once(':') {
+            response_headers.insert(k.trim().to_lowercase(), v.trim().to_string());
+        }
+    }
+
+    if status_code != 200 {
+        return Err(format!("BACKEND_HTTP_ERROR_{}", status_code));
+    }
+
+    let content_type = response_headers
+        .get("content-type")
+        .cloned()
+        .unwrap_or_default()
+        .to_lowercase();
+    if !content_type.contains("text/event-stream") {
+        return Err(format!("INVALID_STREAM_CONTENT_TYPE: {}", content_type));
+    }
+
+    let mut parser = SseParser::new();
+    let mut terminal_seen = false;
+
+    if !initial_body_bytes.is_empty() {
+        parser.push_chunk(&initial_body_bytes)?;
+        while let Some(msg) = parser.next_event()? {
+            let is_term = msg.event == StreamEventType::Complete || msg.event == StreamEventType::Error;
+            emit_fn(msg)?;
+            if is_term {
+                terminal_seen = true;
+                break;
+            }
+        }
+    }
+
+    if !terminal_seen {
+        let mut buffer = [0u8; 2048];
+        loop {
+            match stream.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    parser.push_chunk(&buffer[..n])?;
+                    while let Some(msg) = parser.next_event()? {
+                        let is_term = msg.event == StreamEventType::Complete || msg.event == StreamEventType::Error;
+                        emit_fn(msg)?;
+                        if is_term {
+                            terminal_seen = true;
+                            break;
+                        }
+                    }
+                    if terminal_seen {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    return Err(format!("STREAM_READ_ERROR: {}", e));
+                }
+            }
+        }
+    }
+
+    if !terminal_seen {
+        if let Some(msg) = parser.finish()? {
+            let is_term = msg.event == StreamEventType::Complete || msg.event == StreamEventType::Error;
+            emit_fn(msg)?;
+            if is_term {
+                terminal_seen = true;
+            }
+        }
+    }
+
+    if !terminal_seen {
+        return Err("PREMATURE_EOF_BEFORE_TERMINAL".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn api_stream(
+    state: tauri::State<'_, BackendProcessState>,
+    args: ApiStreamArgs,
+    channel: tauri::ipc::Channel<StreamMessage>,
+) -> Result<(), String> {
+    let path = args.path.trim();
+
+    // 0. Check if backend child process has exited
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(guard_handle) = state.process_handle.lock() {
+            if let Some(handle_val) = *guard_handle {
+                unsafe {
+                    extern "system" {
+                        fn GetExitCodeProcess(h_process: *mut std::ffi::c_void, lp_exit_code: *mut u32) -> i32;
+                    }
+                    let mut exit_code: u32 = 0;
+                    if GetExitCodeProcess(handle_val as *mut std::ffi::c_void, &mut exit_code) != 0 {
+                        if exit_code != 259 {
+                            let _ = state.auth_token.lock().map(|mut t| *t = None);
+                            return Err(format!("BACKEND_PROCESS_TERMINATED: Backend process exited with status {}", exit_code));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 1. Strict Path Validation
+    if !is_allowed_stream_route(path) {
+        return Err(format!("FORBIDDEN_STREAM_ROUTE: Route {} is not an authorized streaming endpoint", path));
+    }
+
+    // 2. Body length bound (max 10MB)
+    if let Some(ref b) = args.body {
+        if b.len() > MAX_REQUEST_BODY_BYTES {
+            return Err("REQUEST_TOO_LARGE: Request payload exceeds 10MB limit".to_string());
+        }
+    }
+
+    // 3. Acquire Token & Endpoint from State
+    let token = {
+        let guard = state.auth_token.lock().map_err(|_| "MUTEX_POISONED")?;
+        guard.clone().ok_or_else(|| "BACKEND_UNAUTHENTICATED: No active session token available".to_string())?
+    };
+    let host = {
+        let guard = state.api_host.lock().map_err(|_| "MUTEX_POISONED")?;
+        guard.clone()
+    };
+    let port = {
+        let guard = state.api_port.lock().map_err(|_| "MUTEX_POISONED")?;
+        *guard
+    };
+
+    let path_str = path.to_string();
+    let body_opt = args.body;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        perform_loopback_sse_stream(&host, port, &path_str, &token, body_opt, |msg| {
+            channel.send(msg).map_err(|e| format!("CHANNEL_SEND_FAILED: {}", e))
+        })
+    })
+    .await
+    .map_err(|e| format!("TASK_JOIN_ERROR: {}", e))?
+}
+
 fn main() {
     let (child_pid, process_handle, job_handle, auth_token, api_host, api_port) = spawn_backend_and_bootstrap();
 
@@ -1263,7 +1728,7 @@ fn main() {
             api_host: Mutex::new(api_host),
             api_port: Mutex::new(api_port),
         })
-        .invoke_handler(tauri::generate_handler![api_request, review_pending_approval])
+        .invoke_handler(tauri::generate_handler![api_request, review_pending_approval, api_stream])
         .build(tauri::generate_context!())
         .expect("error while building AI Marketing Department desktop application");
 
@@ -1736,5 +2201,605 @@ mod tests {
 
         // 3. Non-listening port -> false
         assert!(!is_backend_healthy("127.0.0.1", 65432));
+    }
+
+    // =========================================================================
+    // B4 TAURI SSE STREAMING TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_sse_parser_single_frame() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: delta\r\ndata: {\"content\":\"Xin chao\"}\r\n\r\n").unwrap();
+        let msg = parser.next_event().unwrap().expect("Expected event");
+        assert_eq!(msg.event, StreamEventType::Delta);
+        assert_eq!(msg.data["content"], "Xin chao");
+        assert_eq!(parser.next_event().unwrap(), None);
+    }
+
+    #[test]
+    fn test_sse_parser_split_across_reads() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: del").unwrap();
+        assert_eq!(parser.next_event().unwrap(), None);
+        parser.push_chunk(b"ta\ndata: {\"content\":\"part 2\"}\n\n").unwrap();
+        let msg = parser.next_event().unwrap().expect("Expected event");
+        assert_eq!(msg.event, StreamEventType::Delta);
+        assert_eq!(msg.data["content"], "part 2");
+    }
+
+    #[test]
+    fn test_sse_parser_byte_by_byte() {
+        let mut parser = SseParser::new();
+        let payload = b"event: progress\r\ndata: {\"sequence\":1,\"event_type\":\"RUN_STARTED\"}\r\n\r\n";
+        let mut found = None;
+        for &byte in payload {
+            parser.push_chunk(&[byte]).unwrap();
+            if let Some(msg) = parser.next_event().unwrap() {
+                found = Some(msg);
+                break;
+            }
+        }
+        let msg = found.expect("Expected parsed event byte-by-byte");
+        assert_eq!(msg.event, StreamEventType::Progress);
+        assert_eq!(msg.data["sequence"], 1);
+        assert_eq!(msg.data["event_type"], "RUN_STARTED");
+    }
+
+    #[test]
+    fn test_sse_parser_multiple_frames_in_one_read() {
+        let mut parser = SseParser::new();
+        let chunk = b"event: progress\r\ndata: {\"sequence\":1}\r\n\r\nevent: delta\r\ndata: {\"content\":\"A\"}\r\n\r\nevent: complete\r\ndata: {\"status\":\"COMPLETED\"}\r\n\r\n";
+        parser.push_chunk(chunk).unwrap();
+
+        let m1 = parser.next_event().unwrap().expect("m1");
+        let m2 = parser.next_event().unwrap().expect("m2");
+        let m3 = parser.next_event().unwrap().expect("m3");
+        assert_eq!(parser.next_event().unwrap(), None);
+
+        assert_eq!(m1.event, StreamEventType::Progress);
+        assert_eq!(m2.event, StreamEventType::Delta);
+        assert_eq!(m3.event, StreamEventType::Complete);
+    }
+
+    #[test]
+    fn test_sse_parser_vietnamese_utf8_fragmentation() {
+        let mut parser = SseParser::new();
+        // UTF-8 for "Kế hoạch marketing" split across multi-byte boundary
+        let full = "event: delta\r\ndata: {\"content\":\"Kế hoạch marketing chuỗi spa\"}\r\n\r\n";
+        let bytes = full.as_bytes();
+
+        // Split in the middle of 'ế' (0xE1 0xBA 0xBF)
+        let split_idx = 27; // Inside "Kế hoạch"
+        parser.push_chunk(&bytes[..split_idx]).unwrap();
+        assert_eq!(parser.next_event().unwrap(), None);
+
+        parser.push_chunk(&bytes[split_idx..]).unwrap();
+        let msg = parser.next_event().unwrap().expect("Expected event after UTF-8 reassembly");
+        assert_eq!(msg.event, StreamEventType::Delta);
+        assert_eq!(msg.data["content"], "Kế hoạch marketing chuỗi spa");
+    }
+
+    #[test]
+    fn test_sse_parser_progress_frame() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: progress\r\ndata: {\"run_id\":\"RUN-1\",\"sequence\":2,\"event_type\":\"STAGE_STARTED\",\"stage\":\"CMO_INITIAL\",\"mode\":\"FULL_WORKFLOW\"}\r\n\r\n").unwrap();
+        let msg = parser.next_event().unwrap().expect("Progress event");
+        assert_eq!(msg.event, StreamEventType::Progress);
+        assert_eq!(msg.data["stage"], "CMO_INITIAL");
+        assert_eq!(msg.data["event_type"], "STAGE_STARTED");
+    }
+
+    #[test]
+    fn test_sse_parser_delta_frame() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: delta\r\ndata: {\"content\":\"chunk text\",\"provider\":\"xkiro\",\"model_name\":\"deepseek-v4-pro\"}\r\n\r\n").unwrap();
+        let msg = parser.next_event().unwrap().expect("Delta event");
+        assert_eq!(msg.event, StreamEventType::Delta);
+        assert_eq!(msg.data["content"], "chunk text");
+        assert_eq!(msg.data["provider"], "xkiro");
+    }
+
+    #[test]
+    fn test_sse_parser_complete_frame() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: complete\r\ndata: {\"status\":\"COMPLETED\",\"run_id\":\"RUN-FIN\"}\r\n\r\n").unwrap();
+        let msg = parser.next_event().unwrap().expect("Complete event");
+        assert_eq!(msg.event, StreamEventType::Complete);
+        assert_eq!(msg.data["status"], "COMPLETED");
+    }
+
+    #[test]
+    fn test_sse_parser_error_frame() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: error\r\ndata: {\"error\":\"Pipeline execution error\",\"code\":\"INTERNAL_ERROR\"}\r\n\r\n").unwrap();
+        let msg = parser.next_event().unwrap().expect("Error event");
+        assert_eq!(msg.event, StreamEventType::Error);
+        assert_eq!(msg.data["error"], "Pipeline execution error");
+    }
+
+    #[test]
+    fn test_sse_parser_unknown_event_rejected() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: unhandled_custom_event\r\ndata: {\"foo\":\"bar\"}\r\n\r\n").unwrap();
+        let res = parser.next_event();
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("UNKNOWN_SSE_EVENT_TYPE"));
+    }
+
+    #[test]
+    fn test_sse_parser_malformed_json_rejected() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: delta\r\ndata: {unquoted_broken_json\r\n\r\n").unwrap();
+        let res = parser.next_event();
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("MALFORMED_SSE_JSON_DATA"));
+    }
+
+    #[test]
+    fn test_sse_parser_incomplete_trailing_rejected() {
+        // Trailing frame missing data line
+        let mut parser1 = SseParser::new();
+        parser1.push_chunk(b"event: delta\r\n").unwrap();
+        assert_eq!(parser1.next_event().unwrap(), None);
+        let res1 = parser1.finish();
+        assert!(res1.is_err());
+        assert_eq!(res1.unwrap_err(), "INCOMPLETE_TRAILING_SSE_FRAME");
+
+        // Trailing frame with unclosed JSON data
+        let mut parser2 = SseParser::new();
+        parser2.push_chunk(b"event: delta\r\ndata: {\"incomplete\":").unwrap();
+        assert_eq!(parser2.next_event().unwrap(), None);
+        let res2 = parser2.finish();
+        assert!(res2.is_err());
+        assert!(res2.unwrap_err().contains("MALFORMED_SSE_JSON_DATA"));
+    }
+
+    #[test]
+    fn test_allowed_stream_routes() {
+        assert!(is_allowed_stream_route("/api/chat/stream"));
+        assert!(is_allowed_stream_route("/api/chat/sessions/chat_12345/stream"));
+        assert!(is_allowed_stream_route("/api/chat/sessions/session-abc_123/stream"));
+    }
+
+    #[test]
+    fn test_denied_stream_routes_and_traversal() {
+        assert!(!is_allowed_stream_route("/api/chat/sessions/../evil/stream"));
+        assert!(!is_allowed_stream_route("/api/chat/sessions/chat_1/messages"));
+        assert!(!is_allowed_stream_route("/api/health"));
+        assert!(!is_allowed_stream_route("http://127.0.0.1:8765/api/chat/stream"));
+        assert!(!is_allowed_stream_route("/api/chat/stream\r\nHost: evil"));
+        assert!(!is_allowed_stream_route("/api/chat/sessions//stream"));
+    }
+
+    #[test]
+    fn test_stream_ordering_fifo() {
+        let mut parser = SseParser::new();
+        let payload = b"event: progress\r\ndata: {\"sequence\":1}\r\n\r\nevent: progress\r\ndata: {\"sequence\":2}\r\n\r\nevent: delta\r\ndata: {\"content\":\"Token A\"}\r\n\r\nevent: delta\r\ndata: {\"content\":\"Token B\"}\r\n\r\nevent: complete\r\ndata: {\"status\":\"COMPLETED\"}\r\n\r\n";
+        parser.push_chunk(payload).unwrap();
+
+        let mut events = Vec::new();
+        while let Some(msg) = parser.next_event().unwrap() {
+            events.push(msg);
+        }
+
+        assert_eq!(events.len(), 5);
+        assert_eq!(events[0].event, StreamEventType::Progress);
+        assert_eq!(events[0].data["sequence"], 1);
+        assert_eq!(events[1].event, StreamEventType::Progress);
+        assert_eq!(events[1].data["sequence"], 2);
+        assert_eq!(events[2].event, StreamEventType::Delta);
+        assert_eq!(events[2].data["content"], "Token A");
+        assert_eq!(events[3].event, StreamEventType::Delta);
+        assert_eq!(events[3].data["content"], "Token B");
+        assert_eq!(events[4].event, StreamEventType::Complete);
+    }
+
+    #[test]
+    fn test_stream_token_security_and_redaction() {
+        let mut parser = SseParser::new();
+        parser.push_chunk(b"event: delta\r\ndata: {\"content\":\"Safe response\"}\r\n\r\n").unwrap();
+        let msg = parser.next_event().unwrap().expect("msg");
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert!(!json_str.contains("Authorization"));
+        assert!(!json_str.contains("Bearer"));
+        assert!(!json_str.contains("a9fca20f039a"));
+    }
+
+    #[test]
+    fn test_loopback_stream_against_mock_server() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_thread = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let response = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nConnection: close\r\n\r\nevent: progress\r\ndata: {\"sequence\":1}\r\n\r\nevent: delta\r\ndata: {\"content\":\"Xin chao\"}\r\n\r\nevent: complete\r\ndata: {\"status\":\"COMPLETED\"}\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.flush();
+            }
+        });
+
+        let mut collected = Vec::new();
+        let res = perform_loopback_sse_stream(
+            "127.0.0.1",
+            port,
+            "/api/chat/stream",
+            "mock_secret_token",
+            Some("{\"content\":\"hi\"}".to_string()),
+            |msg| {
+                collected.push(msg);
+                Ok(())
+            },
+        );
+
+        assert!(res.is_ok(), "Loopback stream failed: {:?}", res);
+        assert_eq!(collected.len(), 3);
+        assert_eq!(collected[0].event, StreamEventType::Progress);
+        assert_eq!(collected[1].event, StreamEventType::Delta);
+        assert_eq!(collected[2].event, StreamEventType::Complete);
+
+        let _ = server_thread.join();
+    }
+
+    #[test]
+    fn test_loopback_stream_status_errors() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_thread = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 512];
+                let _ = stream.read(&mut buf);
+                let response = "HTTP/1.0 401 Unauthorized\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"error\":\"UNAUTHORIZED\"}";
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+
+        let res = perform_loopback_sse_stream(
+            "127.0.0.1",
+            port,
+            "/api/chat/stream",
+            "invalid_token",
+            None,
+            |_| Ok(()),
+        );
+
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err(), "BACKEND_HTTP_ERROR_401");
+        let _ = server_thread.join();
+    }
+
+    #[test]
+    fn test_loopback_stream_invalid_content_type() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_thread = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 512];
+                let _ = stream.read(&mut buf);
+                let response = "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}";
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+
+        let res = perform_loopback_sse_stream(
+            "127.0.0.1",
+            port,
+            "/api/chat/stream",
+            "mock_token",
+            None,
+            |_| Ok(()),
+        );
+
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("INVALID_STREAM_CONTENT_TYPE"));
+        let _ = server_thread.join();
+    }
+
+    #[test]
+    fn test_loopback_stream_channel_send_failure_disconnects() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_thread = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 512];
+                let _ = stream.read(&mut buf);
+                let response = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nConnection: close\r\n\r\nevent: delta\r\ndata: {\"content\":\"first\"}\r\n\r\nevent: delta\r\ndata: {\"content\":\"second\"}\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+
+        let mut call_count = 0;
+        let res = perform_loopback_sse_stream(
+            "127.0.0.1",
+            port,
+            "/api/chat/stream",
+            "mock_token",
+            None,
+            |_| {
+                call_count += 1;
+                Err("CHANNEL_DISCONNECTED".to_string())
+            },
+        );
+
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err(), "CHANNEL_DISCONNECTED");
+        assert_eq!(call_count, 1, "Reader should stop immediately on first channel error");
+        let _ = server_thread.join();
+    }
+
+    #[test]
+    fn test_loopback_stream_run_isolation() {
+        let mut parser_a = SseParser::new();
+        let mut parser_b = SseParser::new();
+
+        parser_a.push_chunk(b"event: delta\r\ndata: {\"content\":\"Run A chunk\"}\r\n\r\n").unwrap();
+        parser_b.push_chunk(b"event: delta\r\ndata: {\"content\":\"Run B chunk\"}\r\n\r\n").unwrap();
+
+        let msg_a = parser_a.next_event().unwrap().unwrap();
+        let msg_b = parser_b.next_event().unwrap().unwrap();
+
+        assert_eq!(msg_a.data["content"], "Run A chunk");
+        assert_eq!(msg_b.data["content"], "Run B chunk");
+    }
+
+    // =========================================================================
+    // B4-R2 MEMORY BOUNDS & ASYNC CONCURRENCY TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_sse_frame_below_limit_accepted() {
+        let mut parser = SseParser::with_max_frame_bytes(100);
+        let frame = b"event: delta\r\ndata: {\"text\":\"ok\"}\r\n\r\n";
+        assert!(frame.len() < 100);
+        assert!(parser.push_chunk(frame).is_ok());
+        let msg = parser.next_event().unwrap().unwrap();
+        assert_eq!(msg.data["text"], "ok");
+    }
+
+    #[test]
+    fn test_sse_frame_exact_boundary_accepted() {
+        let prefix = "event: delta\r\ndata: {\"pad\":\"";
+        let suffix = "\"}\r\n\r\n";
+        let target_len = 100;
+        let pad_len = target_len - prefix.len() - suffix.len();
+        let padding = "a".repeat(pad_len);
+        let exact_frame = format!("{}{}{}", prefix, padding, suffix);
+        assert_eq!(exact_frame.len(), 100);
+
+        let mut parser = SseParser::with_max_frame_bytes(100);
+        assert!(parser.push_chunk(exact_frame.as_bytes()).is_ok());
+        let msg = parser.next_event().unwrap().unwrap();
+        assert_eq!(msg.data["pad"], padding);
+    }
+
+    #[test]
+    fn test_sse_frame_above_limit_rejected() {
+        let mut parser = SseParser::with_max_frame_bytes(50);
+        let oversized = b"event: delta\r\ndata: {\"long_payload_exceeding_limit\":\"very_long_string_here\"}\r\n\r\n";
+        assert!(oversized.len() > 50);
+        let res = parser.push_chunk(oversized);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err.contains("SSE_FRAME_TOO_LARGE"));
+    }
+
+    #[test]
+    fn test_sse_unterminated_oversized_frame_rejected() {
+        let mut parser = SseParser::with_max_frame_bytes(40);
+        let chunk1 = b"event: delta\r\ndata: {\"unterminated\":";
+        assert!(parser.push_chunk(chunk1).is_ok());
+        let chunk2 = b" \"more bytes without delimiter\"";
+        let res = parser.push_chunk(chunk2);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("SSE_FRAME_TOO_LARGE"));
+    }
+
+    #[test]
+    fn test_sse_cumulative_many_small_frames_allowed() {
+        let mut parser = SseParser::with_max_frame_bytes(60);
+        // Stream 100 frames of 35 bytes each (cumulative 3500 bytes > 60 bytes limit)
+        for i in 0..100 {
+            let frame = format!("event: delta\r\ndata: {{\"i\":{}}}\r\n\r\n", i);
+            assert!(frame.len() < 60);
+            assert!(parser.push_chunk(frame.as_bytes()).is_ok());
+            let msg = parser.next_event().unwrap().unwrap();
+            assert_eq!(msg.data["i"], i);
+        }
+    }
+
+    #[test]
+    fn test_sse_oversized_payload_not_leaked_in_error() {
+        let secret = "SUPER_SECRET_PAYLOAD_123456";
+        let mut parser = SseParser::with_max_frame_bytes(30);
+        let payload = format!("event: delta\r\ndata: {{\"secret\":\"{}\"}}\r\n\r\n", secret);
+        let res = parser.push_chunk(payload.as_bytes());
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(!err.contains(secret), "Secret payload must not leak in error message");
+        assert!(err.contains("SSE_FRAME_TOO_LARGE"));
+    }
+
+    #[test]
+    fn test_loopback_stream_headers_and_body_in_same_read() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_thread = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 512];
+                let _ = stream.read(&mut buf);
+                // Entire response sent in a single write/packet: headers + 2 SSE frames
+                let packet = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\nevent: progress\r\ndata: {\"step\":1}\r\n\r\nevent: complete\r\ndata: {\"status\":\"DONE\"}\r\n\r\n";
+                let _ = stream.write_all(packet.as_bytes());
+            }
+        });
+
+        let mut events = Vec::new();
+        let res = perform_loopback_sse_stream(
+            "127.0.0.1",
+            port,
+            "/api/chat/stream",
+            "mock_token",
+            None,
+            |msg| {
+                events.push(msg);
+                Ok(())
+            },
+        );
+
+        assert!(res.is_ok());
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event, StreamEventType::Progress);
+        assert_eq!(events[0].data["step"], 1);
+        assert_eq!(events[1].event, StreamEventType::Complete);
+        let _ = server_thread.join();
+    }
+
+    #[test]
+    fn test_response_header_limit_rejected() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let server_thread = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 512];
+                let _ = stream.read(&mut buf);
+                let giant_header = "X-Padding: ".to_string() + &"a".repeat(20000) + "\r\n";
+                let response = format!("HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\n{}\r\n\r\n", giant_header);
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.flush();
+                let mut drain = [0u8; 128];
+                while let Ok(n) = stream.read(&mut drain) {
+                    if n == 0 {
+                        break;
+                    }
+                }
+            }
+        });
+
+        let res = perform_loopback_sse_stream(
+            "127.0.0.1",
+            port,
+            "/api/chat/stream",
+            "mock_token",
+            None,
+            |_| Ok(()),
+        );
+
+        assert!(res.is_err());
+        assert_eq!(res.unwrap_err(), "HTTP_HEADERS_TOO_LARGE");
+        let _ = server_thread.join();
+    }
+
+    #[test]
+    fn test_concurrent_ordinary_ipc_while_stream_active() {
+        use std::net::TcpListener;
+        use std::sync::mpsc;
+        use std::sync::Arc;
+        use std::sync::Mutex;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let (release_stream_tx, release_stream_rx) = mpsc::channel::<()>();
+        let release_stream_rx = Arc::new(Mutex::new(release_stream_rx));
+
+        let server_thread = std::thread::spawn(move || {
+            for _ in 0..2 {
+                if let Ok((mut stream, _)) = listener.accept() {
+                    let release_stream_rx = Arc::clone(&release_stream_rx);
+                    std::thread::spawn(move || {
+                        let mut req_buf = [0u8; 1024];
+                        let n = stream.read(&mut req_buf).unwrap_or(0);
+                        let req_str = String::from_utf8_lossy(&req_buf[..n]);
+
+                        if req_str.contains("/api/chat/stream") {
+                            let header_and_progress = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\nevent: progress\r\ndata: {\"stage\":\"INIT\"}\r\n\r\nevent: delta\r\ndata: {\"content\":\"streaming...\"}\r\n\r\n";
+                            let _ = stream.write_all(header_and_progress.as_bytes());
+                            let _ = stream.flush();
+
+                            let rx_guard = release_stream_rx.lock().unwrap();
+                            let _ = rx_guard.recv();
+
+                            let complete_frame = "event: complete\r\ndata: {\"status\":\"COMPLETED\"}\r\n\r\n";
+                            let _ = stream.write_all(complete_frame.as_bytes());
+                            let _ = stream.flush();
+                        } else if req_str.contains("/api/health") {
+                            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 26\r\n\r\n{\"status\":\"ok\",\"busy\":false}";
+                            let _ = stream.write_all(resp.as_bytes());
+                            let _ = stream.flush();
+                        }
+                    });
+                }
+            }
+        });
+
+        // 1. Spawn Stream A inside tauri::async_runtime::spawn_blocking
+        let (stream_event_tx, stream_event_rx) = mpsc::channel::<StreamMessage>();
+        let stream_handle = tauri::async_runtime::spawn_blocking(move || {
+            perform_loopback_sse_stream(
+                "127.0.0.1",
+                port,
+                "/api/chat/stream",
+                "mock_token",
+                None,
+                |msg| {
+                    let _ = stream_event_tx.send(msg);
+                    Ok(())
+                },
+            )
+        });
+
+        // 2. Wait deterministically for Stream A to receive initial events
+        let first_event = stream_event_rx.recv().expect("First event should arrive");
+        assert_eq!(first_event.event, StreamEventType::Progress);
+        let second_event = stream_event_rx.recv().expect("Second event should arrive");
+        assert_eq!(second_event.event, StreamEventType::Delta);
+
+        // 3. AT THIS EXACT MOMENT, Stream A is in-flight & blocked in loopback read.
+        // Execute an ordinary loopback request:
+        let ordinary_resp = perform_loopback_http_request(
+            "127.0.0.1",
+            port,
+            "GET",
+            "/api/health",
+            "mock_token",
+            None,
+            None,
+        );
+
+        // Ordinary request must complete successfully WITHOUT waiting for Stream A to finish
+        assert!(ordinary_resp.is_ok(), "Ordinary IPC request failed: {:?}", ordinary_resp);
+        let resp_body = ordinary_resp.unwrap().body;
+        assert!(resp_body.contains("\"busy\":false"));
+
+        // 4. Authorize Stream A to complete
+        release_stream_tx.send(()).expect("Should release stream");
+
+        // 5. Stream A finishes and JoinHandle resolves with Ok(())
+        let stream_result = tauri::async_runtime::block_on(stream_handle).expect("Task join error");
+        assert!(stream_result.is_ok(), "Stream A should finish with Ok: {:?}", stream_result);
+
+        let final_event = stream_event_rx.recv().expect("Final event should arrive");
+        assert_eq!(final_event.event, StreamEventType::Complete);
+
+        let _ = server_thread.join();
     }
 }
