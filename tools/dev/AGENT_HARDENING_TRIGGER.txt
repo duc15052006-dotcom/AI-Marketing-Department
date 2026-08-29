@@ -1,3 +1,3 @@
 Agent Hardening V2 asserted production patch trigger.
-Revision: R4
-Purpose: apply reviewed production wiring after follow-up subject fix.
+Revision: R5
+Purpose: rerun verified production wiring with corrected Git commit step.
