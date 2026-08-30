@@ -63,7 +63,32 @@ jobs:
           p.write_text(text, encoding='utf-8')
           PY
 
-            python scripts/full_hardening_apply_r2.py
+            set +e
+            python scripts/full_hardening_apply_r2.py > /tmp/hardening-r2.log 2>&1
+            r2_status=$?
+            set -e
+            cat /tmp/hardening-r2.log
+            if [ "$r2_status" -ne 0 ]; then
+              grep -q 'const safeDetail' /tmp/hardening-r2.log || { echo "Unexpected R2 patch failure"; exit "$r2_status"; }
+              python - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/src/App.tsx')
+          text = p.read_text(encoding='utf-8')
+          old_detail = "        const safeDetail = err.message || 'Không thể nhận phản hồi từ backend.';\n"
+          new_detail = "        const safeDetail = err.safe_message || err.message || 'Không thể nhận phản hồi từ backend.';\n"
+          detail_count = text.count(old_detail)
+          if detail_count != 2:
+              raise RuntimeError(f'Expected 2 safeDetail boundaries, found {detail_count}')
+          text = text.replace(old_detail, new_detail)
+          old_state = "        setWorkflowStages((prev) => applyTerminalErrorToStages(prev));\n        setAgentStates((prev) => applyTerminalErrorToAgents(prev));\n"
+          new_state = "        setWorkflowStages((prev) => applyTerminalErrorToStages(prev, err));\n        setAgentStates((prev) => applyTerminalErrorToAgents(prev, err));\n"
+          state_count = text.count(old_state)
+          if state_count != 2:
+              raise RuntimeError(f'Expected 2 terminal reducer boundaries, found {state_count}')
+          text = text.replace(old_state, new_state)
+          p.write_text(text, encoding='utf-8')
+          PY
+            fi
             echo "applied=true" >> "$GITHUB_OUTPUT"
           else
             echo "applied=false" >> "$GITHUB_OUTPUT"
