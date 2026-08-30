@@ -12,96 +12,101 @@
   "test_suite_baseline": "296 passing",
   "artifact_checksums": {
     "initial_user_objective.json": {
-      "sha256": "1cbe48acd1286394c5c6c02a64d2ff15e9a130b5993b2911cc771ee36423e524",
-      "size_bytes": 1123
+      "sha256": "ed888e4aaeacfba99d1d3fc559c28f2e06b2e81f1416c47a792d4548c5e425f0",
+      "size_bytes": 1103
     },
     "initial_cmo_plan.json": {
-      "sha256": "4b1fe8dc793159cf3e1294987a1ecb1473fa35c09f08e6e7b0c682dd704c1cd0",
-      "size_bytes": 1731
+      "sha256": "c9210405f389662f902a7ab1bdf2f260b53a246c74f1e2fbb32145f9fb038f1a",
+      "size_bytes": 1698
     },
     "research/evidence_bundle.json": {
-      "sha256": "b9a19d594ea0993b21732968dc26da5314a55dbeffb35e0eb30e0e9e29ca613b",
-      "size_bytes": 3701
+      "sha256": "fe9864b54e0987b423fe35453890469d71051db8fed8e478aec45221664783eb",
+      "size_bytes": 3636
     },
     "research/grounding_context.json": {
-      "sha256": "531aa7a4b732298757e6424f0d95fa9545e1427117774124a3f3fa96e7757d14",
-      "size_bytes": 3985
+      "sha256": "ecbdea75087f0eb8c4fa46d1364cdc39b5c2845eb6fb1cb3bdd09b0e97fb2ca9",
+      "size_bytes": 3915
     },
     "research/intelligence_output.json": {
-      "sha256": "d20dc7f3f334dd3729cc3052a210091a1f13ac394e03f0e919b08e3c6480d9d6",
-      "size_bytes": 3026
+      "sha256": "3f61cc9aad6996309a83b8cb95c9b1d0c51c9bd888f33a552b87de40f9169f17",
+      "size_bytes": 2974
     },
     "research/intelligence_evaluation.json": {
-      "sha256": "fc86701740bbbb605332c0c3ab4570840baa025f11074cc56e065915d85b9373",
-      "size_bytes": 266
+      "sha256": "b0a7e82ca456a8e650bbb9b08469ff682f3db85ef31d70a8dd8fa89c1d764dcb",
+      "size_bytes": 257
     },
     "strategy/strategist_output.json": {
-      "sha256": "9949019934c41acb445f7f040a815a377141b5b74df7ff86dec1f5cf440e407a",
-      "size_bytes": 5137
+      "sha256": "604b9c00ec1a5726394259eb806427e4bf6785463ddf9e05f83515b208732c54",
+      "size_bytes": 5040
     },
     "strategy/strategy_evaluation.json": {
-      "sha256": "5087bd8cbb4cd329126bd4a97cb5e4d97c85175c40a56d982decb76d0d4d4b26",
-      "size_bytes": 230
+      "sha256": "1b292d725bb43a4231440d6344777fd942e1ae122b430eb5cead2e51ce118ee5",
+      "size_bytes": 222
     },
     "creative/creative_output.json": {
-      "sha256": "c4961f72401c816bea9d0f6ea7cb07c68feaa7a347288567468a848bfd9b3241",
-      "size_bytes": 3995
+      "sha256": "a1b3b0bdeb8264fe8630037ac02cd623eecb1dabb4e9833a4e6b6a25b1769ed1",
+      "size_bytes": 3887
     },
     "creative/creative_evaluation.json": {
-      "sha256": "3d5bbc3b73b08d10d22c0ce5fa3a68713444815c6e25202585f8eeae196a007a",
-      "size_bytes": 238
+      "sha256": "b7f7e049ffddd11c23f2fcf9d13e88d5de63c20245c0cd4efa5c2cf64bcbaec9",
+      "size_bytes": 230
     },
     "performance/performance_output.json": {
-      "sha256": "64d50fa736b7b2595e610b4fc0136c7b773949bac5c568e56403e9bc220aff34",
-      "size_bytes": 5549
+      "sha256": "7ca3b3a80576032e6d37a9fcb9af08be15a61fafa4a7b3d60413e72f2c32ae81",
+      "size_bytes": 5399
     },
     "performance/performance_evaluation.json": {
-      "sha256": "0263f6583819db6ec127cedd8dba2c2b1fc95fe4b9b94354ce189d7d490d730a",
-      "size_bytes": 283
+      "sha256": "6578477e4d8901e4597fbc0b8d858fcc4b7d0e4db732356e48cfd029bbe211ba",
+      "size_bytes": 273
     },
     "cmo/final_cmo_output.json": {
-      "sha256": "be5ffc80b03adf342d482582fbc8949329761c13a5f430bc7c1d079e0bcf0e47",
-      "size_bytes": 2448
+      "sha256": "df4fcc9b39c0835cd6ad5eed569b68f1ea9ad630385776e9b9e0b44b47ffe4c6",
+      "size_bytes": 2408
     },
     "cmo/decision_register.json": {
-      "sha256": "8e361466b51749b200d8c2a05912de1351d2c31a4064fdf596c1904475f3f3ad",
-      "size_bytes": 3697
+      "sha256": "ce6d2882dd0ced37cab6a3b1d2a888c8cb5d31444b007d582eb5d879434eeef3",
+      "size_bytes": 3612
     },
     "cmo/risk_register.json": {
-      "sha256": "685ce154f11ef9e6f1f19ad38ed769b96f3d75f13b442516bd2b70a2ff8b95f3",
-      "size_bytes": 1415
+      "sha256": "beaf44622337353caec490d5f6dd9c0647679ed2a3c5974d435f72a8fc6cfdca",
+      "size_bytes": 1384
     },
     "cmo/approval_register.json": {
-      "sha256": "daac9c6ee6448c8db4ae6b3fa7ecaf012714adfb16a5f4dfa96a2fe227a5cabf",
-      "size_bytes": 1219
+      "sha256": "0bada2e7a3d25d0761ef029967b5c5e2afa1cfe193a38397230a1725e09b1104",
+      "size_bytes": 1184
     },
     "cmo/department_status.json": {
-      "sha256": "d62bf5ffa11d6cd24e12c60f88b0afa7cfe7bbb121a4064bede437bffba85d7c",
-      "size_bytes": 869
+      "sha256": "d3686f58657f267caa24b61cb98a74e88b6d8f53fabc818706563f8063e8d92c",
+      "size_bytes": 849
     },
     "cmo/cmo_evaluation.json": {
-      "sha256": "6b5ea0138f388ab2843eb2bf79baf1f64e5f26d8d802c5e052e983d6dbbe2a6d",
-      "size_bytes": 318
+      "sha256": "bf7b22de09080ccce4a52a329ce1176e3c07a8e553f9285f76896501b0991414",
+      "size_bytes": 307
     },
     "handoff_trace.json": {
-      "sha256": "6ae9a73a8fa01793c048fa2fce8cd8ed7a15bb1b5fd81ec164685b90859dd1fe",
-      "size_bytes": 1003
+      "sha256": "49a9350622ae8df1351f12f0da3017540188968710798b8e03372c519706aa7c",
+      "size_bytes": 961
     },
     "lineage_graph.json": {
-      "sha256": "3080dfba3a4ebac1b1e94f46ebfe70d25c6f4c1d060de5ca73ac32d7c2d832ae",
-      "size_bytes": 947
+      "sha256": "0fb9f1cdcbf78d253a782e2fd5e5b779967326658ceb876ce178080e4f841713",
+      "size_bytes": 930
     },
     "benchmark_manifest.json": {
-      "sha256": "624d29e7e19fa990fb6f97b52f2c614a023551f781efeecf16f51b28d58204d1",
-      "size_bytes": 1766
+      "sha256": "2ef8c2c519aa2a77fbb75648729625eb94d3b59d18e6ef2d2536b01581609251",
+      "size_bytes": 1703
     },
     "benchmark_summary.json": {
-      "sha256": "ec2efa81bfe08a59ad4f32164ed2b2f2d2a9ca878a19641677a6bc6ec8ccded3",
-      "size_bytes": 454
+      "sha256": "c3403167dfef91798c1b09aa76245c213ce80f67ebc14b6d76c7d49107795545",
+      "size_bytes": 447
     },
     "product_claim_semantic_audit.json": {
-      "sha256": "abe1147cc2d1ac9c8bfb9624bb6f30b9526675c764a14baaf92b119dd41800b0",
-      "size_bytes": 1063
+      "sha256": "77a408fc201a88d11f2b744511ac1d1c42123a43574fb9ee1b40d87168da8729",
+      "size_bytes": 1028
     }
+  },
+  "integrity_metadata_repair": {
+    "reason": "Original checksum metadata did not match immutable one-commit artifacts.",
+    "method": "Recomputed metadata only after every referenced artifact had exactly one Git-history commit.",
+    "artifact_content_modified": false
   }
 }

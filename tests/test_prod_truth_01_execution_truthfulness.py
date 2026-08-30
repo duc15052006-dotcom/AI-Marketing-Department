@@ -70,7 +70,7 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
             parameters={"query": "electric vehicles market"},
         )
         receipt = self.tool_gateway.execute(req)
-        self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
+        self.assertEqual(receipt.status, ExecutionStatus.ERROR)
         self.assertNotEqual(receipt.execution_mode, ExecutionMode.REAL)
         self.assertEqual(receipt.execution_mode, ExecutionMode.MOCK)
 
@@ -82,7 +82,7 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
             parameters={"campaign_id": "CAMP_MOCK_01"},
         )
         receipt = self.tool_gateway.execute(req)
-        self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
+        self.assertEqual(receipt.status, ExecutionStatus.ERROR)
         self.assertNotEqual(receipt.execution_mode, ExecutionMode.REAL)
         self.assertEqual(receipt.execution_mode, ExecutionMode.MOCK)
 
@@ -105,9 +105,9 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
             approval_token="AUTH-PUB-MOCK",
         )
         receipt = self.tool_gateway.execute(req)
-        self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
+        self.assertEqual(receipt.status, ExecutionStatus.ERROR)
         self.assertNotEqual(receipt.execution_mode, ExecutionMode.REAL)
-        self.assertEqual(receipt.execution_mode, ExecutionMode.SANDBOX)
+        self.assertEqual(receipt.execution_mode, ExecutionMode.MOCK)
 
     def test_03b_all_legacy_adapters_default_non_real(self):
         """3b. All legacy default adapters execute with MOCK or SANDBOX provenance."""

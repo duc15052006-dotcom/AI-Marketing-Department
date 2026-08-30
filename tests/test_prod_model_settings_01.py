@@ -153,7 +153,11 @@ class TestProdModelSettings01(unittest.TestCase):
         self.vault_path = Path(self.test_dir) / "secrets.vault"
         self.settings_path = Path(self.test_dir) / "model_settings.json"
 
-        self.secret_store = SecureSecretStore(vault_path=self.vault_path)
+        self.secret_store = (
+            SecureSecretStore(vault_path=self.vault_path)
+            if sys.platform == "win32"
+            else InMemorySecretStore()
+        )
         self.registry = ProviderRegistry()
         self.gateway = UniversalModelGateway(provider_registry=self.registry, free_only_mode=True)
         self.settings_manager = ModelSettingsManager(

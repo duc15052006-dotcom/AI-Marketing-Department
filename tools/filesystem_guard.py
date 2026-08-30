@@ -165,11 +165,12 @@ def resolve_safe_path(
         canonical_root.mkdir(parents=True, exist_ok=True)
 
     validated_lexical = validate_lexical_path(untrusted_path)
+    platform_neutral_lexical = validated_lexical.replace("\\", "/")
 
     if operation == "read":
         # Resolve target relative to canonical root
         try:
-            target = (canonical_root / validated_lexical).resolve()
+            target = (canonical_root / platform_neutral_lexical).resolve()
         except Exception as e:
             raise FilesystemSecurityError("INVALID_PATH", f"Path resolution failed: {e}")
 
@@ -191,7 +192,7 @@ def resolve_safe_path(
     elif operation == "write":
         # Lexical path composition
         try:
-            unresolved_target = canonical_root / validated_lexical
+            unresolved_target = canonical_root / platform_neutral_lexical
         except Exception as e:
             raise FilesystemSecurityError("INVALID_PATH", f"Path construction failed: {e}")
 

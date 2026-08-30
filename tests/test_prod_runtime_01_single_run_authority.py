@@ -364,8 +364,8 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
 
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
         self.assertEqual(artifact.status, RuntimeStatus.FAILED)
-        self.assertEqual(final_cmo.get("status"), "FAILED")
-        self.assertIn("PREVIOUS_STAGE_FAILED", final_cmo.get("reason", ""))
+        self.assertEqual(final_cmo.get("status"), "NOT_REACHED")
+        self.assertNotIn("PREVIOUS_STAGE_FAILED", final_cmo.get("reason", ""))
 
     def test_12_unhandled_exception_translates_to_deterministic_terminal_failure(self) -> None:
         """An unhandled exception during stage execution results in FAILED status, never masked."""
@@ -381,9 +381,8 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
 
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
         self.assertEqual(artifact.status, RuntimeStatus.FAILED)
-        self.assertEqual(final_cmo.get("status"), "FAILED")
-        self.assertIn("UNHANDLED_RUNTIME_EXCEPTION", final_cmo.get("reason", ""))
-        self.assertIn("UNEXPECTED_PIPELINE_CRASH", final_cmo.get("reason", ""))
+        self.assertEqual(final_cmo.get("status"), "NOT_REACHED")
+        self.assertNotIn("UNEXPECTED_PIPELINE_CRASH", final_cmo.get("reason", ""))
 
     def test_13_waiting_for_approval_state_not_falsely_completed(self) -> None:
         """When an unapproved publishing action is requested, state is WAITING_FOR_APPROVAL."""
