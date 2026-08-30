@@ -11,18 +11,26 @@ from __future__ import annotations
 
 import builtins
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import tools.adapters as _adapters
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
 from tools.receipts import ExecutionMode
 
 
-# Historical tests use these names in runtime-evaluated annotations without
-# importing them. Keep compatibility strictly under pytest, never in runtime.
-builtins.List = List
-builtins.Tuple = Tuple
-builtins.Any = Any
+# Historical tests use some typing names in runtime-evaluated annotations
+# without importing them. Keep compatibility strictly under pytest.
+for _name, _value in {
+    "Any": Any,
+    "Callable": Callable,
+    "Dict": Dict,
+    "List": List,
+    "Optional": Optional,
+    "Set": Set,
+    "Tuple": Tuple,
+    "Union": Union,
+}.items():
+    setattr(builtins, _name, _value)
 
 
 class MockToolAdapter(BaseCapabilityAdapter):
