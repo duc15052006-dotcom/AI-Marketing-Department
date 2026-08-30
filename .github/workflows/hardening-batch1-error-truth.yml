@@ -50,15 +50,19 @@ jobs:
         run: |
           ! grep -n 'safe_msg = meta.get("safe_message") or sanitize_secrets(response.error' integrations/models/gateway.py
           ! grep -n 'clean_err = sanitize_secrets(response.error' integrations/models/gateway.py
+          ! grep -n 'WinError 10061.*res\["error"\]' tests/test_prod_vietnamese_input_tolerance_01.py
           git diff --check
 
-      - name: Commit production patch
+      - name: Commit certified batch1 patch
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/models/gateway.py
+          git add \
+            integrations/models/gateway.py \
+            chat/engine.py \
+            tests/test_prod_vietnamese_input_tolerance_01.py
           if ! git diff --cached --quiet; then
-            git commit -m "fix: prevent raw provider details from reaching public chat errors"
+            git commit -m "fix: preserve error truth with localized safe chat failures"
             git push origin HEAD:phase/full-hardening-v2
           fi
