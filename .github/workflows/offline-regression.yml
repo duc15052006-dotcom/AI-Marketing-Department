@@ -59,7 +59,8 @@ jobs:
           python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests 2>&1 | Tee-Object -FilePath .ci-results/compile.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run critical repair regressions
+      - name: Run repair regressions
+        timeout-minutes: 10
         shell: pwsh
         run: |
           python -m unittest -v `
@@ -71,14 +72,37 @@ jobs:
             tests.test_local_openai_noauth_05 `
             tests.test_sse_parser_06 `
             tests.test_provider_response_schema_07 `
+            2>&1 | Tee-Object -FilePath .ci-results/repair-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run certified streaming regressions
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          python -m unittest -v `
             tests.test_prod_model_streaming_01 `
             tests.test_prod_structured_provider_stream_error_01 `
-            tests.test_prod_model_settings_01 `
-            tests.test_prod_model_gateway_01_provider_registry `
-            2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+            2>&1 | Tee-Object -FilePath .ci-results/streaming-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run certified model settings regressions
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_prod_model_settings_01 `
+            2>&1 | Tee-Object -FilePath .ci-results/model-settings-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run certified provider registry regressions
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_prod_model_gateway_01_provider_registry `
+            2>&1 | Tee-Object -FilePath .ci-results/provider-registry-regressions.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
         shell: pwsh
         run: |
           python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
