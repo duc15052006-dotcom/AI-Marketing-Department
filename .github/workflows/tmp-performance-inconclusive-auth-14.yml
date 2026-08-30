@@ -23,93 +23,68 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: python -m pip install -r requirements.txt
-      - name: Apply exact production patch and regression assertion
+      - name: Apply guarded production patch
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           @'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected exactly 1 match, found {count}')
-              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          engine = Path('runtime/engine.py')
+          lines = engine.read_text(encoding='utf-8').splitlines()
 
-          engine_old = '''        blocked = 0
+          def one_index(items, exact, start=0, end=None):
+              stop = len(items) if end is None else end
+              hits = [i for i in range(start, stop) if items[i] == exact]
+              if len(hits) != 1:
+                  raise SystemExit(f'expected exactly one line {exact!r}, found {len(hits)}')
+              return hits[0]
 
-        if self._detect_performance_inconclusive(perf_out):
-            blocked += 1
-            claim_actions["performance"] = "HOLD"
-            blocking_reasons.append(
-                "PERFORMANCE_INCONCLUSIVE: Performance reported an inconclusive/"
-                "insufficient-evidence result; deployment cannot be authorized."
-            )
+          fn = one_index(lines, '    def _evaluate_final_authorization(')
+          fn_end = one_index(lines, '    @staticmethod', start=fn + 1)
 
-        # COLLAB-06 / GOV-02: structural (prose-independent) performance state.
-        perf_handoff = (context.working_state.get("stage_handoffs", {}) or {}).get("performance", {}) or {}
-        if isinstance(perf_handoff, dict):
-            if perf_handoff.get("performance_inconclusive"):
-                blocked += 1
-                blocking_reasons.append(
-                    "PERFORMANCE_INCONCLUSIVE_STRUCTURAL: Performance handoff carries an "
-                    "INCONCLUSIVE flag; prose cannot override it."
-                )
-            execution_state = str(perf_handoff.get("experiment_execution_state", "EXPERIMENT_PROPOSED")).upper()
-            eval_status = str(perf_handoff.get("evaluation_status", "NOT_EVALUATED")).upper()
-            eval_origin = str(perf_handoff.get("evaluation_data_origin", "NO_DATA")).upper()
-'''
-          engine_new = '''        blocked = 0
-        performance_inconclusive_blocked = False
+          blocked_idx = one_index(lines, '        blocked = 0', start=fn, end=fn_end)
+          lines.insert(blocked_idx + 1, '        performance_inconclusive_blocked = False')
+          fn_end += 1
 
-        if self._detect_performance_inconclusive(perf_out):
-            blocked += 1
-            performance_inconclusive_blocked = True
-            claim_actions["performance"] = "HOLD"
-            blocking_reasons.append(
-                "PERFORMANCE_INCONCLUSIVE: Performance reported an inconclusive/"
-                "insufficient-evidence result; deployment cannot be authorized."
-            )
+          detector_idx = one_index(lines, '        if self._detect_performance_inconclusive(perf_out):', start=fn, end=fn_end)
+          detector_block_idx = one_index(lines, '            blocked += 1', start=detector_idx, end=detector_idx + 4)
+          lines.insert(detector_block_idx + 1, '            performance_inconclusive_blocked = True')
+          fn_end += 1
 
-        # COLLAB-06 / GOV-02: structural (prose-independent) performance state.
-        perf_handoff = (context.working_state.get("stage_handoffs", {}) or {}).get("performance", {}) or {}
-        if isinstance(perf_handoff, dict):
-            if perf_handoff.get("performance_inconclusive"):
-                if not performance_inconclusive_blocked:
-                    blocked += 1
-                    blocking_reasons.append(
-                        "PERFORMANCE_INCONCLUSIVE_STRUCTURAL: Performance handoff carries an "
-                        "INCONCLUSIVE flag; prose cannot override it."
-                    )
-                performance_inconclusive_blocked = True
-                claim_actions["performance"] = "HOLD"
-            execution_state = str(perf_handoff.get("experiment_execution_state", "EXPERIMENT_PROPOSED")).upper()
-            eval_status = str(perf_handoff.get("evaluation_status", "NOT_EVALUATED")).upper()
-            eval_origin = str(perf_handoff.get("evaluation_data_origin", "NO_DATA")).upper()
+          structural_idx = one_index(lines, '            if perf_handoff.get("performance_inconclusive"):', start=fn, end=fn_end)
+          exec_idx = one_index(lines, '            execution_state = str(perf_handoff.get("experiment_execution_state", "EXPERIMENT_PROPOSED")).upper()', start=structural_idx, end=fn_end)
+          lines.insert(exec_idx, '                performance_inconclusive_blocked = True')
+          lines.insert(exec_idx + 1, '                claim_actions["performance"] = "HOLD"')
+          fn_end += 2
 
-            if eval_status == "INCONCLUSIVE" and not performance_inconclusive_blocked:
-                blocked += 1
-                performance_inconclusive_blocked = True
-                claim_actions["performance"] = "HOLD"
-                blocking_reasons.append(
-                    "PERFORMANCE_EVALUATION_INCONCLUSIVE_STRUCTURAL: Performance evaluation is "
-                    "structurally INCONCLUSIVE; deployment cannot be authorized."
-                )
-'''
-          replace_once('runtime/engine.py', engine_old, engine_new)
+          eval_origin_idx = one_index(lines, '            eval_origin = str(perf_handoff.get("evaluation_data_origin", "NO_DATA")).upper()', start=structural_idx, end=fn_end)
+          new_block = [
+              '',
+              '            if eval_status == "INCONCLUSIVE" and not performance_inconclusive_blocked:',
+              '                blocked += 1',
+              '                performance_inconclusive_blocked = True',
+              '                claim_actions["performance"] = "HOLD"',
+              '                blocking_reasons.append(',
+              '                    "PERFORMANCE_EVALUATION_INCONCLUSIVE_STRUCTURAL: Performance evaluation is "',
+              '                    "structurally INCONCLUSIVE; deployment cannot be authorized."',
+              '                )',
+          ]
+          lines[eval_origin_idx + 1:eval_origin_idx + 1] = new_block
+          engine.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
-          test_old = '''        self.assertIn(f"creative_id: {ctx.working_state['creative_spec']['creative_id']}", final_prompt)
-        self.assertEqual(final_out["approval_status"], "BLOCKED")
-'''
-          test_new = '''        self.assertIn(f"creative_id: {ctx.working_state['creative_spec']['creative_id']}", final_prompt)
-        self.assertEqual(final_out["approval_status"], "BLOCKED")
-        self.assertEqual(final_out["status"], "NOT_READY")
-        reasons = " ".join(final_out["claim_audit"]["blocking_reasons"])
-        self.assertIn("PERFORMANCE_EVALUATION_INCONCLUSIVE_STRUCTURAL", reasons)
-'''
-          replace_once('tests/test_creative_performance_true_handoff.py', test_old, test_new)
+          test = Path('tests/test_creative_performance_true_handoff.py')
+          tlines = test.read_text(encoding='utf-8').splitlines()
+          method = one_index(tlines, '    def test_22_final_receives_evaluated_creative_reference(self):')
+          next_method = one_index(tlines, '    def test_23_24_no_cross_run_or_cross_brand_contamination(self):', start=method + 1)
+          approval = one_index(tlines, '        self.assertEqual(final_out["approval_status"], "BLOCKED")', start=method, end=next_method)
+          assertions = [
+              '        self.assertEqual(final_out["status"], "NOT_READY")',
+              '        reasons = " ".join(final_out["claim_audit"]["blocking_reasons"])',
+              '        self.assertIn("PERFORMANCE_EVALUATION_INCONCLUSIVE_STRUCTURAL", reasons)',
+          ]
+          tlines[approval + 1:approval + 1] = assertions
+          test.write_text('\n'.join(tlines) + '\n', encoding='utf-8')
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m py_compile runtime/engine.py tests/test_creative_performance_true_handoff.py
