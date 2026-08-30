@@ -47,7 +47,7 @@ class AgentRunResult(BaseModel):
     product_id: str
     status: TaskStatus = TaskStatus.COMPLETED
     output: Dict[str, Any] = Field(default_factory=dict, description="Structured decision-useful output")
-    confidence: str = Field(default="HIGH", description="Qualitative confidence tier: LOW | MEDIUM | HIGH")
+    confidence: str = Field(default="UNKNOWN", description="Qualitative confidence tier: LOW | MEDIUM | HIGH | UNKNOWN")
     confidence_rationale: str = Field(default="", description="Qualitative justification for confidence rating")
     statistical_confidence: Optional[float] = Field(
         default=None,
@@ -113,17 +113,20 @@ def parse_and_validate_agent_json(raw_text: str) -> tuple[str, Optional[Dict[str
 
 
 def normalize_confidence_tier(raw_confidence: Any) -> tuple[str, Optional[float]]:
-    """Normalize raw confidence input into qualitative tier and optional statistical float."""
+    """Normalize model-reported confidence without manufacturing certainty.
+
+    Only the explicit qualitative contract LOW/MEDIUM/HIGH/UNKNOWN is trusted.
+    Arbitrary strings and model-generated numeric scores are uncalibrated and
+    therefore collapse to UNKNOWN. A numeric model opinion must never be
+    re-labelled as statistical confidence by runtime code.
+    """
     if isinstance(raw_confidence, str):
         upper_c = raw_confidence.strip().upper()
         if upper_c in {"LOW", "MEDIUM", "HIGH", "UNKNOWN"}:
             return upper_c, None
-        return upper_c, None
-    elif isinstance(raw_confidence, (int, float)):
-        # Numeric value returned by model; map to qualitative tier while retaining raw number
-        val = float(raw_confidence)
-        tier = "HIGH" if val >= 0.8 else ("MEDIUM" if val >= 0.4 else "LOW")
-        return tier, val
+        return "UNKNOWN", None
+    if isinstance(raw_confidence, (int, float)):
+        return "UNKNOWN", None
     return "UNKNOWN", None
 
 
@@ -275,7 +278,7 @@ def invoke_agent(
         )
 
     # 6. Normalize Confidence Tier
-    raw_conf = parsed_output.get("confidence", "HIGH")
+    raw_conf = parsed_output.get("confidence", "UNKNOWN")
     qual_confidence, stat_confidence = normalize_confidence_tier(raw_conf)
     conf_rationale = str(parsed_output.get("confidence_rationale", ""))
 
