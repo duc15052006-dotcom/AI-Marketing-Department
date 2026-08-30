@@ -150,6 +150,26 @@ def sanitize_secrets(text: str, secret: Optional[str] = None) -> str:
     return sanitized
 
 
+def _parse_sse_data_event(data_lines: list[str]) -> Optional[Dict[str, Any]]:
+    """Parse one fully framed SSE event from its accumulated data fields.
+
+    SSE joins multiple ``data:`` fields with a newline. Malformed/non-JSON data
+    events are ignored for compatibility with provider keepalives/extensions.
+    The OpenAI-style ``[DONE]`` sentinel is converted to a structured terminal
+    marker used by the adapter layer.
+    """
+    if not data_lines:
+        return None
+    data_str = "\n".join(data_lines)
+    if data_str.strip() == "[DONE]":
+        return {"_done": True}
+    try:
+        parsed = json.loads(data_str)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 class OpenAICompatibleTransport:
     """Standardized HTTP Transport for OpenAI-Compatible APIs."""
 
@@ -245,13 +265,15 @@ class OpenAICompatibleTransport:
         payload: Dict[str, Any],
         timeout_seconds: Optional[float] = None,
     ) -> Generator[Dict[str, Any], None, None]:
-        """Execute HTTP POST with streaming SSE response.
+        """Execute HTTP POST with buffered, event-framed SSE parsing.
 
-        Yields parsed JSON objects from `data: {...}` lines.
-        Handles `data: [DONE]` termination signal.
-        Closes HTTP response on generator exhaustion or early termination.
+        Supports both ``data:{...}`` and ``data: {...}``, CRLF, comments and
+        other SSE fields, multiline ``data:`` events, and ``[DONE]`` with or
+        without a trailing newline. The response is always closed on generator
+        exhaustion, errors, or early consumer termination.
 
-        Does NOT use whole-body resp.read().
+        Uses ``readline()`` rather than byte-at-a-time reads so token delivery is
+        line-buffered without waiting for a large fixed-size block.
         """
         url = f"{self.base_url}/{endpoint_path.lstrip('/')}"
         timeout = timeout_seconds if timeout_seconds is not None else self.timeout_seconds
@@ -266,13 +288,13 @@ class OpenAICompatibleTransport:
         )
 
         resp = None
+        data_lines: list[str] = []
         try:
             resp = urllib.request.urlopen(http_req, timeout=timeout)
-            buffer = b""
 
             while True:
                 try:
-                    chunk = resp.read(1)
+                    line_bytes = resp.readline()
                 except Exception as read_err:
                     if is_timeout_exception(read_err):
                         yield {
@@ -304,45 +326,47 @@ class OpenAICompatibleTransport:
                             "is_network": False,
                             "is_internal": True,
                         }
-                    break
+                    return
 
-                if not chunk:
-                    break
+                if not line_bytes:
+                    # EOF also dispatches a final event without a trailing blank
+                    # line/newline (common with a terminal data: [DONE]).
+                    event = _parse_sse_data_event(data_lines)
+                    if event is not None:
+                        yield event
+                    return
 
-                buffer += chunk
+                if isinstance(line_bytes, bytes):
+                    line = line_bytes.decode("utf-8", errors="replace")
+                else:
+                    line = str(line_bytes)
+                line = line.rstrip("\r\n")
 
-                while b"\n" in buffer:
-                    line_bytes, buffer = buffer.split(b"\n", 1)
-                    line = line_bytes.decode("utf-8", errors="replace").rstrip("\r")
+                # Blank line is the SSE event boundary.
+                if line == "":
+                    event = _parse_sse_data_event(data_lines)
+                    data_lines = []
+                    if event is not None:
+                        yield event
+                        if event.get("_done"):
+                            return
+                    continue
 
-                    if not line.startswith("data: "):
-                        continue
+                # Comment / keepalive line.
+                if line.startswith(":"):
+                    continue
 
-                    data_str = line[6:].strip()
+                if ":" in line:
+                    field, value = line.split(":", 1)
+                    # Per SSE, remove at most one optional leading ASCII space.
+                    if value.startswith(" "):
+                        value = value[1:]
+                else:
+                    field, value = line, ""
 
-                    if data_str == "[DONE]":
-                        yield {"_done": True}
-                        return
-
-                    try:
-                        parsed = json.loads(data_str)
-                        yield parsed
-                    except json.JSONDecodeError:
-                        continue
-
-            # Process any remaining unparsed buffer at EOF (e.g. [DONE] without trailing newline)
-            if buffer:
-                line = buffer.decode("utf-8", errors="replace").rstrip("\r")
-                if line.startswith("data: "):
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        yield {"_done": True}
-                        return
-                    try:
-                        parsed = json.loads(data_str)
-                        yield parsed
-                    except json.JSONDecodeError:
-                        pass
+                # event:, id:, retry:, and provider extension fields are ignored.
+                if field == "data":
+                    data_lines.append(value)
 
         except urllib.error.HTTPError as e:
             error_body = ""
