@@ -41,7 +41,9 @@ from integrations.models.base import (
 )
 from integrations.models.gateway import UniversalModelGateway
 from integrations.models.gemini_adapter import GeminiProviderAdapter
+from integrations.models.local_openai_compatible_adapter import LocalNoAuthOpenAICompatibleProviderAdapter
 from integrations.models.openai_compatible_adapter import OpenAICompatibleProviderAdapter
+from integrations.models.provider_auth import provider_requires_api_key
 from integrations.models.registry import (
     AgentId,
     ModelPolicy,
@@ -408,9 +410,15 @@ class ModelSettingsManager:
 
             for pid, pdef in s.providers.items():
                 has_cred = self._secret_store.has_secret(pdef.credential_ref)
+                requires_key = provider_requires_api_key(pdef.adapter_type, pdef.base_url)
                 p_dict = self.sanitize_provider_response(pdef)
                 p_dict["has_credential"] = has_cred
-                p_dict["is_configured"] = pdef.enabled and has_cred and bool(pdef.default_model)
+                p_dict["requires_api_key"] = requires_key
+                p_dict["is_configured"] = (
+                    pdef.enabled
+                    and bool(pdef.default_model)
+                    and (has_cred or not requires_key)
+                )
                 safe_providers.append(p_dict)
 
             return {
@@ -499,6 +507,7 @@ class ModelSettingsManager:
 
                     pdata.pop("api_key", None)
                     pdata.pop("has_credential", None)
+                    pdata.pop("requires_api_key", None)
                     pdata.pop("is_configured", None)
 
                     merged_p = dict(existing_pdef)
@@ -711,14 +720,8 @@ class ModelSettingsManager:
             if not model_id or model_id == "default":
                 model_id = existing_def.default_model
 
-        if not secret:
-            return {
-                "status": "AUTH_FAILED",
-                "latency_ms": (time.perf_counter() - start_time) * 1000.0,
-                "error": "MISSING_CREDENTIAL: No API key provided or stored for test.",
-            }
-
-        # Validate URL
+        # Validate URL before deciding credential policy. No-auth is allowed only
+        # for explicit loopback OpenAI-compatible endpoints that pass validation.
         try:
             validated_url = validate_base_url(base_url)
         except Exception as e:
@@ -729,13 +732,26 @@ class ModelSettingsManager:
                 "error": f"INVALID_BASE_URL: {safe_error}",
             }
 
+        requires_key = provider_requires_api_key(adapter_type, validated_url)
+        if requires_key and not secret:
+            return {
+                "status": "AUTH_FAILED",
+                "latency_ms": (time.perf_counter() - start_time) * 1000.0,
+                "error": "MISSING_CREDENTIAL: No API key provided or stored for test.",
+            }
+
         # Construct transient adapter for non-mutating execution
         try:
             adapter: BaseModelAdapter
             if adapter_type in ("GEMINI_NATIVE", "GEMINI"):
                 adapter = GeminiProviderAdapter(default_model=model_id, api_key=secret)
             else:
-                adapter = OpenAICompatibleProviderAdapter(
+                adapter_cls = (
+                    OpenAICompatibleProviderAdapter
+                    if requires_key
+                    else LocalNoAuthOpenAICompatibleProviderAdapter
+                )
+                adapter = adapter_cls(
                     provider_id=pid or "custom",
                     base_url=validated_url or "https://api.openai.com/v1",
                     api_key_env="",
