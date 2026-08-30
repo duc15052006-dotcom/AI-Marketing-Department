@@ -1,0 +1,202 @@
+name: Full Repo Audit 2026-08-30
+
+on:
+  push:
+    branches:
+      - audit/full-repo-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime and audit tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff bandit pip-audit
+          pip check
+      - name: Compile all Python
+        run: python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas tools workspace tests
+      - name: Canonical full unittest discovery
+        shell: bash
+        run: |
+          mkdir -p .audit
+          set +e
+          python -m unittest discover -s tests -p 'test_*.py' -v > .audit/unittest.txt 2>&1
+          rc=$?
+          echo "UNITTEST_RC=$rc" | tee .audit/unittest_rc.txt
+          tail -n 80 .audit/unittest.txt
+          exit 0
+      - name: Ruff high-signal defects
+        shell: bash
+        run: |
+          set +e
+          ruff check app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas tools workspace --select F,E9,B,PLE,PLW --output-format concise > .audit/ruff.txt 2>&1
+          rc=$?
+          echo "RUFF_RC=$rc" | tee .audit/ruff_rc.txt
+          cat .audit/ruff.txt
+          exit 0
+      - name: Bandit medium-high security scan
+        shell: bash
+        run: |
+          set +e
+          bandit -r app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas tools workspace -ll -ii -f txt > .audit/bandit.txt 2>&1
+          rc=$?
+          echo "BANDIT_RC=$rc" | tee .audit/bandit_rc.txt
+          cat .audit/bandit.txt
+          exit 0
+      - name: Python dependency vulnerability audit
+        shell: bash
+        run: |
+          set +e
+          pip-audit -r requirements.txt > .audit/pip_audit.txt 2>&1
+          rc=$?
+          echo "PIP_AUDIT_RC=$rc" | tee .audit/pip_audit_rc.txt
+          cat .audit/pip_audit.txt
+          exit 0
+      - name: Custom boundary-risk scan
+        shell: bash
+        run: |
+          python - <<'PY' > .audit/custom_scan.txt
+          from pathlib import Path
+          import ast, re
+
+          roots = [Path(x) for x in ['app_api','chat','config','connectors','creative_engine','governance','integrations','knowledge','memory','runtime','schemas','tools','workspace']]
+          files = [p for r in roots if r.exists() for p in r.rglob('*.py')]
+          findings=[]
+          secret_names=re.compile(r'(api[_-]?key|secret|token|credential|password)', re.I)
+          user_error_patterns=[re.compile(r'\bstr\((?:ex|e|err|exc|error)\)'), re.I), re.compile(r'f[\"\'][^\n]*\{(?:ex|e|err|exc|error)\}', re.I)]
+          for p in files:
+              try:
+                  text=p.read_text(encoding='utf-8')
+              except Exception:
+                  continue
+              lines=text.splitlines()
+              try:
+                  tree=ast.parse(text, filename=str(p))
+              except Exception as e:
+                  findings.append(('PARSE',str(p),0,str(e)))
+                  continue
+              for n in ast.walk(tree):
+                  if isinstance(n, ast.Call):
+                      fn=''
+                      if isinstance(n.func, ast.Name): fn=n.func.id
+                      elif isinstance(n.func, ast.Attribute):
+                          parts=[]; cur=n.func
+                          while isinstance(cur, ast.Attribute): parts.append(cur.attr); cur=cur.value
+                          if isinstance(cur,ast.Name): parts.append(cur.id)
+                          fn='.'.join(reversed(parts))
+                      if fn in {'eval','exec','os.system'}:
+                          findings.append(('DANGEROUS_CALL',str(p),n.lineno,fn))
+                      if fn.startswith('subprocess.'):
+                          for kw in n.keywords:
+                              if kw.arg=='shell' and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                                  findings.append(('SHELL_TRUE',str(p),n.lineno,fn))
+                      if fn in {'pickle.loads','pickle.load','yaml.load'}:
+                          findings.append(('UNSAFE_DESERIALIZATION_REVIEW',str(p),n.lineno,fn))
+              for i,line in enumerate(lines,1):
+                  if any(rx.search(line) for rx in user_error_patterns) and any(k in line for k in ['_send_json','content=','"error"',"'error'",'message=']):
+                      findings.append(('RAW_EXCEPTION_BOUNDARY',str(p),i,line.strip()[:240]))
+                  if secret_names.search(line) and re.search(r'\b(print|logger\.(debug|info|warning|error|exception))\b',line):
+                      findings.append(('SECRET_LOG_REVIEW',str(p),i,line.strip()[:240]))
+                  if re.search(r'except\s+Exception\s*:',line):
+                      window=' '.join(x.strip() for x in lines[i:min(i+3,len(lines))])
+                      if re.search(r'\bpass\b',window):
+                          findings.append(('BROAD_EXCEPT_PASS',str(p),i,line.strip()))
+          print(f'PY_FILES_SCANNED={len(files)}')
+          print(f'FINDING_COUNT={len(findings)}')
+          for item in findings:
+              print('|'.join(map(str,item)))
+          PY
+          cat .audit/custom_scan.txt
+      - name: Upload Python audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-repo-python-audit
+          path: .audit/
+          retention-days: 14
+
+  frontend-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: Typecheck and build
+        run: npm run build
+      - name: Dependency audit
+        shell: bash
+        run: |
+          set +e
+          mkdir -p ../.audit-frontend
+          npm audit --json > ../.audit-frontend/npm_audit.json 2>&1
+          rc=$?
+          echo "NPM_AUDIT_RC=$rc" | tee ../.audit-frontend/npm_audit_rc.txt
+          node -e "const fs=require('fs');const p='../.audit-frontend/npm_audit.json';try{const x=JSON.parse(fs.readFileSync(p));console.log(JSON.stringify(x.metadata?.vulnerabilities||{},null,2))}catch(e){console.log('audit parse failed')}"
+          exit 0
+      - name: Upload frontend audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-repo-frontend-audit
+          path: .audit-frontend/
+          retention-days: 14
+
+  rust-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo check
+        run: cargo check --locked
+      - name: Cargo test
+        run: cargo test --locked
+      - name: Cargo audit
+        shell: bash
+        run: |
+          mkdir -p ../.audit-rust
+          cargo install cargo-audit --locked
+          set +e
+          cargo audit --json > ../.audit-rust/cargo_audit.json 2>&1
+          rc=$?
+          echo "CARGO_AUDIT_RC=$rc" | tee ../.audit-rust/cargo_audit_rc.txt
+          cargo audit || true
+          exit 0
+      - name: Upload rust audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-repo-rust-audit
+          path: .audit-rust/
+          retention-days: 14
