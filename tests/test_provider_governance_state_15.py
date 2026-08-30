@@ -98,6 +98,15 @@ class TestProviderGovernanceState15(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     ModelSettings(free_only_mode=bad)
 
+    def test_gateway_constructor_and_setter_require_strict_free_only_bool(self) -> None:
+        with self.assertRaises(ValueError):
+            UniversalModelGateway(free_only_mode="false")  # type: ignore[arg-type]
+
+        gateway = UniversalModelGateway(free_only_mode=True)
+        with self.assertRaises(ValueError):
+            gateway.set_free_only_mode("false")  # type: ignore[arg-type]
+        self.assertIs(gateway.free_only_mode, True)
+
     def test_allow_paid_string_false_cannot_bypass_free_only_sync(self) -> None:
         gateway, adapter, _ = injected_gateway(CostPolicy.PAID)
         response = gateway.generate(
@@ -133,6 +142,14 @@ class TestProviderGovernanceState15(unittest.TestCase):
         self.assertEqual(deltas[0].finish_reason, "error")
         self.assertIsNotNone(deltas[0].error)
         self.assertEqual(deltas[0].error.code, "REQUEST_SCHEMA_ERROR")
+
+    def test_cost_policy_disabled_registry_returns_no_live_or_pinned_adapter(self) -> None:
+        gateway, adapter, registry = injected_gateway(CostPolicy.DISABLED)
+        del gateway, adapter
+        self.assertIsNone(registry.get_adapter("govtest"))
+        definition = registry.get_provider("govtest")
+        self.assertIsNotNone(definition)
+        self.assertIsNone(registry.get_pinned_adapter(definition))
 
     def test_cost_policy_disabled_never_dispatches_sync_even_with_allow_paid(self) -> None:
         gateway, adapter, _ = injected_gateway(CostPolicy.DISABLED)
