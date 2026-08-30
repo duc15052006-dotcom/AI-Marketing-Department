@@ -13,10 +13,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from governance.redaction import (
-    REDACTED_SENSITIVE_KEYS,
-    sanitize_sensitive_payload,
-)
+from governance.redaction import sanitize_sensitive_payload
 from schemas.base import BaseModel, Field
 
 
