@@ -173,14 +173,17 @@ class RealAnalyticsConnector(BaseCapabilityAdapter):
             )
 
         elif cap in ("attribution_data_access", "experiment_result_analysis"):
+            # These capabilities require observed attribution/experiment inputs.
+            # Returning example channel weights, significance flags, or p-values
+            # would create fabricated evidence that can anchor downstream agent
+            # reasoning even when truthfully labeled MOCK. Fail closed instead.
             return AdapterResult(
-                success=True,
-                data={
-                    "attribution_model": "DATA_DRIVEN_MULTI_TOUCH",
-                    "channel_weights": {"paid_search": 0.42, "paid_social": 0.38, "direct": 0.20},
-                    "stat_sig": True,
-                    "p_value": 0.008,
-                },
+                success=False,
+                error_code="NO_DATA",
+                error_message=(
+                    f"No observed data supplied for '{capability_id}'. "
+                    "Ingest or provide real attribution/experiment results before analysis."
+                ),
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 execution_mode=ExecutionMode.MOCK,
             )
