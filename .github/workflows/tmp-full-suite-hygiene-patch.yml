@@ -29,101 +29,115 @@ jobs:
       - name: Apply exact hygiene replacements
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           @'
           from pathlib import Path
 
-          def replace(path, old, new):
+          def replace_once(path, old, new):
               p = Path(path)
               text = p.read_text(encoding='utf-8')
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'{path}: expected exactly 1 match, found {count}: {old[:80]!r}')
+                  raise SystemExit(f'{path}: expected exactly 1 match, found {count}: {old[:100]!r}')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          replace('tests/test_applicationization_v1.py',
+          def replace_line_containing(path, needle, replacement):
+              p = Path(path)
+              lines = p.read_text(encoding='utf-8').splitlines(keepends=True)
+              matches = [i for i, line in enumerate(lines) if needle in line]
+              if len(matches) != 1:
+                  raise SystemExit(f'{path}: expected exactly 1 line containing {needle!r}, found {len(matches)}')
+              idx = matches[0]
+              newline = '\n' if lines[idx].endswith('\n') else ''
+              lines[idx] = replacement + newline
+              p.write_text(''.join(lines), encoding='utf-8')
+
+          replace_once('tests/test_applicationization_v1.py',
               'from pathlib import Path\n',
               'from pathlib import Path\nfrom typing import Any, Dict, Tuple\n')
 
-          replace('tests/test_prod_uiauth_01_secure_bootstrap.py',
+          replace_once('tests/test_prod_uiauth_01_secure_bootstrap.py',
               'from typing import Dict, Optional, Tuple\n',
               'from typing import Dict, List, Optional, Tuple\n')
 
-          replace('tests/test_phase4_3c_15_rc3_architecture.py',
+          replace_once('tests/test_phase4_3c_15_rc3_architecture.py',
               'from pathlib import Path\n\nfrom schemas.handoff import (',
               'from pathlib import Path\n\nREPO_ROOT = Path(__file__).resolve().parents[1]\n\nfrom schemas.handoff import (')
-          replace('tests/test_phase4_3c_15_rc3_architecture.py',
-              'perf_agent_path = Path(r"c:\\\\AI-Marketing-Department\\.agents\\agents\\performance\\agent.md")',
-              'perf_agent_path = REPO_ROOT / ".agents" / "agents" / "performance" / "agent.md"')
-          replace('tests/test_phase4_3c_15_rc3_architecture.py',
-              'agent_dir = Path(r"c:\\\\AI-Marketing-Department\\.agents\\agents")',
-              'agent_dir = REPO_ROOT / ".agents" / "agents"')
+          replace_line_containing('tests/test_phase4_3c_15_rc3_architecture.py',
+              'perf_agent_path = Path(',
+              '        perf_agent_path = REPO_ROOT / ".agents" / "agents" / "performance" / "agent.md"')
+          replace_line_containing('tests/test_phase4_3c_15_rc3_architecture.py',
+              'agent_dir = Path(',
+              '        agent_dir = REPO_ROOT / ".agents" / "agents"')
 
-          replace('tests/test_prod_workflow_failure_semantics_01.py',
+          replace_once('tests/test_prod_workflow_failure_semantics_01.py',
               'final_cmo_started = [e for e in progress_events if e.get("stage") == "FINAL_CMO" and e.get("event_type") == "STAGE_STARTED"]',
               'final_cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "FINAL_CMO" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]')
-          replace('tests/test_prod_workflow_failure_semantics_01.py',
+          replace_once('tests/test_prod_workflow_failure_semantics_01.py',
               'cmo_started = [e for e in progress_events if e.get("stage") == "CMO_INITIAL" and e.get("event_type") == "STAGE_STARTED"]',
               'cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "CMO_INITIAL" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]')
-          replace('tests/test_prod_workflow_failure_semantics_01.py',
+          replace_once('tests/test_prod_workflow_failure_semantics_01.py',
               'cmo_failed = [e for e in progress_events if e.get("stage") == "CMO_INITIAL" and e.get("event_type") == "RUN_FAILED"]',
               'cmo_failed = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "CMO_INITIAL" and getattr(e.event_type, "value", e.event_type) == "RUN_FAILED"]')
-          replace('tests/test_prod_workflow_failure_semantics_01.py',
+          replace_once('tests/test_prod_workflow_failure_semantics_01.py',
               'final_cmo_started = [e for e in progress_events if e.get("stage") == "FINAL_CMO" and e.get("event_type") == "STAGE_STARTED"]',
               'final_cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "FINAL_CMO" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]')
 
-          replace('tests/test_free_only_router.py',
+          replace_once('tests/test_free_only_router.py',
               'self.router = ModelRouter(default_provider="gemini", free_only_mode=True)\n',
               'self.router = ModelRouter(default_provider="gemini", free_only_mode=True)\n        self.router.register_adapter(GeminiProviderAdapter(api_key="test-gemini-key"))\n')
-          replace('tests/test_gemini_adapter.py',
+          replace_once('tests/test_gemini_adapter.py',
               'router = ModelRouter(default_provider="gemini")\n        self.assertEqual(router.default_provider, "gemini")',
               'router = ModelRouter(default_provider="gemini")\n        router.register_adapter(self.adapter)\n        self.assertEqual(router.default_provider, "gemini")')
 
-          replace('tests/test_phase4_3c_3_openai_transport.py',
+          replace_once('tests/test_phase4_3c_3_openai_transport.py',
               'self.assertEqual(resp.metadata.get("error_category"), "access_denied")',
               'self.assertEqual(resp.metadata.get("error_category"), "AUTHORIZATION")')
-          replace('tests/test_phase4_3c_3_openai_transport.py',
+          replace_once('tests/test_phase4_3c_3_openai_transport.py',
               'self.assertIn("[REDACTED_API_KEY]", sanitized)',
               'self.assertIn("[REDACTED", sanitized)')
 
-          replace('tests/test_prod_fs_01_filesystem_containment.py',
+          replace_once('tests/test_prod_fs_01_filesystem_containment.py',
               'self.assertEqual(receipt.execution_mode, ExecutionMode.MOCK)\n\n    # 22. ToolGateway Integration: Outside Write Blocked',
               'self.assertEqual(receipt.execution_mode, ExecutionMode.REAL)\n\n    # 22. ToolGateway Integration: Outside Write Blocked')
 
-          replace('tests/test_prod_core_authority_01a.py',
+          replace_once('tests/test_prod_core_authority_01a.py',
               '"""If Performance fails, Final CMO still runs (governed synthesis per contract)."""',
               '"""If Performance fails, Final CMO is not executed; failure remains fail-closed."""')
-          replace('tests/test_prod_core_authority_01a.py',
+          replace_once('tests/test_prod_core_authority_01a.py',
               '# Final CMO is governed and always runs per the canonical contract\n        self.assertTrue(final_cmo_called[0])',
               '# An unreached Final CMO must not start after a failed prerequisite stage.\n        self.assertFalse(final_cmo_called[0])\n        self.assertEqual(final_out.get("status"), "NOT_REACHED")\n        self.assertEqual(final_out.get("failed_stage"), "PERFORMANCE")')
 
-          replace('tests/test_prod_runtime_01_single_run_authority.py',
+          replace_once('tests/test_prod_runtime_01_single_run_authority.py',
               'self.assertEqual(final_cmo.get("status"), "FAILED")\n        self.assertIn("PREVIOUS_STAGE_FAILED", final_cmo.get("reason", ""))',
               'self.assertEqual(final_cmo.get("status"), "NOT_REACHED")\n        self.assertEqual(final_cmo.get("failed_stage"), "STRATEGIST")\n        self.assertNotIn("PREVIOUS_STAGE_FAILED", final_cmo.get("reason", ""))')
 
-          replace('tests/test_prod_verifier_02_supply_chain.py',
+          replace_once('tests/test_prod_verifier_02_supply_chain.py',
               'venv_python = REPO_ROOT / ".verifier-venv" / "Scripts" / "python.exe"\n        self.assertTrue(venv_python.exists())',
               'venv_python = REPO_ROOT / ".verifier-venv" / "Scripts" / "python.exe"\n        if not venv_python.exists():\n            self.skipTest("real verifier acceptance venv is gitignored and not provisioned in hermetic CI")')
 
-          replace('tests/test_phase4_3c_7_five_agent_v2_live_collaboration.py',
+          replace_once('tests/test_phase4_3c_7_five_agent_v2_live_collaboration.py',
               'self.run_dir = self.bench_dir / "runs" / "phase4_3_v2" / "RUN-PHASE4-3-V2-LIVE-001"\n',
               'self.run_dir = self.bench_dir / "runs" / "phase4_3_v2" / "RUN-PHASE4-3-V2-LIVE-001"\n        if not self.run_dir.exists():\n            self.skipTest("generated live benchmark run is intentionally gitignored; run live acceptance separately")\n')
-          replace('tests/test_phase4_3c_8_telemetry_and_collaboration_audit.py',
+          replace_once('tests/test_phase4_3c_8_telemetry_and_collaboration_audit.py',
               'self.run_dir = self.bench_dir / "runs" / "phase4_3_v2" / "RUN-PHASE4-3-V2-LIVE-001"\n',
               'self.run_dir = self.bench_dir / "runs" / "phase4_3_v2" / "RUN-PHASE4-3-V2-LIVE-001"\n        if not self.run_dir.exists():\n            self.skipTest("generated live telemetry run is intentionally gitignored; run live acceptance separately")\n')
 
-          replace('tests/test_phase4_3c_6_versioned_run_integrity.py',
+          replace_once('tests/test_phase4_3c_6_versioned_run_integrity.py',
               '"""Verify historical V1 Five-Agent checkpoints strictly fail-closed in V2 runs."""\n        active_fp = "f" * 64',
               '"""Verify historical V1 Five-Agent checkpoints strictly fail-closed in V2 runs."""\n        if not (self.v1_hist_dir / "five_agent_final.json").exists():\n            self.skipTest("historical generated run fixture is gitignored and absent in clean checkout")\n        active_fp = "f" * 64')
-          replace('tests/test_phase4_3c_6_versioned_run_integrity.py',
+          replace_once('tests/test_phase4_3c_6_versioned_run_integrity.py',
               'single_file = self.v1_hist_dir / "single_output.json"\n        self.assertTrue(single_file.exists())',
               'single_file = self.v1_hist_dir / "single_output.json"\n        if not single_file.exists():\n            self.skipTest("historical generated Single fixture is gitignored and absent in clean checkout")')
 
-          replace('tests/test_structured_epistemic_handoff.py',
+          replace_once('tests/test_structured_epistemic_handoff.py',
               '# raw free text preserved verbatim including malformed block:\n        self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"],\n                         "Prose part.\\n\\n" + raw.split("\\n\\n", 1)[1])',
               '# User-facing prose remains safe: the malformed machine handoff block is stripped,\n        # while parse status records MALFORMED and fabricates no structured facts.\n        self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"], "Prose part.")')
           '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --stat
 
       - name: Run affected deterministic tests
