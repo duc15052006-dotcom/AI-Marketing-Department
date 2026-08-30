@@ -1,0 +1,71 @@
+name: Apply Runtime DNA Branch Patch
+
+on:
+  push:
+    branches: [fix/runtime-full-agent-dna-39]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[dna-patched]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-full-agent-dna-39
+          fetch-depth: 0
+
+      - name: Apply exact runtime prompt patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("runtime/engine.py")
+          text = path.read_text(encoding="utf-8")
+
+          old_import = "from runtime.artifacts import DepartmentRunArtifact, MemoryWriteCandidate\n"
+          new_import = (
+              old_import
+              + "from runtime.agent_prompt import AgentDnaLoadError, compose_runtime_agent_system_prompt\n"
+          )
+          if text.count(old_import) != 1:
+              raise SystemExit(f"IMPORT_ANCHOR_COUNT={text.count(old_import)}")
+          if "from runtime.agent_prompt import AgentDnaLoadError" not in text:
+              text = text.replace(old_import, new_import, 1)
+
+          old_block = '''        # COLLAB-05: every stage may append the optional machine handoff block
+          # to the SAME single response (no second agent, no second model call).
+          system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
+          '''
+          new_block = '''        try:
+              system_instruction = compose_runtime_agent_system_prompt(agent_name, system_instruction)
+          except AgentDnaLoadError as exc:
+              return None, str(exc)
+
+          # COLLAB-05: every stage may append the optional machine handoff block
+          # to the SAME single response (no second agent, no second model call).
+          system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
+          '''
+          if text.count(old_block) != 1:
+              raise SystemExit(f"CALL_ANCHOR_COUNT={text.count(old_block)}")
+          text = text.replace(old_block, new_block, 1)
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify only expected runtime anchors changed
+        shell: bash
+        run: |
+          git diff -- runtime/engine.py
+          grep -q "compose_runtime_agent_system_prompt(agent_name, system_instruction)" runtime/engine.py
+          grep -q "from runtime.agent_prompt import AgentDnaLoadError" runtime/engine.py
+
+      - name: Commit branch-only patch and remove helper workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-runtime-dna-branch-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py .github/workflows/apply-runtime-dna-branch-patch.yml
+          git commit -m "Wire full Agent DNA into production runtime [dna-patched]"
+          git push origin HEAD:fix/runtime-full-agent-dna-39
