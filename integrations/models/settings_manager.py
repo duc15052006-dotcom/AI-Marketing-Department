@@ -52,6 +52,7 @@ from integrations.models.registry import (
     ProviderRegistry,
     normalize_agent_id,
     validate_base_url,
+    validate_strict_bool,
 )
 from integrations.models.secret_store import GLOBAL_SECRET_STORE, SecureSecretStore
 from schemas.base import BaseModel, Field
@@ -105,6 +106,14 @@ class ModelSettings(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        try:
+            self.free_only_mode = validate_strict_bool(
+                self.free_only_mode,
+                "ModelSettings.free_only_mode",
+            )
+        except ValueError as exc:
+            raise ModelSettingsValidationError(str(exc)) from exc
+
         # Normalize global target
         if isinstance(self.global_target, dict):
             self.global_target = ModelTarget(**self.global_target)
@@ -467,7 +476,10 @@ class ModelSettingsManager:
             current_dict = old_settings.model_dump()
 
             if "free_only_mode" in updates:
-                current_dict["free_only_mode"] = bool(updates["free_only_mode"])
+                # Preserve the caller value until ModelSettings validation.
+                # Never coerce None/strings/integers through Python truthiness: an
+                # invalid value such as None must not silently disable FREE_ONLY.
+                current_dict["free_only_mode"] = updates["free_only_mode"]
 
             if "global_target" in updates and updates["global_target"]:
                 current_dict["global_target"] = updates["global_target"]
