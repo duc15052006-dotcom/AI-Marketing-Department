@@ -122,11 +122,11 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
     def _parse_usage(cls, usage_raw: Any) -> ModelUsage:
         """Parse optional token telemetry defensively.
 
-        Provider content is still usable when telemetry is absent, null, or
-        malformed. In that case usage is marked NOT_AVAILABLE rather than
+        Provider content is still usable when telemetry is absent, null, empty,
+        or malformed. In that case usage is marked NOT_AVAILABLE rather than
         inventing token counts or crashing an otherwise valid completion.
         """
-        if not isinstance(usage_raw, dict):
+        if not isinstance(usage_raw, dict) or not usage_raw:
             return ModelUsage(usage_source="NOT_AVAILABLE")
 
         prompt_tokens = 0
