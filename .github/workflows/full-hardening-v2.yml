@@ -175,8 +175,48 @@ jobs:
             git push origin HEAD:phase/full-hardening-v2
           fi
 
-      - name: Full Python regression sweep
-        run: pytest -q tests
+      - name: Full Python regression sweep with safe diagnostics
+        shell: bash
+        run: |
+          set +e
+          pytest -q tests --junitxml=/tmp/full-pytest.xml
+          status=$?
+          set -e
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          xml_path = Path('/tmp/full-pytest.xml')
+          out = Path('ci_diagnostics/full_pytest_failure.txt')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          failures = []
+          if xml_path.exists():
+              root = ET.parse(xml_path).getroot()
+              for case in root.iter('testcase'):
+                  child = case.find('failure')
+                  if child is None:
+                      child = case.find('error')
+                  if child is None:
+                      continue
+                  classname = case.attrib.get('classname', '')[:180]
+                  name = case.attrib.get('name', '')[:180]
+                  failure_type = child.attrib.get('type', child.tag)[:80]
+                  failures.append(f'{classname}::{name} | {failure_type}')
+          if failures:
+              out.write_text('\n'.join(sorted(set(failures))) + '\n', encoding='utf-8')
+          elif out.exists():
+              out.unlink()
+          PY
+          if [ "$status" -ne 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A ci_diagnostics/full_pytest_failure.txt
+            if ! git diff --cached --quiet; then
+              git commit -m "ci: record safe full-pytest failing nodeids"
+              git push origin HEAD:phase/full-hardening-v2
+            fi
+            exit "$status"
+          fi
 
       - name: Optional Rust/Tauri check
         shell: bash
