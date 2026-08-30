@@ -214,6 +214,38 @@ def validate_chat_completions_path(path: Optional[str]) -> Optional[str]:
     return cleaned
 
 
+def normalize_cost_policy(value: Any) -> CostPolicy:
+    """Normalize cost governance to the canonical enum and reject malformed values.
+
+    Cost policy is a security/governance boundary. Unknown spellings or non-string
+    values must never silently behave like a free provider under FREE_ONLY_MODE.
+    """
+    if isinstance(value, CostPolicy):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        try:
+            return CostPolicy(normalized)
+        except ValueError as exc:
+            raise ValueError(
+                f"INVALID_COST_POLICY: '{value}' is not one of "
+                f"{', '.join(policy.value for policy in CostPolicy)}."
+            ) from exc
+    raise ValueError(
+        f"INVALID_COST_POLICY: cost policy must be a CostPolicy or string, got {type(value).__name__}."
+    )
+
+
+# Security floor for built-ins already classified as paid by this repository.
+# Older persisted settings may say FREE_TIER_ALLOWED; such stale values must not
+# downgrade a paid provider. Providers not listed here may still be made more
+# restrictive (PAID/UNKNOWN/DISABLED) by settings without being forced back free.
+BUILTIN_PROVIDER_COST_POLICIES: Dict[str, CostPolicy] = {
+    "openai": CostPolicy.PAID,
+    "thespark": CostPolicy.PAID,
+}
+
+
 class ProviderDefinition(BaseModel):
     """Configuration and capability descriptor for a model provider."""
     provider_id: str
@@ -246,6 +278,9 @@ class ProviderDefinition(BaseModel):
         # Adapter type must be an actually supported type (no silent coercion).
         if self.adapter_type:
             self.adapter_type = validate_adapter_type(self.adapter_type)
+
+        # Cost governance must be canonical and fail closed on malformed input.
+        self.cost_policy = normalize_cost_policy(self.cost_policy)
 
         # Execution timeout must be numeric, finite, > 0 and within sane bounds.
         if self.timeout_seconds is not None:
@@ -457,6 +492,12 @@ class ModelMetadata(BaseModel):
     supports_vision: bool = False
     supports_reasoning: bool = False
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.provider_id = validate_provider_id(self.provider_id)
+        self.model_id = validate_default_model(self.model_id)
+        self.cost_tier = normalize_cost_policy(self.cost_tier)
+
 
 class ProviderRegistry:
     """Registry managing provider configurations, custom adapters, and connection testing."""
@@ -598,7 +639,7 @@ class ProviderRegistry:
             )
         )
 
-        # 4. TheSpark (OpenAI-compatible free-tier aggregator)
+        # 4. TheSpark (policy-classified paid third-party provider)
         self.register_provider(
             ProviderDefinition(
                 provider_id="thespark",
@@ -607,7 +648,7 @@ class ProviderRegistry:
                 base_url="https://api.thespark.io/v1",
                 credential_ref="ENV:THESPARK_API_KEY",
                 default_model="spark-default",
-                cost_policy=CostPolicy.FREE_TIER_ALLOWED,
+                cost_policy=CostPolicy.PAID,
                 supported_capabilities={"supports_json": True, "provider_type": "third_party"},
             )
         )
@@ -617,6 +658,17 @@ class ProviderRegistry:
         if isinstance(config, dict):
             config = ProviderDefinition(**config)
         pid = config.provider_id.lower()
+        authoritative_cost = BUILTIN_PROVIDER_COST_POLICIES.get(pid)
+        if authoritative_cost is not None and config.cost_policy != authoritative_cost:
+            logger.warning(
+                "Overriding stale/mismatched built-in cost policy for '%s': %s -> %s",
+                pid,
+                getattr(config.cost_policy, "value", config.cost_policy),
+                authoritative_cost.value,
+            )
+            # Mutate the canonical definition so callers holding a persisted
+            # settings object also observe the corrected governance value.
+            config.cost_policy = authoritative_cost
         with self._lock:
             self._configs[pid] = config
             if secret:
@@ -1028,9 +1080,9 @@ class ModelRegistry:
             ModelMetadata(
                 provider_id="thespark",
                 model_id="spark-default",
-                display_name="TheSpark Default Free",
+                display_name="TheSpark Default",
                 context_window=32000,
-                cost_tier=CostPolicy.FREE_TIER_ALLOWED,
+                cost_tier=CostPolicy.PAID,
                 supports_json=True,
             )
         )
