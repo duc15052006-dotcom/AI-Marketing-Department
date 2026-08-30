@@ -236,6 +236,16 @@ def normalize_cost_policy(value: Any) -> CostPolicy:
     )
 
 
+# Built-in provider cost governance is code-authoritative. Persisted settings
+# from older releases may carry stale values, but must never weaken FREE_ONLY_MODE.
+BUILTIN_PROVIDER_COST_POLICIES: Dict[str, CostPolicy] = {
+    "xkiro": CostPolicy.FREE_TIER_ALLOWED,
+    "gemini": CostPolicy.FREE_TIER_ALLOWED,
+    "openai": CostPolicy.PAID,
+    "thespark": CostPolicy.PAID,
+}
+
+
 class ProviderDefinition(BaseModel):
     """Configuration and capability descriptor for a model provider."""
     provider_id: str
@@ -648,6 +658,17 @@ class ProviderRegistry:
         if isinstance(config, dict):
             config = ProviderDefinition(**config)
         pid = config.provider_id.lower()
+        authoritative_cost = BUILTIN_PROVIDER_COST_POLICIES.get(pid)
+        if authoritative_cost is not None and config.cost_policy != authoritative_cost:
+            logger.warning(
+                "Overriding stale/mismatched built-in cost policy for '%s': %s -> %s",
+                pid,
+                getattr(config.cost_policy, "value", config.cost_policy),
+                authoritative_cost.value,
+            )
+            # Mutate the canonical definition so callers holding a persisted
+            # settings object also observe the corrected governance value.
+            config.cost_policy = authoritative_cost
         with self._lock:
             self._configs[pid] = config
             if secret:
