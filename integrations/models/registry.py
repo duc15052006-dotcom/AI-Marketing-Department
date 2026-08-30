@@ -34,7 +34,9 @@ from integrations.models.base import (
     ModelUsage,
 )
 from integrations.models.gemini_adapter import GeminiProviderAdapter
+from integrations.models.local_openai_compatible_adapter import LocalNoAuthOpenAICompatibleProviderAdapter
 from integrations.models.openai_compatible_adapter import OpenAICompatibleProviderAdapter
+from integrations.models.provider_auth import provider_requires_api_key
 from integrations.models.transport import sanitize_secrets
 from schemas.base import BaseModel, Field
 
@@ -653,10 +655,9 @@ class ProviderRegistry:
             )
         )
 
-    def register_provider(self, config: Union[ProviderDefinition, ProviderConfig], secret: Optional[str] = None) -> None:
-        """Register or update a provider configuration atomically."""
-        if isinstance(config, dict):
-            config = ProviderDefinition(**config)
+    @staticmethod
+    def _apply_builtin_cost_floor(config: ProviderDefinition) -> ProviderDefinition:
+        """Apply the non-downgrade cost floor for built-ins classified as paid."""
         pid = config.provider_id.lower()
         authoritative_cost = BUILTIN_PROVIDER_COST_POLICIES.get(pid)
         if authoritative_cost is not None and config.cost_policy != authoritative_cost:
@@ -666,9 +667,15 @@ class ProviderRegistry:
                 getattr(config.cost_policy, "value", config.cost_policy),
                 authoritative_cost.value,
             )
-            # Mutate the canonical definition so callers holding a persisted
-            # settings object also observe the corrected governance value.
             config.cost_policy = authoritative_cost
+        return config
+
+    def register_provider(self, config: Union[ProviderDefinition, ProviderConfig], secret: Optional[str] = None) -> None:
+        """Register or update a provider configuration atomically."""
+        if isinstance(config, dict):
+            config = ProviderDefinition(**config)
+        config = self._apply_builtin_cost_floor(config)
+        pid = config.provider_id.lower()
         with self._lock:
             self._configs[pid] = config
             if secret:
@@ -685,7 +692,7 @@ class ProviderRegistry:
                 raise ValueError(f"PROVIDER_NOT_FOUND: Cannot update unregistered provider '{provider_id}'.")
             data = existing.model_dump()
             data.update(updates)
-            updated = ProviderDefinition(**data)
+            updated = self._apply_builtin_cost_floor(ProviderDefinition(**data))
             self._configs[pid] = updated
             self._adapters.pop(pid, None)
             return updated
@@ -782,7 +789,12 @@ class ProviderRegistry:
                 api_key=secret,
             )
         elif adapter_type_upper in ("OPENAI_COMPATIBLE", "OPENAI"):
-            adapter = OpenAICompatibleProviderAdapter(
+            adapter_cls = (
+                OpenAICompatibleProviderAdapter
+                if provider_requires_api_key(adapter_type_upper, cfg.base_url)
+                else LocalNoAuthOpenAICompatibleProviderAdapter
+            )
+            adapter = adapter_cls(
                 provider_id=cfg.provider_id,
                 base_url=cfg.base_url or "",
                 api_key_env=cfg.api_key_env or f"{cfg.provider_id.upper()}_API_KEY",
@@ -858,9 +870,9 @@ class ProviderRegistry:
                 return self._adapters[cache_key]
 
             secret = self._resolve_secret(cfg)
-            if not secret:
-                # A pinned adapter cannot be constructed without its pinned
-                # credential (e.g. reclaimed after run termination).
+            if provider_requires_api_key(cfg.adapter_type, cfg.base_url) and not secret:
+                # Credential-required pinned providers fail closed if the pinned
+                # secret was never configured or has already been reclaimed.
                 return None
             adapter = self._build_adapter(cfg, secret)
 
@@ -949,7 +961,12 @@ class ProviderRegistry:
                     timeout_seconds=timeout_seconds,
                 )
             else:
-                temp_adapter = OpenAICompatibleProviderAdapter(
+                adapter_cls = (
+                    OpenAICompatibleProviderAdapter
+                    if provider_requires_api_key(adapter_type_upper, definition.base_url)
+                    else LocalNoAuthOpenAICompatibleProviderAdapter
+                )
+                temp_adapter = adapter_cls(
                     provider_id=definition.provider_id,
                     base_url=definition.base_url or "",
                     api_key_env="TEMP_KEY",
