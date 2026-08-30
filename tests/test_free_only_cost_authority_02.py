@@ -115,6 +115,44 @@ class TestFreeOnlyCostAuthority02(unittest.TestCase):
         self.assertIs(legacy_adapter.cost_policy, CostPolicy.PAID)
         self.assertFalse(legacy_adapter.automatic_fallback_allowed)
 
+    def test_stale_persisted_thespark_free_policy_cannot_override_builtin_authority(self) -> None:
+        registry = ProviderRegistry()
+        stale_definition = ProviderDefinition(
+            provider_id="thespark",
+            adapter_type="OPENAI_COMPATIBLE",
+            display_name="TheSpark",
+            base_url="https://api.thespark.io/v1",
+            credential_ref="ENV:THESPARK_API_KEY",
+            default_model="spark-default",
+            cost_policy=CostPolicy.FREE_TIER_ALLOWED,
+        )
+
+        registry.register_provider(stale_definition)
+
+        registered = registry.get_provider("thespark")
+        self.assertIsNotNone(registered)
+        self.assertIs(stale_definition.cost_policy, CostPolicy.PAID)
+        self.assertIs(registered.cost_policy, CostPolicy.PAID)
+
+    def test_stale_openai_free_policy_cannot_override_builtin_authority(self) -> None:
+        registry = ProviderRegistry()
+        stale_definition = ProviderDefinition(
+            provider_id="openai",
+            adapter_type="OPENAI_COMPATIBLE",
+            display_name="OpenAI",
+            base_url="https://api.openai.com/v1",
+            credential_ref="ENV:OPENAI_API_KEY",
+            default_model="gpt-4o-mini",
+            cost_policy=CostPolicy.FREE_TIER_ALLOWED,
+        )
+
+        registry.register_provider(stale_definition)
+
+        registered = registry.get_provider("openai")
+        self.assertIsNotNone(registered)
+        self.assertIs(stale_definition.cost_policy, CostPolicy.PAID)
+        self.assertIs(registered.cost_policy, CostPolicy.PAID)
+
     def test_thespark_is_not_reported_as_a_free_model(self) -> None:
         model_registry = ModelRegistry()
         free_keys = {
