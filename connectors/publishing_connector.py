@@ -24,6 +24,10 @@ class SandboxPublishingConnector(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "sandbox_publisher"
 
+    def execution_mode_for(self, capability_id: str) -> ExecutionMode:
+        """Publishing aliases in this connector always execute in sandbox mode."""
+        return ExecutionMode.SANDBOX
+
     def execute(
         self,
         capability_id: str,
