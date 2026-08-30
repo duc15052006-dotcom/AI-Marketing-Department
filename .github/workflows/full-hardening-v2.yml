@@ -1,10 +1,17 @@
 name: Full Hardening V2
 
 on:
+  push:
+    branches:
+      - phase/full-hardening-v2
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: full-hardening-v2-certification
+  cancel-in-progress: true
 
 jobs:
   harden-and-certify:
@@ -28,12 +35,13 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
 
-      - name: Apply reviewed residual hardening
+      - name: Apply reviewed residual hardening in certification workspace
         run: |
           python scripts/residual_hardening_v3.py
           python scripts/progress_truth_patch.py
           python scripts/security_boundary_patch.py
           python scripts/test_contract_alignment_v4.py
+          python scripts/batch1_error_truth.py
 
       - name: Compile production Python
         run: python -m compileall -q runtime chat app_api integrations tools connectors
@@ -42,12 +50,14 @@ jobs:
         run: |
           pytest -q \
             tests/test_prod_structured_provider_stream_error_01.py \
+            tests/test_batch1_error_truth.py \
             tests/test_full_hardening_v2.py \
             tests/test_creative_performance_true_handoff.py \
             tests/test_prod_truth_01_execution_truthfulness.py \
             tests/test_prod_research_evidence_01a.py \
             tests/test_prod_core_authority_01b.py \
-            tests/test_prod_runtime_01_single_run_authority.py
+            tests/test_prod_runtime_01_single_run_authority.py \
+            tests/test_prod_vietnamese_input_tolerance_01.py
 
       - name: Static truth and authority checks
         shell: bash
@@ -60,6 +70,7 @@ jobs:
           ! grep -R --line-number 'PREMATURE_EOF_BEFORE_TERMINAL' frontend/src
           ! grep -n 'item.error = str(e)' runtime/queue.py
           ! grep -n '_fail_closed_audit("AUDIT_GATE_ERROR", str' runtime/engine.py
+          ! grep -R --line-number 'WinError 10061' chat runtime app_api frontend/src
           python - <<'PY'
           from runtime.agent_skills import PERMANENT_AGENT_IDS, get_agent_skill_contract
           assert PERMANENT_AGENT_IDS == ('cmo','intelligence','strategist','creative','performance')
