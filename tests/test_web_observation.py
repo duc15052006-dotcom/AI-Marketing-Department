@@ -122,8 +122,12 @@ class TestWebObservation(unittest.TestCase):
                 SecurityValidator.validate_url(target)
             self.assertEqual(ctx.exception.code, "FORBIDDEN_SCHEME")
 
-    def test_valid_public_urls_accepted(self):
-        """Verify legitimate public HTTPS URLs pass validation."""
+    @patch("tools.gateway.security.socket.getaddrinfo")
+    def test_valid_public_urls_accepted(self, mock_getaddrinfo):
+        """Verify legitimate public HTTPS URLs pass validation without live DNS dependency."""
+        mock_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("8.8.8.8", 0)),
+        ]
         valid_urls = [
             "https://www.google.com",
             "https://docs.python.org/3/library/unittest.html",
