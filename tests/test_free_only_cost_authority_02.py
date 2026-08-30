@@ -153,6 +153,42 @@ class TestFreeOnlyCostAuthority02(unittest.TestCase):
         self.assertIs(stale_definition.cost_policy, CostPolicy.PAID)
         self.assertIs(registered.cost_policy, CostPolicy.PAID)
 
+    def test_stricter_xkiro_cost_setting_is_not_downgraded_to_free(self) -> None:
+        registry = ProviderRegistry()
+        stricter_definition = ProviderDefinition(
+            provider_id="xkiro",
+            adapter_type="OPENAI_COMPATIBLE",
+            display_name="xKiro AI",
+            base_url="https://api.xkiro.com/v1",
+            credential_ref="ENV:XKIRO_API_KEY",
+            default_model="mistralai/mistral-large-2512",
+            cost_policy=CostPolicy.UNKNOWN,
+        )
+
+        registry.register_provider(stricter_definition)
+
+        registered = registry.get_provider("xkiro")
+        self.assertIsNotNone(registered)
+        self.assertIs(stricter_definition.cost_policy, CostPolicy.UNKNOWN)
+        self.assertIs(registered.cost_policy, CostPolicy.UNKNOWN)
+
+    def test_custom_provider_cost_setting_is_never_reclassified_by_builtin_floor(self) -> None:
+        registry = ProviderRegistry()
+        custom_definition = ProviderDefinition(
+            provider_id="my-provider",
+            adapter_type="OPENAI_COMPATIBLE",
+            display_name="My Provider",
+            base_url="https://example.com/v1",
+            default_model="model-1",
+            cost_policy=CostPolicy.PAID,
+        )
+
+        registry.register_provider(custom_definition)
+
+        registered = registry.get_provider("my-provider")
+        self.assertIsNotNone(registered)
+        self.assertIs(registered.cost_policy, CostPolicy.PAID)
+
     def test_thespark_is_not_reported_as_a_free_model(self) -> None:
         model_registry = ModelRegistry()
         free_keys = {
