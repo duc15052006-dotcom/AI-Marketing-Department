@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: full-hardening-v2
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   harden-and-certify:
@@ -34,103 +34,20 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
 
-      - name: Apply deterministic hardening patch once
-        id: patch
-        shell: bash
-        run: |
-          if grep -q 'STREAM_GENERATION_FAILED' runtime/engine.py; then
-            set +e
-            python scripts/full_hardening_apply.py > /tmp/hardening-r1.log 2>&1
-            r1_status=$?
-            set -e
-            cat /tmp/hardening-r1.log
-            if [ "$r1_status" -ne 0 ]; then
-              grep -q 'Unhandled exception during run' /tmp/hardening-r1.log || { echo "Unexpected R1 patch failure"; exit "$r1_status"; }
-            fi
-
-            python - <<'PY'
-          from pathlib import Path
-          p = Path('scripts/full_hardening_apply_r2.py')
-          text = p.read_text(encoding='utf-8')
-          text = text.replace(
-              '\\n        # Fallback to synchronous generate when no text delta sink is provided',
-              '\\n        # Synchronous generation path',
-          )
-          text = text.replace(
-              '\\n    def _render_history',
-              '\\n    def _generate_offline_conversational_fallback',
-          )
-          p.write_text(text, encoding='utf-8')
-          PY
-
-            set +e
-            python scripts/full_hardening_apply_r2.py > /tmp/hardening-r2.log 2>&1
-            r2_status=$?
-            set -e
-            cat /tmp/hardening-r2.log
-            if [ "$r2_status" -ne 0 ]; then
-              grep -q 'const safeDetail' /tmp/hardening-r2.log || { echo "Unexpected R2 patch failure"; exit "$r2_status"; }
-              python - <<'PY'
-          from pathlib import Path
-          p = Path('frontend/src/App.tsx')
-          text = p.read_text(encoding='utf-8')
-          old_detail = "        const safeDetail = err.message || 'Không thể nhận phản hồi từ backend.';\n"
-          new_detail = "        const safeDetail = err.safe_message || err.message || 'Không thể nhận phản hồi từ backend.';\n"
-          detail_count = text.count(old_detail)
-          if detail_count != 2:
-              raise RuntimeError(f'Expected 2 safeDetail boundaries, found {detail_count}')
-          text = text.replace(old_detail, new_detail)
-          old_state = "        setWorkflowStages((prev) => applyTerminalErrorToStages(prev));\n        setAgentStates((prev) => applyTerminalErrorToAgents(prev));\n"
-          new_state = "        setWorkflowStages((prev) => applyTerminalErrorToStages(prev, err));\n        setAgentStates((prev) => applyTerminalErrorToAgents(prev, err));\n"
-          state_count = text.count(old_state)
-          if state_count != 1:
-              raise RuntimeError(f'Expected 1 terminal reducer boundary, found {state_count}')
-          text = text.replace(old_state, new_state)
-          p.write_text(text, encoding='utf-8')
-          PY
-            fi
-            echo "applied=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "applied=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Align regression tests with hardened public contract
-        if: steps.patch.outputs.applied == 'true'
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('frontend/test/streamState.test.mjs')
-          text = p.read_text(encoding='utf-8')
-          old_title = "test('7. Mid-workflow failure: CMO_INITIAL and INTELLIGENCE remain COMPLETED, STRATEGIST becomes FAILED, later stages remain PENDING', () => {"
-          new_title = "test('7. Mid-workflow failure: completed stages stay COMPLETED, failing stage is FAILED, later stages are NOT_REACHED', () => {"
-          if text.count(old_title) != 1:
-              raise RuntimeError('streamState test 7 title boundary drift')
-          text = text.replace(old_title, new_title)
-          for stage in ('CREATIVE', 'PERFORMANCE', 'FINAL_CMO'):
-              old = f"  assert.equal(failedStages.find((s) => s.stage === '{stage}')?.status, 'PENDING');"
-              new = f"  assert.equal(failedStages.find((s) => s.stage === '{stage}')?.status, 'NOT_REACHED');"
-              if text.count(old) != 1:
-                  raise RuntimeError(f'streamState {stage} assertion boundary drift')
-              text = text.replace(old, new)
-          p.write_text(text, encoding='utf-8')
-
-          p = Path('frontend/test/streaming.test.mjs')
-          text = p.read_text(encoding='utf-8')
-          old = "  assert.ok(errorReceived.message.includes('PREMATURE_EOF_BEFORE_TERMINAL'));"
-          new = "  assert.equal(errorReceived.message, 'The native streaming transport failed.');\n  assert.ok(!errorReceived.message.includes('PREMATURE_EOF_BEFORE_TERMINAL'));"
-          if text.count(old) != 1:
-              raise RuntimeError('streaming transport-sanitization assertion boundary drift')
-          text = text.replace(old, new)
-          p.write_text(text, encoding='utf-8')
-          PY
+      - name: Apply reviewed residual hardening
+        run: python scripts/residual_hardening_v3.py
 
       - name: Compile production Python
         run: python -m compileall -q runtime chat app_api integrations tools connectors
 
-      - name: Focused hardening contract
-        run: pytest -q tests/test_prod_structured_provider_stream_error_01.py tests/test_full_hardening_v2.py
+      - name: Focused hardening contracts
+        run: |
+          pytest -q \
+            tests/test_prod_structured_provider_stream_error_01.py \
+            tests/test_full_hardening_v2.py \
+            tests/test_creative_performance_true_handoff.py \
+            tests/test_prod_truth_01_execution_truthfulness.py \
+            tests/test_prod_research_evidence_01a.py
 
       - name: Static truth and authority checks
         shell: bash
@@ -140,6 +57,7 @@ jobs:
           ! grep -R --line-number '"status": "RENDERED"' tools/adapters.py
           ! grep -R --line-number '"p_value": 0\.008' connectors/analytics_connector.py
           ! grep -R --line-number '"value": 3\.45' tools/adapters.py
+          ! grep -R --line-number 'PREMATURE_EOF_BEFORE_TERMINAL' frontend/src
           python - <<'PY'
           from runtime.agent_skills import PERMANENT_AGENT_IDS, get_agent_skill_contract
           assert PERMANENT_AGENT_IDS == ('cmo','intelligence','strategist','creative','performance')
@@ -163,60 +81,28 @@ jobs:
       - name: Diff whitespace validation
         run: git diff --check
 
-      - name: Commit production hardening batch
-        if: steps.patch.outputs.applied == 'true'
+      - name: Commit residual hardening batch
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/engine.py chat/engine.py app_api/server.py tools/adapters.py tools/tool_gateway.py connectors/analytics_connector.py frontend/src/App.tsx frontend/test/streamState.test.mjs frontend/test/streaming.test.mjs
+          git add \
+            runtime/engine.py runtime/queue.py chat/engine.py \
+            tests/test_prod_model_settings_01.py \
+            tests/test_prod_runtime_01_single_run_authority.py \
+            tests/test_prod_runtime_progress_01.py \
+            tests/test_prod_workflow_failure_semantics_01.py \
+            tests/test_prod_core_authority_01a.py \
+            tests/test_prod_truth_01_execution_truthfulness.py \
+            tests/test_prod_research_evidence_01a.py \
+            tests/test_creative_performance_true_handoff.py
           if ! git diff --cached --quiet; then
-            git commit -m "fix: full production hardening batch [hardening-applied]"
+            git commit -m "fix: close residual hardening regressions [residual-v3]"
             git push origin HEAD:phase/full-hardening-v2
           fi
 
-      - name: Full Python regression sweep with safe diagnostics
-        shell: bash
-        run: |
-          set +e
-          pytest -q tests --junitxml=/tmp/full-pytest.xml
-          status=$?
-          set -e
-          python - <<'PY'
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          xml_path = Path('/tmp/full-pytest.xml')
-          out = Path('ci_diagnostics/full_pytest_failure.txt')
-          out.parent.mkdir(parents=True, exist_ok=True)
-          failures = []
-          if xml_path.exists():
-              root = ET.parse(xml_path).getroot()
-              for case in root.iter('testcase'):
-                  child = case.find('failure')
-                  if child is None:
-                      child = case.find('error')
-                  if child is None:
-                      continue
-                  classname = case.attrib.get('classname', '')[:180]
-                  name = case.attrib.get('name', '')[:180]
-                  failure_type = child.attrib.get('type', child.tag)[:80]
-                  failures.append(f'{classname}::{name} | {failure_type}')
-          if failures:
-              out.write_text('\n'.join(sorted(set(failures))) + '\n', encoding='utf-8')
-          elif out.exists():
-              out.unlink()
-          PY
-          if [ "$status" -ne 0 ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A ci_diagnostics/full_pytest_failure.txt
-            if ! git diff --cached --quiet; then
-              git commit -m "ci: record safe full-pytest failing nodeids"
-              git push origin HEAD:phase/full-hardening-v2
-            fi
-            exit "$status"
-          fi
+      - name: Full Python regression sweep
+        run: pytest -q tests
 
       - name: Optional Rust/Tauri check
         shell: bash
@@ -227,5 +113,5 @@ jobs:
             echo "Checking Rust project at $cargo_dir"
             (cd "$cargo_dir" && cargo check && cargo test)
           else
-            echo "No Cargo.toml found in repository; Rust/Tauri validation requires packaged desktop source or Windows UAT."
+            echo "No Cargo.toml found in repository; native Tauri validation remains a Windows UAT requirement."
           fi
