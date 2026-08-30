@@ -1,6 +1,6 @@
 """Security and SSRF Protection Layer for Tool Gateway.
 
-Validates URLs, performs safe DNS pre-checks, prevents private-network SSRF access,
+Validates URLs, performs safe DNS resolution, prevents private-network SSRF access,
 rejects embedded credentials, handles IP normalization (including IPv4-mapped IPv6),
 and enforces content-size and protocol boundaries.
 """
@@ -90,7 +90,7 @@ class SecurityValidator:
             ip = ipaddress.ip_address(clean_ip_str)
             cls._verify_ip_safety(ip)
         except ValueError:
-            # Hostname is a domain name; perform DNS resolution pre-check
+            # Hostname is a domain name; perform a fail-closed DNS safety check.
             cls._verify_dns_resolution_safety(hostname_ascii)
 
         # 6. Optional Domain Whitelist Enforcement
@@ -134,19 +134,56 @@ class SecurityValidator:
             raise SecurityValidationError("SSRF_PRIVATE_NETWORK", f"Access to private IPv6 '{ip}' is blocked.")
 
     @classmethod
-    def _verify_dns_resolution_safety(cls, hostname: str) -> None:
-        """Resolve hostname via DNS and ensure none of the resolved IPs are private/loopback."""
-        try:
-            addr_info = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        except socket.gaierror:
-            # Unresolvable host; allow downstream HTTP client to handle DNS failure cleanly
-            return
+    def resolve_public_addresses(cls, hostname: str, port: Optional[int] = None):
+        """Resolve a hostname and return only after every result is proven public.
 
+        DNS resolution fails closed: an unresolvable hostname, an empty/invalid DNS
+        answer, or any private/local address is rejected before network dispatch.
+        Callers that later open sockets can reuse this result to avoid re-resolving.
+        """
+        try:
+            addr_info = socket.getaddrinfo(
+                hostname,
+                port,
+                socket.AF_UNSPEC,
+                socket.SOCK_STREAM,
+            )
+        except (socket.gaierror, OSError) as exc:
+            raise SecurityValidationError(
+                "DNS_RESOLUTION_FAILED",
+                f"Hostname '{hostname}' could not be resolved safely.",
+            ) from exc
+
+        if not addr_info:
+            raise SecurityValidationError(
+                "DNS_RESOLUTION_FAILED",
+                f"Hostname '{hostname}' returned no usable addresses.",
+            )
+
+        validated = []
         for entry in addr_info:
             sockaddr = entry[4]
+            if not sockaddr:
+                raise SecurityValidationError(
+                    "DNS_RESOLUTION_FAILED",
+                    f"Hostname '{hostname}' returned an invalid address record.",
+                )
+
             ip_str = sockaddr[0]
             try:
                 ip = ipaddress.ip_address(ip_str)
-                cls._verify_ip_safety(ip)
-            except ValueError:
-                continue
+            except ValueError as exc:
+                raise SecurityValidationError(
+                    "DNS_RESOLUTION_FAILED",
+                    f"Hostname '{hostname}' returned a non-IP address record.",
+                ) from exc
+
+            cls._verify_ip_safety(ip)
+            validated.append(entry)
+
+        return validated
+
+    @classmethod
+    def _verify_dns_resolution_safety(cls, hostname: str) -> None:
+        """Resolve hostname via DNS and ensure every resolved IP is public."""
+        cls.resolve_public_addresses(hostname, None)
