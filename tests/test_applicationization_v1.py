@@ -20,6 +20,7 @@ import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import Any, Dict, Tuple
 
 from app_api import server as app_server
 from app_api.server import APP_BACKEND, DepartmentAPIHandler

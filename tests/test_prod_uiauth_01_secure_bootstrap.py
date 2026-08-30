@@ -29,7 +29,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from app_api.server import (
     ALLOWED_LOCAL_ORIGINS,

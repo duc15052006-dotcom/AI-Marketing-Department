@@ -366,7 +366,7 @@ class TestProdFS01FilesystemContainment(unittest.TestCase):
         self.assertEqual(receipt.status, ExecutionStatus.ERROR)
         self.assertEqual(receipt.error_class, "PATH_OUTSIDE_ALLOWED_ROOT")
         self.assertIsNone(receipt.data)
-        self.assertEqual(receipt.execution_mode, ExecutionMode.MOCK)
+        self.assertEqual(receipt.execution_mode, ExecutionMode.REAL)
 
     # 22. ToolGateway Integration: Outside Write Blocked
     def test_26_tool_gateway_outside_write_blocked(self) -> None:

@@ -5,6 +5,8 @@ import json
 import unittest
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 from schemas.handoff import (
     PerformanceHandoffPayload,
     PreservationItem,
@@ -53,7 +55,7 @@ class TestPhase43C15RC3Architecture(unittest.TestCase):
 
     def test_c_performance_belongs_to_one_logical_agent(self):
         """Test C: Both passes belong to ONE Performance logical agent."""
-        perf_agent_path = Path(r"c:\AI-Marketing-Department\.agents\agents\performance\agent.md")
+        perf_agent_path = REPO_ROOT / ".agents" / "agents" / "performance" / "agent.md"
         perf_content = perf_agent_path.read_text(encoding="utf-8")
         self.assertIn("PERFORMANCE_LOGICAL_AGENT_COUNT = 1", perf_content)
         self.assertIn("PERFORMANCE_INTERNAL_PASS_COUNT = 2", perf_content)
@@ -168,7 +170,7 @@ class TestPhase43C15RC3Architecture(unittest.TestCase):
     def test_j_five_permanent_agent_count_remains_five(self):
         """Test J: Five permanent agent count remains exactly 5."""
         permanent_agents = ["cmo", "intelligence", "strategist", "creative", "performance"]
-        agent_dir = Path(r"c:\AI-Marketing-Department\.agents\agents")
+        agent_dir = REPO_ROOT / ".agents" / "agents"
         existing_agents = [p.name for p in agent_dir.iterdir() if p.is_dir()]
         for a in permanent_agents:
             self.assertIn(a, existing_agents)

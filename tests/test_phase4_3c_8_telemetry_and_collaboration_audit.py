@@ -22,6 +22,8 @@ class TestPhase43C8TelemetryAndCollaborationAudit(unittest.TestCase):
         self.base_dir = Path(__file__).resolve().parent.parent
         self.bench_dir = self.base_dir / "evaluations" / "benchmarks" / "phase4_3_unseen_ai_speaking"
         self.run_dir = self.bench_dir / "runs" / "phase4_3_v2" / "RUN-PHASE4-3-V2-LIVE-001"
+        if not self.run_dir.exists():
+            self.skipTest("generated live telemetry run is intentionally gitignored; run live acceptance separately")
 
     def test_raw_telemetry_exact_arithmetic_all_stages(self):
         """Verify prompt_tokens + completion_tokens + thoughts_tokens == total_tokens with delta=0 for all 6 stages."""
