@@ -70,10 +70,16 @@ class OutputValidationState:
 
 
 def parse_and_validate_agent_json(raw_text: str) -> tuple[str, Optional[Dict[str, Any]]]:
-    """Parse model text into structured dictionary, attempting bounded repair if markdown blocks exist."""
+    """Parse model text into a structured dictionary without inventing missing JSON.
+
+    REPAIRABLE is reserved for extracting an already-complete JSON object from
+    harmless markdown/prose wrappers. Truncated or structurally incomplete JSON
+    fails closed so a model/provider cutoff can never be converted into a
+    synthetic successful payload by appending guessed delimiters.
+    """
     cleaned = raw_text.strip()
 
-    # Try direct parse
+    # Try direct parse.
     try:
         data = json.loads(cleaned)
         if isinstance(data, dict):
@@ -81,7 +87,7 @@ def parse_and_validate_agent_json(raw_text: str) -> tuple[str, Optional[Dict[str
     except Exception:
         pass
 
-    # Try markdown code-fence extraction
+    # Extract an already-complete JSON object from a markdown code fence.
     match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
     if match:
         try:
@@ -91,7 +97,7 @@ def parse_and_validate_agent_json(raw_text: str) -> tuple[str, Optional[Dict[str
         except Exception:
             pass
 
-    # Try finding outermost braces
+    # Extract an already-complete outer JSON object surrounded by prose.
     start = raw_text.find("{")
     end = raw_text.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -102,20 +108,7 @@ def parse_and_validate_agent_json(raw_text: str) -> tuple[str, Optional[Dict[str
         except Exception:
             pass
 
-    # Try bounded unclosed JSON truncation repair
-    if start != -1:
-        truncated_candidate = raw_text[start:].strip()
-        # Remove trailing commas
-        truncated_candidate = re.sub(r",\s*$", "", truncated_candidate)
-        # Attempt closing missing braces/brackets
-        for suffix in ["}", "]}", "]}}", "}]}}", '"}]}}', '"}}}']:
-            try:
-                data = json.loads(truncated_candidate + suffix)
-                if isinstance(data, dict):
-                    return OutputValidationState.REPAIRABLE, data
-            except Exception:
-                continue
-
+    # Never append guessed braces/brackets/quotes to truncated model output.
     return OutputValidationState.INVALID, None
 
 
@@ -258,12 +251,13 @@ def invoke_agent(
             break
         else:
             last_error = f"MALFORMED_JSON_OUTPUT on attempt {attempt + 1}: Raw snippet: {response.content[:200]}"
-            # Append repair prompt for retry
+            # Append repair prompt for retry. The model must regenerate complete
+            # JSON; local code never guesses or closes a truncated structure.
             messages.append(ModelMessage(role=ModelRole.ASSISTANT, content=response.content))
             messages.append(
                 ModelMessage(
                     role=ModelRole.USER,
-                    content="Your previous response was not valid JSON. Output ONLY raw JSON matching the required schema with qualitative confidence ('LOW', 'MEDIUM', 'HIGH').",
+                    content="Your previous response was not valid complete JSON. Regenerate the full response and output ONLY raw JSON matching the required schema with qualitative confidence ('LOW', 'MEDIUM', 'HIGH').",
                 )
             )
 
