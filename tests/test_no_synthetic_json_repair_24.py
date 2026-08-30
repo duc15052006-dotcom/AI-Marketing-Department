@@ -1,3 +1,5 @@
+"""Regression coverage for fail-closed handling of truncated model JSON."""
+
 import unittest
 
 from integrations.models.invocation import OutputValidationState, parse_and_validate_agent_json
