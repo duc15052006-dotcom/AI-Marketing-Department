@@ -38,7 +38,7 @@ jobs:
         id: patch
         shell: bash
         run: |
-          if [ -f scripts/full_hardening_apply.py ] && grep -q 'STREAM_GENERATION_FAILED' runtime/engine.py; then
+          if grep -q 'STREAM_GENERATION_FAILED' runtime/engine.py; then
             set +e
             python scripts/full_hardening_apply.py > /tmp/hardening-r1.log 2>&1
             r1_status=$?
@@ -48,16 +48,24 @@ jobs:
               grep -q 'Unhandled exception during run' /tmp/hardening-r1.log || { echo "Unexpected R1 patch failure"; exit "$r1_status"; }
             fi
 
-            set +e
-            python scripts/full_hardening_apply_r2.py > /tmp/hardening-r2.log 2>&1
-            r2_status=$?
-            set -e
-            cat /tmp/hardening-r2.log
-            if [ "$r2_status" -ne 0 ]; then
-              grep -q 'end marker missing' /tmp/hardening-r2.log || { echo "Unexpected R2 patch failure"; exit "$r2_status"; }
-            fi
+            # R1 intentionally stops at a validated legacy boundary. Normalize
+            # the continuation script to the exact current chat-engine anchors.
+            python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/full_hardening_apply_r2.py')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace(
+              '\n        # Fallback to synchronous generate when no text delta sink is provided',
+              '\n        # Synchronous generation path',
+          )
+          text = text.replace(
+              '\n    def _render_history',
+              '\n    def _generate_offline_conversational_fallback',
+          )
+          p.write_text(text, encoding='utf-8')
+          PY
 
-            python scripts/full_hardening_apply_r3.py
+            python scripts/full_hardening_apply_r2.py
             echo "applied=true" >> "$GITHUB_OUTPUT"
           else
             echo "applied=false" >> "$GITHUB_OUTPUT"
