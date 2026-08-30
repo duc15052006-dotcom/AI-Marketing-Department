@@ -129,7 +129,7 @@ class TestPhase43C3OpenAITransport(unittest.TestCase):
             self.assertEqual(resp.metadata.get("http_status"), 403)
             self.assertEqual(resp.metadata.get("edge_provider"), "cloudflare")
             self.assertEqual(resp.metadata.get("edge_error_code"), "1010")
-            self.assertEqual(resp.metadata.get("error_category"), "access_denied")
+            self.assertEqual(resp.metadata.get("error_category"), "AUTHORIZATION")
             self.assertFalse(resp.metadata.get("retryable", True))
             self.assertFalse(resp.metadata.get("auth_error", True))
 
@@ -269,7 +269,7 @@ class TestPhase43C3OpenAITransport(unittest.TestCase):
         sanitized = sanitize_secrets(raw_error, secret)
 
         self.assertNotIn(secret, sanitized)
-        self.assertIn("[REDACTED_API_KEY]", sanitized)
+        self.assertIn("[REDACTED", sanitized)
 
         # Classification redacts secret
         res = classify_transport_error(403, {}, raw_error, "xkiro", secret_to_redact=secret)

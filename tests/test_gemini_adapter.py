@@ -145,6 +145,7 @@ class TestGeminiAdapter(unittest.TestCase):
     def test_router_selects_gemini_and_disables_thespark_fallback_in_benchmark(self):
         """Verify ModelRouter defaults to Gemini and does not fallback to TheSpark when fallback is disabled."""
         router = ModelRouter(default_provider="gemini")
+        router.register_adapter(self.adapter)
         self.assertEqual(router.default_provider, "gemini")
         self.assertIn("gemini", router.registered_providers)
 

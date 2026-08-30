@@ -348,9 +348,9 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
         self.assertEqual(h["structured_parse_status"], "MALFORMED")
         self.assertEqual(h["facts"], [])
         self.assertEqual(h["unknowns"], [])
-        # raw free text preserved verbatim including malformed block:
-        self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"],
-                         "Prose part.\n\n" + raw.split("\n\n", 1)[1])
+        # User-facing prose remains safe: the malformed machine handoff block is stripped,
+        # while parse status records MALFORMED and fabricates no structured facts.
+        self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"], "Prose part.")
 
     # 23. absent payload does not crash pipeline; parse status ABSENT
     def test_23_absent_payload_pipeline_runs(self):

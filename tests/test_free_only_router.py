@@ -30,6 +30,7 @@ from integrations.models.thespark_adapter import TheSparkProviderAdapter
 class TestFreeOnlyRouter(unittest.TestCase):
     def setUp(self):
         self.router = ModelRouter(default_provider="gemini", free_only_mode=True)
+        self.router.register_adapter(GeminiProviderAdapter(api_key="test-gemini-key"))
 
     def test_gemini_selected_in_free_only_mode(self):
         """Verify Gemini (FREE_TIER_ALLOWED) executes normally in free-only mode."""

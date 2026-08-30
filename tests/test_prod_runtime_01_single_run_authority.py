@@ -364,8 +364,9 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
 
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
         self.assertEqual(artifact.status, RuntimeStatus.FAILED)
-        self.assertEqual(final_cmo.get("status"), "FAILED")
-        self.assertIn("PREVIOUS_STAGE_FAILED", final_cmo.get("reason", ""))
+        self.assertEqual(final_cmo.get("status"), "NOT_REACHED")
+        self.assertEqual(final_cmo.get("failed_stage"), "STRATEGIST")
+        self.assertNotIn("PREVIOUS_STAGE_FAILED", final_cmo.get("reason", ""))
 
     def test_12_unhandled_exception_translates_to_deterministic_terminal_failure(self) -> None:
         """An unhandled exception during stage execution results in FAILED status, never masked."""

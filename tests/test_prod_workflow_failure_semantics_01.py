@@ -76,12 +76,12 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
         self.assertNotIn("PREVIOUS_STAGE_FAILED", str(cmo_final.get("reason")))
 
         # 5. Progress Events: Zero FINAL_CMO STAGE_STARTED events!
-        final_cmo_started = [e for e in progress_events if e.get("stage") == "FINAL_CMO" and e.get("event_type") == "STAGE_STARTED"]
+        final_cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "FINAL_CMO" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]
         self.assertEqual(len(final_cmo_started), 0, "FINAL_CMO STAGE_STARTED must be 0 on early failure")
 
         # CMO_INITIAL must have STAGE_STARTED and RUN_FAILED
-        cmo_started = [e for e in progress_events if e.get("stage") == "CMO_INITIAL" and e.get("event_type") == "STAGE_STARTED"]
-        cmo_failed = [e for e in progress_events if e.get("stage") == "CMO_INITIAL" and e.get("event_type") == "RUN_FAILED"]
+        cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "CMO_INITIAL" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]
+        cmo_failed = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "CMO_INITIAL" and getattr(e.event_type, "value", e.event_type) == "RUN_FAILED"]
         self.assertEqual(len(cmo_started), 1)
         self.assertEqual(len(cmo_failed), 1)
 
@@ -121,7 +121,7 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
         self.assertEqual(cmo_final.get("error"), "STRATEGIST_GATEWAY_RATE_LIMIT")
         self.assertNotIn("PREVIOUS_STAGE_FAILED", str(cmo_final.get("error")))
 
-        final_cmo_started = [e for e in progress_events if e.get("stage") == "FINAL_CMO" and e.get("event_type") == "STAGE_STARTED"]
+        final_cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "FINAL_CMO" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]
         self.assertEqual(len(final_cmo_started), 0)
 
 

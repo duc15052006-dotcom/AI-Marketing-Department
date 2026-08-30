@@ -21,6 +21,8 @@ class TestPhase43C7FiveAgentV2LiveCollaboration(unittest.TestCase):
         self.base_dir = Path(__file__).resolve().parent.parent
         self.bench_dir = self.base_dir / "evaluations" / "benchmarks" / "phase4_3_unseen_ai_speaking"
         self.run_dir = self.bench_dir / "runs" / "phase4_3_v2" / "RUN-PHASE4-3-V2-LIVE-001"
+        if not self.run_dir.exists():
+            self.skipTest("generated live benchmark run is intentionally gitignored; run live acceptance separately")
 
     def test_live_run_manifest_and_fingerprint_integrity(self):
         """Verify the live run manifest exists, is valid, and matches execution_generation."""

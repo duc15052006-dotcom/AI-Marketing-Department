@@ -528,7 +528,7 @@ class TestFailureShortCircuit(unittest.TestCase):
         self.assertNotIn("performance", stages_called)
 
     def test_P_performance_failure_stops_final_cmo(self) -> None:
-        """If Performance fails, Final CMO still runs (governed synthesis per contract)."""
+        """If Performance fails, Final CMO is not executed; failure remains fail-closed."""
         gw = MockScriptedGateway(fail_stage="performance")
         rt = _build_runtime(gateway=gw)
 
@@ -543,8 +543,10 @@ class TestFailureShortCircuit(unittest.TestCase):
             objective="Fail at performance", business_id="BIZ_001"
         )
 
-        # Final CMO is governed and always runs per the canonical contract
-        self.assertTrue(final_cmo_called[0])
+        # An unreached Final CMO must not start after a failed prerequisite stage.
+        self.assertFalse(final_cmo_called[0])
+        self.assertEqual(final_out.get("status"), "NOT_REACHED")
+        self.assertEqual(final_out.get("failed_stage"), "PERFORMANCE")
 
 
 # ===========================================================================
