@@ -47,6 +47,18 @@ def _hash_approval_reference(reference: Any) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _hash_receipt_data(data: Any) -> str:
+    """Hash the receipt's current data independently of its stored result_hash."""
+    normalized = _normalize_for_hashing(data)
+    raw = json.dumps(
+        normalized,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 class MemoryWriteCandidate(BaseModel):
     """Candidate memory entry proposed at the conclusion of a supervised run."""
     memory_type: MemoryType
@@ -173,6 +185,7 @@ class DepartmentRunArtifact(BaseModel):
                 "chat_id": str(dump.get("chat_id") or ""),
                 "approval_reference_hash": _hash_approval_reference(dump.get("approval_reference")),
                 "result_hash": str(dump.get("result_hash", "")),
+                "data_integrity_hash": _hash_receipt_data(dump.get("data")),
             }
         elif isinstance(r, dict):
             return {
@@ -190,6 +203,7 @@ class DepartmentRunArtifact(BaseModel):
                 "chat_id": str(r.get("chat_id") or ""),
                 "approval_reference_hash": _hash_approval_reference(r.get("approval_reference")),
                 "result_hash": str(r.get("result_hash", "")),
+                "data_integrity_hash": _hash_receipt_data(r.get("data")),
             }
         return {
             "execution_id": str(getattr(r, "execution_id", str(r))),
@@ -203,6 +217,7 @@ class DepartmentRunArtifact(BaseModel):
             "chat_id": str(getattr(r, "chat_id", "") or ""),
             "approval_reference_hash": _hash_approval_reference(getattr(r, "approval_reference", "")),
             "result_hash": str(getattr(r, "result_hash", "")),
+            "data_integrity_hash": _hash_receipt_data(getattr(r, "data", None)),
         }
 
     def _claim_verification_integrity_representation(self, c: Any) -> Dict[str, Any]:
