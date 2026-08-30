@@ -231,7 +231,8 @@ class TestDefect1RunPinnedFailOpen(unittest.TestCase):
         # After fix: 1 call only (no retry), TypeError propagates as error
         self.assertEqual(gw.call_count, 0)  # generate() never succeeded
         self.assertIsNotNone(err)
-        self.assertIn("TypeErrorGateway", err)
+        self.assertEqual(err, "RUNTIME_INTERNAL_ERROR")
+        self.assertNotIn("TypeErrorGateway", err)
 
     def test_D_settings_changed_after_run_start_cannot_drift(self) -> None:
         """D. Provider/model/settings changed AFTER run start → cannot drift (fail-closed)."""
@@ -528,7 +529,7 @@ class TestFailureShortCircuit(unittest.TestCase):
         self.assertNotIn("performance", stages_called)
 
     def test_P_performance_failure_stops_final_cmo(self) -> None:
-        """If Performance fails, Final CMO still runs (governed synthesis per contract)."""
+        """If Performance fails, Final CMO is NOT_REACHED and never executes."""
         gw = MockScriptedGateway(fail_stage="performance")
         rt = _build_runtime(gateway=gw)
 
@@ -543,8 +544,11 @@ class TestFailureShortCircuit(unittest.TestCase):
             objective="Fail at performance", business_id="BIZ_001"
         )
 
-        # Final CMO is governed and always runs per the canonical contract
-        self.assertTrue(final_cmo_called[0])
+        self.assertFalse(final_cmo_called[0])
+        self.assertEqual(ctx.status, RuntimeStatus.FAILED)
+        self.assertEqual(final_out.get("status"), "NOT_REACHED")
+        self.assertEqual(final_out.get("failed_stage"), "PERFORMANCE")
+        self.assertNotIn("PREVIOUS_STAGE_FAILED", str(final_out))
 
 
 # ===========================================================================
@@ -864,7 +868,8 @@ class TestTypeErrorFallbackRemoval(unittest.TestCase):
         # call_count = 0 because generate() was never successfully called
         self.assertEqual(gw.call_count, 0)
         self.assertIsNotNone(err)
-        self.assertIn("TypeErrorGateway", err)
+        self.assertEqual(err, "RUNTIME_INTERNAL_ERROR")
+        self.assertNotIn("TypeErrorGateway", err)
 
 
 # ===========================================================================

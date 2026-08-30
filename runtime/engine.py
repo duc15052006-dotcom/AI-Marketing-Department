@@ -1942,6 +1942,17 @@ class FiveAgentDepartmentRuntime:
                 and eval_origin == "REAL"
             )
 
+            # An explicit structured INCONCLUSIVE verdict is authoritative.
+            # It is stronger than prose and must block deployment even when
+            # the Performance prose itself omitted an inconclusive marker.
+            if eval_status == "INCONCLUSIVE":
+                blocked += 1
+                claim_actions["performance_evaluation"] = "HOLD"
+                blocking_reasons.append(
+                    "PERFORMANCE_EVALUATION_INCONCLUSIVE: Structured Performance "
+                    "evaluation is INCONCLUSIVE; deployment cannot be authorized."
+                )
+
             if not has_valid_observed_result:
                 phantom_reasons = self._scan_phantom_performance_claims(
                     final_text or "",
@@ -2231,6 +2242,15 @@ class FiveAgentDepartmentRuntime:
             context.create_checkpoint(pending_approval_id=receipt.execution_id)
         elif receipt.status == ExecutionStatus.SUCCESS:
             context.status = RuntimeStatus.RUNNING
+            context.create_checkpoint()
+        elif receipt.status in (ExecutionStatus.ERROR, ExecutionStatus.TIMEOUT, ExecutionStatus.BLOCKED):
+            # Approval is authorization, not proof of execution.  Once an
+            # approved action actually fails, leave WAITING_FOR_APPROVAL and
+            # surface a truthful terminal run state instead of waiting forever.
+            context.status = RuntimeStatus.FAILED
+            context.risk_flags.append(
+                f"PUBLISH_ACTION_FAILED: {receipt.error_class or receipt.status.value}"
+            )
             context.create_checkpoint()
 
         return receipt

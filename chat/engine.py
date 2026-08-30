@@ -146,6 +146,29 @@ class ChatConversationEngine:
 
         doc_context_str = "\n\n".join(doc_context_parts) if doc_context_parts else ""
 
+        # Narrow deterministic local shortcuts are allowed only when there is
+        # no document-analysis request and no attachment context.  They make no
+        # external-action or research claims and therefore do not masquerade as
+        # provider success.
+        offline_fallback = None
+        if not is_document_analysis and not doc_context_parts:
+            offline_fallback = self._generate_offline_conversational_fallback(user_message, doc_context_str)
+        if offline_fallback is not None:
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_COMPLETED,
+                    message="Hoàn tất phản hồi hội thoại cục bộ",
+                    metadata={"execution_mode": "DETERMINISTIC_LOCAL"},
+                )
+            return {
+                "success": True,
+                "content": offline_fallback,
+                "provider": "local_deterministic",
+                "model_name": "none",
+                "mode": "GENERAL_CONVERSATION",
+                "execution_mode": "DETERMINISTIC_LOCAL",
+            }
+
         # Streaming execution path
         if text_delta_sink is not None:
             chunks: List[str] = []
@@ -248,7 +271,7 @@ class ChatConversationEngine:
 
         # Basic greetings
         if norm in ("xin chao", "chao", "chao ban", "hello", "hi", "hey"):
-            return "Xin chào! Tôi là trợ lý AI thuộc phòng Marketing. Tôi có thể giúp bạn trò chuyện, giải đáp thắc mắc, phân tích tài liệu hoặc khởi chạy các chiến dịch tiếp thị khi bạn cần."
+            return "Xin chào! Tôi là trợ lý AI thuộc phòng Marketing. Tôi có thể giúp bạn trò chuyện, giải đáp thắc mắc, phân tích tài liệu và lập kế hoạch marketing. Các hành động bên ngoài chỉ được thực hiện khi có công cụ được kết nối và quyền cho phép phù hợp."
 
         # Identity & capability
         if norm in ("ban la ai", "who are you", "ban ten gi"):

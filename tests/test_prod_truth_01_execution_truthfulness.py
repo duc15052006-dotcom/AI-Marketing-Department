@@ -261,7 +261,7 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
         receipt_valid = self.tool_gateway.execute(req_valid)
         self.assertEqual(receipt_valid.status, ExecutionStatus.SUCCESS)
         self.assertEqual(receipt_valid.data["roas"], 4.0)
-        self.assertEqual(receipt_valid.execution_mode, ExecutionMode.MOCK)
+        self.assertEqual(receipt_valid.execution_mode, ExecutionMode.REAL)
 
     def test_10_hardcoded_attribution_sample_is_not_real_evidence(self):
         """10. Hardcoded attribution/experiment sample data does not become REAL empirical evidence."""
@@ -270,15 +270,15 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
 
         req_attr = ToolRequest(agent_id="performance", capability_id="attribution_data_access", parameters={})
         rec_attr = self.tool_gateway.execute(req_attr)
-        self.assertEqual(rec_attr.status, ExecutionStatus.SUCCESS)
-        self.assertEqual(rec_attr.execution_mode, ExecutionMode.MOCK)
+        self.assertEqual(rec_attr.status, ExecutionStatus.ERROR)
         self.assertNotEqual(rec_attr.execution_mode, ExecutionMode.REAL)
+        self.assertIsNone(rec_attr.data)
 
         req_stat = ToolRequest(agent_id="performance", capability_id="experiment_result_analysis", parameters={})
         rec_stat = self.tool_gateway.execute(req_stat)
-        self.assertEqual(rec_stat.status, ExecutionStatus.SUCCESS)
-        self.assertEqual(rec_stat.execution_mode, ExecutionMode.MOCK)
+        self.assertEqual(rec_stat.status, ExecutionStatus.ERROR)
         self.assertNotEqual(rec_stat.execution_mode, ExecutionMode.REAL)
+        self.assertIsNone(rec_stat.data)
 
     # -------------------------------------------------------------------------
     # 3. CONTEXT COMPILER DESERIALIZATION & EPISTEMIC TIER COMPILATION

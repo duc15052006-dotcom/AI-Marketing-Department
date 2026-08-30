@@ -213,6 +213,12 @@ class RunManager:
                     item.status = RunQueueStatus.RUNNING
                 elif ctx.status == RuntimeStatus.PAUSED:
                     item.status = RunQueueStatus.PAUSED
+                elif ctx.status == RuntimeStatus.FAILED:
+                    item.status = RunQueueStatus.FAILED
+                elif ctx.status == RuntimeStatus.CANCELLED:
+                    item.status = RunQueueStatus.CANCELLED
+                elif ctx.status == RuntimeStatus.COMPLETED:
+                    item.status = RunQueueStatus.COMPLETED
 
     def get_run(self, run_id: str) -> Optional[QueueItem]:
         with self._lock:

@@ -746,7 +746,8 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         )
         self.assertIsNone(content)
         self.assertIsNotNone(err)
-        self.assertIn("TypeErrorModelGateway", err)
+        self.assertEqual(err, "RUNTIME_INTERNAL_ERROR")
+        self.assertNotIn("TypeErrorModelGateway", err)
 
     # 46. Supplying real progress sink produces valid progress events
     def test_46_progress_sink_receives_clean_events_during_full_workflow(self) -> None:

@@ -737,7 +737,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         mgr._stop_event.set()
 
     def test_41_queue_approval_resume_returns_to_running(self) -> None:
-        """After approval is registered and run resumed, queue item returns to RUNNING."""
+        """Approval authorizes execution but a missing real publisher fails truthfully."""
         rt = _build_test_runtime()
         mgr = RunManager(runtime=rt, max_workers=0)
         rid = rt.reserve_run_id()
@@ -755,11 +755,12 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         ok, appr_rec, _ = policy.approve_pending_action(pending.pending_approval_id, approved_by="Operator")
         self.assertTrue(ok)
 
-        # Resume action
+        # Approval is only authorization.  The default publisher has no
+        # real connector, so execution must fail closed rather than fake success.
         rec = rt.request_publish_action(ctx, platform="linkedin", approval_token=appr_rec.approval_token)
-        self.assertEqual(rec.status, ExecutionStatus.SUCCESS)
-        self.assertEqual(ctx.status, RuntimeStatus.RUNNING)
-        self.assertEqual(mgr.get_run(rid).status, RunQueueStatus.RUNNING)
+        self.assertEqual(rec.status, ExecutionStatus.ERROR)
+        self.assertEqual(ctx.status, RuntimeStatus.FAILED)
+        self.assertEqual(mgr.get_run(rid).status, RunQueueStatus.FAILED)
         mgr._stop_event.set()
 
     def test_42_gateway_fallback_candidate_b_executes_after_timeout(self) -> None:

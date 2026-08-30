@@ -323,8 +323,8 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         assets = ctx.working_state["creative_spec"]["asset_receipts"]
         self.assertEqual(len(assets), 1)
         self.assertEqual(assets[0]["capability_id"], "image_generation")
-        self.assertEqual(assets[0]["status"], "SUCCESS")
-        self.assertIn(assets[0]["execution_mode"], ("REAL", "MOCK", "SANDBOX"))
+        self.assertEqual(assets[0]["status"], "ERROR")
+        self.assertNotEqual(assets[0]["execution_mode"], "REAL")
         perf_prompt = prompts_for(gw, "performance")[-1]
         self.assertIn(f"asset_receipt: {assets[0]['execution_id']}", perf_prompt)
         self.assertIn(f"mode={assets[0]['execution_mode']}", perf_prompt)

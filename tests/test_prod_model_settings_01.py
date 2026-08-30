@@ -941,6 +941,7 @@ class TestProdModelSettings01(unittest.TestCase):
     ROTATION_V1 = "ACTIVE_RUN_KEY_V1"
     ROTATION_V2 = "ACTIVE_RUN_KEY_V2"
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_41_windows_dpapi_failure_fails_closed(self):
         """Verify a Windows DPAPI encryption failure fails closed: set_secret raises
         and NO vault file is persisted through any weaker fallback."""
@@ -978,6 +979,7 @@ class TestProdModelSettings01(unittest.TestCase):
         ref = mem.set_secret("di_test", "v")
         self.assertEqual(mem.get_secret(ref), "v")
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_43_vault_corruption_fails_closed(self):
         """Tampered ciphertext / truncated vault / invalid structure must raise
         VaultCorruptionError; never empty-string success or fallback recovery."""
@@ -1008,6 +1010,7 @@ class TestProdModelSettings01(unittest.TestCase):
         with self.assertRaises(VaultCorruptionError):
             self.secret_store.get_secret(ref)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_44_plaintext_sentinel_absent_from_persisted_files(self):
         """Inspect ACTUAL files written by the test: the sentinel must appear
         exactly 0 times in model_settings.json and secrets.vault bytes."""
@@ -1434,7 +1437,7 @@ class TestProdModelSettings01(unittest.TestCase):
         access immediately, RUN-1 keeps resolving its pinned V1."""
         # Isolated manager/registry/gateway stack for this scenario.
         td_vault = Path(self.test_dir) / "del_probe.vault"
-        probe_store = SecureSecretStore(vault_path=td_vault)
+        probe_store = SecureSecretStore(vault_path=td_vault) if sys.platform == "win32" else InMemorySecretStore()
         from integrations.models.registry import ProviderRegistry as _PR
         registry = _PR(secret_store=probe_store)
         gateway = UniversalModelGateway(provider_registry=registry, free_only_mode=True)
@@ -1874,7 +1877,7 @@ class TestProdModelSettings01(unittest.TestCase):
 
     def _aliasing_stack(self, url_a, url_b, order_run1_first):
         """Shared scenario: same credential_ref, ONLY base_url changes mid-flight."""
-        store = SecureSecretStore(vault_path=Path(self.test_dir) / f"alias_{order_run1_first}.vault")
+        store = SecureSecretStore(vault_path=Path(self.test_dir) / f"alias_{order_run1_first}.vault") if sys.platform == "win32" else InMemorySecretStore()
         registry = ProviderRegistry(secret_store=store)
         gateway = UniversalModelGateway(provider_registry=registry, free_only_mode=True)
         manager = ModelSettingsManager(
@@ -2007,7 +2010,7 @@ class TestProdModelSettings01(unittest.TestCase):
         d1 = ProviderDefinition(provider_id="evict_prov", adapter_type="OPENAI_COMPATIBLE",
                                 base_url="https://api.e1.test/v1", default_model="m1",
                                 credential_ref="PLACEHOLDER_V1")
-        vault = SecureSecretStore(vault_path=Path(self.test_dir) / "evict.vault")
+        vault = SecureSecretStore(vault_path=Path(self.test_dir) / "evict.vault") if sys.platform == "win32" else InMemorySecretStore()
         ref_v1 = vault.set_secret("evict_prov", "k-v1")
         ref_v2 = vault.set_secret("evict_prov", "k-v2")
         d1 = ProviderDefinition(provider_id="evict_prov", adapter_type="OPENAI_COMPATIBLE",
@@ -2268,7 +2271,7 @@ class TestProdModelSettings01(unittest.TestCase):
 
     def _committed_ab_stack(self):
         """Committed state: providers A+B, global A, fallback B."""
-        store = SecureSecretStore(vault_path=Path(self.test_dir) / f"rb_{id(self)}.vault")
+        store = SecureSecretStore(vault_path=Path(self.test_dir) / f"rb_{id(self)}.vault") if sys.platform == "win32" else InMemorySecretStore()
         registry = ProviderRegistry(secret_store=store)
         gateway = UniversalModelGateway(provider_registry=registry, free_only_mode=True)
         manager = ModelSettingsManager(
@@ -2439,6 +2442,7 @@ class TestProdModelSettings01(unittest.TestCase):
 
     # ---- Vault integrity -------------------------------------------------
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_87_zero_byte_existing_vault_fails_closed(self):
         vault_path = Path(self.test_dir) / "zero.vault"
         vault_path.write_bytes(b"")
@@ -2450,6 +2454,7 @@ class TestProdModelSettings01(unittest.TestCase):
         # The corrupt file was NOT silently reset or expanded into a valid vault.
         self.assertEqual(vault_path.read_bytes(), b"")
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_88_malformed_encrypted_vault_fails_closed(self):
         import os as _os
         vault_path = Path(self.test_dir) / "random.vault"
@@ -2458,6 +2463,7 @@ class TestProdModelSettings01(unittest.TestCase):
         with self.assertRaises(VaultCorruptionError):
             store.get_secret("STORE:whatever")
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_89_corrupt_vault_preserved_after_failed_operation(self):
         vault_path = self.vault_path
         ref = self.secret_store.set_secret("preserve_prov", "keep-me")
@@ -2731,7 +2737,7 @@ class TestProdModelSettings01(unittest.TestCase):
         thread.start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/v1"
-            store = SecureSecretStore(vault_path=Path(self.test_dir) / "fb.vault")
+            store = SecureSecretStore(vault_path=Path(self.test_dir) / "fb.vault") if sys.platform == "win32" else InMemorySecretStore()
             registry = ProviderRegistry(secret_store=store)
             gateway = UniversalModelGateway(provider_registry=registry, free_only_mode=True)
             manager = ModelSettingsManager(settings_file_path=Path(self.test_dir) / "fb.json",
@@ -2760,7 +2766,7 @@ class TestProdModelSettings01(unittest.TestCase):
     def test_107_all_candidates_policy_blocked_means_no_execution(self):
         """If EVERY candidate violates cost policy, the final result must be a
         policy violation and NO model execution may occur."""
-        store = SecureSecretStore(vault_path=Path(self.test_dir) / "allblock.vault")
+        store = SecureSecretStore(vault_path=Path(self.test_dir) / "allblock.vault") if sys.platform == "win32" else InMemorySecretStore()
         registry = ProviderRegistry(secret_store=store)
         gateway = UniversalModelGateway(provider_registry=registry, free_only_mode=True)
         manager = ModelSettingsManager(settings_file_path=Path(self.test_dir) / "allblock.json",

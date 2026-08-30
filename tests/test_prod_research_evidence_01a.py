@@ -40,12 +40,12 @@ class TestProdResearchEvidence01AMockPath(unittest.TestCase):
     """PROD-RESEARCH-PRODUCTION-MOCK-PATH-01: Verify production mock path is eliminated."""
 
     def test_old_search_adapter_returns_mock(self) -> None:
-        """The original SearchAdapter still returns MOCK (for backward compat in tests)."""
+        """Legacy SearchAdapter fails closed and never fabricates research evidence."""
         adapter = SearchAdapter()
         result = adapter.execute("web_search", {"query": "test"})
-        self.assertTrue(result.success)
+        self.assertFalse(result.success)
         self.assertEqual(result.execution_mode, ExecutionMode.MOCK)
-        self.assertIn("example.com", str(result.data))
+        self.assertNotIn("example.com", str(result.data))
 
     def test_observation_search_adapter_delegates_to_gateway(self) -> None:
         """ObservationSearchAdapter delegates to observation ToolGateway."""
@@ -219,7 +219,8 @@ class TestProdResearchEvidence01AMockTruth(unittest.TestCase):
         """Old mock adapter fabricates example.com URLs. New adapter delegates to real backends."""
         old = SearchAdapter()
         old_result = old.execute("web_search", {"query": "test"})
-        self.assertIn("example.com", str(old_result.data))
+        self.assertFalse(old_result.success)
+        self.assertNotIn("example.com", str(old_result.data))
 
         new = ObservationSearchAdapter()
         mock_result = MockObservationResult(
