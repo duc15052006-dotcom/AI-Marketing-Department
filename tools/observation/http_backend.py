@@ -15,6 +15,7 @@ import bs4
 import httpx
 import trafilatura
 from tools.gateway.contracts import CostClass, ToolError
+from tools.gateway.http_transport import PinnedDNSHTTPTransport
 from tools.gateway.security import SecurityValidator, SecurityValidationError
 from tools.observation.models import (
     ContentTrustLevel,
@@ -155,6 +156,8 @@ class HttpStaticBackend:
                 timeout=req_timeout,
                 follow_redirects=False,
                 headers=headers,
+                transport=PinnedDNSHTTPTransport(),
+                trust_env=False,
             ) as client:
                 while redirect_count <= self.max_redirects:
                     response = client.get(current_url)
@@ -259,6 +262,16 @@ class HttpStaticBackend:
                         retryable=False,
                     )
 
+        except SecurityValidationError as e:
+            # The DNS-pinned transport re-validates at the actual connection
+            # boundary, so rebinding from public to private remains a security
+            # rejection rather than being mislabeled as a generic network error.
+            return None, ToolError(
+                error_code=e.code,
+                message=e.message,
+                backend_used=self.BACKEND_ID,
+                retryable=False,
+            )
         except httpx.TimeoutException:
             return None, ToolError(
                 error_code="TIMEOUT",
