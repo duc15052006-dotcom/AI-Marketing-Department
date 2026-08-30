@@ -30,9 +30,6 @@ jobs:
           @'
           from pathlib import Path
 
-          engine = Path('runtime/engine.py')
-          lines = engine.read_text(encoding='utf-8').splitlines()
-
           def one_index(items, exact, start=0, end=None):
               stop = len(items) if end is None else end
               hits = [i for i in range(start, stop) if items[i] == exact]
@@ -40,24 +37,22 @@ jobs:
                   raise SystemExit(f'expected exactly one line {exact!r}, found {len(hits)}')
               return hits[0]
 
+          engine = Path('runtime/engine.py')
+          lines = engine.read_text(encoding='utf-8').splitlines()
           fn = one_index(lines, '    def _evaluate_final_authorization(')
           fn_end = one_index(lines, '    @staticmethod', start=fn + 1)
-
           blocked_idx = one_index(lines, '        blocked = 0', start=fn, end=fn_end)
           lines.insert(blocked_idx + 1, '        performance_inconclusive_blocked = False')
           fn_end += 1
-
           detector_idx = one_index(lines, '        if self._detect_performance_inconclusive(perf_out):', start=fn, end=fn_end)
           detector_block_idx = one_index(lines, '            blocked += 1', start=detector_idx, end=detector_idx + 4)
           lines.insert(detector_block_idx + 1, '            performance_inconclusive_blocked = True')
           fn_end += 1
-
           structural_idx = one_index(lines, '            if perf_handoff.get("performance_inconclusive"):', start=fn, end=fn_end)
           exec_idx = one_index(lines, '            execution_state = str(perf_handoff.get("experiment_execution_state", "EXPERIMENT_PROPOSED")).upper()', start=structural_idx, end=fn_end)
           lines.insert(exec_idx, '                performance_inconclusive_blocked = True')
           lines.insert(exec_idx + 1, '                claim_actions["performance"] = "HOLD"')
           fn_end += 2
-
           eval_origin_idx = one_index(lines, '            eval_origin = str(perf_handoff.get("evaluation_data_origin", "NO_DATA")).upper()', start=structural_idx, end=fn_end)
           new_block = [
               '',
@@ -85,9 +80,19 @@ jobs:
           ]
           tlines[approval + 1:approval + 1] = assertions
           test.write_text('\n'.join(tlines) + '\n', encoding='utf-8')
+
+          adv = Path('tests/test_collaboration_adversarial_final.py')
+          alines = adv.read_text(encoding='utf-8').splitlines()
+          j1 = one_index(alines, '    def test_J1_checkpoint_preserves_unknown_and_inconclusive_state(self):')
+          j2 = one_index(alines, '    def test_J2_checkpoint_preserves_mock_execution_mode(self):', start=j1 + 1)
+          legacy = one_index(alines, '            "performance": ("Performance evaluation.", {"performance_inconclusive": True}),', start=j1, end=j2)
+          alines[legacy] = '            "performance": ("Performance evaluation.", {"evaluation": {"evaluation_status": "INCONCLUSIVE"}}),'
+          old_assert = one_index(alines, '        self.assertTrue(perf_handoff.get("performance_inconclusive"))', start=j1, end=j2)
+          alines[old_assert] = '        self.assertEqual(perf_handoff.get("evaluation_status"), "INCONCLUSIVE")'
+          adv.write_text('\n'.join(alines) + '\n', encoding='utf-8')
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m py_compile runtime/engine.py tests/test_creative_performance_true_handoff.py
+          python -m py_compile runtime/engine.py tests/test_creative_performance_true_handoff.py tests/test_collaboration_adversarial_final.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -109,7 +114,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/engine.py tests/test_creative_performance_true_handoff.py
+          git add runtime/engine.py tests/test_creative_performance_true_handoff.py tests/test_collaboration_adversarial_final.py
           if (git diff --cached --quiet) { exit 0 }
           git commit -m "fix: block structurally inconclusive performance evaluation"
           git push origin HEAD:fix/performance-inconclusive-auth-14
