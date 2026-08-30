@@ -182,6 +182,7 @@ from integrations.models.settings_manager import (
     ModelSettingsValidationError,
     StaleSettingsRevisionError,
 )
+from integrations.models.provider_auth import provider_requires_api_key
 from tools.capabilities import CapabilityRegistry, RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import (
@@ -1236,9 +1237,15 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 )
                 mgr = APP_BACKEND.settings_manager
                 has_cred = mgr._secret_store.has_secret(pdef.credential_ref)
+                requires_key = provider_requires_api_key(pdef.adapter_type, pdef.base_url)
                 safe = ModelSettingsManager.sanitize_provider_response(pdef)
                 safe["has_credential"] = has_cred
-                safe["is_configured"] = pdef.enabled and has_cred and bool(pdef.default_model)
+                safe["requires_api_key"] = requires_key
+                safe["is_configured"] = (
+                    pdef.enabled
+                    and bool(pdef.default_model)
+                    and (has_cred or not requires_key)
+                )
                 safe["settings_revision"] = mgr.get_settings().settings_revision
                 self._send_json(safe)
             except StaleSettingsRevisionError as e:
