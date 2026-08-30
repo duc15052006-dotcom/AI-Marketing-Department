@@ -1897,9 +1897,11 @@ class FiveAgentDepartmentRuntime:
         blocking_reasons: List[str] = []
         claim_actions: Dict[str, str] = {}
         blocked = 0
+        performance_inconclusive_blocked = False
 
         if self._detect_performance_inconclusive(perf_out):
             blocked += 1
+            performance_inconclusive_blocked = True
             claim_actions["performance"] = "HOLD"
             blocking_reasons.append(
                 "PERFORMANCE_INCONCLUSIVE: Performance reported an inconclusive/"
@@ -1915,9 +1917,20 @@ class FiveAgentDepartmentRuntime:
                     "PERFORMANCE_INCONCLUSIVE_STRUCTURAL: Performance handoff carries an "
                     "INCONCLUSIVE flag; prose cannot override it."
                 )
+                performance_inconclusive_blocked = True
+                claim_actions["performance"] = "HOLD"
             execution_state = str(perf_handoff.get("experiment_execution_state", "EXPERIMENT_PROPOSED")).upper()
             eval_status = str(perf_handoff.get("evaluation_status", "NOT_EVALUATED")).upper()
             eval_origin = str(perf_handoff.get("evaluation_data_origin", "NO_DATA")).upper()
+
+            if eval_status == "INCONCLUSIVE" and not performance_inconclusive_blocked:
+                blocked += 1
+                performance_inconclusive_blocked = True
+                claim_actions["performance"] = "HOLD"
+                blocking_reasons.append(
+                    "PERFORMANCE_EVALUATION_INCONCLUSIVE_STRUCTURAL: Performance evaluation is "
+                    "structurally INCONCLUSIVE; deployment cannot be authorized."
+                )
 
             has_valid_observed_result = (
                 execution_state == "RESULT_OBSERVED"
