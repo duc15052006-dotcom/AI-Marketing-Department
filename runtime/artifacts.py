@@ -39,6 +39,14 @@ def _normalize_for_hashing(obj: Any) -> Any:
     return str(obj)
 
 
+def _hash_approval_reference(reference: Any) -> str:
+    """Return a stable non-reversible audit identifier for an approval reference."""
+    raw = str(reference or "").strip()
+    if not raw:
+        return ""
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 class MemoryWriteCandidate(BaseModel):
     """Candidate memory entry proposed at the conclusion of a supervised run."""
     memory_type: MemoryType
@@ -100,6 +108,52 @@ class DepartmentRunArtifact(BaseModel):
     errors: List[str] = Field(default_factory=list)
     final_artifact_hash: str = Field(default="")
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.approvals:
+            return
+
+        derived: List[Dict[str, Any]] = []
+        seen = set()
+        for receipt in self.execution_receipts:
+            if hasattr(receipt, "model_dump") and callable(receipt.model_dump):
+                data = receipt.model_dump()
+            elif isinstance(receipt, dict):
+                data = receipt
+            else:
+                data = {
+                    "execution_id": getattr(receipt, "execution_id", ""),
+                    "run_id": getattr(receipt, "run_id", ""),
+                    "business_id": getattr(receipt, "business_id", ""),
+                    "capability_id": getattr(receipt, "capability_id", ""),
+                    "request_hash": getattr(receipt, "request_hash", ""),
+                    "status": getattr(receipt, "status", ""),
+                    "approval_reference": getattr(receipt, "approval_reference", ""),
+                }
+
+            reference_hash = _hash_approval_reference(data.get("approval_reference"))
+            if not reference_hash:
+                continue
+            execution_id = str(data.get("execution_id") or "")
+            dedupe_key = (execution_id, reference_hash)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            derived.append(
+                {
+                    "approval_reference_hash": reference_hash,
+                    "execution_id": execution_id,
+                    "run_id": str(data.get("run_id") or ""),
+                    "business_id": str(data.get("business_id") or ""),
+                    "capability_id": str(data.get("capability_id") or ""),
+                    "request_hash": str(data.get("request_hash") or ""),
+                    "status": _normalize_for_hashing(data.get("status", "")),
+                }
+            )
+
+        if derived:
+            self.approvals = derived
+
     def _receipt_integrity_representation(self, r: Any) -> Dict[str, Any]:
         """Extract canonical immutable integrity fields for an ExecutionReceipt."""
         if hasattr(r, "model_dump") and callable(r.model_dump):
@@ -117,6 +171,7 @@ class DepartmentRunArtifact(BaseModel):
                 "business_id": str(dump.get("business_id") or ""),
                 "project_id": str(dump.get("project_id") or ""),
                 "chat_id": str(dump.get("chat_id") or ""),
+                "approval_reference_hash": _hash_approval_reference(dump.get("approval_reference")),
                 "result_hash": str(dump.get("result_hash", "")),
             }
         elif isinstance(r, dict):
@@ -133,6 +188,7 @@ class DepartmentRunArtifact(BaseModel):
                 "business_id": str(r.get("business_id") or ""),
                 "project_id": str(r.get("project_id") or ""),
                 "chat_id": str(r.get("chat_id") or ""),
+                "approval_reference_hash": _hash_approval_reference(r.get("approval_reference")),
                 "result_hash": str(r.get("result_hash", "")),
             }
         return {
@@ -145,6 +201,7 @@ class DepartmentRunArtifact(BaseModel):
             "business_id": str(getattr(r, "business_id", "") or ""),
             "project_id": str(getattr(r, "project_id", "") or ""),
             "chat_id": str(getattr(r, "chat_id", "") or ""),
+            "approval_reference_hash": _hash_approval_reference(getattr(r, "approval_reference", "")),
             "result_hash": str(getattr(r, "result_hash", "")),
         }
 
