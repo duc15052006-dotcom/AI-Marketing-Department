@@ -39,6 +39,7 @@ jobs:
           python scripts/residual_hardening_v3.py
           python scripts/progress_truth_patch.py
           python scripts/security_boundary_patch.py
+          python scripts/test_contract_alignment_v4.py
 
       - name: Compile production Python
         run: python -m compileall -q runtime chat app_api integrations tools connectors
@@ -100,6 +101,7 @@ jobs:
             tests/test_prod_runtime_progress_01.py \
             tests/test_prod_workflow_failure_semantics_01.py \
             tests/test_prod_core_authority_01a.py \
+            tests/test_prod_core_authority_01b.py \
             tests/test_prod_truth_01_execution_truthfulness.py \
             tests/test_prod_research_evidence_01a.py \
             tests/test_creative_performance_true_handoff.py
