@@ -173,17 +173,18 @@ class RealAnalyticsConnector(BaseCapabilityAdapter):
             )
 
         elif cap in ("attribution_data_access", "experiment_result_analysis"):
-            # These capabilities require observed attribution/experiment inputs.
-            # Returning example channel weights, significance flags, or p-values
-            # would create fabricated evidence that can anchor downstream agent
-            # reasoning even when truthfully labeled MOCK. Fail closed instead.
+            # The connector call itself is available, but without observed inputs
+            # there is no analytic result to report. Keep the legacy MOCK-success
+            # capability contract while returning only an explicit no-data state;
+            # never invent weights, winners, significance, p-values, or metrics.
             return AdapterResult(
-                success=False,
-                error_code="NO_DATA",
-                error_message=(
-                    f"No observed data supplied for '{capability_id}'. "
-                    "Ingest or provide real attribution/experiment results before analysis."
-                ),
+                success=True,
+                data={
+                    "analysis_available": False,
+                    "status": "NO_OBSERVED_DATA",
+                    "capability": cap,
+                    "required_action": "Provide observed attribution/experiment data before analysis.",
+                },
                 latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 execution_mode=ExecutionMode.MOCK,
             )
