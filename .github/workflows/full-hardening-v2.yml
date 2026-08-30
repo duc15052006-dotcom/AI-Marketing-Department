@@ -83,8 +83,8 @@ jobs:
           old_state = "        setWorkflowStages((prev) => applyTerminalErrorToStages(prev));\n        setAgentStates((prev) => applyTerminalErrorToAgents(prev));\n"
           new_state = "        setWorkflowStages((prev) => applyTerminalErrorToStages(prev, err));\n        setAgentStates((prev) => applyTerminalErrorToAgents(prev, err));\n"
           state_count = text.count(old_state)
-          if state_count != 2:
-              raise RuntimeError(f'Expected 2 terminal reducer boundaries, found {state_count}')
+          if state_count != 1:
+              raise RuntimeError(f'Expected 1 terminal reducer boundary, found {state_count}')
           text = text.replace(old_state, new_state)
           p.write_text(text, encoding='utf-8')
           PY
