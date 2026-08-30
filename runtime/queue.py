@@ -219,6 +219,12 @@ class RunManager:
                     item.status = RunQueueStatus.CANCELLED
                 elif ctx.status == RuntimeStatus.COMPLETED:
                     item.status = RunQueueStatus.COMPLETED
+                elif ctx.status == RuntimeStatus.FAILED:
+                    item.status = RunQueueStatus.FAILED
+                elif ctx.status == RuntimeStatus.CANCELLED:
+                    item.status = RunQueueStatus.CANCELLED
+                elif ctx.status == RuntimeStatus.COMPLETED:
+                    item.status = RunQueueStatus.COMPLETED
 
     def get_run(self, run_id: str) -> Optional[QueueItem]:
         with self._lock:
@@ -282,9 +288,10 @@ class RunManager:
                         item.status = RunQueueStatus.COMPLETED
                     item.completed_at = datetime.now(timezone.utc)
             except Exception as e:
+                logger.error("Queued run %s failed at runtime boundary (%s)", item.run_id, type(e).__name__)
                 with self._lock:
                     item.status = RunQueueStatus.FAILED
-                    item.error = str(e)
+                    item.error = "RUNTIME_INTERNAL_ERROR"
                     item.completed_at = datetime.now(timezone.utc)
             finally:
                 self._queue.task_done()

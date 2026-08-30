@@ -576,9 +576,11 @@ class FiveAgentDepartmentRuntime:
                     try:
                         reg_snap = self.model_gateway.provider_registry.snapshot().model_dump()
                     except Exception as exc:
-                        raise RuntimeError(
-                            f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Provider registry snapshot failed: {exc}"
-                        ) from exc
+                        logger.error(
+                            "Provider registry snapshot failed at run boundary (%s)",
+                            type(exc).__name__,
+                        )
+                        raise RuntimeError("RUN_PINNED_MODEL_CONFIGURATION_INVALID") from exc
                 pol_dict = {
                     "policy": self.model_gateway.model_policy.model_dump(),
                     "providers": reg_snap["providers"] if reg_snap and "providers" in reg_snap else {},
@@ -2175,7 +2177,11 @@ class FiveAgentDepartmentRuntime:
         try:
             audit_res = self._evaluate_final_authorization(context, perf_out, crtv_out, raw_llm_report)
         except Exception as audit_err:
-            audit_res = self._fail_closed_audit("AUDIT_GATE_ERROR", str(audit_err))
+            logger.error("Final authorization audit failed internally (%s)", type(audit_err).__name__)
+            audit_res = self._fail_closed_audit(
+                "AUDIT_GATE_ERROR",
+                "Authorization audit failed internally; deployment blocked.",
+            )
         if audit_res is None:
             audit_res = self._fail_closed_audit("MISSING_AUDIT_RESULT", "Authorization audit produced no result.")
 

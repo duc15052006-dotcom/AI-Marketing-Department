@@ -326,8 +326,17 @@ class TestChatAttachmentTrustBoundary(unittest.TestCase):
         engine.generate_chat_response(session=session_a, user_message="Summarize", attachments=[att_a])
 
         session_b = ChatSession(chat_id="CHAT-B-001")
-        engine.generate_chat_response(session=session_b, user_message="Hello", attachments=None)
+        # Use a non-shortcut query so this trust-boundary test exercises a
+        # second real model request. "Hello" is intentionally handled by the
+        # deterministic local chat shortcut and therefore would not call the
+        # model at all.
+        engine.generate_chat_response(
+            session=session_b,
+            user_message="Explain campaign measurement tradeoffs",
+            attachments=None,
+        )
 
+        self.assertEqual(len(captured), 2)
         all_b = " ".join(m.content for m in captured[1].messages)
         self.assertNotIn("Secret A data", all_b)
 

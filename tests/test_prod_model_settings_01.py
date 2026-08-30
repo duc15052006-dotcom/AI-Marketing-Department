@@ -942,6 +942,7 @@ class TestProdModelSettings01(unittest.TestCase):
     ROTATION_V2 = "ACTIVE_RUN_KEY_V2"
 
     @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_41_windows_dpapi_failure_fails_closed(self):
         """Verify a Windows DPAPI encryption failure fails closed: set_secret raises
         and NO vault file is persisted through any weaker fallback."""
@@ -980,6 +981,7 @@ class TestProdModelSettings01(unittest.TestCase):
         self.assertEqual(mem.get_secret(ref), "v")
 
     @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_43_vault_corruption_fails_closed(self):
         """Tampered ciphertext / truncated vault / invalid structure must raise
         VaultCorruptionError; never empty-string success or fallback recovery."""
@@ -1010,6 +1012,7 @@ class TestProdModelSettings01(unittest.TestCase):
         with self.assertRaises(VaultCorruptionError):
             self.secret_store.get_secret(ref)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_44_plaintext_sentinel_absent_from_persisted_files(self):
         """Inspect ACTUAL files written by the test: the sentinel must appear
@@ -2443,6 +2446,7 @@ class TestProdModelSettings01(unittest.TestCase):
     # ---- Vault integrity -------------------------------------------------
 
     @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_87_zero_byte_existing_vault_fails_closed(self):
         vault_path = Path(self.test_dir) / "zero.vault"
         vault_path.write_bytes(b"")
@@ -2455,6 +2459,7 @@ class TestProdModelSettings01(unittest.TestCase):
         self.assertEqual(vault_path.read_bytes(), b"")
 
     @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_88_malformed_encrypted_vault_fails_closed(self):
         import os as _os
         vault_path = Path(self.test_dir) / "random.vault"
@@ -2463,6 +2468,7 @@ class TestProdModelSettings01(unittest.TestCase):
         with self.assertRaises(VaultCorruptionError):
             store.get_secret("STORE:whatever")
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     @unittest.skipUnless(sys.platform == "win32", "Windows DPAPI/vault contract")
     def test_89_corrupt_vault_preserved_after_failed_operation(self):
         vault_path = self.vault_path

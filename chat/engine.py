@@ -84,7 +84,7 @@ class ChatConversationEngine:
                         safe_text = res.text.replace("</untrusted_data>", "<\\/untrusted_data>")
                         doc_context_parts.append(f"[{res.attachment_id}]: {safe_text}")
             except Exception as ex:
-                logger.warning(f"Error querying session knowledge: {ex}")
+                logger.warning("Session knowledge lookup failed (%s)", type(ex).__name__)
 
         # 3. Assemble Bounded Multi-Turn History (last 8 messages from same chat)
         messages_payload: List[ModelMessage] = [
@@ -132,10 +132,6 @@ class ChatConversationEngine:
                 mode=ProgressMode.GENERAL_CONVERSATION.value,
                 message="Bắt đầu xử lý tin nhắn",
             )
-            emitter.emit(
-                ProgressEventType.MODEL_STARTED,
-                message="Gửi yêu cầu đến mô hình ngôn ngữ",
-            )
 
         # 4. Invoke Universal Model Gateway
         req = ModelRequest(
@@ -168,6 +164,15 @@ class ChatConversationEngine:
                 "mode": "GENERAL_CONVERSATION",
                 "execution_mode": "DETERMINISTIC_LOCAL",
             }
+
+        # Only announce model execution after deterministic-local shortcuts
+        # have been ruled out. Progress events must describe work that really
+        # happened, never work that was merely possible.
+        if emitter:
+            emitter.emit(
+                ProgressEventType.MODEL_STARTED,
+                message="Gửi yêu cầu đến mô hình ngôn ngữ",
+            )
 
         # Streaming execution path
         if text_delta_sink is not None:
