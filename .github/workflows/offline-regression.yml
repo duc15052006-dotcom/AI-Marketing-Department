@@ -80,6 +80,7 @@ jobs:
             tests.test_provider_response_schema_07 `
             tests.test_governance_import_cycle_11 `
             tests.test_stream_error_redaction_10 `
+            tests.test_web_connector_ssrf_11 `
             tests.test_creative_performance_true_handoff `
             2>&1 | Tee-Object -FilePath .ci-results/repair-regressions.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
