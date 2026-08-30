@@ -515,13 +515,13 @@ export default function App() {
       },
       onError: (err) => {
         const safeCode = err.code || 'STREAM_ERROR';
-        const safeDetail = err.message || 'Không thể nhận phản hồi từ backend.';
+        const safeDetail = err.safe_message || err.message || 'Không thể nhận phản hồi từ backend.';
         const errorMsg = classifyErrorMessage(safeCode, safeDetail);
         setChatSessions((prev) =>
           applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg, safeCode, safeDetail)
         );
-        setWorkflowStages((prev) => applyTerminalErrorToStages(prev));
-        setAgentStates((prev) => applyTerminalErrorToAgents(prev));
+        setWorkflowStages((prev) => applyTerminalErrorToStages(prev, err));
+        setAgentStates((prev) => applyTerminalErrorToAgents(prev, err));
         setIsProcessing(false);
         setAgentProgress('');
         fetchCoreData();
@@ -714,7 +714,7 @@ export default function App() {
         },
         onError: (err) => {
           const safeCode = err.code || 'STREAM_ERROR';
-          const safeDetail = err.message || 'Không thể nhận phản hồi từ backend.';
+          const safeDetail = err.safe_message || err.message || 'Không thể nhận phản hồi từ backend.';
           const errorMsg = classifyErrorMessage(safeCode, safeDetail);
           setChatSessions((prev) =>
             applyTerminalErrorToSessions(prev, [turnChatId, assignedChatId], assistantMsgId, errorMsg, safeCode, safeDetail)

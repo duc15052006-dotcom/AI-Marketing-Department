@@ -197,7 +197,8 @@ test('7 & 39. Rust invoke rejection produces single sanitized transport error', 
   assert.equal(completeCalled, false);
   assert.ok(errorReceived);
   assert.equal(errorReceived.code, 'TRANSPORT_ERROR');
-  assert.ok(errorReceived.message.includes('PREMATURE_EOF_BEFORE_TERMINAL'));
+  assert.equal(errorReceived.message, 'The native streaming transport failed.');
+  assert.ok(!errorReceived.message.includes('PREMATURE_EOF_BEFORE_TERMINAL'));
   env.cleanup();
 });
 

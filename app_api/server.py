@@ -155,6 +155,7 @@ from config.authority import get_runtime_config
 get_runtime_config()
 
 from chat.engine import ChatConversationEngine
+from chat.conversation_state import FollowupIntent, resolve_conversation_turn
 from chat.knowledge import SessionKnowledgeStore
 from chat.router import ConversationIntent, ConversationRouter
 from chat.session import AttachmentType, ChatAttachment, ChatSessionManager
@@ -175,6 +176,7 @@ from memory.repository import LocalMemoryRepository
 from runtime.artifacts import DepartmentRunArtifact
 from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, RuntimeStatus
 from runtime.context_compiler import ContextCompiler
+from runtime.public_errors import internal_runtime_error
 from runtime.engine import FiveAgentDepartmentRuntime, extract_explicit_user_constraints
 from runtime.queue import ResourceLimiter, RunManager
 from integrations.models.settings_manager import (
@@ -416,13 +418,21 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
         def _worker() -> None:
             try:
+                resolved_turn = resolve_conversation_turn(session.messages, user_text)
+                route_text = resolved_turn.effective_text if resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH else user_text
                 decision = APP_BACKEND.conversation_router.route(
-                    message=user_text,
+                    message=route_text,
                     attachments=parsed_attachments,
                     chat_history=session.messages,
                     project_id=session.optional_project_id,
                     business_id=session.optional_business_id,
                 )
+                if resolved_turn.followup_intent == FollowupIntent.TRANSFORM_EXISTING:
+                    from chat.router import RoutingDecision
+                    decision = RoutingDecision(ConversationIntent.GENERAL_CONVERSATION, 1.0, resolved_turn.reason_code)
+                elif resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH:
+                    from chat.router import RoutingDecision
+                    decision = RoutingDecision(ConversationIntent.RESEARCH_INQUIRY, 1.0, resolved_turn.reason_code, {"research_depth": "DEEP"})
 
                 if decision.intent == ConversationIntent.GENERAL_CONVERSATION:
                     res = APP_BACKEND.chat_engine.generate_chat_response(
@@ -453,7 +463,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                             "five_agent_call_count": 0,
                         })
                     else:
-                        bridge.send_error(res.get("error") or "Execution failed")
+                        bridge.send_error(res.get("public_error") or internal_runtime_error(stage=decision.intent.value).model_dump())
 
                 elif decision.intent == ConversationIntent.DOCUMENT_ANALYSIS:
                     res = APP_BACKEND.chat_engine.generate_chat_response(
@@ -484,11 +494,11 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                             "five_agent_call_count": 0,
                         })
                     else:
-                        bridge.send_error(res.get("error") or "Execution failed")
+                        bridge.send_error(res.get("public_error") or internal_runtime_error(stage=decision.intent.value).model_dump())
 
                 elif decision.intent == ConversationIntent.RESEARCH_INQUIRY:
                     ctx, intel_out, artifact = APP_BACKEND.runtime.run_research_inquiry(
-                        objective=user_text,
+                        objective=(resolved_turn.effective_text if resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH else user_text),
                         business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                         chat_id=chat_id,
                         project_id=session.optional_project_id,
@@ -523,11 +533,11 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                             "five_agent_call_count": 1,
                         })
                     else:
-                        bridge.send_error(intel_out.get("error") or "RESEARCH_FAILED")
+                        bridge.send_error(APP_BACKEND.runtime.get_public_error(ctx.run_id) or internal_runtime_error(stage="INTELLIGENCE", agent="INTELLIGENCE").model_dump())
 
                 else: # MARKETING_WORKFLOW
                     ctx, cmo_final, artifact = APP_BACKEND.runtime.run_workflow(
-                        objective=user_text,
+                        objective=(resolved_turn.effective_text if resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH else user_text),
                         business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                         chat_id=chat_id,
                         project_id=session.optional_project_id,
@@ -561,17 +571,16 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                             "five_agent_call_count": 5,
                         })
                     else:
-                        root_err = cmo_final.get("error") or cmo_final.get("reason") or "WORKFLOW_FAILED"
-                        failed_stg = cmo_final.get("failed_stage")
-                        if failed_stg and root_err and not str(root_err).startswith(failed_stg):
-                            err_msg = f"{failed_stg}: {root_err}"
-                        else:
-                            err_msg = str(root_err)
-                        bridge.send_error(err_msg)
+                        bridge.send_error(
+                            cmo_final.get("public_error")
+                            or APP_BACKEND.runtime.get_public_error(ctx.run_id)
+                            or internal_runtime_error(stage=cmo_final.get("failed_stage") or "").model_dump()
+                        )
+
 
             except Exception as ex:
-                logger.exception(f"Streaming execution error for chat {chat_id}: {ex}")
-                bridge.send_error(ex)
+                logger.error("Streaming execution failed for chat %s (%s)", chat_id, type(ex).__name__)
+                bridge.send_error(internal_runtime_error(stage="STREAMING_API").model_dump())
 
         worker_t = threading.Thread(target=_worker, daemon=True)
         worker_t.start()
@@ -588,13 +597,21 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         user_msg: Optional[ChatMessage] = None,
     ) -> None:
         try:
+            resolved_turn = resolve_conversation_turn(session.messages, user_text)
+            route_text = resolved_turn.effective_text if resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH else user_text
             decision = APP_BACKEND.conversation_router.route(
-                message=user_text,
+                message=route_text,
                 attachments=parsed_attachments,
                 chat_history=session.messages,
                 project_id=session.optional_project_id,
                 business_id=session.optional_business_id,
             )
+            if resolved_turn.followup_intent == FollowupIntent.TRANSFORM_EXISTING:
+                from chat.router import RoutingDecision
+                decision = RoutingDecision(ConversationIntent.GENERAL_CONVERSATION, 1.0, resolved_turn.reason_code)
+            elif resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH:
+                from chat.router import RoutingDecision
+                decision = RoutingDecision(ConversationIntent.RESEARCH_INQUIRY, 1.0, resolved_turn.reason_code, {"research_depth": "DEEP"})
 
             # Route A: General Conversation (0 Five-Agent Calls)
             if decision.intent == ConversationIntent.GENERAL_CONVERSATION:
@@ -657,7 +674,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             # Route C: Research Inquiry — Intelligence-only fast path (1 model call)
             elif decision.intent == ConversationIntent.RESEARCH_INQUIRY:
                 ctx, intel_out, artifact = APP_BACKEND.runtime.run_research_inquiry(
-                    objective=user_text,
+                    objective=(resolved_turn.effective_text if resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH else user_text),
                     business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                     chat_id=chat_id,
                     project_id=session.optional_project_id,
@@ -697,7 +714,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             # Route D: Full Supervised Five-Agent Marketing Workflow
             else:
                 ctx, cmo_final, artifact = APP_BACKEND.runtime.run_workflow(
-                    objective=user_text,
+                    objective=(resolved_turn.effective_text if resolved_turn.followup_intent == FollowupIntent.DEEPEN_RESEARCH else user_text),
                     business_id=session.optional_business_id or "BIZ_AD_HOC_EXPLORATION",
                     chat_id=chat_id,
                     project_id=session.optional_project_id,

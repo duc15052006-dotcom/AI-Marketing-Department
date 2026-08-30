@@ -73,6 +73,8 @@ from runtime.handoff import (
 from runtime.knowledge_builder import KnowledgeContextBuilder
 from runtime.lineage import LineageInspector
 from runtime.memory_builder import MemoryContextBuilder
+from runtime.agent_skills import render_agent_skill_context
+from runtime.public_errors import PublicRuntimeError, from_model_response, from_stream_delta, internal_runtime_error
 from tools.capabilities import CapabilityRegistry
 from tools.evidence import EvidenceBuilder, EvidenceBundleSemanticValidator, GroundingContextBuilder, SubjectIdentity, SemanticCoherenceStatus
 from tools.observation.models import ObservationRecord
@@ -249,6 +251,7 @@ class FiveAgentDepartmentRuntime:
         self._reserved_run_ids: Set[str] = set()
         self._cancelled_run_ids: Set[str] = set()
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
+        self._public_errors: OrderedDict[str, Dict[str, Any]] = OrderedDict()
 
         # PROD-MODEL-SETTINGS-01R2 credential lifetime authority:
         # this runtime answers whether an opaque credential_ref is still pinned
@@ -376,6 +379,22 @@ class FiveAgentDepartmentRuntime:
             self.claim_verifier = MultilingualNLIClaimVerifier()
         return self.claim_verifier
 
+    def _record_public_error(self, context: Optional[RuntimeContext], error: PublicRuntimeError) -> Dict[str, Any]:
+        payload = error.model_dump()
+        if context is not None:
+            context.working_state.setdefault("public_error", payload)
+            with self._lock:
+                if context.run_id not in self._public_errors:
+                    self._public_errors[context.run_id] = payload
+                    while len(self._public_errors) > self.max_completed_runs_cache:
+                        self._public_errors.popitem(last=False)
+        return payload
+
+    def get_public_error(self, run_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            value = self._public_errors.get(run_id)
+            return dict(value) if value else None
+
     def _call_agent_llm(
         self,
         agent_name: str,
@@ -393,8 +412,9 @@ class FiveAgentDepartmentRuntime:
         if not self.model_gateway:
             return None, "NO_MODEL_GATEWAY"
 
-        # COLLAB-05: every stage may append the optional machine handoff block
-        # to the SAME single response (no second agent, no second model call).
+        # Canonical skills are production prompt authority for the five permanent agents.
+        system_instruction = system_instruction + "\n\n" + render_agent_skill_context(agent_name)
+        # COLLAB-05: optional machine handoff stays in the same response.
         system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
 
         req = ModelRequest(
@@ -418,7 +438,7 @@ class FiveAgentDepartmentRuntime:
                     model_policy_obj = ModelPolicy(**raw_pol["policy"])
                 except Exception as exc:
                     raise RuntimeError(
-                        f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ModelPolicy: {exc}"
+                        "RUN_PINNED_MODEL_CONFIGURATION_INVALID"
                     ) from exc
             elif isinstance(raw_pol, dict):
                 try:
@@ -429,7 +449,7 @@ class FiveAgentDepartmentRuntime:
                         model_policy_obj = ModelPolicy(**filtered_pol)
                 except Exception as exc:
                     raise RuntimeError(
-                        f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ModelPolicy: {exc}"
+                        "RUN_PINNED_MODEL_CONFIGURATION_INVALID"
                     ) from exc
             if "providers" in raw_pol and isinstance(raw_pol["providers"], dict):
                 try:
@@ -439,7 +459,7 @@ class FiveAgentDepartmentRuntime:
                     )
                 except Exception as exc:
                     raise RuntimeError(
-                        f"RUN_PINNED_MODEL_CONFIGURATION_INVALID: Failed to reconstruct pinned ProviderRegistrySnapshot: {exc}"
+                        "RUN_PINNED_MODEL_CONFIGURATION_INVALID"
                     ) from exc
 
         emitter = self._get_emitter(context)
@@ -464,15 +484,16 @@ class FiveAgentDepartmentRuntime:
                     provider_snapshot=provider_snapshot_obj,
                 )
                 chunks: List[str] = []
-                had_error = False
+                terminal_error_delta = None
                 for delta in stream_gen:
                     if delta.content:
                         chunks.append(delta.content)
                         filter_sink.on_delta(delta.content)
                     if delta.finish_reason == "error":
-                        had_error = True
+                        terminal_error_delta = delta
+                        break
                 filter_sink.flush()
-                if chunks and not had_error:
+                if terminal_error_delta is None and chunks:
                     if emitter:
                         emitter.emit(
                             ProgressEventType.MODEL_COMPLETED,
@@ -481,9 +502,15 @@ class FiveAgentDepartmentRuntime:
                             message=f"Hoàn tất thực thi mô hình cho {agent_upper}",
                         )
                     return "".join(chunks).strip(), None
-                err = "STREAM_GENERATION_FAILED"
-                logger.warning(f"Agent {agent_name} LLM stream call failed: {err}")
-                return None, err
+
+                stage_name = stage_obj.value if hasattr(stage_obj, "value") else str(stage_obj or "")
+                if terminal_error_delta is not None:
+                    public_err = from_stream_delta(terminal_error_delta, stage=stage_name, agent=agent_upper)
+                else:
+                    public_err = internal_runtime_error(stage=stage_name, agent=agent_upper)
+                self._record_public_error(context, public_err)
+                logger.warning("Agent %s model stream failed with %s", agent_name, public_err.code)
+                return None, public_err.code
 
             resp = self.model_gateway.generate(
                 req,
@@ -500,12 +527,19 @@ class FiveAgentDepartmentRuntime:
                         message=f"Hoàn tất thực thi mô hình cho {agent_upper}",
                     )
                 return resp.content.strip(), None
-            err = resp.error or f"MODEL_RESPONSE_{resp.status.value}"
-            logger.warning(f"Agent {agent_name} LLM call failed: {err}")
-            return None, err
-        except Exception as e:
-            logger.warning(f"Agent {agent_name} LLM call exception: {e}")
-            return None, str(e)
+            stage_name = stage_obj.value if hasattr(stage_obj, "value") else str(stage_obj or "")
+            public_err = from_model_response(resp, stage=stage_name, agent=agent_upper)
+            self._record_public_error(context, public_err)
+            logger.warning("Agent %s model call failed with %s", agent_name, public_err.code)
+            return None, public_err.code
+        except (GeneratorExit, KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as exc:
+            stage_name = stage_obj.value if hasattr(stage_obj, "value") else str(stage_obj or "")
+            public_err = internal_runtime_error(stage=stage_name, agent=agent_upper)
+            self._record_public_error(context, public_err)
+            logger.error("Agent %s model call failed at runtime boundary (%s)", agent_name, type(exc).__name__)
+            return None, public_err.code
 
     def start_run(
         self,
@@ -1210,28 +1244,11 @@ class FiveAgentDepartmentRuntime:
         for m in m_res.memories:
             context.memory_refs.append(m.memory_id)
 
-        # Invoke ToolGateway for analytics calculation
-        idem_key = f"{context.run_id}:performance:kpi_calculation:cac"
-        if idem_key in self._executed_tool_idempotency_keys:
-            calc_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
-            calc_req = ToolRequest(
-                run_id=context.run_id,
-                agent_id="performance",
-                capability_id="kpi_calculation",
-                parameters={"metric_name": "target_cac", "target_value": 150.0},
-                business_id=context.business_id,
-                project_id=context.project_id,
-                chat_id=context.chat_id,
-            )
-            calc_receipt = self.tool_gateway.execute(calc_req)
-            self._executed_tool_idempotency_keys[idem_key] = calc_receipt
-
-        context.execution_receipt_refs.append(calc_receipt.execution_id)
-        self.lineage_inspector.add_receipt(calc_receipt)
-
-        # Grounded Context Compilation with KPI calc tool receipt
-        grounded_pkg = self.context_compiler.compile_grounded_package("performance", context, tool_receipts=[calc_receipt])
+        # Planning and measurement are separate. This stage has no campaign
+        # telemetry input by default, so it must not manufacture a target/metric
+        # or invoke a KPI calculator with invented values.
+        calc_receipt = None
+        grounded_pkg = self.context_compiler.compile_grounded_package("performance", context, tool_receipts=[])
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1253,7 +1270,7 @@ class FiveAgentDepartmentRuntime:
                 "error": "PREVIOUS_STAGE_FAILED",
                 "funnel_kpi": "",
                 "experiment_blueprint": {},
-                "calc_receipt_id": calc_receipt.execution_id,
+                "calc_receipt_id": None,
                 "citations": [c.citation_id for c in k_res.citations],
             }
             context.stage_outputs["performance"] = output
@@ -1298,7 +1315,7 @@ class FiveAgentDepartmentRuntime:
                 "error": err or "MODEL_PROVIDER_FAILURE",
                 "funnel_kpi": "",
                 "experiment_blueprint": {},
-                "calc_receipt_id": calc_receipt.execution_id,
+                "calc_receipt_id": None,
                 "citations": [c.citation_id for c in k_res.citations],
             }
             context.stage_outputs["performance"] = output
@@ -1313,7 +1330,7 @@ class FiveAgentDepartmentRuntime:
             # COLLAB-04: no structured experiment was actually produced;
             # blueprint stays empty instead of an invented hypothesis/metric.
             "experiment_blueprint": {},
-            "calc_receipt_id": calc_receipt.execution_id,
+            "calc_receipt_id": None,
             "field_origins": {
                 "funnel_kpi": "AGENT_DERIVED",
                 "experiment_blueprint": "NOT_PROVIDED",
@@ -2483,29 +2500,42 @@ class FiveAgentDepartmentRuntime:
                         metadata={"reason": "RUN_CANCELLED_BY_OPERATOR"},
                     )
             else:
-                logger.exception(f"Unhandled exception during run {context.run_id}: {exc}")
+                stage_obj = runtime_stage_to_progress_stage(context.current_stage)
+                stage_name = stage_obj.value if hasattr(stage_obj, "value") else str(stage_obj or "")
+                stage_to_agent = {
+                    "CMO_INITIAL": "CMO", "INTELLIGENCE": "INTELLIGENCE", "STRATEGIST": "STRATEGIST",
+                    "CREATIVE": "CREATIVE", "PERFORMANCE": "PERFORMANCE", "FINAL_CMO": "CMO",
+                }
+                failed_agent = stage_to_agent.get(stage_name, "")
+                public_err = internal_runtime_error(stage=stage_name, agent=failed_agent)
+                self._record_public_error(context, public_err)
+                logger.error("Unhandled runtime exception in run %s (%s)", context.run_id, type(exc).__name__)
                 context.status = RuntimeStatus.FAILED
-                context.risk_flags.append(f"UNHANDLED_RUNTIME_EXCEPTION: {str(exc)}")
+                context.risk_flags.append("RUNTIME_INTERNAL_ERROR")
+                final_was_reached = stage_name == "FINAL_CMO"
                 cmo_final = {
                     "stage": "FINAL_CMO",
                     "agent": "cmo",
-                    "status": "FAILED",
+                    "status": "FAILED" if final_was_reached else "NOT_REACHED",
                     "approval_status": "NOT_EVALUATED",
-                    "reason": f"UNHANDLED_RUNTIME_EXCEPTION: {str(exc)}",
+                    "reason": public_err.code,
+                    "error": public_err.code,
+                    "failed_stage": stage_name or None,
+                    "public_error": public_err.model_dump(),
                     "master_gtm_plan": {},
-                    "master_gtm_plan_markdown": f"# BÁO CÁO PHÊ DUYỆT THẤT BẠI — FIVE-AGENT DEPARTMENT\n\n**Trạng thái phê duyệt**: KHÔNG ĐƯỢC PHÊ DUYỆT (UNHANDLED_RUNTIME_EXCEPTION)\n\nLỗi hệ thống trong quá trình thực thi pipeline: {str(exc)}",
+                    "master_gtm_plan_markdown": "# BÁO CÁO THỰC THI THẤT BẠI\n\nQuy trình dừng do lỗi runtime nội bộ. Không có bước Final CMO giả lập nào được thực thi.",
                 }
                 context.stage_outputs["final_cmo"] = cmo_final
                 context.create_checkpoint()
                 if emitter and not any(e.event_type == ProgressEventType.RUN_FAILED for e in emitter.events):
-                    stage_obj = runtime_stage_to_progress_stage(context.current_stage)
                     emitter.emit(
                         ProgressEventType.RUN_FAILED,
                         stage=stage_obj,
-                        agent="CMO",
-                        message=f"Quy trình thực thi gặp lỗi: {str(exc)}",
-                        metadata={"error": str(exc)},
+                        agent=failed_agent or None,
+                        message="Quy trình thực thi gặp lỗi runtime nội bộ",
+                        metadata={"error": public_err.model_dump()},
                     )
+
 
         if context.status not in (RuntimeStatus.FAILED, RuntimeStatus.CANCELLED) and cmo_final.get("status") in ("READY_FOR_DEPLOYMENT", "APPROVED", "COMPLETED"):
             if emitter and not any(e.event_type in (ProgressEventType.RUN_COMPLETED, ProgressEventType.RUN_FAILED) for e in emitter.events):

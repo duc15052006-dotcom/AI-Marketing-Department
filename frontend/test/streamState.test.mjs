@@ -139,7 +139,7 @@ test('6. Full workflow six stages: exactly 6 canonical stages, exactly 5 logical
   assert.deepEqual(uniqueAgents.sort(), ['cmo', 'creative', 'intelligence', 'performance', 'strategist']);
 });
 
-test('7. Mid-workflow failure: CMO_INITIAL and INTELLIGENCE remain COMPLETED, STRATEGIST becomes FAILED, later stages remain PENDING', () => {
+test('7. Mid-workflow failure: completed stages stay COMPLETED, failing stage is FAILED, later stages are NOT_REACHED', () => {
   let stages = createInitialWorkflowStages();
 
   // Stage 1: CMO_INITIAL
@@ -163,9 +163,9 @@ test('7. Mid-workflow failure: CMO_INITIAL and INTELLIGENCE remain COMPLETED, ST
   assert.equal(failedStages.find((s) => s.stage === 'CMO_INITIAL')?.status, 'COMPLETED');
   assert.equal(failedStages.find((s) => s.stage === 'INTELLIGENCE')?.status, 'COMPLETED');
   assert.equal(failedStages.find((s) => s.stage === 'STRATEGIST')?.status, 'FAILED');
-  assert.equal(failedStages.find((s) => s.stage === 'CREATIVE')?.status, 'PENDING');
-  assert.equal(failedStages.find((s) => s.stage === 'PERFORMANCE')?.status, 'PENDING');
-  assert.equal(failedStages.find((s) => s.stage === 'FINAL_CMO')?.status, 'PENDING');
+  assert.equal(failedStages.find((s) => s.stage === 'CREATIVE')?.status, 'NOT_REACHED');
+  assert.equal(failedStages.find((s) => s.stage === 'PERFORMANCE')?.status, 'NOT_REACHED');
+  assert.equal(failedStages.find((s) => s.stage === 'FINAL_CMO')?.status, 'NOT_REACHED');
 });
 
 test('8. Final CMO failure: Stages 1-5 remain COMPLETED, FINAL_CMO becomes FAILED, partial streamed text preserved', () => {

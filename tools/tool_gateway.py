@@ -302,7 +302,7 @@ class ToolGateway:
             )
         else:
             err_code = adapter_res.error_code if adapter_res else "EXECUTION_EXCEPTION"
-            err_msg = adapter_res.error_message if adapter_res else str(last_exc)
+            err_msg = adapter_res.error_message if adapter_res else (f"Adapter execution failed ({type(last_exc).__name__})." if last_exc else "Adapter execution failed.")
             status = ExecutionStatus.TIMEOUT if err_code == "TIMEOUT" else ExecutionStatus.ERROR
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
