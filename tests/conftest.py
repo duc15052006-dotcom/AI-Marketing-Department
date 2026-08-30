@@ -1,9 +1,9 @@
 """Pytest-only compatibility layer for historical suites.
 
 This module intentionally does NOT alter production ToolGateway registration or
-restore fake production adapters.  It only exposes the old configurable
+restore fake production adapters. It only exposes the old configurable
 MockToolAdapter symbol to legacy tests that use it for deterministic retry /
-timeout injection, and supplies typing aliases omitted by two historical test
+timeout injection, and supplies typing aliases omitted by historical test
 modules so collection can reach their actual assertions.
 """
 
@@ -11,17 +11,18 @@ from __future__ import annotations
 
 import builtins
 import time
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Any, Dict, List, Tuple
 
 import tools.adapters as _adapters
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
 from tools.receipts import ExecutionMode
 
 
-# Two legacy test modules use List/Tuple in runtime-evaluated annotations without
-# importing them. Keep this strictly under pytest rather than changing runtime.
+# Historical tests use these names in runtime-evaluated annotations without
+# importing them. Keep compatibility strictly under pytest, never in runtime.
 builtins.List = List
 builtins.Tuple = Tuple
+builtins.Any = Any
 
 
 class MockToolAdapter(BaseCapabilityAdapter):
@@ -94,5 +95,5 @@ class MockToolAdapter(BaseCapabilityAdapter):
 
 
 # Historical suites import this symbol from tools.adapters. Expose it only for
-# the pytest process; the source module and production registry remain fail-closed.
+# the pytest process; source module and production registry remain fail-closed.
 _adapters.MockToolAdapter = MockToolAdapter
