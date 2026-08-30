@@ -44,6 +44,9 @@ class TestLocalOpenAINoAuth05(unittest.TestCase):
             "https://api.example.com/v1",
             "https://127.0.0.1.example.com/v1",
             "https://localhost.example.com/v1",
+            "ftp://localhost:8000/v1",
+            "http://user:password@localhost:8000/v1",
+            "http://local%68ost:8000/v1",
         ):
             with self.subTest(url=url):
                 self.assertFalse(is_loopback_base_url(url))
@@ -52,15 +55,21 @@ class TestLocalOpenAINoAuth05(unittest.TestCase):
         self.assertTrue(provider_requires_api_key("GEMINI_NATIVE", "http://localhost:8000"))
 
     def test_no_auth_adapter_rejects_remote_endpoint_defense_in_depth(self) -> None:
-        with self.assertRaises(ValueError) as ctx:
-            LocalNoAuthOpenAICompatibleProviderAdapter(
-                provider_id="remote",
-                base_url="https://api.example.com/v1",
-                api_key_env="",
-                default_model="model-1",
-                api_key=None,
-            )
-        self.assertIn("LOCAL_NO_AUTH_REQUIRES_LOOPBACK", str(ctx.exception))
+        for url in (
+            "https://api.example.com/v1",
+            "ftp://localhost:8000/v1",
+            "http://user:password@localhost:8000/v1",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError) as ctx:
+                    LocalNoAuthOpenAICompatibleProviderAdapter(
+                        provider_id="remote",
+                        base_url=url,
+                        api_key_env="",
+                        default_model="model-1",
+                        api_key=None,
+                    )
+                self.assertIn("LOCAL_NO_AUTH_REQUIRES_LOOPBACK", str(ctx.exception))
 
     def test_local_adapter_is_configured_without_key_and_sends_no_authorization_header(self) -> None:
         adapter = LocalNoAuthOpenAICompatibleProviderAdapter(
