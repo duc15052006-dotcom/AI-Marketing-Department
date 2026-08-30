@@ -27,6 +27,11 @@ class RealWebConnector(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "system_http_reader"
 
+    def execution_mode_for(self, capability_id: str) -> ExecutionMode:
+        """Declare the backend mode selected for receipt provenance."""
+        cap = capability_id.lower()
+        return ExecutionMode.REAL if cap in ("read_page", "analyze_url") else ExecutionMode.MOCK
+
     def execute(
         self,
         capability_id: str,

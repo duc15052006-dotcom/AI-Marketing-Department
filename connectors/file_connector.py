@@ -28,6 +28,19 @@ class RealFileConnector(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "local_filesystem"
 
+    def execution_mode_for(self, capability_id: str) -> ExecutionMode:
+        """Declare REAL provenance for operations routed to the local filesystem backend."""
+        cap = capability_id.lower()
+        real_caps = {
+            "file_read",
+            "read_file",
+            "file_write",
+            "write_file",
+            "data_export",
+            "structured_storage_query",
+        }
+        return ExecutionMode.REAL if cap in real_caps else ExecutionMode.MOCK
+
     def execute(
         self,
         capability_id: str,
