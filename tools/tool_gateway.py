@@ -150,6 +150,43 @@ class ToolGateway:
             return "NETWORK_ERROR"
         return None
 
+    @staticmethod
+    def _resolve_execution_mode(
+        adapter: BaseCapabilityAdapter,
+        capability_id: str,
+        adapter_result: Optional[Any] = None,
+    ) -> ExecutionMode:
+        """Resolve truthful execution provenance for both success and failure receipts.
+
+        Adapters that multiplex REAL/MOCK/SANDBOX capabilities may expose
+        ``execution_mode_for(capability_id)``. That capability-level authority
+        takes precedence over an AdapterResult default so failed REAL calls are
+        never mislabeled MOCK. Unknown/legacy adapters fail closed to the result's
+        explicit mode, then MOCK.
+        """
+        resolver = getattr(adapter, "execution_mode_for", None)
+        if callable(resolver):
+            try:
+                resolved = resolver(capability_id)
+                if isinstance(resolved, ExecutionMode):
+                    return resolved
+                if isinstance(resolved, str):
+                    return ExecutionMode(resolved.strip().upper())
+            except Exception:
+                pass
+
+        if adapter_result is not None:
+            raw_mode = getattr(adapter_result, "execution_mode", None)
+            if isinstance(raw_mode, ExecutionMode):
+                return raw_mode
+            if isinstance(raw_mode, str):
+                try:
+                    return ExecutionMode(raw_mode.strip().upper())
+                except Exception:
+                    pass
+
+        return ExecutionMode.MOCK
+
     def execute(self, request: ToolRequest) -> ExecutionReceipt:
         """Execute a tool capability with complete governance, permissions, and receipt creation."""
         start_time = datetime.now(timezone.utc)
@@ -340,7 +377,7 @@ class ToolGateway:
 
         # 6. Assemble Receipt
         if adapter_res and adapter_res.success:
-            mode = getattr(adapter_res, "execution_mode", ExecutionMode.MOCK) or ExecutionMode.MOCK
+            mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
                 agent_id=request.agent_id,
@@ -376,6 +413,7 @@ class ToolGateway:
                 err_msg = str(last_exc) if last_exc is not None else "Tool adapter execution failed."
 
             status = ExecutionStatus.TIMEOUT if err_code == "TIMEOUT" else ExecutionStatus.ERROR
+            mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
                 agent_id=request.agent_id,
@@ -385,7 +423,7 @@ class ToolGateway:
                 started_at=start_time,
                 completed_at=completed_time,
                 status=status,
-                execution_mode=ExecutionMode.MOCK,
+                execution_mode=mode,
                 error_class=err_code,
                 error_message=err_msg,
                 cost_or_token_usage=adapter_res.cost_or_tokens if adapter_res else {},
