@@ -368,6 +368,9 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         self.assertIn("evaluation_status: INCONCLUSIVE", final_prompt)
         self.assertIn(f"creative_id: {ctx.working_state['creative_spec']['creative_id']}", final_prompt)
         self.assertEqual(final_out["approval_status"], "BLOCKED")
+        self.assertEqual(final_out["status"], "NOT_READY")
+        reasons = " ".join(final_out["claim_audit"]["blocking_reasons"])
+        self.assertIn("PERFORMANCE_EVALUATION_INCONCLUSIVE_STRUCTURAL", reasons)
 
     # 23/24. isolation
     def test_23_24_no_cross_run_or_cross_brand_contamination(self):

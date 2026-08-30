@@ -902,7 +902,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         """J1: Checkpoint working_state snapshot preserves UNKNOWN items and INCONCLUSIVE flags."""
         gw = ScriptedAgentGateway(replies={
             "intelligence": ("Market findings.", {"unknowns": ["Willingness to pay"]}),
-            "performance": ("Performance evaluation.", {"performance_inconclusive": True}),
+            "performance": ("Performance evaluation.", {"evaluation": {"evaluation_status": "INCONCLUSIVE"}}),
         })
         rt = build_runtime(gw)
         ctx = rt.start_run(objective="Pricing study", business_id="BIZ_AUDIT")
@@ -915,7 +915,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         self.assertTrue(len(ctx.checkpoints) >= 5)
         last_chkpt = ctx.checkpoints[-1]
         perf_handoff = last_chkpt.working_state_snapshot.get("stage_handoffs", {}).get("performance", {})
-        self.assertTrue(perf_handoff.get("performance_inconclusive"))
+        self.assertEqual(perf_handoff.get("evaluation_status"), "INCONCLUSIVE")
 
     def test_J2_checkpoint_preserves_mock_execution_mode(self):
         """J2: Checkpoints record MOCK execution mode accurately without elevating to REAL."""
