@@ -11,9 +11,19 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
+
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.gateway.security import SecurityValidationError, SecurityValidator
 from tools.receipts import ExecutionMode
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate every redirect target before urllib is allowed to follow it."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        safe_url = SecurityValidator.validate_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, safe_url)
 
 
 class RealWebConnector(BaseCapabilityAdapter):
@@ -31,6 +41,22 @@ class RealWebConnector(BaseCapabilityAdapter):
         """Declare the backend mode selected for receipt provenance."""
         cap = capability_id.lower()
         return ExecutionMode.REAL if cap in ("read_page", "analyze_url") else ExecutionMode.MOCK
+
+    @staticmethod
+    def _security_failure(
+        error: SecurityValidationError,
+        start_time: float,
+    ) -> AdapterResult:
+        # Preserve the legacy generic SSRF code for callers while retaining the
+        # specific validator code in the sanitized message for diagnostics.
+        code = "SSRF_BLOCKED" if error.code.startswith("SSRF_") else error.code
+        return AdapterResult(
+            success=False,
+            error_code=code,
+            error_message=f"Outbound URL blocked ({error.code}): {error.message}",
+            latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
+        )
 
     def execute(
         self,
@@ -55,7 +81,8 @@ class RealWebConnector(BaseCapabilityAdapter):
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
 
-            # Validate URL format & block local network SSRF
+            # Keep the existing scheme contract, then delegate all hostname/IP/DNS
+            # SSRF decisions to the shared security authority used by observation.
             parsed = urllib.parse.urlparse(url)
             if parsed.scheme not in ("http", "https"):
                 return AdapterResult(
@@ -64,23 +91,26 @@ class RealWebConnector(BaseCapabilityAdapter):
                     error_message=f"Unsupported URL scheme '{parsed.scheme}'. Only http and https are allowed.",
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
-            if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254"):
-                return AdapterResult(
-                    success=False,
-                    error_code="SSRF_BLOCKED",
-                    error_message="Targeting internal loopback and cloud metadata addresses is strictly forbidden.",
-                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
-                )
+
+            try:
+                safe_url = SecurityValidator.validate_url(url)
+            except SecurityValidationError as error:
+                return self._security_failure(error, start_time)
 
             try:
                 req = urllib.request.Request(
-                    url,
+                    safe_url,
                     headers={"User-Agent": self._user_agent, "Accept": "text/html,application/xhtml+xml,text/plain"},
                 )
-                with urllib.request.urlopen(req, timeout=min(timeout_seconds, self._timeout_seconds)) as resp:
+                # urllib's default opener follows redirects automatically. A custom
+                # handler is mandatory so each hop is validated before any request
+                # is dispatched to the redirect destination.
+                opener = urllib.request.build_opener(_SafeRedirectHandler())
+                with opener.open(req, timeout=min(timeout_seconds, self._timeout_seconds)) as resp:
                     raw_bytes = resp.read(250000)  # Max 250KB
                     content_type = resp.headers.get("Content-Type", "text/html")
                     text_body = raw_bytes.decode("utf-8", errors="replace")
+                    final_url = resp.geturl() if hasattr(resp, "geturl") else safe_url
 
                 # Basic HTML stripping
                 clean_text = re.sub(r"<script.*?</script>", "", text_body, flags=re.DOTALL | re.IGNORECASE)
@@ -91,7 +121,7 @@ class RealWebConnector(BaseCapabilityAdapter):
                 return AdapterResult(
                     success=True,
                     data={
-                        "url": url,
+                        "url": final_url,
                         "content_type": content_type,
                         "raw_length": len(text_body),
                         "extracted_text": clean_text[:4000],
@@ -99,6 +129,10 @@ class RealWebConnector(BaseCapabilityAdapter):
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                     execution_mode=ExecutionMode.REAL,
                 )
+            except SecurityValidationError as error:
+                # Raised by _SafeRedirectHandler before an unsafe redirect hop is
+                # followed; report it as a policy block, not a generic network error.
+                return self._security_failure(error, start_time)
             except urllib.error.HTTPError as e:
                 return AdapterResult(
                     success=False,
