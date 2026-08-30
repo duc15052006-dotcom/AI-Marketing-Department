@@ -43,6 +43,7 @@ from integrations.models.registry import (
     ProviderProtocol,
     ProviderRegistry,
     normalize_agent_id,
+    validate_strict_bool,
 )
 from integrations.models.transport import is_network_exception, is_timeout_exception, sanitize_secrets
 
@@ -410,7 +411,11 @@ class UniversalModelGateway:
 
         from config.authority import get_runtime_config
         runtime = get_runtime_config()
-        self._free_only_mode: bool = free_only_mode if free_only_mode is not None else runtime.free_only_mode
+        resolved_free_only_mode = free_only_mode if free_only_mode is not None else runtime.free_only_mode
+        self._free_only_mode: bool = validate_strict_bool(
+            resolved_free_only_mode,
+            "UniversalModelGateway.free_only_mode",
+        )
         self._default_provider = (default_provider or runtime.default_provider).lower()
 
         # Authoritative Model Policy
@@ -446,8 +451,9 @@ class UniversalModelGateway:
 
     def set_free_only_mode(self, enabled: bool) -> None:
         """Toggle strict free-only cost governance."""
-        self._free_only_mode = enabled
-        self._model_policy.free_only_mode = enabled
+        validated = validate_strict_bool(enabled, "UniversalModelGateway.free_only_mode")
+        self._free_only_mode = validated
+        self._model_policy.free_only_mode = validated
 
     def get_provider_health(self, provider_id: str) -> ProviderHealth:
         """Get current health state for a provider."""
@@ -515,6 +521,24 @@ class UniversalModelGateway:
         """Execute model generation with cost policy enforcement and production fallback."""
         start_time = time.perf_counter()
 
+        try:
+            allow_paid = validate_strict_bool(allow_paid, "allow_paid")
+            policy_free_only = (
+                validate_strict_bool(model_policy.free_only_mode, "ModelPolicy.free_only_mode")
+                if model_policy is not None
+                else None
+            )
+        except ValueError as e:
+            return ModelResponse(
+                request_id=getattr(request, "request_id", "REQ-UNKNOWN"),
+                provider=provider_id or "gateway",
+                model_name=getattr(request, "model_name", "unknown"),
+                status=ModelResponseStatus.ERROR,
+                error=f"INVALID_GOVERNANCE_BOOLEAN: {e}",
+                usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            )
+
         # Canonical request normalization
         try:
             norm_req = normalize_model_request(request)
@@ -574,8 +598,9 @@ class UniversalModelGateway:
             else:
                 prov_def = self.provider_registry.get_provider(cand_provider)
 
-            if prov_def is not None and not prov_def.enabled:
-                err_msg = f"PROVIDER_DISABLED: Provider '{cand_provider}' is disabled."
+            if prov_def is not None and (type(prov_def.enabled) is not bool or not prov_def.enabled):
+                state = "has invalid enabled governance" if type(prov_def.enabled) is not bool else "is disabled"
+                err_msg = f"PROVIDER_DISABLED: Provider '{cand_provider}' {state}."
                 last_error_resp = ModelResponse(
                     request_id=norm_req.request_id,
                     provider=cand_provider,
@@ -610,14 +635,24 @@ class UniversalModelGateway:
                     else (adapter.cost_policy if adapter else CostPolicy.UNKNOWN)
                 )
 
+            if cost_tier == CostPolicy.DISABLED:
+                last_error_resp = ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider=cand_provider,
+                    model_name=cand_model,
+                    status=ModelResponseStatus.ERROR,
+                    error=f"PROVIDER_DISABLED: Provider '{cand_provider}' cost policy is DISABLED.",
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
+                if strict_model_pin or len(candidates) == 1:
+                    return last_error_resp
+                continue
+
             # Effective cost-governance authority: an explicitly supplied
             # run-scoped ModelPolicy governs its own runs; live gateway state
             # applies only when no pinned policy exists. No second authority.
-            effective_free_only = (
-                bool(model_policy.free_only_mode)
-                if model_policy is not None and getattr(model_policy, "free_only_mode", None) is not None
-                else self._free_only_mode
-            )
+            effective_free_only = policy_free_only if policy_free_only is not None else self._free_only_mode
 
             if effective_free_only and not allow_paid:
                 if cost_tier == CostPolicy.PAID or cost_tier == CostPolicy.UNKNOWN:
@@ -779,6 +814,31 @@ class UniversalModelGateway:
         the complete response is emitted as a single StreamDelta.
         """
         try:
+            allow_paid = validate_strict_bool(allow_paid, "allow_paid")
+            policy_free_only = (
+                validate_strict_bool(model_policy.free_only_mode, "ModelPolicy.free_only_mode")
+                if model_policy is not None
+                else None
+            )
+        except ValueError as e:
+            yield normalize_public_stream_delta(
+                StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    error=ModelStreamError(
+                        code="INVALID_REQUEST",
+                        category="BAD_REQUEST",
+                        safe_message=f"INVALID_GOVERNANCE_BOOLEAN: {e}",
+                        retryable=False,
+                        http_status=400,
+                    ),
+                ),
+                provider_id or "gateway",
+                getattr(request, "model_name", "unknown"),
+            )
+            return
+
+        try:
             norm_req = normalize_model_request(request)
         except Exception as e:
             clean_err = sanitize_secrets(str(e))
@@ -849,11 +909,12 @@ class UniversalModelGateway:
             else:
                 prov_def = self.provider_registry.get_provider(cand_provider)
 
-            if prov_def is not None and not prov_def.enabled:
+            if prov_def is not None and (type(prov_def.enabled) is not bool or not prov_def.enabled):
+                state = "has invalid enabled governance" if type(prov_def.enabled) is not bool else "is disabled"
                 err = ModelStreamError(
                     code="PROVIDER_DISABLED",
                     category="CONFIGURATION",
-                    safe_message=f"PROVIDER_DISABLED: Provider '{cand_provider}' is disabled.",
+                    safe_message=f"PROVIDER_DISABLED: Provider '{cand_provider}' {state}.",
                     retryable=False,
                     http_status=None,
                 )
@@ -901,11 +962,27 @@ class UniversalModelGateway:
             else:
                 cost_tier = adapter.cost_policy
 
-            effective_free_only = (
-                bool(model_policy.free_only_mode)
-                if model_policy is not None and getattr(model_policy, "free_only_mode", None) is not None
-                else self._free_only_mode
-            )
+            if cost_tier == CostPolicy.DISABLED:
+                err = ModelStreamError(
+                    code="PROVIDER_DISABLED",
+                    category="CONFIGURATION",
+                    safe_message=f"PROVIDER_DISABLED: Provider '{cand_provider}' cost policy is DISABLED.",
+                    retryable=False,
+                    http_status=None,
+                )
+                last_error = err
+                last_error_provider = cand_provider
+                last_error_model = cand_model
+                if strict_model_pin or len(candidates) == 1:
+                    yield normalize_public_stream_delta(
+                        StreamDelta(content="", finish_reason="error", error=err),
+                        cand_provider,
+                        cand_model,
+                    )
+                    return
+                continue
+
+            effective_free_only = policy_free_only if policy_free_only is not None else self._free_only_mode
 
             if effective_free_only and not allow_paid:
                 if cost_tier == CostPolicy.PAID:

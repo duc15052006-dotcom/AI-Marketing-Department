@@ -238,6 +238,19 @@ def normalize_cost_policy(value: Any) -> CostPolicy:
     )
 
 
+def validate_strict_bool(value: Any, field_name: str) -> bool:
+    """Accept only a real Python bool at governance boundaries.
+
+    bool is intentionally checked by exact type: integers and truthy strings
+    must never silently change execution/cost policy.
+    """
+    if type(value) is bool:
+        return value
+    raise ValueError(
+        f"INVALID_BOOLEAN: {field_name} must be a boolean, got {type(value).__name__}."
+    )
+
+
 # Security floor for built-ins already classified as paid by this repository.
 # Older persisted settings may say FREE_TIER_ALLOWED; such stale values must not
 # downgrade a paid provider. Providers not listed here may still be made more
@@ -280,6 +293,10 @@ class ProviderDefinition(BaseModel):
         # Adapter type must be an actually supported type (no silent coercion).
         if self.adapter_type:
             self.adapter_type = validate_adapter_type(self.adapter_type)
+
+        # Enable/disable is an execution-governance boundary: reject truthy
+        # strings/integers instead of relying on Python coercion.
+        self.enabled = validate_strict_bool(self.enabled, "ProviderDefinition.enabled")
 
         # Cost governance must be canonical and fail closed on malformed input.
         self.cost_policy = normalize_cost_policy(self.cost_policy)
@@ -405,6 +422,7 @@ class ModelPolicy(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.free_only_mode = validate_strict_bool(self.free_only_mode, "ModelPolicy.free_only_mode")
         # Validate and normalize all agent override keys
         normalized_overrides: Dict[str, ModelTarget] = {}
         for k, target in self.agent_overrides.items():
@@ -813,14 +831,17 @@ class ProviderRegistry:
         """Retrieve or create adapter instance for given provider ID (live config)."""
         pid = provider_id.lower()
         with self._lock:
-            if pid in getattr(self, "_injected_adapters", {}):
-                return self._injected_adapters[pid]
-
             cfg = self._configs.get(pid)
             if cfg is None:
                 return None
+            if type(cfg.enabled) is not bool:
+                logger.error("Blocking provider '%s': enabled must be a strict boolean.", pid)
+                return None
             if not cfg.enabled and not include_disabled:
                 return None
+
+            if pid in getattr(self, "_injected_adapters", {}):
+                return self._injected_adapters[pid]
 
             if pid in self._adapters:
                 return self._adapters[pid]
@@ -861,6 +882,9 @@ class ProviderRegistry:
         """
         pid = cfg.provider_id.lower()
         with self._lock:
+            if type(cfg.enabled) is not bool or not cfg.enabled:
+                logger.error("Blocking pinned provider '%s': enabled is false or invalid.", pid)
+                return None
             if pid in getattr(self, "_injected_adapters", {}):
                 return self._injected_adapters[pid]
 
