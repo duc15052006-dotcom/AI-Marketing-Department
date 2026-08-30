@@ -12,10 +12,12 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import re
 import threading
 from enum import Enum
 from typing import Any, Callable, Dict, Optional, Union
 
+from governance.redaction import sanitize_sensitive_text
 from runtime.progress import RuntimeProgressEvent
 
 logger = logging.getLogger("app_api.streaming")
@@ -51,33 +53,69 @@ def format_sse_event(event_type: Union[SSEEventType, str], data: Any) -> bytes:
     return frame.encode("utf-8")
 
 
-def sanitize_error_for_stream(error: Any) -> Dict[str, str]:
-    """Sanitize technical exception details to prevent leaking internal stack traces, API keys, or OS errors."""
-    err_str = str(error) if error else "INTERNAL_SERVER_ERROR"
+def _safe_error_code(error: Any) -> Optional[str]:
+    """Extract only a bounded machine-style error code from structured errors."""
+    candidate: Any = None
+    if isinstance(error, dict):
+        candidate = error.get("error") or error.get("error_code") or error.get("code")
+    else:
+        for attr in ("error_code", "code"):
+            value = getattr(error, attr, None)
+            if value:
+                candidate = value
+                break
 
-    # Remove WinError / socket details
-    if "WinError" in err_str or "HTTP 599" in err_str or "Connection refused" in err_str:
+    if candidate is None:
+        return None
+    code = str(candidate).strip().upper()
+    if re.fullmatch(r"[A-Z][A-Z0-9_]{2,63}", code):
+        return code
+    return None
+
+
+def sanitize_error_for_stream(error: Any) -> Dict[str, str]:
+    """Return a public-safe streaming error without echoing raw exception text.
+
+    Raw exception details are used only for coarse category detection. They are
+    never returned to the browser because arbitrary provider/OS exceptions may
+    contain API keys, authorization headers, URLs with credentials, local file
+    paths, or other internal diagnostics.
+    """
+    raw_error = str(error) if error else "INTERNAL_SERVER_ERROR"
+    err_str = sanitize_sensitive_text(raw_error)
+    err_lower = err_str.lower()
+
+    # Remove WinError / socket details from the public response entirely.
+    if "winerror" in err_lower or "http 599" in err_lower or "connection refused" in err_lower:
         return {
             "error": "PROVIDER_UNAVAILABLE",
             "message": "Không thể kết nối đến nhà cung cấp mô hình AI. Vui lòng kiểm tra lại cấu hình hoặc kết nối mạng.",
         }
 
-    # Hide API keys / Auth tokens if any were present in raw message
-    if "key" in err_str.lower() and "invalid" in err_str.lower():
+    # Authentication failures are categorized without exposing credential text.
+    if (
+        ("key" in err_lower and "invalid" in err_lower)
+        or "authentication failed" in err_lower
+        or "unauthorized" in err_lower
+        or "http 401" in err_lower
+    ):
         return {
             "error": "AUTHENTICATION_FAILED",
             "message": "Xác thực với nhà cung cấp mô hình AI thất bại. Vui lòng kiểm tra lại cấu hình khóa API.",
         }
 
-    if "rate limit" in err_str.lower() or "429" in err_str:
+    if "rate limit" in err_lower or "http 429" in err_lower or " 429" in err_lower:
         return {
             "error": "RATE_LIMITED",
             "message": "Đã vượt quá giới hạn tần suất yêu cầu (Rate Limit). Vui lòng thử lại sau.",
         }
 
+    # Preserve a structured machine code only when it satisfies a strict grammar;
+    # never reflect its raw message/details to the public SSE channel.
+    safe_code = _safe_error_code(error) or "EXECUTION_ERROR"
     return {
-        "error": "EXECUTION_ERROR",
-        "message": err_str,
+        "error": safe_code,
+        "message": "Không thể hoàn tất yêu cầu do lỗi thực thi nội bộ. Vui lòng thử lại hoặc kiểm tra cấu hình.",
     }
 
 
@@ -210,12 +248,12 @@ class StreamingChatBridge:
                 self._cond.notify_all()
 
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError) as ex:
-            logger.info(f"Client disconnected during streaming: {ex}")
+            logger.info(f"Client disconnected during streaming: {sanitize_sensitive_text(ex)}")
             with self._cond:
                 self.state = StreamState.DISCONNECTED
                 self._cond.notify_all()
         except Exception as ex:
-            logger.warning(f"Error during SSE queue draining: {ex}")
+            logger.warning(f"Error during SSE queue draining: {sanitize_sensitive_text(ex)}")
             with self._cond:
                 self.state = StreamState.DISCONNECTED
                 self._cond.notify_all()
