@@ -103,6 +103,131 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
         """Check if API key is present without exposing it."""
         return bool(self._api_key and len(self._api_key.strip()) > 0)
 
+    @staticmethod
+    def _coerce_nonnegative_int(value: Any) -> Optional[int]:
+        """Normalize provider token telemetry without accepting ambiguous values."""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value if value >= 0 else None
+        if isinstance(value, float):
+            return int(value) if value >= 0 and value.is_integer() else None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned.isdigit():
+                return int(cleaned)
+        return None
+
+    @classmethod
+    def _parse_usage(cls, usage_raw: Any) -> ModelUsage:
+        """Parse optional token telemetry defensively.
+
+        Provider content is still usable when telemetry is absent, null, empty,
+        or malformed. In that case usage is marked NOT_AVAILABLE rather than
+        inventing token counts or crashing an otherwise valid completion.
+        """
+        if not isinstance(usage_raw, dict) or not usage_raw:
+            return ModelUsage(usage_source="NOT_AVAILABLE")
+
+        prompt_tokens = 0
+        completion_tokens = 0
+        if "prompt_tokens" in usage_raw:
+            parsed = cls._coerce_nonnegative_int(usage_raw.get("prompt_tokens"))
+            if parsed is None:
+                return ModelUsage(usage_source="NOT_AVAILABLE")
+            prompt_tokens = parsed
+        if "completion_tokens" in usage_raw:
+            parsed = cls._coerce_nonnegative_int(usage_raw.get("completion_tokens"))
+            if parsed is None:
+                return ModelUsage(usage_source="NOT_AVAILABLE")
+            completion_tokens = parsed
+
+        if "total_tokens" in usage_raw:
+            total_tokens = cls._coerce_nonnegative_int(usage_raw.get("total_tokens"))
+            if total_tokens is None:
+                return ModelUsage(usage_source="NOT_AVAILABLE")
+        else:
+            total_tokens = prompt_tokens + completion_tokens
+
+        def optional_token(field_name: str) -> Optional[int]:
+            if field_name not in usage_raw:
+                return None
+            return cls._coerce_nonnegative_int(usage_raw.get(field_name))
+
+        thoughts_tokens = optional_token("reasoning_tokens")
+        if "reasoning_tokens" in usage_raw and thoughts_tokens is None:
+            return ModelUsage(usage_source="NOT_AVAILABLE")
+        if thoughts_tokens is None:
+            details = usage_raw.get("completion_tokens_details")
+            if isinstance(details, dict) and "reasoning_tokens" in details:
+                thoughts_tokens = cls._coerce_nonnegative_int(details.get("reasoning_tokens"))
+                if thoughts_tokens is None:
+                    return ModelUsage(usage_source="NOT_AVAILABLE")
+
+        cached_tokens = optional_token("cached_tokens")
+        if "cached_tokens" in usage_raw and cached_tokens is None:
+            return ModelUsage(usage_source="NOT_AVAILABLE")
+        if cached_tokens is None:
+            details = usage_raw.get("prompt_tokens_details")
+            if isinstance(details, dict) and "cached_tokens" in details:
+                cached_tokens = cls._coerce_nonnegative_int(details.get("cached_tokens"))
+                if cached_tokens is None:
+                    return ModelUsage(usage_source="NOT_AVAILABLE")
+
+        tool_tokens = optional_token("tool_use_prompt_tokens")
+        if "tool_use_prompt_tokens" in usage_raw and tool_tokens is None:
+            return ModelUsage(usage_source="NOT_AVAILABLE")
+
+        return ModelUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            thoughts_tokens=thoughts_tokens,
+            cached_tokens=cached_tokens,
+            tool_use_prompt_tokens=tool_tokens,
+            total_tokens=total_tokens,
+            usage_source="PROVIDER_REPORTED",
+        )
+
+    def _provider_response_error(
+        self,
+        *,
+        request_id: str,
+        model_name: str,
+        latency_ms: float,
+        detail: str,
+    ) -> ModelResponse:
+        clean_detail = sanitize_secrets(str(detail), self._api_key)
+        return ModelResponse(
+            request_id=request_id,
+            provider=self.provider_name,
+            model_name=model_name,
+            status=ModelResponseStatus.ERROR,
+            error=f"PROVIDER_RESPONSE_ERROR: {clean_detail}",
+            metadata={
+                "error_code": "PROVIDER_RESPONSE_ERROR",
+                "error_category": "RESPONSE_ERROR",
+                "retryable": False,
+            },
+            usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+            latency_ms=latency_ms,
+        )
+
+    def _stream_provider_response_error(self, model_name: str, detail: str) -> StreamDelta:
+        clean_detail = sanitize_secrets(str(detail), self._api_key)
+        return StreamDelta(
+            content="",
+            finish_reason="error",
+            provider=self.provider_name,
+            model_name=model_name,
+            error=ModelStreamError(
+                code="PROVIDER_RESPONSE_ERROR",
+                category="RESPONSE_ERROR",
+                safe_message=f"PROVIDER_RESPONSE_ERROR: {clean_detail}",
+                retryable=False,
+                http_status=None,
+            ),
+        )
+
     def generate(self, request: ModelRequest) -> ModelResponse:
         """Execute completion synchronously via OpenAI-compatible chat completions endpoint."""
         start_time = time.perf_counter()
@@ -157,7 +282,6 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
 
         timeout = norm_req.timeout_seconds if norm_req.timeout_seconds else self._timeout_seconds
 
-        # Execute request through standardized transport
         status_code, resp_headers, body_str = self._transport.post_json(
             endpoint_path=self._chat_completions_path,
             payload=payload,
@@ -170,65 +294,82 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
             try:
                 resp_data = json.loads(body_str)
             except Exception as e:
-                return ModelResponse(
+                return self._provider_response_error(
                     request_id=norm_req.request_id,
-                    provider=self.provider_name,
                     model_name=model_name,
-                    status=ModelResponseStatus.ERROR,
-                    error=f"PROVIDER_RESPONSE_ERROR: Malformed JSON returned by {self.provider_name} (HTTP {status_code}). Detail: {str(e)[:100]}",
-                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
                     latency_ms=latency_ms,
+                    detail=f"Malformed JSON returned by {self.provider_name} (HTTP {status_code}). Detail: {str(e)[:100]}",
                 )
 
-            choices = resp_data.get("choices", [])
-            if not choices:
-                return ModelResponse(
+            if not isinstance(resp_data, dict):
+                return self._provider_response_error(
                     request_id=norm_req.request_id,
-                    provider=self.provider_name,
                     model_name=model_name,
-                    status=ModelResponseStatus.ERROR,
-                    error=f"PROVIDER_RESPONSE_ERROR: No choices returned by {self.provider_name} API.",
-                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
                     latency_ms=latency_ms,
+                    detail="Provider response root must be a JSON object.",
+                )
+
+            choices = resp_data.get("choices")
+            if not isinstance(choices, list):
+                return self._provider_response_error(
+                    request_id=norm_req.request_id,
+                    model_name=model_name,
+                    latency_ms=latency_ms,
+                    detail="Provider response field 'choices' must be a list.",
+                )
+            if not choices:
+                return self._provider_response_error(
+                    request_id=norm_req.request_id,
+                    model_name=model_name,
+                    latency_ms=latency_ms,
+                    detail=f"No choices returned by {self.provider_name} API.",
                 )
 
             first_choice = choices[0]
-            message_obj = first_choice.get("message", {})
-            content = message_obj.get("content", "") or ""
-            finish_reason = first_choice.get("finish_reason", "stop")
+            if not isinstance(first_choice, dict):
+                return self._provider_response_error(
+                    request_id=norm_req.request_id,
+                    model_name=model_name,
+                    latency_ms=latency_ms,
+                    detail="Provider response first choice must be a JSON object.",
+                )
 
-            # Parse usage
-            usage_raw = resp_data.get("usage", {})
-            prompt_tokens = usage_raw.get("prompt_tokens", 0)
-            completion_tokens = usage_raw.get("completion_tokens", 0)
-            total_tokens = usage_raw.get("total_tokens", prompt_tokens + completion_tokens)
+            message_obj = first_choice.get("message")
+            if not isinstance(message_obj, dict):
+                return self._provider_response_error(
+                    request_id=norm_req.request_id,
+                    model_name=model_name,
+                    latency_ms=latency_ms,
+                    detail="Provider response choice.message must be a JSON object.",
+                )
 
-            # Extract optional thought / reasoning tokens if provider returned them
-            thoughts_tokens = None
-            if "reasoning_tokens" in usage_raw:
-                thoughts_tokens = usage_raw.get("reasoning_tokens")
-            elif "completion_tokens_details" in usage_raw:
-                details = usage_raw.get("completion_tokens_details", {})
-                thoughts_tokens = details.get("reasoning_tokens")
+            content_raw = message_obj.get("content")
+            if content_raw is None:
+                content = ""
+            elif isinstance(content_raw, str):
+                content = content_raw
+            else:
+                return self._provider_response_error(
+                    request_id=norm_req.request_id,
+                    model_name=model_name,
+                    latency_ms=latency_ms,
+                    detail="Provider response choice.message.content must be a string or null.",
+                )
 
-            cached_tokens = None
-            if "cached_tokens" in usage_raw:
-                cached_tokens = usage_raw.get("cached_tokens")
-            elif "prompt_tokens_details" in usage_raw:
-                details = usage_raw.get("prompt_tokens_details", {})
-                cached_tokens = details.get("cached_tokens")
+            finish_reason_raw = first_choice.get("finish_reason", "stop")
+            if finish_reason_raw is None:
+                finish_reason = "stop"
+            elif isinstance(finish_reason_raw, str):
+                finish_reason = finish_reason_raw
+            else:
+                return self._provider_response_error(
+                    request_id=norm_req.request_id,
+                    model_name=model_name,
+                    latency_ms=latency_ms,
+                    detail="Provider response choice.finish_reason must be a string or null.",
+                )
 
-            tool_tokens = usage_raw.get("tool_use_prompt_tokens")
-
-            usage = ModelUsage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                thoughts_tokens=thoughts_tokens,
-                cached_tokens=cached_tokens,
-                tool_use_prompt_tokens=tool_tokens,
-                total_tokens=total_tokens,
-                usage_source="PROVIDER_REPORTED",
-            )
+            usage = self._parse_usage(resp_data.get("usage"))
 
             structured = None
             if norm_req.response_schema or content.strip().startswith("{"):
@@ -237,10 +378,14 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                 except Exception:
                     structured = None
 
+            provider_model = resp_data.get("model")
+            if not isinstance(provider_model, str) or not provider_model.strip():
+                provider_model = model_name
+
             return ModelResponse(
                 request_id=norm_req.request_id,
                 provider=self.provider_name,
-                model_name=resp_data.get("model", model_name),
+                model_name=provider_model,
                 status=ModelResponseStatus.SUCCESS,
                 content=content,
                 structured_output=structured,
@@ -249,7 +394,6 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                 finish_reason=finish_reason,
             )
 
-        # Handle non-2xx HTTP errors via standardized classifier
         classified = classify_transport_error(
             status_code=status_code,
             headers=resp_headers,
@@ -352,6 +496,13 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
             payload=payload,
             timeout_seconds=timeout,
         ):
+            if not isinstance(sse_event, dict):
+                yield self._stream_provider_response_error(
+                    model_name,
+                    "Streaming provider event must be a JSON object.",
+                )
+                return
+
             if sse_event.get("_error"):
                 stream_err = classify_transport_to_stream_error(
                     status_code=sse_event.get("status_code"),
@@ -398,22 +549,70 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                     )
                 return
 
-            choices = sse_event.get("choices", [])
+            choices = sse_event.get("choices")
+            if choices is None:
+                continue
+            if not isinstance(choices, list):
+                yield self._stream_provider_response_error(
+                    model_name,
+                    "Streaming provider field 'choices' must be a list.",
+                )
+                return
             if not choices:
                 continue
 
             choice = choices[0]
-            delta = choice.get("delta", {})
-            finish_reason = choice.get("finish_reason")
+            if not isinstance(choice, dict):
+                yield self._stream_provider_response_error(
+                    model_name,
+                    "Streaming provider first choice must be a JSON object.",
+                )
+                return
 
-            content = delta.get("content", "")
+            delta_raw = choice.get("delta")
+            if delta_raw is None:
+                delta = {}
+            elif isinstance(delta_raw, dict):
+                delta = delta_raw
+            else:
+                yield self._stream_provider_response_error(
+                    model_name,
+                    "Streaming provider choice.delta must be a JSON object or null.",
+                )
+                return
+
+            finish_reason_raw = choice.get("finish_reason")
+            if finish_reason_raw is not None and not isinstance(finish_reason_raw, str):
+                yield self._stream_provider_response_error(
+                    model_name,
+                    "Streaming provider choice.finish_reason must be a string or null.",
+                )
+                return
+            finish_reason = finish_reason_raw
+
+            content_raw = delta.get("content")
+            if content_raw is None:
+                content = ""
+            elif isinstance(content_raw, str):
+                content = content_raw
+            else:
+                yield self._stream_provider_response_error(
+                    model_name,
+                    "Streaming provider delta.content must be a string or null.",
+                )
+                return
+
+            provider_model = sse_event.get("model")
+            if not isinstance(provider_model, str) or not provider_model.strip():
+                provider_model = model_name
+
             if content:
                 received_visible_content = True
                 yield StreamDelta(
                     content=content,
                     finish_reason=None,
                     provider=self.provider_name,
-                    model_name=sse_event.get("model", model_name),
+                    model_name=provider_model,
                 )
 
             if finish_reason:
@@ -423,7 +622,7 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                         content="",
                         finish_reason="error",
                         provider=self.provider_name,
-                        model_name=sse_event.get("model", model_name),
+                        model_name=provider_model,
                         error=ModelStreamError(
                             code="PROVIDER_RESPONSE_ERROR",
                             category="RESPONSE_ERROR",
@@ -437,7 +636,7 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                         content="",
                         finish_reason="error",
                         provider=self.provider_name,
-                        model_name=sse_event.get("model", model_name),
+                        model_name=provider_model,
                         error=ModelStreamError(
                             code="EMPTY_RESPONSE",
                             category="RESPONSE_ERROR",
@@ -451,12 +650,11 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                         content="",
                         finish_reason=finish_reason,
                         provider=self.provider_name,
-                        model_name=sse_event.get("model", model_name),
+                        model_name=provider_model,
                         error=None,
                     )
                 return
 
-        # Handle unexpected stream truncation (EOF without [DONE] or finish_reason)
         if not received_valid_completion:
             if not received_visible_content:
                 yield StreamDelta(
