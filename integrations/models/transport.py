@@ -170,6 +170,80 @@ def _parse_sse_data_event(data_lines: list[str]) -> Optional[Dict[str, Any]]:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _parse_sse_text_block(text: str) -> list[Dict[str, Any]]:
+    """Parse a finite SSE text block using the same framing rules as live lines.
+
+    This is used only as a compatibility boundary for response wrappers that do
+    not implement a binary ``readline()`` contract. It deliberately parses one
+    body read and then returns, so a broken/mock wrapper cannot create an
+    unbounded read loop.
+    """
+    events: list[Dict[str, Any]] = []
+    data_lines: list[str] = []
+
+    for line in text.splitlines():
+        line = line.rstrip("\r\n")
+        if line == "":
+            event = _parse_sse_data_event(data_lines)
+            data_lines = []
+            if event is not None:
+                events.append(event)
+                if event.get("_done"):
+                    return events
+            continue
+
+        if line.startswith(":"):
+            continue
+
+        if ":" in line:
+            field, value = line.split(":", 1)
+            if value.startswith(" "):
+                value = value[1:]
+        else:
+            field, value = line, ""
+
+        if field == "data":
+            data_lines.append(value)
+
+    event = _parse_sse_data_event(data_lines)
+    if event is not None:
+        events.append(event)
+    return events
+
+
+def _stream_read_error_event(read_err: BaseException) -> Dict[str, Any]:
+    """Classify one response-read exception without guessing from prose."""
+    if is_timeout_exception(read_err):
+        return {
+            "_error": True,
+            "status_code": 408,
+            "headers": {},
+            "body": str(read_err),
+            "is_timeout": True,
+            "is_network": False,
+            "is_internal": False,
+        }
+    if is_network_exception(read_err):
+        return {
+            "_error": True,
+            "status_code": 599,
+            "headers": {},
+            "body": str(read_err),
+            "is_timeout": False,
+            "is_network": True,
+            "is_internal": False,
+        }
+    return {
+        "_error": True,
+        "status_code": None,
+        "headers": {},
+        "body": str(read_err),
+        "is_timeout": False,
+        "is_network": False,
+        "is_internal": True,
+    }
+
+
 class OpenAICompatibleTransport:
     """Standardized HTTP Transport for OpenAI-Compatible APIs."""
 
@@ -272,8 +346,10 @@ class OpenAICompatibleTransport:
         without a trailing newline. The response is always closed on generator
         exhaustion, errors, or early consumer termination.
 
-        Uses ``readline()`` rather than byte-at-a-time reads so token delivery is
-        line-buffered without waiting for a large fixed-size block.
+        Real HTTP responses use ``readline()`` so token delivery stays
+        line-buffered. A non-standard response wrapper that does not return
+        binary lines falls back to exactly one finite ``read()`` for compatibility
+        and then terminates, preventing mock/wrapper infinite loops.
         """
         url = f"{self.base_url}/{endpoint_path.lstrip('/')}"
         timeout = timeout_seconds if timeout_seconds is not None else self.timeout_seconds
@@ -293,39 +369,44 @@ class OpenAICompatibleTransport:
             resp = urllib.request.urlopen(http_req, timeout=timeout)
 
             while True:
-                try:
-                    line_bytes = resp.readline()
-                except Exception as read_err:
-                    if is_timeout_exception(read_err):
-                        yield {
-                            "_error": True,
-                            "status_code": 408,
-                            "headers": {},
-                            "body": str(read_err),
-                            "is_timeout": True,
-                            "is_network": False,
-                            "is_internal": False,
-                        }
-                    elif is_network_exception(read_err):
-                        yield {
-                            "_error": True,
-                            "status_code": 599,
-                            "headers": {},
-                            "body": str(read_err),
-                            "is_timeout": False,
-                            "is_network": True,
-                            "is_internal": False,
-                        }
-                    else:
-                        yield {
-                            "_error": True,
-                            "status_code": None,
-                            "headers": {},
-                            "body": str(read_err),
-                            "is_timeout": False,
-                            "is_network": False,
-                            "is_internal": True,
-                        }
+                readline = getattr(resp, "readline", None)
+                if not callable(readline):
+                    line_bytes = None
+                else:
+                    try:
+                        line_bytes = readline()
+                    except Exception as read_err:
+                        yield _stream_read_error_event(read_err)
+                        return
+
+                if line_bytes is None or not isinstance(line_bytes, (bytes, bytearray)):
+                    # Compatibility boundary for mocks/proxies/wrappers that do
+                    # not provide HTTPResponse's binary readline contract. Read
+                    # the remaining body ONCE; never loop on an opaque object.
+                    read = getattr(resp, "read", None)
+                    if not callable(read):
+                        yield _stream_read_error_event(
+                            TypeError("STREAM_RESPONSE_READ_UNSUPPORTED: response exposes no binary read/readline API")
+                        )
+                        return
+                    try:
+                        body_bytes = read()
+                    except Exception as read_err:
+                        yield _stream_read_error_event(read_err)
+                        return
+                    if not isinstance(body_bytes, (bytes, bytearray)):
+                        yield _stream_read_error_event(
+                            TypeError(
+                                "STREAM_RESPONSE_READ_TYPE_ERROR: response read() must return bytes or bytearray"
+                            )
+                        )
+                        return
+
+                    body_text = bytes(body_bytes).decode("utf-8", errors="replace")
+                    for event in _parse_sse_text_block(body_text):
+                        yield event
+                        if event.get("_done"):
+                            return
                     return
 
                 if not line_bytes:
@@ -336,10 +417,7 @@ class OpenAICompatibleTransport:
                         yield event
                     return
 
-                if isinstance(line_bytes, bytes):
-                    line = line_bytes.decode("utf-8", errors="replace")
-                else:
-                    line = str(line_bytes)
+                line = bytes(line_bytes).decode("utf-8", errors="replace")
                 line = line.rstrip("\r\n")
 
                 # Blank line is the SSE event boundary.
@@ -386,36 +464,7 @@ class OpenAICompatibleTransport:
             }
 
         except Exception as e:
-            if is_timeout_exception(e):
-                yield {
-                    "_error": True,
-                    "status_code": 408,
-                    "headers": {},
-                    "body": str(e),
-                    "is_timeout": True,
-                    "is_network": False,
-                    "is_internal": False,
-                }
-            elif is_network_exception(e):
-                yield {
-                    "_error": True,
-                    "status_code": 599,
-                    "headers": {},
-                    "body": str(e),
-                    "is_timeout": False,
-                    "is_network": True,
-                    "is_internal": False,
-                }
-            else:
-                yield {
-                    "_error": True,
-                    "status_code": None,
-                    "headers": {},
-                    "body": str(e),
-                    "is_timeout": False,
-                    "is_network": False,
-                    "is_internal": True,
-                }
+            yield _stream_read_error_event(e)
 
         finally:
             if resp is not None:
