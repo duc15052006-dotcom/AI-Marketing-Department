@@ -1,5 +1,9 @@
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# 1) Gateway: machine error truth remains canonical and raw provider detail is
+# never promoted to public/UI safe_message.
+# ---------------------------------------------------------------------------
 path = Path("integrations/models/gateway.py")
 text = path.read_text(encoding="utf-8")
 
@@ -36,4 +40,47 @@ for old_snip, new_snip in replacements.items():
         raise SystemExit(f"batch1: replacement anchor missing: {old_snip[:60]}")
 
 path.write_text(text, encoding="utf-8")
-print("batch1 error-truth patch applied")
+
+# ---------------------------------------------------------------------------
+# 2) Chat UX: localize only the user-facing wrapper from canonical public
+# fields. Never parse response.error or exception strings to infer cause.
+# ---------------------------------------------------------------------------
+path = Path("chat/engine.py")
+text = path.read_text(encoding="utf-8")
+
+method_anchor = '''    def generate_chat_response(\n'''
+helper_method = '''    @staticmethod\n    def _format_public_failure(user_message: str, public_error: Any) -> str:\n        """Render a language-appropriate failure from canonical public fields only.\n\n        Machine code/category remain authoritative. Raw provider/transport text is\n        intentionally unavailable at this boundary and must never be parsed here.\n        """\n        from chat.router import normalize_for_routing\n\n        norm = normalize_for_routing(user_message or "")\n        tokens = set(norm.split())\n        vi_markers = {\n            "toi", "ban", "cho", "la", "gi", "khong", "hay", "phan", "tich",\n            "so", "lieu", "giai", "thich", "tim", "nghien", "cuu", "muc", "do",\n            "tang", "truong", "nganh", "thanh", "bang", "giup", "minh",\n        }\n        is_vietnamese = bool(tokens & vi_markers) or any(\n            ch in (user_message or "")\n            for ch in "ăâđêôơưĂÂĐÊÔƠƯáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"\n        )\n\n        if not is_vietnamese:\n            safe = getattr(public_error, "safe_message", "") or "The model request could not be completed."\n            return f"⚠️ Unable to complete the response: {safe}\\nYour message was kept in this chat session."\n\n        code = str(getattr(public_error, "code", "") or "")\n        category = str(getattr(public_error, "category", "") or "")\n        if code == "RATE_LIMITED" or category == "RATE_LIMIT":\n            detail = "Nhà cung cấp mô hình AI đang giới hạn tần suất yêu cầu. Vui lòng thử lại sau."\n        elif code in {"AUTH_ERROR", "AUTHORIZATION_ERROR", "PROVIDER_ACCESS_DENIED"} or category in {"AUTHENTICATION", "AUTHORIZATION"}:\n            detail = "Không thể xác thực quyền truy cập tới nhà cung cấp mô hình AI. Hãy kiểm tra cấu hình provider/API trong Settings."\n        elif code == "TIMEOUT" or category == "TIMEOUT":\n            detail = "Yêu cầu tới mô hình AI đã hết thời gian chờ. Bạn có thể thử lại."\n        elif code in {"NETWORK_ERROR", "PROVIDER_UNAVAILABLE"} or category == "NETWORK":\n            detail = "Không thể kết nối đến nhà cung cấp mô hình AI lúc này. Bạn có thể thử lại sau."\n        elif code in {"NO_CREDENTIAL", "PROVIDER_DISABLED", "MODEL_NOT_FOUND"} or category == "CONFIGURATION":\n            detail = "Cấu hình mô hình AI hiện chưa sẵn sàng. Hãy kiểm tra provider, model và API trong Settings."\n        elif category in {"STREAM_PROTOCOL", "RESPONSE_ERROR"} or code in {"PROVIDER_RESPONSE_ERROR", "STREAM_TRUNCATED", "EMPTY_RESPONSE"}:\n            detail = "Không thể hoàn tất phản hồi từ mô hình AI lúc này. Bạn có thể thử lại."\n        else:\n            detail = "Không thể hoàn tất phản hồi AI lúc này. Bạn có thể thử lại."\n        return f"⚠️ {detail}\\nTin nhắn của bạn đã được lưu trong lịch sử phiên."\n\n'''
+if helper_method not in text:
+    if method_anchor not in text:
+        raise SystemExit("batch1: chat generate method anchor not found")
+    text = text.replace(method_anchor, helper_method + method_anchor, 1)
+
+old_return = '''                "content": f"⚠️ Không thể hoàn tất phản hồi: {public_error.safe_message}\\nTin nhắn của bạn đã được lưu trong lịch sử phiên.",\n'''
+new_return = '''                "content": self._format_public_failure(user_message, public_error),\n'''
+count = text.count(old_return)
+if count:
+    text = text.replace(old_return, new_return)
+elif text.count(new_return) < 2:
+    raise SystemExit("batch1: chat public failure return anchors not found")
+
+path.write_text(text, encoding="utf-8")
+
+# ---------------------------------------------------------------------------
+# 3) Regression expectations: machine error must stay canonical and raw
+# WinError/HTTP diagnostic strings must not survive in any public field.
+# ---------------------------------------------------------------------------
+path = Path("tests/test_prod_vietnamese_input_tolerance_01.py")
+text = path.read_text(encoding="utf-8")
+text = text.replace(
+    '        self.assertIn("Không thể kết nối đến nhà cung cấp mô hình AI", res["content"])\n        # Backend error diagnostic must be preserved in dict\n        self.assertIn("WinError 10061", res["error"])\n',
+    '        self.assertIn("Không thể hoàn tất phản hồi từ mô hình AI", res["content"])\n        # Public machine error stays canonical; raw transport detail is not exposed.\n        self.assertEqual(res["error"], "PROVIDER_RESPONSE_ERROR")\n        self.assertNotIn("WinError 10061", str(res.get("public_error", {})))\n',
+    1,
+)
+text = text.replace(
+    '        self.assertIn("Không thể kết nối đến nhà cung cấp mô hình AI", res["content"])\n        self.assertIn("WinError 10061", res["error"])\n',
+    '        self.assertIn("Không thể hoàn tất phản hồi từ mô hình AI", res["content"])\n        self.assertEqual(res["error"], "PROVIDER_RESPONSE_ERROR")\n        self.assertNotIn("WinError 10061", str(res.get("public_error", {})))\n',
+    1,
+)
+path.write_text(text, encoding="utf-8")
+
+print("batch1 error-truth + localized chat failure patch applied")
