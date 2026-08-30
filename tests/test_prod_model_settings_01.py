@@ -782,7 +782,12 @@ class TestProdModelSettings01(unittest.TestCase):
         self.assertIn("settings_revision", body)
         self.assertIn("global_target", body)
         self.assertIn("providers", body)
-        self.assertNotIn("api_key", json.dumps(body))
+        # Secret-field names must be absent exactly; safe auth-policy metadata
+        # such as ``requires_api_key`` is intentionally public.
+        self.assertNotIn("api_key", body)
+        for provider in body["providers"]:
+            self.assertNotIn("api_key", provider)
+            self.assertNotIn("credential_ref", provider)
 
     def test_34_api_post_settings_requires_auth(self):
         """Verify POST /api/settings/model requires auth (401 without auth)."""
@@ -2137,18 +2142,19 @@ class TestProdModelSettings01(unittest.TestCase):
         self.assertIn("FREE_ONLY_POLICY_VIOLATION", str(r.error))
         self.assertEqual(executed["n"], 0)
 
-        # Generic allow path for declared-free providers (any name).
+        # Generic allow path for a declared-free CUSTOM provider. Built-in
+        # TheSpark is intentionally excluded because its canonical safety floor is PAID.
         self.settings_manager.upsert_provider(
-            {"provider_id": "thespark", "adapter_type": "OPENAI_COMPATIBLE",
+            {"provider_id": "declared_free_custom", "adapter_type": "OPENAI_COMPATIBLE",
              "base_url": "https://api.free-named.test/v1", "default_model": "m-f",
              "cost_policy": "FREE_TIER_ALLOWED"},
             secret="F_KEY",
         )
-        self.settings_manager.update_settings({"global_target": {"provider_id": "thespark", "model_id": "m-f"}})
+        self.settings_manager.update_settings({"global_target": {"provider_id": "declared_free_custom", "model_id": "m-f"}})
         snap2 = self.registry.snapshot().model_dump()
         pol2 = self.gateway.model_policy.model_dump()
         with patch.object(_Ad, "generate", lambda self_, rq: ModelResponse(
-                request_id=rq.request_id, provider="thespark", model_name=rq.model_name,
+                request_id=rq.request_id, provider="declared_free_custom", model_name=rq.model_name,
                 status=ModelResponseStatus.SUCCESS, content="ok")):
             r_ok = self._pin_generate(self.gateway, self.registry, snap2, pol2, "UNK-2", "m-f")
         self.assertEqual(r_ok.status, ModelResponseStatus.SUCCESS)
