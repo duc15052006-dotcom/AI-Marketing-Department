@@ -236,11 +236,11 @@ def normalize_cost_policy(value: Any) -> CostPolicy:
     )
 
 
-# Built-in provider cost governance is code-authoritative. Persisted settings
-# from older releases may carry stale values, but must never weaken FREE_ONLY_MODE.
+# Security floor for built-ins already classified as paid by this repository.
+# Older persisted settings may say FREE_TIER_ALLOWED; such stale values must not
+# downgrade a paid provider. Providers not listed here may still be made more
+# restrictive (PAID/UNKNOWN/DISABLED) by settings without being forced back free.
 BUILTIN_PROVIDER_COST_POLICIES: Dict[str, CostPolicy] = {
-    "xkiro": CostPolicy.FREE_TIER_ALLOWED,
-    "gemini": CostPolicy.FREE_TIER_ALLOWED,
     "openai": CostPolicy.PAID,
     "thespark": CostPolicy.PAID,
 }
