@@ -3,7 +3,11 @@ import unittest
 import urllib.request
 from unittest.mock import MagicMock, patch
 
-from connectors.web_connector import RealWebConnector, _SafeRedirectHandler
+from connectors.web_connector import (
+    RealWebConnector,
+    _SafeRedirectHandler,
+    _safe_create_connection,
+)
 from tools.gateway.security import SecurityValidationError
 from tools.receipts import ExecutionMode
 
@@ -46,6 +50,17 @@ class WebConnectorSsrf11Tests(unittest.TestCase):
         self.assertEqual(result.error_code, "SSRF_BLOCKED")
         build_opener.assert_not_called()
 
+    def test_unresolvable_hostname_fails_closed_before_network(self):
+        with patch(
+            "tools.gateway.security.socket.getaddrinfo",
+            side_effect=socket.gaierror("not found"),
+        ), patch("connectors.web_connector.urllib.request.build_opener") as build_opener:
+            result = self.connector.execute("read_page", {"url": "https://unresolvable.example/path"})
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.error_code, "DNS_RESOLUTION_FAILED")
+        build_opener.assert_not_called()
+
     def test_redirect_handler_rejects_private_destination_before_follow(self):
         handler = _SafeRedirectHandler()
         request = urllib.request.Request("https://safe.example/start")
@@ -59,6 +74,38 @@ class WebConnectorSsrf11Tests(unittest.TestCase):
                 {},
                 "http://192.168.0.50/admin",
             )
+
+    def test_safe_connection_rejects_private_rebinding_answer_before_socket(self):
+        private_dns_answer = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443)),
+        ]
+        with patch("tools.gateway.security.socket.getaddrinfo", return_value=private_dns_answer), patch(
+            "connectors.web_connector.socket.socket"
+        ) as socket_ctor:
+            with self.assertRaises(SecurityValidationError):
+                _safe_create_connection(("rebinding.example", 443), timeout=1.0)
+
+        socket_ctor.assert_not_called()
+
+    def test_safe_connection_connects_to_validated_sockaddr_without_reresolve(self):
+        public_dns_answer = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
+        ]
+        sock = MagicMock()
+        with patch(
+            "tools.gateway.security.socket.getaddrinfo",
+            return_value=public_dns_answer,
+        ) as getaddrinfo, patch("connectors.web_connector.socket.socket", return_value=sock):
+            connected = _safe_create_connection(("public.example", 443), timeout=2.0)
+
+        self.assertIs(connected, sock)
+        getaddrinfo.assert_called_once_with(
+            "public.example",
+            443,
+            socket.AF_UNSPEC,
+            socket.SOCK_STREAM,
+        )
+        sock.connect.assert_called_once_with(("8.8.8.8", 443))
 
     def test_public_target_can_use_real_read_path_with_mocked_transport(self):
         public_dns_answer = [
