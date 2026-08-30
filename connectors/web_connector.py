@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -34,6 +35,19 @@ def _is_blocked_ip_literal(hostname: str) -> bool:
             address.is_unspecified,
         )
     )
+
+
+def _hostname_resolves_to_blocked_address(hostname: str, port: int) -> bool:
+    """Return True if any resolved address for hostname is non-public."""
+    resolved = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    if not resolved:
+        raise socket.gaierror(f"No addresses resolved for host '{hostname}'.")
+
+    for entry in resolved:
+        sockaddr = entry[4]
+        if sockaddr and _is_blocked_ip_literal(str(sockaddr[0])):
+            return True
+    return False
 
 
 class RealWebConnector(BaseCapabilityAdapter):
@@ -94,6 +108,17 @@ class RealWebConnector(BaseCapabilityAdapter):
                 )
 
             try:
+                if _hostname_resolves_to_blocked_address(
+                    hostname,
+                    parsed.port or (443 if parsed.scheme == "https" else 80),
+                ):
+                    return AdapterResult(
+                        success=False,
+                        error_code="SSRF_BLOCKED",
+                        error_message="Target hostname resolves to an internal, local, or non-routable IP address.",
+                        latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                    )
+
                 req = urllib.request.Request(
                     url,
                     headers={"User-Agent": self._user_agent, "Accept": "text/html,application/xhtml+xml,text/plain"},
