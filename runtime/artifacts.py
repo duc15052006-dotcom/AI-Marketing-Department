@@ -223,6 +223,7 @@ class DepartmentRunArtifact(BaseModel):
             "status": self.status.value if hasattr(self.status, "value") else str(self.status),
             "agent_outputs": _normalize_for_hashing(self.agent_outputs),
             "final_cmo_output": _normalize_for_hashing(self.final_cmo_output),
+            "approvals": _normalize_for_hashing(self.approvals),
             "binding_constraints": _normalize_for_hashing(self.binding_constraints),
             "epistemic_handoffs": _normalize_for_hashing(self.epistemic_handoffs),
             "claim_verification_ledger": [
