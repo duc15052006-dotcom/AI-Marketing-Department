@@ -6,7 +6,9 @@ and search querying with SSRF protection and sanitized error handling.
 
 from __future__ import annotations
 
+import http.client
 import re
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -16,6 +18,77 @@ from typing import Any, Dict
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
 from tools.gateway.security import SecurityValidationError, SecurityValidator
 from tools.receipts import ExecutionMode
+
+
+def _safe_create_connection(
+    address,
+    timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
+    source_address=None,
+    *,
+    all_errors: bool = False,
+):
+    """Connect only to an IP address resolved and validated in the same operation.
+
+    ``socket.create_connection`` resolves a hostname internally.  Doing a separate
+    SSRF DNS pre-check and then calling it would create a DNS-rebinding race.  This
+    helper resolves once, validates every returned address, and connects directly
+    to a validated sockaddr without resolving the hostname again.
+    """
+    host, port = address
+    addr_info = SecurityValidator.resolve_public_addresses(host, port)
+    errors: list[OSError] = []
+
+    for family, socktype, proto, _canonname, sockaddr in addr_info:
+        sock = None
+        try:
+            sock = socket.socket(family, socktype, proto)
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                sock.settimeout(timeout)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(sockaddr)
+            return sock
+        except OSError as exc:
+            errors.append(exc)
+            if sock is not None:
+                sock.close()
+
+    if errors:
+        if all_errors and len(errors) > 1:
+            raise ExceptionGroup("create_connection failed", errors)
+        raise errors[-1]
+    raise OSError("No validated address was available for connection.")
+
+
+class _SafeHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection whose actual socket connect is SSRF-safe and DNS-pinned."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._create_connection = _safe_create_connection
+
+
+class _SafeHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection retaining hostname/SNI while pinning the validated IP."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._create_connection = _safe_create_connection
+
+
+class _SafeHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):  # type: ignore[override]
+        return self.do_open(_SafeHTTPConnection, req)
+
+
+class _SafeHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):  # type: ignore[override]
+        return self.do_open(
+            _SafeHTTPSConnection,
+            req,
+            context=self._context,
+            check_hostname=self._check_hostname,
+        )
 
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -102,10 +175,16 @@ class RealWebConnector(BaseCapabilityAdapter):
                     safe_url,
                     headers={"User-Agent": self._user_agent, "Accept": "text/html,application/xhtml+xml,text/plain"},
                 )
-                # urllib's default opener follows redirects automatically. A custom
-                # handler is mandatory so each hop is validated before any request
-                # is dispatched to the redirect destination.
-                opener = urllib.request.build_opener(_SafeRedirectHandler())
+                # Disable environment proxies for this connector: otherwise the
+                # actual network destination could bypass the validated direct
+                # connection path.  Custom HTTP(S) handlers pin each connection to
+                # one of the public IPs validated by _safe_create_connection.
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({}),
+                    _SafeHTTPHandler(),
+                    _SafeHTTPSHandler(),
+                    _SafeRedirectHandler(),
+                )
                 with opener.open(req, timeout=min(timeout_seconds, self._timeout_seconds)) as resp:
                     raw_bytes = resp.read(250000)  # Max 250KB
                     content_type = resp.headers.get("Content-Type", "text/html")
@@ -130,8 +209,8 @@ class RealWebConnector(BaseCapabilityAdapter):
                     execution_mode=ExecutionMode.REAL,
                 )
             except SecurityValidationError as error:
-                # Raised by _SafeRedirectHandler before an unsafe redirect hop is
-                # followed; report it as a policy block, not a generic network error.
+                # Raised by redirect validation or by the DNS-pinned connection
+                # path before an unsafe destination can receive a request.
                 return self._security_failure(error, start_time)
             except urllib.error.HTTPError as e:
                 return AdapterResult(
