@@ -1,0 +1,98 @@
+name: Temporary Local No-Auth Diagnostic Patch
+
+on:
+  push:
+    branches: [fix/local-noauth-diagnostics-05c]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/local-noauth-diagnostics-05c
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Apply guarded API diagnostic patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+
+          p = Path('app_api/server.py')
+          lines = p.read_text(encoding='utf-8').splitlines()
+
+          def one_index(exact):
+              hits = [i for i, line in enumerate(lines) if line == exact]
+              if len(hits) != 1:
+                  raise SystemExit(f'expected exactly one line {exact!r}, found {len(hits)}')
+              return hits[0]
+
+          tools_import = one_index('from tools.capabilities import CapabilityRegistry, RiskLevel')
+          lines.insert(tools_import, 'from integrations.models.provider_auth import provider_requires_api_key')
+
+          has_idx = one_index('                has_cred = mgr._secret_store.has_secret(pdef.credential_ref)')
+          safe_idx = has_idx + 1
+          if lines[safe_idx] != '                safe = ModelSettingsManager.sanitize_provider_response(pdef)':
+              raise SystemExit('unexpected provider response block after has_cred')
+          cred_idx = safe_idx + 1
+          if lines[cred_idx] != '                safe["has_credential"] = has_cred':
+              raise SystemExit('unexpected has_credential line')
+          configured_idx = cred_idx + 1
+          if lines[configured_idx] != '                safe["is_configured"] = pdef.enabled and has_cred and bool(pdef.default_model)':
+              raise SystemExit('unexpected is_configured line')
+
+          lines.insert(safe_idx, '                requires_key = provider_requires_api_key(pdef.adapter_type, pdef.base_url)')
+          configured_idx += 1
+          lines[configured_idx:configured_idx + 1] = [
+              '                safe["requires_api_key"] = requires_key',
+              '                safe["is_configured"] = (',
+              '                    pdef.enabled',
+              '                    and bool(pdef.default_model)',
+              '                    and (has_cred or not requires_key)',
+              '                )',
+          ]
+
+          p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m py_compile app_api/server.py tests/test_local_noauth_diagnostics_05c.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --stat
+      - name: Run local no-auth diagnostics regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_local_noauth_diagnostics_05c `
+            tests.test_local_openai_noauth_05 `
+            tests.test_prod_model_settings_01
+      - name: Commit tested production patch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app_api/server.py
+          if (git diff --cached --quiet) { exit 0 }
+          git commit -m "fix: align local no-auth provider diagnostics"
+          git push origin HEAD:fix/local-noauth-diagnostics-05c
