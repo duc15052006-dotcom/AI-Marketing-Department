@@ -63,6 +63,10 @@ class RealAnalyticsConnector(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return "local_analytics"
 
+    def execution_mode_for(self, capability_id: str) -> ExecutionMode:
+        """Declare REAL provenance only for reads of the ingested analytics store."""
+        return ExecutionMode.REAL if capability_id.lower() == "analytics_retrieval" else ExecutionMode.MOCK
+
     def ingest_campaign_metrics(self, campaign_id: str, raw_records: List[Dict[str, Any]]) -> int:
         """Ingest raw structured campaign records into normalized CampaignMetrics."""
         metrics = []
