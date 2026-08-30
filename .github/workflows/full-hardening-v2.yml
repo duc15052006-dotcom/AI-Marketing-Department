@@ -176,7 +176,7 @@ jobs:
           fi
 
       - name: Full Python regression sweep
-        run: pytest -q
+        run: pytest -q tests
 
       - name: Optional Rust/Tauri check
         shell: bash
