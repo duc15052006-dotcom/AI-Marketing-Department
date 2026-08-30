@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/stream-error-redaction-10b
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -34,7 +35,7 @@ jobs:
         run: |
           python -m py_compile app_api/streaming.py tests/test_stream_error_redaction_10.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git diff --check HEAD~3..HEAD
+          git diff --check origin/main...HEAD
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run SSE security and regression suites
         shell: pwsh
