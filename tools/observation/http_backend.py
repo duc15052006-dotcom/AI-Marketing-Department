@@ -262,6 +262,16 @@ class HttpStaticBackend:
                         retryable=False,
                     )
 
+        except SecurityValidationError as e:
+            # The DNS-pinned transport re-validates at the actual connection
+            # boundary, so rebinding from public to private remains a security
+            # rejection rather than being mislabeled as a generic network error.
+            return None, ToolError(
+                error_code=e.code,
+                message=e.message,
+                backend_used=self.BACKEND_ID,
+                retryable=False,
+            )
         except httpx.TimeoutException:
             return None, ToolError(
                 error_code="TIMEOUT",
