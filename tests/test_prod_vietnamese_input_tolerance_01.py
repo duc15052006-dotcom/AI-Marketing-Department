@@ -281,9 +281,10 @@ class TestVietnameseInputTolerance01(unittest.TestCase):
         # User-facing message must be sanitized
         self.assertNotIn("WinError 10061", res["content"])
         self.assertNotIn("HTTP 599", res["content"])
-        self.assertIn("Không thể kết nối đến nhà cung cấp mô hình AI", res["content"])
-        # Backend error diagnostic must be preserved in dict
-        self.assertIn("WinError 10061", res["error"])
+        self.assertIn("Không thể hoàn tất phản hồi từ mô hình AI", res["content"])
+        # Public machine error stays canonical; raw transport detail is not exposed.
+        self.assertEqual(res["error"], "PROVIDER_RESPONSE_ERROR")
+        self.assertNotIn("WinError 10061", str(res.get("public_error", {})))
 
     # ------------------------------------------------------------------
     # 9. Provider Configuration Test Contamination Regression Guard
@@ -320,8 +321,9 @@ class TestVietnameseInputTolerance01(unittest.TestCase):
         res = engine.generate_chat_response(session, "giai thich cho toi CPA la gi")
         self.assertFalse(res["success"])
         self.assertNotIn("WinError 10061", res["content"])
-        self.assertIn("Không thể kết nối đến nhà cung cấp mô hình AI", res["content"])
-        self.assertIn("WinError 10061", res["error"])
+        self.assertIn("Không thể hoàn tất phản hồi từ mô hình AI", res["content"])
+        self.assertEqual(res["error"], "PROVIDER_RESPONSE_ERROR")
+        self.assertNotIn("WinError 10061", str(res.get("public_error", {})))
 
 
 if __name__ == "__main__":

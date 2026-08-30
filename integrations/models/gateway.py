@@ -191,6 +191,27 @@ def stream_error_to_provider_error_code(stream_err: ModelStreamError) -> Provide
     return ProviderErrorCode.OTHER
 
 
+def _public_safe_message_for_code(code: str, provider_name: str = "provider") -> str:
+    """Return a bounded user-safe message without reflecting raw transport/provider detail."""
+    messages = {
+        "RATE_LIMITED": "The model provider rate limit was reached. Please try again later.",
+        "AUTH_ERROR": "The model provider rejected the configured credential.",
+        "AUTHORIZATION_ERROR": "The model provider denied access to this request.",
+        "PROVIDER_ACCESS_DENIED": "The model provider denied access to this request.",
+        "TIMEOUT": "The model provider request timed out.",
+        "NETWORK_ERROR": "The model provider could not be reached.",
+        "PROVIDER_UNAVAILABLE": "The model provider is currently unavailable.",
+        "NO_CREDENTIAL": "No credential is configured for the selected model provider.",
+        "PROVIDER_DISABLED": "The selected model provider is disabled.",
+        "MODEL_NOT_FOUND": "The selected model is not available from the provider.",
+        "INVALID_REQUEST": "The model provider rejected the request configuration.",
+        "REQUEST_SCHEMA_ERROR": "The model request did not match the required schema.",
+        "STREAM_UNSUPPORTED": "The selected model provider does not support streaming for this request.",
+        "PROVIDER_RESPONSE_ERROR": "The model provider request failed.",
+    }
+    return messages.get(code, "The model provider request failed.")
+
+
 def model_response_to_stream_error(
     response: ModelResponse,
     provider_name: str = "provider",
@@ -206,7 +227,8 @@ def model_response_to_stream_error(
     if "error_code" in meta and meta["error_code"]:
         code = str(meta["error_code"])
         category = str(meta.get("error_category", "PROVIDER_ERROR"))
-        safe_msg = meta.get("safe_message") or sanitize_secrets(response.error or f"Error from {provider_name}")
+        raw_safe_msg = meta.get("safe_message")
+        safe_msg = sanitize_secrets(str(raw_safe_msg)) if isinstance(raw_safe_msg, str) and raw_safe_msg.strip() else _public_safe_message_for_code(code, provider_name)
         raw_retryable = meta.get("retryable", False)
         retryable = raw_retryable if type(raw_retryable) is bool else False
         http_status = meta.get("http_status")
@@ -218,15 +240,15 @@ def model_response_to_stream_error(
             http_status=http_status,
         )
 
-    # 2. Structural status signal
+    # 2. Structural status signal. Raw response.error is diagnostic/internal and
+    # must never be reflected to public/UI boundaries.
     status = getattr(response, "status", None)
-    clean_err = sanitize_secrets(response.error or f"Error from {provider_name}")
 
     if status == ModelResponseStatus.RATE_LIMITED:
         return ModelStreamError(
             code="RATE_LIMITED",
             category="RATE_LIMIT",
-            safe_message=clean_err,
+            safe_message=_public_safe_message_for_code("RATE_LIMITED", provider_name),
             retryable=True,
             http_status=429,
         )
@@ -234,7 +256,7 @@ def model_response_to_stream_error(
         return ModelStreamError(
             code="TIMEOUT",
             category="TIMEOUT",
-            safe_message=clean_err,
+            safe_message=_public_safe_message_for_code("TIMEOUT", provider_name),
             retryable=True,
             http_status=408,
         )
@@ -242,16 +264,16 @@ def model_response_to_stream_error(
         return ModelStreamError(
             code="STREAM_UNSUPPORTED",
             category="CAPABILITY",
-            safe_message=clean_err,
+            safe_message=_public_safe_message_for_code("STREAM_UNSUPPORTED", provider_name),
             retryable=False,
             http_status=None,
         )
     else:
-        # Conservative canonical provider error without string guessing
+        # Conservative canonical provider error without string guessing or raw-detail reflection.
         return ModelStreamError(
             code="PROVIDER_RESPONSE_ERROR",
             category="RESPONSE_ERROR",
-            safe_message=clean_err,
+            safe_message=_public_safe_message_for_code("PROVIDER_RESPONSE_ERROR", provider_name),
             retryable=False,
             http_status=None,
         )

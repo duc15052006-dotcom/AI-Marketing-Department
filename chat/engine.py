@@ -43,6 +43,45 @@ class ChatConversationEngine:
         self.session_knowledge = session_knowledge or SessionKnowledgeStore()
         self.knowledge_repo = knowledge_repo or LocalKnowledgeRepository()
 
+    @staticmethod
+    def _format_public_failure(user_message: str, public_error: Any) -> str:
+        """Render a language-appropriate failure from canonical public fields only."""
+        from chat.router import normalize_for_routing
+
+        norm = normalize_for_routing(user_message or "")
+        tokens = set(norm.split())
+        vi_markers = {
+            "toi", "ban", "cho", "la", "gi", "khong", "hay", "phan", "tich",
+            "so", "lieu", "giai", "thich", "tim", "nghien", "cuu", "muc", "do",
+            "tang", "truong", "nganh", "thanh", "bang", "giup", "minh",
+        }
+        is_vietnamese = bool(tokens & vi_markers) or any(
+            ch in (user_message or "")
+            for ch in "ăâđêôơưĂÂĐÊÔƠƯáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+        )
+
+        if not is_vietnamese:
+            safe = getattr(public_error, "safe_message", "") or "The model request could not be completed."
+            return f"⚠️ Unable to complete the response: {safe}\nYour message was kept in this chat session."
+
+        code = str(getattr(public_error, "code", "") or "")
+        category = str(getattr(public_error, "category", "") or "")
+        if code == "RATE_LIMITED" or category == "RATE_LIMIT":
+            detail = "Nhà cung cấp mô hình AI đang giới hạn tần suất yêu cầu. Vui lòng thử lại sau."
+        elif code in {"AUTH_ERROR", "AUTHORIZATION_ERROR", "PROVIDER_ACCESS_DENIED"} or category in {"AUTHENTICATION", "AUTHORIZATION"}:
+            detail = "Không thể xác thực quyền truy cập tới nhà cung cấp mô hình AI. Hãy kiểm tra cấu hình provider/API trong Settings."
+        elif code == "TIMEOUT" or category == "TIMEOUT":
+            detail = "Yêu cầu tới mô hình AI đã hết thời gian chờ. Bạn có thể thử lại."
+        elif code in {"NETWORK_ERROR", "PROVIDER_UNAVAILABLE"} or category == "NETWORK":
+            detail = "Không thể kết nối đến nhà cung cấp mô hình AI lúc này. Bạn có thể thử lại sau."
+        elif code in {"NO_CREDENTIAL", "PROVIDER_DISABLED", "MODEL_NOT_FOUND"} or category == "CONFIGURATION":
+            detail = "Cấu hình mô hình AI hiện chưa sẵn sàng. Hãy kiểm tra provider, model và API trong Settings."
+        elif category in {"STREAM_PROTOCOL", "RESPONSE_ERROR"} or code in {"PROVIDER_RESPONSE_ERROR", "STREAM_TRUNCATED", "EMPTY_RESPONSE"}:
+            detail = "Không thể hoàn tất phản hồi từ mô hình AI lúc này. Bạn có thể thử lại."
+        else:
+            detail = "Không thể hoàn tất phản hồi AI lúc này. Bạn có thể thử lại."
+        return f"⚠️ {detail}\nTin nhắn của bạn đã được lưu trong lịch sử phiên."
+
     def generate_chat_response(
         self,
         session: ChatSession,
@@ -223,7 +262,7 @@ class ChatConversationEngine:
                 "success": False,
                 "error": public_error.code,
                 "public_error": public_error.model_dump(),
-                "content": f"⚠️ Không thể hoàn tất phản hồi: {public_error.safe_message}\nTin nhắn của bạn đã được lưu trong lịch sử phiên.",
+                "content": self._format_public_failure(user_message, public_error),
             }
 
         # Synchronous generation path
@@ -262,7 +301,7 @@ class ChatConversationEngine:
             "success": False,
             "error": public_error.code,
             "public_error": public_error.model_dump(),
-            "content": f"⚠️ Không thể hoàn tất phản hồi: {public_error.safe_message}\nTin nhắn của bạn đã được lưu trong lịch sử phiên.",
+            "content": self._format_public_failure(user_message, public_error),
         }
 
     def _generate_offline_conversational_fallback(self, text: str, doc_context: str = "") -> Optional[str]:
