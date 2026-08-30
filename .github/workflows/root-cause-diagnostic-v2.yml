@@ -1,0 +1,54 @@
+name: Root Cause Diagnostic V2
+
+on:
+  push:
+    branches:
+      - phase/full-hardening-v2
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - settings
+          - runtime
+          - truth-research
+          - legacy-phase4
+          - platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest
+      - name: First failure - settings
+        if: matrix.group == 'settings'
+        continue-on-error: true
+        run: pytest -x -vv --tb=short tests/test_prod_model_settings_01.py
+      - name: First failure - runtime
+        if: matrix.group == 'runtime'
+        continue-on-error: true
+        run: pytest -x -vv --tb=short tests/test_prod_runtime_01_single_run_authority.py tests/test_prod_runtime_progress_01.py tests/test_prod_workflow_failure_semantics_01.py tests/test_prod_core_authority_01a.py tests/test_prod_core_authority_01b.py
+      - name: First failure - truth and research
+        if: matrix.group == 'truth-research'
+        continue-on-error: true
+        run: pytest -x -vv --tb=short tests/test_prod_truth_01_execution_truthfulness.py tests/test_prod_research_evidence_01a.py tests/test_creative_performance_true_handoff.py tests/test_phase5_1_foundation.py tests/test_phase5_2_runtime_integration.py tests/test_phase6_1_v1_connectors_and_workspace.py tests/test_phase6_2_pilot_and_v1_release.py
+      - name: First failure - legacy phase4
+        if: matrix.group == 'legacy-phase4'
+        continue-on-error: true
+        run: pytest -x -vv --tb=short tests/test_phase4_1_comparison_contracts.py tests/test_phase4_3c_3_openai_transport.py tests/test_phase4_3c_4_single_timeout_forensics.py tests/test_phase4_3c_6_versioned_run_integrity.py tests/test_phase4_3c_7_five_agent_v2_live_collaboration.py tests/test_phase4_3c_8_telemetry_and_collaboration_audit.py tests/test_phase4_3c_15_rc3_architecture.py
+      - name: First failure - platform specific
+        if: matrix.group == 'platform'
+        continue-on-error: true
+        run: pytest -x -vv --tb=short tests/test_prod_fs_01_filesystem_containment.py tests/test_prod_lifecycle_01_process_ownership.py tests/test_prod_uiauth_01_secure_bootstrap.py tests/test_prod_verifier_02_supply_chain.py tests/test_prod_python_streaming_endpoint_01.py
