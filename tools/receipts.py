@@ -8,39 +8,21 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from schemas.base import BaseModel, Field
 
-REDACTED_SENSITIVE_KEYS = {
-    "api_key", "apikey", "secret", "password", "token", "authorization",
-    "auth_token", "access_token", "cookie", "cookies", "credential", "credentials",
-    "private_key", "secret_key", "session_token",
-}
+from governance.redaction import (
+    REDACTED_SENSITIVE_KEYS,
+    sanitize_sensitive_payload,
+)
+from schemas.base import BaseModel, Field
 
 
 def sanitize_tool_payload(obj: Any) -> Any:
-    """Recursively redact sensitive credentials, tokens, and authorization headers from tool payloads."""
-    if isinstance(obj, dict):
-        sanitized = {}
-        for k, v in obj.items():
-            k_str = str(k).lower()
-            if k_str in REDACTED_SENSITIVE_KEYS or any(s in k_str for s in ("password", "secret", "api_key", "auth_token", "access_token")):
-                sanitized[k] = "[REDACTED_SECRET]"
-            else:
-                sanitized[k] = sanitize_tool_payload(v)
-        return sanitized
-    elif isinstance(obj, list):
-        return [sanitize_tool_payload(item) for item in obj]
-    elif isinstance(obj, str):
-        # Redact Authorization Bearer / Basic tokens and API key patterns in strings
-        redacted = re.sub(r"(?i)(bearer\s+)[a-zA-Z0-9_\-\.]{8,}", r"\1[REDACTED_TOKEN]", obj)
-        redacted = re.sub(r"(?i)(api[_\-]?key\s*[:=]\s*)[a-zA-Z0-9_\-]{8,}", r"\1[REDACTED_KEY]", redacted)
-        return redacted
-    return obj
+    """Backward-compatible shared redaction entrypoint for tool payloads."""
+    return sanitize_sensitive_payload(obj)
 
 
 class ExecutionStatus(str, Enum):
@@ -89,6 +71,8 @@ class ExecutionReceipt(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if self.error_message is not None:
+            self.error_message = sanitize_tool_payload(self.error_message)
         if self.data is not None:
             self.data = sanitize_tool_payload(self.data)
         if self.output is not None:
