@@ -75,6 +75,7 @@ jobs:
             tests.test_tool_receipt_provenance_04 `
             tests.test_local_openai_noauth_05 `
             tests.test_local_noauth_diagnostics_05c `
+            tests.test_settings_strict_bool_10 `
             tests.test_sse_parser_06 `
             tests.test_sse_response_wrapper_06b `
             tests.test_provider_response_schema_07 `
