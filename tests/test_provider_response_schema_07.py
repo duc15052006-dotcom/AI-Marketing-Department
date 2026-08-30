@@ -88,6 +88,7 @@ class TestProviderResponseSchema07(unittest.TestCase):
     def test_sync_missing_or_malformed_usage_does_not_destroy_valid_content(self):
         usage_variants = [
             None,
+            {},
             "not-an-object",
             [],
             {"prompt_tokens": "bad"},
