@@ -26,31 +26,24 @@ jobs:
           text = path.read_text(encoding="utf-8")
 
           old_import = "from runtime.artifacts import DepartmentRunArtifact, MemoryWriteCandidate\n"
-          new_import = (
-              old_import
-              + "from runtime.agent_prompt import AgentDnaLoadError, compose_runtime_agent_system_prompt\n"
-          )
+          new_import = old_import + "from runtime.agent_prompt import AgentDnaLoadError, compose_runtime_agent_system_prompt\n"
           if text.count(old_import) != 1:
               raise SystemExit(f"IMPORT_ANCHOR_COUNT={text.count(old_import)}")
           if "from runtime.agent_prompt import AgentDnaLoadError" not in text:
               text = text.replace(old_import, new_import, 1)
 
-          old_block = '''        # COLLAB-05: every stage may append the optional machine handoff block
-          # to the SAME single response (no second agent, no second model call).
-          system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
-          '''
-          new_block = '''        try:
-              system_instruction = compose_runtime_agent_system_prompt(agent_name, system_instruction)
-          except AgentDnaLoadError as exc:
-              return None, str(exc)
-
-          # COLLAB-05: every stage may append the optional machine handoff block
-          # to the SAME single response (no second agent, no second model call).
-          system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
-          '''
-          if text.count(old_block) != 1:
-              raise SystemExit(f"CALL_ANCHOR_COUNT={text.count(old_block)}")
-          text = text.replace(old_block, new_block, 1)
+          old_line = "        system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION\n"
+          if text.count(old_line) != 1:
+              raise SystemExit(f"CALL_ANCHOR_COUNT={text.count(old_line)}")
+          new_lines = (
+              "        try:\n"
+              "            system_instruction = compose_runtime_agent_system_prompt(agent_name, system_instruction)\n"
+              "        except AgentDnaLoadError as exc:\n"
+              "            return None, str(exc)\n"
+              "\n"
+              "        system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION\n"
+          )
+          text = text.replace(old_line, new_lines, 1)
           path.write_text(text, encoding="utf-8")
 
       - name: Verify only expected runtime anchors changed
