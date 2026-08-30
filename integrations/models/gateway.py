@@ -410,7 +410,10 @@ class UniversalModelGateway:
 
         from config.authority import get_runtime_config
         runtime = get_runtime_config()
-        self._free_only_mode: bool = free_only_mode if free_only_mode is not None else runtime.free_only_mode
+        resolved_free_only = free_only_mode if free_only_mode is not None else runtime.free_only_mode
+        if type(resolved_free_only) is not bool:
+            raise ValueError("INVALID_FREE_ONLY_MODE: free_only_mode must be a strict boolean.")
+        self._free_only_mode: bool = resolved_free_only
         self._default_provider = (default_provider or runtime.default_provider).lower()
 
         # Authoritative Model Policy
@@ -446,6 +449,8 @@ class UniversalModelGateway:
 
     def set_free_only_mode(self, enabled: bool) -> None:
         """Toggle strict free-only cost governance."""
+        if type(enabled) is not bool:
+            raise ValueError("INVALID_FREE_ONLY_MODE: enabled must be a strict boolean.")
         self._free_only_mode = enabled
         self._model_policy.free_only_mode = enabled
 
@@ -515,6 +520,17 @@ class UniversalModelGateway:
         """Execute model generation with cost policy enforcement and production fallback."""
         start_time = time.perf_counter()
 
+        if type(allow_paid) is not bool:
+            return ModelResponse(
+                request_id=getattr(request, "request_id", "REQ-UNKNOWN"),
+                provider=provider_id or "gateway",
+                model_name=getattr(request, "model_name", "unknown"),
+                status=ModelResponseStatus.ERROR,
+                error="REQUEST_SCHEMA_ERROR: allow_paid must be a strict boolean.",
+                usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            )
+
         # Canonical request normalization
         try:
             norm_req = normalize_model_request(request)
@@ -574,7 +590,7 @@ class UniversalModelGateway:
             else:
                 prov_def = self.provider_registry.get_provider(cand_provider)
 
-            if prov_def is not None and not prov_def.enabled:
+            if prov_def is not None and (not prov_def.enabled or prov_def.cost_policy == CostPolicy.DISABLED):
                 err_msg = f"PROVIDER_DISABLED: Provider '{cand_provider}' is disabled."
                 last_error_resp = ModelResponse(
                     request_id=norm_req.request_id,
@@ -778,6 +794,24 @@ class UniversalModelGateway:
         Non-streaming providers are handled via synchronous generate() degradation:
         the complete response is emitted as a single StreamDelta.
         """
+        if type(allow_paid) is not bool:
+            yield normalize_public_stream_delta(
+                StreamDelta(
+                    content="",
+                    finish_reason="error",
+                    error=ModelStreamError(
+                        code="REQUEST_SCHEMA_ERROR",
+                        category="VALIDATION",
+                        safe_message="REQUEST_SCHEMA_ERROR: allow_paid must be a strict boolean.",
+                        retryable=False,
+                        http_status=None,
+                    ),
+                ),
+                "gateway",
+                getattr(request, "model_name", "unknown"),
+            )
+            return
+
         try:
             norm_req = normalize_model_request(request)
         except Exception as e:
@@ -849,7 +883,7 @@ class UniversalModelGateway:
             else:
                 prov_def = self.provider_registry.get_provider(cand_provider)
 
-            if prov_def is not None and not prov_def.enabled:
+            if prov_def is not None and (not prov_def.enabled or prov_def.cost_policy == CostPolicy.DISABLED):
                 err = ModelStreamError(
                     code="PROVIDER_DISABLED",
                     category="CONFIGURATION",

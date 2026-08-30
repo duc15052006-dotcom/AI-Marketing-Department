@@ -270,6 +270,8 @@ class ProviderDefinition(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if type(self.enabled) is not bool:
+            raise ValueError("INVALID_PROVIDER_ENABLED: enabled must be a strict boolean.")
         # Validate machine provider ID (canonical grammar; traversal/secret-ref safe)
         self.provider_id = validate_provider_id(self.provider_id)
 
@@ -405,6 +407,8 @@ class ModelPolicy(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if type(self.free_only_mode) is not bool:
+            raise ValueError("INVALID_FREE_ONLY_MODE: free_only_mode must be a strict boolean.")
         # Validate and normalize all agent override keys
         normalized_overrides: Dict[str, ModelTarget] = {}
         for k, target in self.agent_overrides.items():
@@ -813,14 +817,14 @@ class ProviderRegistry:
         """Retrieve or create adapter instance for given provider ID (live config)."""
         pid = provider_id.lower()
         with self._lock:
-            if pid in getattr(self, "_injected_adapters", {}):
-                return self._injected_adapters[pid]
-
             cfg = self._configs.get(pid)
             if cfg is None:
                 return None
-            if not cfg.enabled and not include_disabled:
+            if (not cfg.enabled or cfg.cost_policy == CostPolicy.DISABLED) and not include_disabled:
                 return None
+
+            if pid in getattr(self, "_injected_adapters", {}):
+                return self._injected_adapters[pid]
 
             if pid in self._adapters:
                 return self._adapters[pid]
@@ -861,6 +865,9 @@ class ProviderRegistry:
         """
         pid = cfg.provider_id.lower()
         with self._lock:
+            if not cfg.enabled or cfg.cost_policy == CostPolicy.DISABLED:
+                return None
+
             if pid in getattr(self, "_injected_adapters", {}):
                 return self._injected_adapters[pid]
 

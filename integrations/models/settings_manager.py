@@ -105,6 +105,10 @@ class ModelSettings(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if type(self.free_only_mode) is not bool:
+            raise ModelSettingsValidationError(
+                "INVALID_FREE_ONLY_MODE: free_only_mode must be a strict boolean."
+            )
         # Normalize global target
         if isinstance(self.global_target, dict):
             self.global_target = ModelTarget(**self.global_target)
