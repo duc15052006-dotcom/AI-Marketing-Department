@@ -1,0 +1,214 @@
+name: Temporary Provider Governance State Hardening
+
+on:
+  push:
+    branches: [fix/provider-governance-state-15]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/provider-governance-state-15
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Apply guarded governance patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+
+          def one_index(lines, exact, start=0, end=None):
+              stop = len(lines) if end is None else end
+              hits = [i for i in range(start, stop) if lines[i] == exact]
+              if len(hits) != 1:
+                  raise SystemExit(f'expected one line {exact!r} in [{start}:{stop}], found {len(hits)}')
+              return hits[0]
+
+          # registry.py — strict state types + DISABLED adapter defense-in-depth
+          rp = Path('integrations/models/registry.py')
+          r = rp.read_text(encoding='utf-8').splitlines()
+
+          provider_cls = one_index(r, 'class ProviderDefinition(BaseModel):')
+          provider_end = one_index(r, 'class ProviderConfig(ProviderDefinition):', start=provider_cls + 1)
+          provider_post = one_index(r, '    def __post_init__(self) -> None:', start=provider_cls, end=provider_end)
+          provider_super = one_index(r, '        super().__post_init__()', start=provider_post, end=provider_end)
+          r[provider_super + 1:provider_super + 1] = [
+              '        if type(self.enabled) is not bool:',
+              '            raise ValueError("INVALID_PROVIDER_ENABLED: enabled must be a strict boolean.")',
+          ]
+
+          policy_cls = one_index(r, 'class ModelPolicy(BaseModel):')
+          policy_end = one_index(r, 'class ConnectionTestStatus(str, Enum):', start=policy_cls + 1)
+          policy_post = one_index(r, '    def __post_init__(self) -> None:', start=policy_cls, end=policy_end)
+          policy_super = one_index(r, '        super().__post_init__()', start=policy_post, end=policy_end)
+          r[policy_super + 1:policy_super + 1] = [
+              '        if type(self.free_only_mode) is not bool:',
+              '            raise ValueError("INVALID_FREE_ONLY_MODE: free_only_mode must be a strict boolean.")',
+          ]
+
+          get_adapter = one_index(r, '    def get_adapter(self, provider_id: str, include_disabled: bool = False) -> Optional[BaseModelAdapter]:')
+          get_adapter_end = one_index(r, '    @staticmethod', start=get_adapter + 1)
+          injected = one_index(r, '            if pid in getattr(self, "_injected_adapters", {}):', start=get_adapter, end=get_adapter_end)
+          expected = [
+              '            if pid in getattr(self, "_injected_adapters", {}):',
+              '                return self._injected_adapters[pid]',
+              '',
+              '            cfg = self._configs.get(pid)',
+              '            if cfg is None:',
+              '                return None',
+              '            if not cfg.enabled and not include_disabled:',
+              '                return None',
+          ]
+          if r[injected:injected + len(expected)] != expected:
+              raise SystemExit('unexpected get_adapter authority block')
+          r[injected:injected + len(expected)] = [
+              '            cfg = self._configs.get(pid)',
+              '            if cfg is None:',
+              '                return None',
+              '            if (not cfg.enabled or cfg.cost_policy == CostPolicy.DISABLED) and not include_disabled:',
+              '                return None',
+              '',
+              '            if pid in getattr(self, "_injected_adapters", {}):',
+              '                return self._injected_adapters[pid]',
+          ]
+
+          pinned = one_index(r, '    def get_pinned_adapter(self, cfg: ProviderDefinition) -> Optional[BaseModelAdapter]:')
+          pinned_end = one_index(r, '    def _drop_pinned_index_entries(self, cache_keys) -> None:', start=pinned + 1)
+          pin_injected = one_index(r, '            if pid in getattr(self, "_injected_adapters", {}):', start=pinned, end=pinned_end)
+          r[pin_injected:pin_injected] = [
+              '            if not cfg.enabled or cfg.cost_policy == CostPolicy.DISABLED:',
+              '                return None',
+              '',
+          ]
+          rp.write_text('\n'.join(r) + '\n', encoding='utf-8')
+
+          # settings_manager.py — persisted free_only_mode must be an actual bool
+          sp = Path('integrations/models/settings_manager.py')
+          s = sp.read_text(encoding='utf-8').splitlines()
+          settings_cls = one_index(s, 'class ModelSettings(BaseModel):')
+          manager_cls = one_index(s, 'class ModelSettingsManager:', start=settings_cls + 1)
+          settings_post = one_index(s, '    def __post_init__(self) -> None:', start=settings_cls, end=manager_cls)
+          settings_super = one_index(s, '        super().__post_init__()', start=settings_post, end=manager_cls)
+          s[settings_super + 1:settings_super + 1] = [
+              '        if type(self.free_only_mode) is not bool:',
+              '            raise ModelSettingsValidationError(',
+              '                "INVALID_FREE_ONLY_MODE: free_only_mode must be a strict boolean."',
+              '            )',
+          ]
+          sp.write_text('\n'.join(s) + '\n', encoding='utf-8')
+
+          # gateway.py — strict FREE_ONLY/allow_paid boundary + DISABLED fail-closed
+          gp = Path('integrations/models/gateway.py')
+          g = gp.read_text(encoding='utf-8').splitlines()
+
+          init_line = one_index(g, '        self._free_only_mode: bool = free_only_mode if free_only_mode is not None else runtime.free_only_mode')
+          g[init_line:init_line + 1] = [
+              '        resolved_free_only = free_only_mode if free_only_mode is not None else runtime.free_only_mode',
+              '        if type(resolved_free_only) is not bool:',
+              '            raise ValueError("INVALID_FREE_ONLY_MODE: free_only_mode must be a strict boolean.")',
+              '        self._free_only_mode: bool = resolved_free_only',
+          ]
+
+          setter = one_index(g, '    def set_free_only_mode(self, enabled: bool) -> None:')
+          setter_assign = one_index(g, '        self._free_only_mode = enabled', start=setter, end=setter + 10)
+          g[setter_assign:setter_assign] = [
+              '        if type(enabled) is not bool:',
+              '            raise ValueError("INVALID_FREE_ONLY_MODE: enabled must be a strict boolean.")',
+          ]
+
+          generate = one_index(g, '    def generate(')
+          generate_stream = one_index(g, '    def generate_stream(', start=generate + 1)
+          start_time = one_index(g, '        start_time = time.perf_counter()', start=generate, end=generate_stream)
+          g[start_time + 1:start_time + 1] = [
+              '',
+              '        if type(allow_paid) is not bool:',
+              '            return ModelResponse(',
+              '                request_id=getattr(request, "request_id", "REQ-UNKNOWN"),',
+              '                provider=provider_id or "gateway",',
+              '                model_name=getattr(request, "model_name", "unknown"),',
+              '                status=ModelResponseStatus.ERROR,',
+              '                error="REQUEST_SCHEMA_ERROR: allow_paid must be a strict boolean.",',
+              '                usage=ModelUsage(usage_source="NOT_AVAILABLE"),',
+              '                latency_ms=(time.perf_counter() - start_time) * 1000.0,',
+              '            )',
+          ]
+
+          generate = one_index(g, '    def generate(')
+          generate_stream = one_index(g, '    def generate_stream(', start=generate + 1)
+          disabled_sync = one_index(g, '            if prov_def is not None and not prov_def.enabled:', start=generate, end=generate_stream)
+          g[disabled_sync] = '            if prov_def is not None and (not prov_def.enabled or prov_def.cost_policy == CostPolicy.DISABLED):'
+
+          generate_stream = one_index(g, '    def generate_stream(')
+          stream_body_try = one_index(g, '        try:', start=generate_stream, end=len(g))
+          g[stream_body_try:stream_body_try] = [
+              '        if type(allow_paid) is not bool:',
+              '            yield normalize_public_stream_delta(',
+              '                StreamDelta(',
+              '                    content="",',
+              '                    finish_reason="error",',
+              '                    error=ModelStreamError(',
+              '                        code="REQUEST_SCHEMA_ERROR",',
+              '                        category="VALIDATION",',
+              '                        safe_message="REQUEST_SCHEMA_ERROR: allow_paid must be a strict boolean.",',
+              '                        retryable=False,',
+              '                        http_status=None,',
+              '                    ),',
+              '                ),',
+              '                "gateway",',
+              '                getattr(request, "model_name", "unknown"),',
+              '            )',
+              '            return',
+              '',
+          ]
+
+          generate_stream = one_index(g, '    def generate_stream(')
+          disabled_stream = one_index(g, '            if prov_def is not None and not prov_def.enabled:', start=generate_stream, end=len(g))
+          g[disabled_stream] = '            if prov_def is not None and (not prov_def.enabled or prov_def.cost_policy == CostPolicy.DISABLED):'
+
+          gp.write_text('\n'.join(g) + '\n', encoding='utf-8')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m py_compile integrations/models/registry.py integrations/models/gateway.py integrations/models/settings_manager.py tests/test_provider_governance_state_15.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --stat
+      - name: Run provider governance regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_provider_governance_state_15 `
+            tests.test_free_only_cost_authority_02 `
+            tests.test_prod_model_settings_01 `
+            tests.test_prod_model_gateway_01_provider_registry `
+            tests.test_prod_model_streaming_01
+      - name: Commit tested production patch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/models/registry.py integrations/models/gateway.py integrations/models/settings_manager.py
+          if (git diff --cached --quiet) { exit 0 }
+          git commit -m "security: harden provider governance state"
+          git push origin HEAD:fix/provider-governance-state-15
