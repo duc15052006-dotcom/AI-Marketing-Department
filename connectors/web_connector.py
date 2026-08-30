@@ -6,6 +6,7 @@ and search querying with SSRF protection and sanitized error handling.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import time
 import urllib.error
@@ -14,6 +15,25 @@ import urllib.request
 from typing import Any, Dict, List, Optional
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
 from tools.receipts import ExecutionMode
+
+
+def _is_blocked_ip_literal(hostname: str) -> bool:
+    """Return True when hostname is an IP literal that must never be fetched."""
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+
+    return any(
+        (
+            address.is_loopback,
+            address.is_private,
+            address.is_link_local,
+            address.is_multicast,
+            address.is_reserved,
+            address.is_unspecified,
+        )
+    )
 
 
 class RealWebConnector(BaseCapabilityAdapter):
@@ -64,11 +84,12 @@ class RealWebConnector(BaseCapabilityAdapter):
                     error_message=f"Unsupported URL scheme '{parsed.scheme}'. Only http and https are allowed.",
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
-            if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254"):
+            hostname = parsed.hostname or ""
+            if hostname == "localhost" or _is_blocked_ip_literal(hostname):
                 return AdapterResult(
                     success=False,
                     error_code="SSRF_BLOCKED",
-                    error_message="Targeting internal loopback and cloud metadata addresses is strictly forbidden.",
+                    error_message="Targeting internal, local, or non-routable IP addresses is strictly forbidden.",
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
 
