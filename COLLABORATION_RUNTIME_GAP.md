@@ -1,3 +1,15 @@
+> [!WARNING]
+> **HISTORICAL / SUPERSEDED STATUS AUDIT**
+>
+> This document records an earlier runtime-gap assessment from before the later
+> headless model/runtime and Five-Agent execution phases were implemented and
+> verified. It is retained for forensic history only.
+>
+> **Do not use this file as the current runtime-status authority.** For current
+> state, read `SOURCE_OF_TRUTH.md`, then `STATUS_MATRIX.md`, `ARCHITECTURE.md`,
+> and the code/tests at the checked-out commit. If this historical document
+> conflicts with those sources, the current sources win.
+
 # Antigravity Multi-Agent Runtime & Live Collaboration Capability Audit (COLLABORATION_RUNTIME_GAP.md)
 
 ## 1. Executive Summary & Runtime Capability Status
