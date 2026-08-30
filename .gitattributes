@@ -1,0 +1,2 @@
+# Frozen benchmark hashes are byte-level and must be platform-independent.
+evaluations/benchmarks/** text eol=lf
