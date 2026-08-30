@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Generator, List, Optional
+
+from governance.redaction import sanitize_sensitive_text
 from schemas.base import BaseModel, Field
 
 
@@ -25,7 +27,7 @@ class ModelRole(str, Enum):
 
 
 class ModelMessage(BaseModel):
-    """Standard message representation across LLM providers."""
+    """Standard message representation across all LLM providers."""
     role: ModelRole = Field(default=ModelRole.USER, description="system, user, assistant, model, or tool")
     content: str = ""
     name: Optional[str] = None
@@ -176,6 +178,7 @@ class ModelStreamError(BaseModel):
             self.code = "STREAM_INTERNAL_ERROR"
         if not self.category:
             self.category = "INTERNAL"
+        self.safe_message = sanitize_sensitive_text(self.safe_message)
         if self.safe_message and len(self.safe_message) > MAX_SAFE_MESSAGE_LEN:
             self.safe_message = self.safe_message[:MAX_SAFE_MESSAGE_LEN - 3] + "..."
 
@@ -218,6 +221,11 @@ class ModelResponse(BaseModel):
     )
     trust_status: str = Field(default="VERIFIED", description="VERIFIED | UNVERIFIED")
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.error is not None:
+            self.error = sanitize_sensitive_text(self.error)
+
 
 class CostPolicy(str, Enum):
     """Cost governance classification for model providers."""
@@ -252,7 +260,7 @@ class BaseModelAdapter(ABC):
         pass
 
     def generate_stream(self, request: ModelRequest) -> Generator[StreamDelta, None, None]:
-        """Execute a model completion request with streaming.
+        """Execute model completion request with streaming.
 
         Yields StreamDelta instances containing visible-only content deltas.
         Default implementation yields STREAM_UNSUPPORTED status.
