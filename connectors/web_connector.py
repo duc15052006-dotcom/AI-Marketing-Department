@@ -13,7 +13,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
+
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.gateway.security import SecurityValidationError, SecurityValidator
 from tools.receipts import ExecutionMode
 
 
@@ -52,6 +54,18 @@ class RealWebConnector(BaseCapabilityAdapter):
         cap = capability_id.lower()
         return ExecutionMode.REAL if cap in ("read_page", "analyze_url") else ExecutionMode.MOCK
 
+    @staticmethod
+    def _security_failure(error: SecurityValidationError, start_time: float) -> AdapterResult:
+        """Return a stable fail-closed adapter result for outbound security rejection."""
+        code = "SSRF_BLOCKED" if error.code.startswith("SSRF_") else error.code
+        return AdapterResult(
+            success=False,
+            error_code=code,
+            error_message=f"Outbound URL blocked ({error.code}): {error.message}",
+            latency_ms=(time.perf_counter() - start_time) * 1000.0,
+            execution_mode=ExecutionMode.MOCK,
+        )
+
     def execute(
         self,
         capability_id: str,
@@ -75,7 +89,8 @@ class RealWebConnector(BaseCapabilityAdapter):
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
 
-            # Validate URL format & block local network SSRF
+            # Preserve the existing scheme/literal checks for compatibility, then
+            # delegate hostname/DNS safety to the shared outbound security authority.
             parsed = urllib.parse.urlparse(url)
             if parsed.scheme not in ("http", "https"):
                 return AdapterResult(
@@ -94,8 +109,13 @@ class RealWebConnector(BaseCapabilityAdapter):
                 )
 
             try:
+                safe_url = SecurityValidator.validate_url(url)
+            except SecurityValidationError as error:
+                return self._security_failure(error, start_time)
+
+            try:
                 req = urllib.request.Request(
-                    url,
+                    safe_url,
                     headers={"User-Agent": self._user_agent, "Accept": "text/html,application/xhtml+xml,text/plain"},
                 )
                 with urllib.request.urlopen(req, timeout=min(timeout_seconds, self._timeout_seconds)) as resp:
@@ -112,7 +132,7 @@ class RealWebConnector(BaseCapabilityAdapter):
                 return AdapterResult(
                     success=True,
                     data={
-                        "url": url,
+                        "url": safe_url,
                         "content_type": content_type,
                         "raw_length": len(text_body),
                         "extracted_text": clean_text[:4000],
