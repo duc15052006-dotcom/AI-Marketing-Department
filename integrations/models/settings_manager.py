@@ -28,6 +28,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+from governance.redaction import sanitize_sensitive_text
 from integrations.models.base import (
     BaseModelAdapter,
     CostPolicy,
@@ -721,10 +722,11 @@ class ModelSettingsManager:
         try:
             validated_url = validate_base_url(base_url)
         except Exception as e:
+            safe_error = sanitize_sensitive_text(str(e), secret=secret)
             return {
                 "status": "INVALID_CONFIGURATION",
                 "latency_ms": (time.perf_counter() - start_time) * 1000.0,
-                "error": f"INVALID_BASE_URL: {str(e)}",
+                "error": f"INVALID_BASE_URL: {safe_error}",
             }
 
         # Construct transient adapter for non-mutating execution
@@ -752,6 +754,7 @@ class ModelSettingsManager:
 
             resp: ModelResponse = adapter.generate(test_req)
             latency = (time.perf_counter() - start_time) * 1000.0
+            safe_response_error = sanitize_sensitive_text(resp.error or "", secret=secret)
 
             if resp.status == ModelResponseStatus.SUCCESS:
                 return {
@@ -764,10 +767,10 @@ class ModelSettingsManager:
                 return {
                     "status": "TIMEOUT",
                     "latency_ms": latency,
-                    "error": resp.error or "Provider timed out.",
+                    "error": safe_response_error or "Provider timed out.",
                 }
             else:
-                err_text = str(resp.error or "").upper()
+                err_text = safe_response_error.upper()
                 if "401" in err_text or "AUTH" in err_text or "UNAUTHORIZED" in err_text or "KEY" in err_text:
                     status_code = "AUTH_FAILED"
                 elif "429" in err_text or "RATE" in err_text or "QUOTA" in err_text:
@@ -780,15 +783,17 @@ class ModelSettingsManager:
                 return {
                     "status": status_code,
                     "latency_ms": latency,
-                    "error": resp.error,
+                    "error": safe_response_error,
                 }
         except Exception as e:
+            safe_error = sanitize_sensitive_text(str(e), secret=secret)
             return {
                 "status": "UNAVAILABLE",
                 "latency_ms": (time.perf_counter() - start_time) * 1000.0,
-                "error": f"CONNECTION_EXCEPTION: {str(e)}",
+                "error": f"CONNECTION_EXCEPTION: {safe_error}",
             }
         finally:
-            # Zero memory trace of transient secret
+            # Best-effort release of local references only. Python strings are
+            # immutable and cannot be guaranteed to be zeroized in memory by del.
             del secret
             del transient_api_key
