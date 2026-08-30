@@ -1,0 +1,27 @@
+name: SSRF DNS Private 17
+
+on:
+  push:
+    branches:
+      - fix/web-ssrf-dns-private-17
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile changed modules
+        run: python -m py_compile connectors/web_connector.py tests/test_web_ssrf_literal_ip_16.py tests/test_web_ssrf_dns_private_17.py
+      - name: Run SSRF regressions
+        run: python -m unittest tests.test_web_ssrf_literal_ip_16 tests.test_web_ssrf_dns_private_17 -v
+      - name: Run connector regression
+        run: python -m unittest tests.test_phase6_1_v1_connectors_and_workspace -v
