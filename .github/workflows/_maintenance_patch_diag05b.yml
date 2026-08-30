@@ -1,0 +1,52 @@
+name: Maintenance Patch Diagnostics05B
+
+on:
+  push:
+    branches:
+      - fix/local-noauth-diagnostics-05b-v2
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply narrow diagnostics patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app_api/server.py')
+          text = path.read_text(encoding='utf-8')
+
+          old_diag = '''                        entry["enabled"] = pdef.enabled\n                        entry["model_present"] = bool(pdef.default_model)\n                        entry["endpoint_present"] = bool(pdef.base_url) or pdef.adapter_type == "GEMINI_NATIVE"\n                        entry["credential_present"] = mgr._secret_store.has_secret(pdef.credential_ref)'''
+          new_diag = '''                        entry["enabled"] = pdef.enabled\n                        entry["model_present"] = bool(pdef.default_model)\n                        entry["endpoint_present"] = bool(pdef.base_url) or pdef.adapter_type == "GEMINI_NATIVE"\n                        has_cred = mgr._secret_store.has_secret(pdef.credential_ref)\n                        requires_key = provider_requires_api_key(pdef.adapter_type, pdef.base_url)\n                        entry["credential_present"] = has_cred\n                        entry["requires_api_key"] = requires_key\n                        entry["configured"] = (\n                            pdef.enabled\n                            and bool(pdef.default_model)\n                            and (has_cred or not requires_key)\n                        )'''
+          assert old_diag in text, 'diagnostics overlay anchor changed'
+          text = text.replace(old_diag, new_diag, 1)
+
+          old_report = '''            live_def = APP_BACKEND.runtime.model_gateway.provider_registry.get_provider(pid)\n            report.append({\n                "provider": pid,\n                "enabled": bool(live_def.enabled) if live_def else pdef.enabled,\n                "credential_present": has_cred,\n                "configured": bool(pdef.enabled and has_cred and pdef.default_model),\n                "health": ("AVAILABLE" if (pdef.enabled and has_cred) else ("DISABLED" if not pdef.enabled else "NO_CREDENTIAL")),\n                "model": pdef.default_model,'''
+          new_report = '''            live_def = APP_BACKEND.runtime.model_gateway.provider_registry.get_provider(pid)\n            enabled = live_def.enabled if live_def is not None else pdef.enabled\n            requires_key = provider_requires_api_key(pdef.adapter_type, pdef.base_url)\n            configured = bool(\n                enabled\n                and pdef.default_model\n                and (has_cred or not requires_key)\n            )\n            if not enabled:\n                health = "DISABLED"\n            elif requires_key and not has_cred:\n                health = "NO_CREDENTIAL"\n            elif configured:\n                health = "AVAILABLE"\n            else:\n                health = "UNAVAILABLE"\n            report.append({\n                "provider": pid,\n                "enabled": enabled,\n                "credential_present": has_cred,\n                "requires_api_key": requires_key,\n                "configured": configured,\n                "health": health,\n                "model": pdef.default_model,'''
+          assert old_report in text, 'provider report anchor changed'
+          text = text.replace(old_report, new_report, 1)
+          path.write_text(text, encoding='utf-8')
+
+          test = Path('tests/test_local_noauth_diagnostics_05b.py')
+          test.write_text('''import unittest\nfrom types import SimpleNamespace\n\nimport app_api.server as server\nfrom integrations.models.registry import ProviderDefinition\n\n\nclass _SecretStore:\n    def __init__(self, present=False):\n        self.present = present\n\n    def has_secret(self, credential_ref):\n        return self.present\n\n\nclass _Registry:\n    def __init__(self, providers):\n        self.providers = providers\n\n    def get_provider(self, provider_id):\n        return self.providers.get(provider_id)\n\n\nclass LocalNoAuthDiagnostics05BTests(unittest.TestCase):\n    def _report_for(self, pdef, has_credential=False):\n        original = server.APP_BACKEND\n        fake_mgr = SimpleNamespace(\n            get_settings=lambda: SimpleNamespace(providers={pdef.provider_id: pdef}),\n            _secret_store=_SecretStore(has_credential),\n        )\n        fake_registry = _Registry({pdef.provider_id: pdef})\n        server.APP_BACKEND = SimpleNamespace(\n            settings_manager=fake_mgr,\n            runtime=SimpleNamespace(\n                model_gateway=SimpleNamespace(provider_registry=fake_registry)\n            ),\n        )\n        try:\n            handler = object.__new__(server.DepartmentAPIHandler)\n            return handler._authoritative_provider_report()[0]\n        finally:\n            server.APP_BACKEND = original\n\n    def test_loopback_openai_compatible_is_configured_without_key(self):\n        pdef = ProviderDefinition(\n            provider_id="localtest",\n            adapter_type="OPENAI_COMPATIBLE",\n            base_url="http://127.0.0.1:11434/v1",\n            default_model="local-model",\n            enabled=True,\n        )\n        row = self._report_for(pdef, has_credential=False)\n        self.assertFalse(row["credential_present"])\n        self.assertFalse(row["requires_api_key"])\n        self.assertTrue(row["configured"])\n        self.assertEqual(row["health"], "AVAILABLE")\n\n    def test_remote_openai_compatible_without_key_is_not_configured(self):\n        pdef = ProviderDefinition(\n            provider_id="remotetest",\n            adapter_type="OPENAI_COMPATIBLE",\n            base_url="https://example.com/v1",\n            default_model="remote-model",\n            enabled=True,\n        )\n        row = self._report_for(pdef, has_credential=False)\n        self.assertFalse(row["credential_present"])\n        self.assertTrue(row["requires_api_key"])\n        self.assertFalse(row["configured"])\n        self.assertEqual(row["health"], "NO_CREDENTIAL")\n\n    def test_disabled_loopback_remains_disabled(self):\n        pdef = ProviderDefinition(\n            provider_id="localoff",\n            adapter_type="OPENAI_COMPATIBLE",\n            base_url="http://localhost:11434/v1",\n            default_model="local-model",\n            enabled=False,\n        )\n        row = self._report_for(pdef, has_credential=False)\n        self.assertFalse(row["requires_api_key"])\n        self.assertFalse(row["configured"])\n        self.assertEqual(row["health"], "DISABLED")\n\n\nif __name__ == "__main__":\n    unittest.main()\n''', encoding='utf-8')
+
+          Path('.github/workflows/_maintenance_patch_diag05b.yml').unlink()
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app_api/server.py tests/test_local_noauth_diagnostics_05b.py .github/workflows/_maintenance_patch_diag05b.yml
+          git commit -m "fix: report local no-auth providers accurately"
+          git push origin HEAD:fix/local-noauth-diagnostics-05b-v2
