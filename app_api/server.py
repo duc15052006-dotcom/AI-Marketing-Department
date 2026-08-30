@@ -816,7 +816,15 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                         entry["enabled"] = pdef.enabled
                         entry["model_present"] = bool(pdef.default_model)
                         entry["endpoint_present"] = bool(pdef.base_url) or pdef.adapter_type == "GEMINI_NATIVE"
-                        entry["credential_present"] = mgr._secret_store.has_secret(pdef.credential_ref)
+                        has_cred = mgr._secret_store.has_secret(pdef.credential_ref)
+                        requires_key = provider_requires_api_key(pdef.adapter_type, pdef.base_url)
+                        entry["credential_present"] = has_cred
+                        entry["requires_api_key"] = requires_key
+                        entry["configured"] = (
+                            pdef.enabled
+                            and bool(pdef.default_model)
+                            and (has_cred or not requires_key)
+                        )
             except Exception:
                 pass
             self._send_json(diag)
@@ -1159,12 +1167,28 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             except Exception:
                 has_cred = False
             live_def = APP_BACKEND.runtime.model_gateway.provider_registry.get_provider(pid)
+            enabled = live_def.enabled if live_def is not None else pdef.enabled
+            requires_key = provider_requires_api_key(pdef.adapter_type, pdef.base_url)
+            configured = bool(
+                enabled
+                and pdef.default_model
+                and (has_cred or not requires_key)
+            )
+            if not enabled:
+                health = "DISABLED"
+            elif requires_key and not has_cred:
+                health = "NO_CREDENTIAL"
+            elif configured:
+                health = "AVAILABLE"
+            else:
+                health = "UNAVAILABLE"
             report.append({
                 "provider": pid,
-                "enabled": bool(live_def.enabled) if live_def else pdef.enabled,
+                "enabled": enabled,
                 "credential_present": has_cred,
-                "configured": bool(pdef.enabled and has_cred and pdef.default_model),
-                "health": ("AVAILABLE" if (pdef.enabled and has_cred) else ("DISABLED" if not pdef.enabled else "NO_CREDENTIAL")),
+                "requires_api_key": requires_key,
+                "configured": configured,
+                "health": health,
                 "model": pdef.default_model,
                 "base_url": pdef.base_url,
                 "timeout_seconds": pdef.timeout_seconds,
