@@ -51,16 +51,21 @@ class WebSsrfDns17Tests(unittest.TestCase):
         response.__exit__.return_value = False
         response.read.return_value = b"<html><body><h1>Public page</h1></body></html>"
         response.headers.get.return_value = "text/html; charset=utf-8"
+        response.geturl.return_value = "https://public.example/page"
+
+        opener = MagicMock()
+        opener.open.return_value = response
 
         with patch("tools.gateway.security.socket.getaddrinfo", return_value=public_dns_answer), patch(
-            "connectors.web_connector.urllib.request.urlopen", return_value=response
-        ) as urlopen:
+            "connectors.web_connector.urllib.request.build_opener", return_value=opener
+        ) as build_opener:
             result = self.connector.execute("read_page", {"url": "https://public.example/page"})
 
         self.assertTrue(result.success)
         self.assertEqual(result.execution_mode, ExecutionMode.REAL)
         self.assertIn("Public page", result.data["extracted_text"])
-        urlopen.assert_called_once()
+        build_opener.assert_called_once()
+        opener.open.assert_called_once()
 
 
 if __name__ == "__main__":
