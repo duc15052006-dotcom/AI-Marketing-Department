@@ -5,7 +5,7 @@ across the Five-Agent Department:
 - Decouples Five-Agent Brain from external tools and platforms
 - Strict RBAC permission enforcement
 - Human Approval Gate for high-risk / publishing / financial actions
-- Automatic retry, timeout handling, and error normalization
+- Side-effect-safe retry, timeout handling, and error normalization
 - Generates immutable ExecutionReceipts for every invocation
 """
 
@@ -121,6 +121,35 @@ class ToolGateway:
         self.register_adapter(DBAdapter())
         self.register_adapter(ExportAdapter())
 
+    @staticmethod
+    def _is_consequential_capability(cap: CapabilityDescriptor) -> bool:
+        """Return whether dispatch can produce externally consequential side effects.
+
+        Retry safety is a property of the capability itself, not of whether an
+        approval token happened to be supplied on this specific request.
+        """
+        return bool(
+            cap.human_approval_required
+            or cap.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
+            or cap.category == CapabilityCategory.PUBLISH
+            or PermissionLevel.FINANCIAL_OR_HIGH_RISK in cap.required_permissions
+            or PermissionLevel.PUBLISH in cap.required_permissions
+            or PermissionLevel.EXTERNAL_WRITE in cap.required_permissions
+        )
+
+    @staticmethod
+    def _classify_retryable_exception(exc: BaseException) -> Optional[str]:
+        """Map only clearly transient built-in exception classes to retry codes.
+
+        Unknown adapter exceptions fail closed. They are never made implicitly
+        retryable merely because a capability has retries configured.
+        """
+        if isinstance(exc, TimeoutError):
+            return "TIMEOUT"
+        if isinstance(exc, ConnectionError):
+            return "NETWORK_ERROR"
+        return None
+
     def execute(self, request: ToolRequest) -> ExecutionReceipt:
         """Execute a tool capability with complete governance, permissions, and receipt creation."""
         start_time = datetime.now(timezone.utc)
@@ -211,17 +240,8 @@ class ToolGateway:
             return self.receipt_repository.save_receipt(receipt)
 
         # 4. Atomic One-Shot Approval Claim for Consequential Actions
-        is_consequential = bool(
-            request.approval_token
-            and (
-                cap.human_approval_required
-                or cap.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
-                or cap.category == CapabilityCategory.PUBLISH
-                or PermissionLevel.FINANCIAL_OR_HIGH_RISK in cap.required_permissions
-                or PermissionLevel.PUBLISH in cap.required_permissions
-                or PermissionLevel.EXTERNAL_WRITE in cap.required_permissions
-            )
-        )
+        cap_is_consequential = self._is_consequential_capability(cap)
+        is_consequential = bool(request.approval_token and cap_is_consequential)
 
         if is_consequential:
             claimed = self.policy_engine.claim_approval(request.approval_token)
@@ -245,13 +265,21 @@ class ToolGateway:
                 )
                 return self.receipt_repository.save_receipt(receipt)
 
-        # 5. Execute Invocation with Timeout & Retries
+        # 5. Execute Invocation with Side-Effect-Safe Timeout & Retries
         timeout = request.timeout_seconds or cap.timeout_policy
-        max_retries = cap.retry_policy.get("max_retries", 0)
+        max_retries = max(0, int(cap.retry_policy.get("max_retries", 0) or 0))
         retryable_errors = set(cap.retry_policy.get("retryable_errors", []))
+        try:
+            backoff_seconds = float(cap.retry_policy.get("backoff_seconds", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            backoff_seconds = 0.0
+        backoff_seconds = min(max(backoff_seconds, 0.0), 10.0)
 
         adapter_res = None
-        last_exc = None
+        last_exc: Optional[BaseException] = None
+        exception_error_code: Optional[str] = None
+        ambiguous_external_outcome = False
+
         try:
             for attempt in range(max_retries + 1):
                 try:
@@ -263,14 +291,47 @@ class ToolGateway:
                         business_id=request.business_id or "",
                         project_id=request.project_id or "",
                     )
-                except Exception as e:
+                    last_exc = None
+                    exception_error_code = None
+                except Exception as exc:
                     adapter_res = None
-                    last_exc = e
+                    last_exc = exc
+                    exception_error_code = self._classify_retryable_exception(exc)
 
-                if adapter_res and adapter_res.success:
+                    # Once a consequential dispatch begins, a thrown exception
+                    # leaves remote acceptance ambiguous. Re-dispatching could
+                    # duplicate publishing, scheduling, or financial side effects.
+                    if cap_is_consequential:
+                        ambiguous_external_outcome = True
+                        break
+
+                    # Safe/read-only operations retry only explicitly classified
+                    # transient exception types and only when policy permits it.
+                    if exception_error_code not in retryable_errors:
+                        break
+                    if attempt >= max_retries:
+                        break
+                    if backoff_seconds > 0:
+                        time.sleep(backoff_seconds)
+                    continue
+
+                if adapter_res.success:
                     break
-                if adapter_res and adapter_res.error_code not in retryable_errors:
+
+                # Consequential capabilities are one-dispatch per gateway call.
+                # Even a structured transient error can be ambiguous if the
+                # provider reports failure after an external action was accepted.
+                if cap_is_consequential:
                     break
+
+                # Structured failures are retryable only when the adapter's
+                # normalized error code is explicitly declared by the capability.
+                if adapter_res.error_code not in retryable_errors:
+                    break
+                if attempt >= max_retries:
+                    break
+                if backoff_seconds > 0:
+                    time.sleep(backoff_seconds)
         finally:
             if is_consequential:
                 self.policy_engine.consume_approval(request.approval_token)
@@ -279,7 +340,6 @@ class ToolGateway:
 
         # 6. Assemble Receipt
         if adapter_res and adapter_res.success:
-
             mode = getattr(adapter_res, "execution_mode", ExecutionMode.MOCK) or ExecutionMode.MOCK
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
@@ -301,8 +361,20 @@ class ToolGateway:
                 observation_record=adapter_res.observation_record,
             )
         else:
-            err_code = adapter_res.error_code if adapter_res else "EXECUTION_EXCEPTION"
-            err_msg = adapter_res.error_message if adapter_res else str(last_exc)
+            if ambiguous_external_outcome:
+                err_code = "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME"
+                err_msg = (
+                    "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME: The external action may have been accepted "
+                    "before execution raised an exception; automatic retry was suppressed to prevent "
+                    "duplicate side effects."
+                )
+            elif adapter_res is not None:
+                err_code = adapter_res.error_code or "EXECUTION_ERROR"
+                err_msg = adapter_res.error_message or "Tool adapter execution failed."
+            else:
+                err_code = exception_error_code or "EXECUTION_EXCEPTION"
+                err_msg = str(last_exc) if last_exc is not None else "Tool adapter execution failed."
+
             status = ExecutionStatus.TIMEOUT if err_code == "TIMEOUT" else ExecutionStatus.ERROR
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
