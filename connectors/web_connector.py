@@ -6,8 +6,10 @@ and search querying with SSRF protection and sanitized error handling.
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import re
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -36,6 +38,85 @@ def _is_blocked_ip_literal(hostname: str) -> bool:
             address.is_unspecified,
         )
     )
+
+
+def _safe_create_connection(
+    address,
+    timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
+    source_address=None,
+    *,
+    all_errors: bool = False,
+):
+    """Connect only to an IP resolved and validated in this same operation.
+
+    A DNS pre-check followed by ``socket.create_connection(hostname)`` leaves a
+    rebinding race because the hostname is resolved twice.  This replacement
+    resolves once through the shared validator and connects directly to one of
+    the validated sockaddr values.
+    """
+    host, port = address
+    addr_info = SecurityValidator.resolve_public_addresses(host, port)
+    errors: list[OSError] = []
+
+    for family, socktype, proto, _canonname, sockaddr in addr_info:
+        sock = None
+        try:
+            sock = socket.socket(family, socktype, proto)
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                sock.settimeout(timeout)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(sockaddr)
+            return sock
+        except OSError as exc:
+            errors.append(exc)
+            if sock is not None:
+                sock.close()
+
+    if errors:
+        if all_errors and len(errors) > 1:
+            raise ExceptionGroup("create_connection failed", errors)
+        raise errors[-1]
+    raise OSError("No validated public address was available for connection.")
+
+
+class _SafeHTTPConnection(http.client.HTTPConnection):
+    """HTTP connection whose socket is pinned to a validated public IP."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._create_connection = _safe_create_connection
+
+
+class _SafeHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection retaining hostname/SNI while pinning the socket IP."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._create_connection = _safe_create_connection
+
+
+class _SafeHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):  # type: ignore[override]
+        return self.do_open(_SafeHTTPConnection, req)
+
+
+class _SafeHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):  # type: ignore[override]
+        return self.do_open(
+            _SafeHTTPSConnection,
+            req,
+            context=self._context,
+            check_hostname=self._check_hostname,
+        )
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Validate every redirect destination before urllib follows it."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        safe_url = SecurityValidator.validate_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, safe_url)
 
 
 class RealWebConnector(BaseCapabilityAdapter):
@@ -118,10 +199,20 @@ class RealWebConnector(BaseCapabilityAdapter):
                     safe_url,
                     headers={"User-Agent": self._user_agent, "Accept": "text/html,application/xhtml+xml,text/plain"},
                 )
-                with urllib.request.urlopen(req, timeout=min(timeout_seconds, self._timeout_seconds)) as resp:
+                # Disable environment proxies so the actual destination cannot
+                # bypass the validated direct connection path.  Every redirect is
+                # revalidated and every socket is pinned to a validated DNS answer.
+                opener = urllib.request.build_opener(
+                    urllib.request.ProxyHandler({}),
+                    _SafeHTTPHandler(),
+                    _SafeHTTPSHandler(),
+                    _SafeRedirectHandler(),
+                )
+                with opener.open(req, timeout=min(timeout_seconds, self._timeout_seconds)) as resp:
                     raw_bytes = resp.read(250000)  # Max 250KB
                     content_type = resp.headers.get("Content-Type", "text/html")
                     text_body = raw_bytes.decode("utf-8", errors="replace")
+                    final_url = resp.geturl() if hasattr(resp, "geturl") else safe_url
 
                 # Basic HTML stripping
                 clean_text = re.sub(r"<script.*?</script>", "", text_body, flags=re.DOTALL | re.IGNORECASE)
@@ -132,7 +223,7 @@ class RealWebConnector(BaseCapabilityAdapter):
                 return AdapterResult(
                     success=True,
                     data={
-                        "url": safe_url,
+                        "url": final_url,
                         "content_type": content_type,
                         "raw_length": len(text_body),
                         "extracted_text": clean_text[:4000],
@@ -140,6 +231,8 @@ class RealWebConnector(BaseCapabilityAdapter):
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                     execution_mode=ExecutionMode.REAL,
                 )
+            except SecurityValidationError as error:
+                return self._security_failure(error, start_time)
             except urllib.error.HTTPError as e:
                 return AdapterResult(
                     success=False,
