@@ -1,0 +1,139 @@
+name: PR44 Contract Sync
+
+on:
+  push:
+    branches: [fix/performance-two-pass-44]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/performance-two-pass-44
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Patch stale one-pass test contracts
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def replace_exact_count(path: str, old: str, new: str, expected: int) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} matches, found {count}: {old!r}")
+              p.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "tests/test_collaboration_integrity_audit.py",
+              '        self.assertEqual(ctx.stage_outputs["performance"]["funnel_kpi"], replies["performance"])\n',
+              '        perf_out = ctx.stage_outputs["performance"]\n'
+              '        self.assertEqual(perf_out["performance_pass_protocol"], "5A_5B")\n'
+              '        self.assertEqual(perf_out["performance_passes_completed"], 2)\n'
+              '        self.assertEqual(perf_out["measurement_attribution"], replies["performance"])\n'
+              '        self.assertEqual(perf_out["experimentation_governance"], replies["performance"])\n'
+              '        self.assertIn(replies["performance"], perf_out["funnel_kpi"])\n',
+          )
+
+          replace_once(
+              "tests/test_phase1a_runtime_integrity.py",
+              '            if call_count[0] <= 5:\n                # Stages 1-5 (CMO initial, Intel, Strat, Crtv, Perf) succeed\n',
+              '            if call_count[0] <= 6:\n'
+              '                # Calls 1-6 succeed: CMO initial, Intel, Strategist, Creative,\n'
+              '                # Performance 5A, then Performance 5B.\n',
+          )
+          replace_once(
+              "tests/test_phase1a_runtime_integrity.py",
+              '            # Stage 6 CMO Final fails\n',
+              '            # Call 7 is Final CMO and must fail.\n',
+          )
+          replace_once(
+              "tests/test_phase1a_runtime_integrity.py",
+              '        cmo_final = runtime.execute_stage_final_cmo(ctx)\n\n        self.assertEqual(cmo_final["status"], "FAILED")\n',
+              '        cmo_final = runtime.execute_stage_final_cmo(ctx)\n        self.assertEqual(call_count[0], 7)\n\n        self.assertEqual(cmo_final["status"], "FAILED")\n',
+          )
+
+          replace_exact_count(
+              "tests/test_phase1b_grounded_context.py",
+              '        self.assertEqual(len(self.mock_adapter.captured_requests), 6)\n',
+              '        self.assertEqual(len(self.mock_adapter.captured_requests), 7)\n',
+              2,
+          )
+          replace_once(
+              "tests/test_phase1b_grounded_context.py",
+              '        stage_names = ["CMO Initial", "Intelligence", "Strategist", "Creative", "Performance", "Final CMO"]\n',
+              '        stage_names = [\n'
+              '            "CMO Initial", "Intelligence", "Strategist", "Creative",\n'
+              '            "Performance 5A", "Performance 5B", "Final CMO",\n'
+              '        ]\n',
+          )
+          replace_once(
+              "tests/test_phase1b_grounded_context.py",
+              '        # Stage 4 Creative (GENERATIVE) and Stage 5 Performance (COMPUTATION) produce non-observation receipts\n'
+              '        # which must NOT compile into EvidenceItems\n'
+              '        self.assertEqual(forensics_rows[3]["tool_count"], 0)\n'
+              '        self.assertEqual(forensics_rows[4]["tool_count"], 0)\n',
+              '        # Creative (GENERATIVE) and both Performance 5A/5B requests (COMPUTATION)\n'
+              '        # produce non-observation receipts, which must NOT compile into EvidenceItems.\n'
+              '        self.assertEqual(forensics_rows[3]["tool_count"], 0)\n'
+              '        self.assertEqual(forensics_rows[4]["tool_count"], 0)\n'
+              '        self.assertEqual(forensics_rows[5]["tool_count"], 0)\n',
+          )
+          replace_once(
+              "tests/test_phase1b_grounded_context.py",
+              '        """Verify evidence markers appear in bounded non-recursive counts across all 6 stages."""\n',
+              '        """Verify bounded evidence across 6 stages / 7 model requests (Performance 5A + 5B)."""\n',
+          )
+          '@ | python -
+
+      - name: Run targeted two-pass regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_performance_two_pass_32 `
+            tests.test_collaboration_integrity_audit.TestDataOriginIntegrity.test_11_agent_derived_values_preserved `
+            tests.test_phase1a_runtime_integrity.TestPhase1ARuntimeIntegrity.test_final_cmo_failure_full_artifact_zero_approval_strings `
+            tests.test_phase1b_grounded_context.TestPhase1BGroundContext.test_model_request_forensics_all_six_stages `
+            tests.test_phase1b_grounded_context.TestPhase1BGroundContext.test_no_recursive_context_duplication_across_stages
+
+      - name: Commit verified test-contract repair and remove helper workflow
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr44-contract-sync.yml
+          git add tests/test_collaboration_integrity_audit.py tests/test_phase1a_runtime_integrity.py tests/test_phase1b_grounded_context.py
+          git diff --cached --check
+          git commit -m "test: align regressions with Performance 5A/5B contract"
+          git push origin HEAD:fix/performance-two-pass-44
