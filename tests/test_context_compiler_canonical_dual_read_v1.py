@@ -6,6 +6,7 @@ from knowledge.models import AuthorityLevel, KnowledgeDocument, SourceType
 from knowledge.repository import LocalKnowledgeRepository
 from memory.models import MemoryItem, MemoryType, PromotionState
 from memory.repository import LocalMemoryRepository
+from memory.scoped_repository import ScopedMemoryRepository
 from runtime.context import RuntimeContext
 from runtime.context_compiler import ContextCompiler
 
@@ -52,6 +53,34 @@ class TrackingLegacyMemoryRepository(LocalMemoryRepository):
             run_id=run_id,
             promotion_level=promotion_level,
         )
+
+
+class ExplodingScopedMemoryRepository(ScopedMemoryRepository):
+    def __init__(self) -> None:
+        super().__init__()
+        self.unscoped_calls = 0
+
+    def list_memories(
+        self,
+        memory_type=None,
+        agent_source=None,
+        run_id=None,
+        promotion_level=None,
+        *,
+        scope=None,
+        include_inactive=False,
+    ):
+        if scope is None:
+            self.unscoped_calls += 1
+            return super().list_memories(
+                memory_type=memory_type,
+                agent_source=agent_source,
+                run_id=run_id,
+                promotion_level=promotion_level,
+                scope=scope,
+                include_inactive=include_inactive,
+            )
+        raise TypeError("SCOPED_REPOSITORY_INTERNAL_TYPE_ERROR")
 
 
 def _knowledge(scope: str, marker: str) -> KnowledgeDocument:
@@ -182,6 +211,22 @@ class ContextCompilerCanonicalDualReadV1Tests(unittest.TestCase):
 
         self.assertEqual(knowledge_repo.requested_scopes, [])
         self.assertEqual(memory_repo.legacy_list_calls, 0)
+
+    def test_scoped_repository_internal_type_error_is_not_downgraded_to_legacy_read(self) -> None:
+        knowledge_repo = TrackingKnowledgeRepository()
+        memory_repo = ExplodingScopedMemoryRepository()
+        context = RuntimeContext(
+            objective="propagate repository failure",
+            business_id="BIZ_ALPHA",
+        )
+
+        with self.assertRaisesRegex(TypeError, "SCOPED_REPOSITORY_INTERNAL_TYPE_ERROR"):
+            ContextCompiler(
+                knowledge_repo=knowledge_repo,
+                memory_repo=memory_repo,
+            ).compile_grounded_package("cmo", context)
+
+        self.assertEqual(memory_repo.unscoped_calls, 0)
 
 
 if __name__ == "__main__":
