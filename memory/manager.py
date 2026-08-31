@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from governance.redaction import sanitize_sensitive_payload, sanitize_sensitive_text
 from memory.lifecycle_models import (
     DEFAULT_RETENTION_POLICIES,
     MemoryLifecycleState,
@@ -136,19 +137,22 @@ class MemoryManager:
             )
 
         scope_key = (scope or MemoryScope()).canonical_key()
+        sanitized_content = sanitize_sensitive_text(normalized_content)
+        sanitized_context = sanitize_sensitive_payload(dict(context or {}))
+        sanitized_metadata = sanitize_sensitive_payload(dict(metadata or {}))
         memory = MemoryItem(
             memory_type=memory_type,
             agent_source=agent_source.strip(),
             run_id=run_id,
-            context=dict(context or {}),
-            content=normalized_content,
+            context=sanitized_context,
+            content=sanitized_content,
             evidence_refs=list(evidence_refs or []),
             confidence=confidence,
             status=MemoryLifecycleState.ACTIVE.value,
             promotion_level=promotion_level,
             scope=scope_key,
             expiry_or_review_date=expiry_or_review_date,
-            metadata={"scope_key": scope_key, **dict(metadata or {})},
+            metadata={"scope_key": scope_key, **sanitized_metadata},
         )
         self._apply_retention(memory)
         duplicate = self._find_duplicate(memory)
