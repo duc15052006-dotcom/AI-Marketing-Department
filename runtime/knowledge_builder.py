@@ -46,7 +46,11 @@ class KnowledgeContextBuilder:
         scope: Optional[str] = None,
         max_chars: int = 3500,
     ) -> KnowledgeRetrievalResult:
-        """Retrieve and format role-authorized knowledge with provenance tracking."""
+        """Retrieve and format role-authorized knowledge with provenance tracking.
+
+        Missing/blank scope is deliberately GLOBAL, never a repository wildcard.
+        Callers that need business/project knowledge must provide its exact scope.
+        """
         aid = agent_id.lower()
         prof = AgentAccessMatrix.get_profile(aid)
         if not prof:
@@ -55,9 +59,13 @@ class KnowledgeContextBuilder:
                 context_text=f"=== KNOWLEDGE RETRIEVAL DENIED: Unrecognized agent '{agent_id}' ===",
             )
 
+        # Fail closed at the builder authority boundary. Legacy repositories use
+        # scope=None as "all documents", which can cross tenant/project borders.
+        effective_scope = str(scope or "GLOBAL").strip() or "GLOBAL"
+
         # Filter by agent's authorized knowledge sources and exclude RETIRED documents
         allowed_sources = prof.allowed_knowledge_sources
-        all_docs = self.repository.list_documents(scope=scope)
+        all_docs = self.repository.list_documents(scope=effective_scope)
         scoped_docs = [d for d in all_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
 
         # Match by query if provided, or take high-authority scoped docs
