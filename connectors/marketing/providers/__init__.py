@@ -1,5 +1,15 @@
 """Provider-specific external marketing executors."""
 
+from connectors.marketing.providers.google import (
+    GoogleAdsReadExecutor,
+    GoogleAnalyticsReadExecutor,
+    GoogleExecutorError,
+    GoogleExecutorValidationError,
+    GoogleHttpResponse,
+    GoogleHttpTransport,
+    GoogleTransportError,
+    UrllibGoogleHttpTransport,
+)
 from connectors.marketing.providers.meta import (
     MetaExecutorError,
     MetaExecutorValidationError,
@@ -20,6 +30,14 @@ from connectors.marketing.providers.tiktok import (
 )
 
 __all__ = [
+    "GoogleAdsReadExecutor",
+    "GoogleAnalyticsReadExecutor",
+    "GoogleExecutorError",
+    "GoogleExecutorValidationError",
+    "GoogleHttpResponse",
+    "GoogleHttpTransport",
+    "GoogleTransportError",
+    "UrllibGoogleHttpTransport",
     "MetaExecutorError",
     "MetaExecutorValidationError",
     "MetaHttpResponse",
