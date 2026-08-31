@@ -48,6 +48,10 @@ class PerformanceRealTelemetry30Tests(unittest.TestCase):
 
     @staticmethod
     def _seed_upstream(context):
+        # This suite isolates Performance telemetry behavior. The lightweight
+        # capturing gateway intentionally has no configured ModelPolicy, so do
+        # not exercise the separate legacy default-pin compatibility path here.
+        context.model_policy = {}
         context.stage_outputs["strategist"] = {
             "status": "COMPLETED",
             "positioning": "Grounded positioning",
