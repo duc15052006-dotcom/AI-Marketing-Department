@@ -682,7 +682,7 @@ class TestProdModelSettings01(unittest.TestCase):
         runtime.execute_stage_performance(ctx1)
         runtime.execute_stage_final_cmo(ctx1)
 
-        self.assertEqual(mock_a.generate.call_count, 6)
+        self.assertEqual(mock_a.generate.call_count, 7)
         mock_b.generate.assert_not_called()
 
         # Start RUN-2: captures new settings (Provider B)
