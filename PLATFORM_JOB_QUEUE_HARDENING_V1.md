@@ -34,19 +34,25 @@ The original run record and objective remain intact.
 
 Active-run cancellation remains an explicit `cancel_run()` operation.
 
-### 4. Safer cancellation
+### 4. Safer and truthful cancellation
 
 Manager state is updated under the manager lock, but `runtime.cancel_run()` is called outside that lock. This avoids holding the queue lock across a potentially re-entrant runtime operation.
 
-A queued run can be cancelled without dispatching the runtime at all.
+A queued run can be cancelled without dispatching the runtime at all. For active runs, a rejected or failed runtime cancellation signal restores the previous active queue state instead of falsely reporting `CANCELLED`. Diagnostic errors are sanitized before storage.
 
-### 5. Secret-safe failure state
+### 5. Non-terminal lifecycle truth
 
-Worker exceptions and runtime failure reasons are passed through the existing shared `governance.redaction.sanitize_sensitive_text()` boundary before they are stored or exposed by `QueueItem.model_dump()`.
+`WAITING_FOR_APPROVAL`, `WAITING_FOR_TOOL`, `PAUSED`, and `RUNNING` remain active/non-terminal queue states and do not receive a `completed_at` timestamp. Terminal timestamps are assigned only for `COMPLETED`, `FAILED`, or `CANCELLED` outcomes.
+
+Queue status synchronization also recognizes canonical runtime terminal and waiting states so manager state cannot silently drift from runtime state.
+
+### 6. Secret-safe failure state
+
+Worker exceptions, runtime failure reasons, and cancellation failures are passed through the existing shared `governance.redaction.sanitize_sensitive_text()` boundary before they are stored or exposed by `QueueItem.model_dump()`.
 
 No second redaction implementation is introduced.
 
-### 6. Dynamic provider resource accounting
+### 7. Dynamic provider resource accounting
 
 `ResourceLimiter` keeps the existing built-in limits for Xkiro, Gemini, web, and analytics, while supporting runtime registration/updates for additional providers.
 
@@ -79,6 +85,8 @@ It covers:
 - worker shutdown/join behavior;
 - pending-run cancellation on shutdown;
 - queued cancellation without runtime dispatch;
-- queue error secret redaction;
+- rejected/failed active cancellation truthfulness;
+- non-terminal waiting state timestamp integrity;
+- queue/cancellation error secret redaction;
 - conservative accounting of previously unknown providers;
 - provider limit validation.
