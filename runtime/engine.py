@@ -2306,6 +2306,7 @@ class FiveAgentDepartmentRuntime:
                     MemoryWriteCandidate(
                         memory_type=MemoryType.DECISION_MEMORY,
                         agent_source="cmo",
+                        scope=(str(context.working_state.get("memory_scope") or "GLOBAL").strip() or "GLOBAL"),
                         content=(
                             f"GTM plan reached deployment-ready state for objective: {context.objective}"
                         ),
