@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Mapping, Optional, Tuple
 from urllib.parse import parse_qsl, urlsplit
@@ -29,6 +30,7 @@ _SENSITIVE_KEY_MARKERS = (
     "secret_key",
     "secret_value",
 )
+_SECRET_REF_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*:[^\s:][^\s]*$", re.IGNORECASE)
 
 
 def _is_sensitive_key(key: object) -> bool:
@@ -67,9 +69,9 @@ def _validate_endpoint(endpoint: Optional[str]) -> None:
 class ConnectionProfile:
     """Non-secret connection metadata safe for persistence, logs, and UI lists.
 
-    ``secret_ref`` is an opaque locator (for example an environment variable
-    name or future OS keyring identifier). It must never be the credential
-    value itself.
+    ``secret_ref`` is an opaque, scheme-based locator such as
+    ``env:OPENAI_API_KEY`` or ``keyring:brand/openai``. It must never be the
+    credential value itself.
     """
 
     connection_id: str
@@ -89,8 +91,10 @@ class ConnectionProfile:
             if not isinstance(value, str) or not value.strip():
                 raise ConnectionProfileError(f"{field_name} must be a non-empty string.")
 
-        if any(ch.isspace() for ch in self.secret_ref):
-            raise ConnectionProfileError("secret_ref must be an opaque identifier without whitespace.")
+        if not _SECRET_REF_PATTERN.fullmatch(self.secret_ref):
+            raise ConnectionProfileError(
+                "secret_ref must be a scheme-based locator such as env:OPENAI_API_KEY; raw credentials are not accepted."
+            )
 
         _validate_endpoint(self.endpoint)
         _validate_public_metadata(self.metadata)
