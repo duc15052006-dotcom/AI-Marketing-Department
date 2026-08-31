@@ -1,0 +1,38 @@
+name: PR58 Receipt Integrity
+on: push
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUN_LIVE_PROVIDER_TESTS: '0'
+      RUN_REAL_MODEL_TEST: '0'
+      RUN_LIVE_MODEL_TESTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/receipt-index-metadata-integrity-58
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Add adversarial index-tamper regression
+        run: python -c 'from pathlib import Path; p=Path("tests/test_platform_durable_receipts_reconciliation_v1.py"); t=p.read_text(encoding="utf-8"); marker="    def test_prepared_intent_proves_dispatch_had_not_started(self) -> None:\n"; new="    def test_sqlite_receipt_index_column_tamper_is_detected(self) -> None:\n        tamper_cases = (\n            (\"run_id\", \"RUN-TAMPERED\"),\n            (\"agent_id\", \"creative\"),\n            (\"capability_id\", \"publish_social\"),\n            (\"status\", ExecutionStatus.ERROR.value),\n        )\n        for column, tampered_value in tamper_cases:\n            with self.subTest(column=column):\n                with tempfile.TemporaryDirectory() as tmp:\n                    db_path = Path(tmp) / \"index-tamper.sqlite3\"\n                    repo = ExecutionReceiptRepository(database_path=db_path)\n                    saved = repo.save_receipt(self._receipt())\n                    repo.close()\n\n                    conn = sqlite3.connect(str(db_path))\n                    conn.execute(\n                        f\"UPDATE execution_receipts SET {column}=? WHERE execution_id=?\",\n                        (tampered_value, saved.execution_id),\n                    )\n                    conn.commit()\n                    conn.close()\n\n                    tampered = ExecutionReceiptRepository(database_path=db_path)\n                    with self.assertRaises(ReceiptStoreIntegrityError):\n                        tampered.get_receipt(saved.execution_id)\n                    tampered.close()\n\n"; c=t.count(marker); assert c==1, f"test insertion marker expected 1 match, found {c}"; p.write_text(t.replace(marker,new+marker,1),encoding="utf-8")'
+      - name: Prove regression is red before source patch
+        run: if python -m unittest -v tests.test_platform_durable_receipts_reconciliation_v1.DurableReceiptsReconciliationV1Tests.test_sqlite_receipt_index_column_tamper_is_detected; then echo 'Expected pre-patch regression failure but test passed'; exit 1; else echo 'RED CONFIRMED - unhashed index metadata tamper was accepted'; fi
+      - name: Bind SQLite index metadata to hashed payload
+        run: python -c 'from pathlib import Path; p=Path("tools/receipts.py"); t=p.read_text(encoding="utf-8"); old="        receipt = _receipt_from_payload(payload)\n        if receipt.execution_id != row[\"execution_id\"]:\n            raise ReceiptStoreIntegrityError(\n                f\"EXECUTION_RECEIPT_ID_MISMATCH: execution_id={row['\"'\"'execution_id'\"'\"]}\"\n            )\n        return receipt\n"; new="        receipt = _receipt_from_payload(payload)\n        if receipt.execution_id != row[\"execution_id\"]:\n            raise ReceiptStoreIntegrityError(\n                f\"EXECUTION_RECEIPT_ID_MISMATCH: execution_id={row['\"'\"'execution_id'\"'\"]}\"\n            )\n        indexed_metadata = {\n            \"run_id\": receipt.run_id,\n            \"agent_id\": receipt.agent_id,\n            \"capability_id\": receipt.capability_id,\n            \"status\": receipt.status.value,\n        }\n        for field, payload_value in indexed_metadata.items():\n            if row[field] != payload_value:\n                raise ReceiptStoreIntegrityError(\n                    f\"EXECUTION_RECEIPT_INDEX_METADATA_MISMATCH: \"\n                    f\"execution_id={row['\"'\"'execution_id'\"'\"]} field={field}\"\n                )\n        return receipt\n"; c=t.count(old); assert c==1, f"source replacement expected 1 match, found {c}"; p.write_text(t.replace(old,new,1),encoding="utf-8")'
+      - name: Run targeted regressions
+        run: python -m unittest -v tests.test_platform_durable_receipts_reconciliation_v1 tests.test_tool_receipt_provenance_04
+      - name: Commit validated repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/pr58-receipt-integrity.yml
+          git add tools/receipts.py tests/test_platform_durable_receipts_reconciliation_v1.py
+          git diff --cached --check
+          git commit -m 'harden: bind receipt index metadata to payload hash'
+          git push origin HEAD:fix/receipt-index-metadata-integrity-58
