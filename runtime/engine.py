@@ -1511,7 +1511,7 @@ class FiveAgentDepartmentRuntime:
             context=context,
             source_stage=stage_key.upper(),
             source_agent=agent_id,
-            payload=payload if parse_status == "OK" else None,
+            payload=payload if parse_status in ("OK", "EMPTY") else None,
             parse_status=parse_status,
             provenance_index=context.working_state.get("provenance_index", {}) or {},
             delegation=delegation,
