@@ -19,13 +19,23 @@ from runtime.queue import ResourceLimiter, RunManager, RunQueueStatus
 class StubRuntime:
     """Small deterministic runtime authority used only by queue tests."""
 
-    def __init__(self, *, execute_error: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        *,
+        execute_error: Optional[str] = None,
+        execute_status: RuntimeStatus = RuntimeStatus.COMPLETED,
+        cancel_result: bool = True,
+        cancel_error: Optional[str] = None,
+    ) -> None:
         self._counter = itertools.count(1)
         self._reserved = set()
         self._active_contexts = {}
         self.started = []
         self.cancelled = []
         self.execute_error = execute_error
+        self.execute_status = execute_status
+        self.cancel_result = cancel_result
+        self.cancel_error = cancel_error
 
     def is_reserved_run_id(self, run_id: str) -> bool:
         return run_id in self._reserved
@@ -59,11 +69,15 @@ class StubRuntime:
     def execute_run(self, ctx):
         if self.execute_error:
             raise RuntimeError(self.execute_error)
-        ctx.status = RuntimeStatus.COMPLETED
-        return ctx, {"status": "COMPLETED"}, None
+        ctx.status = self.execute_status
+        return ctx, {"status": self.execute_status.value}, None
 
     def cancel_run(self, run_id: str) -> bool:
         self.cancelled.append(run_id)
+        if self.cancel_error:
+            raise RuntimeError(self.cancel_error)
+        if not self.cancel_result:
+            return False
         ctx = self._active_contexts.get(run_id)
         if ctx is not None:
             ctx.status = RuntimeStatus.CANCELLED
@@ -148,6 +162,46 @@ class TestPlatformJobQueueHardeningV1(unittest.TestCase):
         self.assertIsNotNone(item.completed_at)
         self.assertEqual(runtime.cancelled, [])
         manager.shutdown()
+
+    def test_cancel_rejection_does_not_lie_about_cancelled_state(self) -> None:
+        runtime = StubRuntime(cancel_result=False)
+        manager = RunManager(runtime, max_workers=0)
+        item = manager.enqueue_run("already active", run_id="RUN-CANCEL-REJECT-001")
+        item.status = RunQueueStatus.RUNNING
+
+        self.assertFalse(manager.cancel_run(item.run_id))
+        self.assertEqual(item.status, RunQueueStatus.RUNNING)
+        self.assertEqual(item.error, "CANCEL_SIGNAL_REJECTED")
+        self.assertIsNone(item.completed_at)
+        self.assertEqual(runtime.cancelled, [item.run_id])
+        manager.shutdown(cancel_pending=False)
+
+    def test_cancel_exception_is_redacted_and_state_is_restored(self) -> None:
+        raw_secret = "cancel-secret-token-123456"
+        runtime = StubRuntime(
+            cancel_error=f"Authorization: Bearer {raw_secret} api_key=unsafe-cancel-key"
+        )
+        manager = RunManager(runtime, max_workers=0)
+        item = manager.enqueue_run("already active", run_id="RUN-CANCEL-ERROR-001")
+        item.status = RunQueueStatus.RUNNING
+
+        self.assertFalse(manager.cancel_run(item.run_id))
+        self.assertEqual(item.status, RunQueueStatus.RUNNING)
+        self.assertIn("CANCEL_SIGNAL_FAILED", item.error or "")
+        self.assertNotIn(raw_secret, item.error or "")
+        self.assertNotIn("unsafe-cancel-key", item.error or "")
+        self.assertIsNone(item.completed_at)
+        manager.shutdown(cancel_pending=False)
+
+    def test_nonterminal_runtime_wait_does_not_set_completed_at(self) -> None:
+        runtime = StubRuntime(execute_status=RuntimeStatus.WAITING_FOR_APPROVAL)
+        manager = RunManager(runtime, max_workers=1)
+        item = manager.enqueue_run("needs approval", run_id="RUN-WAIT-001")
+
+        waiting = self._wait_for_status(manager, item.run_id, RunQueueStatus.WAITING_APPROVAL)
+        self.assertIsNone(waiting.completed_at)
+        self.assertIn(waiting.status, manager.ACTIVE_STATUSES)
+        manager.shutdown(cancel_pending=False)
 
     def test_worker_error_is_sanitized_before_queue_state_exposure(self) -> None:
         raw_secret = "queue-secret-token-123456"
