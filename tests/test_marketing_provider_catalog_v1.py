@@ -101,6 +101,34 @@ class MarketingProviderCatalogV1Tests(unittest.TestCase):
             expected,
         )
 
+    def test_normalized_executor_keys_bind_using_canonical_ids(self):
+        stack = self._stack(allow_live_registration=True)
+        normalized_input = {
+            f"  {connector_id.upper()}  ": executor
+            for connector_id, executor in stack["executors"].items()
+        }
+        report = stack["catalog"].install(executors=normalized_input)
+        self.assertEqual(
+            set(report.executor_bindings),
+            {
+                META_CONNECTOR_ID,
+                TIKTOK_CONNECTOR_ID,
+                GOOGLE_ADS_CONNECTOR_ID,
+                GOOGLE_ANALYTICS_CONNECTOR_ID,
+            },
+        )
+
+    def test_duplicate_normalized_executor_key_fails_before_any_mutation(self):
+        stack = self._stack(allow_live_registration=True)
+        duplicate = dict(stack["executors"])
+        duplicate[f"  {META_CONNECTOR_ID.upper()}  "] = stack["executors"][META_CONNECTOR_ID]
+        with self.assertRaises(MarketingProviderCatalogBindingError):
+            stack["catalog"].install(executors=duplicate)
+        self.assertIsNone(stack["connector_registry"].get_connector(META_CONNECTOR_ID))
+        self.assertEqual(stack["marketing_registry"].list_specs(), [])
+        self.assertEqual(stack["executor_registry"].list_bindings(), {})
+        self.assertEqual(stack["secrets"].get_calls, 0)
+
     def test_managed_connector_health_delegates_credential_readiness(self):
         stack = self._stack(allow_live_registration=True)
         stack["catalog"].install(executors=stack["executors"])
