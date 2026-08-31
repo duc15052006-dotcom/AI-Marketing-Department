@@ -155,7 +155,8 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         )
         receipt = self.gateway.execute(req)
         self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
-        self.assertEqual(receipt.approval_reference, token)
+        self.assertNotEqual(receipt.approval_reference, token)
+        self.assertTrue((receipt.approval_reference or "").startswith("approval_ref_"))
 
     # 4. Immutable Execution Receipts
     def test_immutable_execution_receipt_generation_and_hashing(self):

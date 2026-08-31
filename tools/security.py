@@ -13,7 +13,7 @@ import secrets
 import threading
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 from schemas.base import BaseModel, Field
 from tools.capabilities import CapabilityCategory, CapabilityDescriptor, PermissionLevel, RiskLevel
 
@@ -141,6 +141,19 @@ class PolicyEngine:
         self._approved_tokens: Dict[str, HumanApprovalRecord] = {}
         self._pending_approvals: Dict[str, PendingApprovalRecord] = {}
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _is_expired(expires_at: Optional[str]) -> Tuple[bool, Optional[str]]:
+        """Return expiry state without ever exposing the approval token."""
+        if not expires_at:
+            return False, None
+        try:
+            exp_dt = datetime.fromisoformat(expires_at)
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) > exp_dt, None
+        except Exception as ex:
+            return False, str(ex)
 
     def create_pending_approval(
         self,
@@ -375,28 +388,28 @@ class PolicyEngine:
             self._approved_tokens.pop(approval_token, None)
 
     def claim_approval(self, approval_token: Optional[str]) -> bool:
-        """Atomically claim an approval token BEFORE consequential connector dispatch (one-shot)."""
+        """Atomically claim an unexpired approval token before consequential dispatch."""
         if not approval_token:
             return False
         with self._lock:
-            if approval_token not in self._approved_tokens:
+            rec = self._approved_tokens.get(approval_token)
+            if rec is None or rec.consumed or rec.claimed:
                 return False
-            rec = self._approved_tokens[approval_token]
-            if rec.consumed or rec.claimed:
+            expired, corrupt = self._is_expired(rec.expires_at)
+            if corrupt or expired:
                 return False
             rec.claimed = True
             rec.claimed_at = datetime.now(timezone.utc).isoformat()
             return True
 
     def consume_approval(self, approval_token: Optional[str]) -> bool:
-        """Finalize consumption of an approval token after consequential dispatch."""
+        """Finalize consumption of a claimed approval token after consequential dispatch."""
         if not approval_token:
             return False
         with self._lock:
-            if approval_token not in self._approved_tokens:
+            rec = self._approved_tokens.get(approval_token)
+            if rec is None or rec.consumed or not rec.claimed:
                 return False
-            rec = self._approved_tokens[approval_token]
-            rec.claimed = True
             rec.consumed = True
             rec.consumed_at = datetime.now(timezone.utc).isoformat()
             return True
@@ -464,46 +477,43 @@ class PolicyEngine:
                     reason=f"HUMAN_APPROVAL_REQUIRED: Capability '{capability.capability_id}' has risk level {capability.risk_level.value} and requires human approval token.",
                 )
 
-            # Verify token exists in server-side registry
+            # Verify token exists in server-side registry. Never echo bearer authority.
             if approval_token not in self._approved_tokens:
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
                     error_code="INVALID_APPROVAL_TOKEN",
-                    reason=f"INVALID_APPROVAL_TOKEN: Provided approval token '{approval_token}' is not registered or has been revoked.",
+                    reason="INVALID_APPROVAL_TOKEN: Provided approval authority is not registered or has been revoked.",
                 )
 
             record = self._approved_tokens[approval_token]
 
             # Check claimed / consumed state (one-time replay prevention)
             if record.consumed or record.claimed:
+                error_code = "APPROVAL_ALREADY_CONSUMED" if record.consumed else "APPROVAL_ALREADY_CLAIMED"
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
-                    error_code="APPROVAL_ALREADY_CONSUMED" if record.consumed else "APPROVAL_ALREADY_CLAIMED",
-                    reason=f"APPROVAL_ALREADY_CONSUMED: Approval token '{approval_token}' has already been claimed or consumed and cannot be replayed.",
+                    error_code=error_code,
+                    reason=f"{error_code}: Approval authority has already been used and cannot be replayed.",
                 )
 
             # Check expiration
-            if record.expires_at:
-                try:
-                    exp_dt = datetime.fromisoformat(record.expires_at)
-                    if exp_dt.tzinfo is None:
-                        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-                    if datetime.now(timezone.utc) > exp_dt:
-                        return PolicyDecision(
-                            allowed=False,
-                            requires_human_approval=True,
-                            error_code="APPROVAL_EXPIRED",
-                            reason=f"APPROVAL_EXPIRED: Approval token '{approval_token}' expired at {record.expires_at}.",
-                        )
-                except Exception as ex:
-                    return PolicyDecision(
-                        allowed=False,
-                        requires_human_approval=True,
-                        error_code="APPROVAL_RECORD_CORRUPT",
-                        reason=f"APPROVAL_RECORD_CORRUPT: Invalid expires_at format in approval record: {ex}",
-                    )
+            expired, corrupt = self._is_expired(record.expires_at)
+            if corrupt:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_RECORD_CORRUPT",
+                    reason=f"APPROVAL_RECORD_CORRUPT: Invalid expires_at format in approval record: {corrupt}",
+                )
+            if expired:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_EXPIRED",
+                    reason=f"APPROVAL_EXPIRED: Approval authority expired at {record.expires_at}.",
+                )
 
             # Check capability / action match
             rec_cap = record.capability_id or record.action_type
@@ -515,8 +525,15 @@ class PolicyEngine:
                     reason=f"APPROVAL_CAPABILITY_MISMATCH: Approval was granted for '{rec_cap}' but request is for '{capability.capability_id}'.",
                 )
 
-            # Check run_id match (if bound in record)
-            if record.run_id and run_id and record.run_id != run_id:
+            # Bound scope is mandatory when present on the approval record.
+            if record.run_id and not run_id:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_RUN_CONTEXT_REQUIRED",
+                    reason="APPROVAL_RUN_CONTEXT_REQUIRED: Approval is bound to a run but the request supplied no run context.",
+                )
+            if record.run_id and record.run_id != run_id:
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
@@ -524,8 +541,14 @@ class PolicyEngine:
                     reason=f"APPROVAL_RUN_MISMATCH: Approval is bound to run '{record.run_id}', not '{run_id}'.",
                 )
 
-            # Check business_id match (if bound in record)
-            if record.business_id and business_id and record.business_id != business_id:
+            if record.business_id and not business_id:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_BUSINESS_CONTEXT_REQUIRED",
+                    reason="APPROVAL_BUSINESS_CONTEXT_REQUIRED: Approval is bound to a business but the request supplied no business context.",
+                )
+            if record.business_id and record.business_id != business_id:
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
@@ -533,20 +556,27 @@ class PolicyEngine:
                     reason=f"APPROVAL_BUSINESS_MISMATCH: Approval is bound to business '{record.business_id}', not '{business_id}'.",
                 )
 
-            # Check request fingerprint match (if present on record)
-            if record.request_fingerprint and parameters is not None:
+            # Fingerprints are exact request bindings; never backfill missing request context here.
+            if record.request_fingerprint:
+                if parameters is None:
+                    return PolicyDecision(
+                        allowed=False,
+                        requires_human_approval=True,
+                        error_code="APPROVAL_PARAMETERS_REQUIRED",
+                        reason="APPROVAL_PARAMETERS_REQUIRED: Approval is bound to request parameters but none were supplied.",
+                    )
                 expected_fp = compute_request_fingerprint(
                     capability_id=capability.capability_id,
                     parameters=parameters,
-                    run_id=run_id or record.run_id,
-                    business_id=business_id or record.business_id,
+                    run_id=run_id,
+                    business_id=business_id,
                 )
                 if record.request_fingerprint != expected_fp:
                     return PolicyDecision(
                         allowed=False,
                         requires_human_approval=True,
                         error_code="APPROVAL_FINGERPRINT_MISMATCH",
-                        reason=f"APPROVAL_FINGERPRINT_MISMATCH: Request parameters/scope fingerprint do not match approval record.",
+                        reason="APPROVAL_FINGERPRINT_MISMATCH: Request parameters/scope fingerprint does not match approval record.",
                     )
 
         return PolicyDecision(
