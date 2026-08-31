@@ -1,0 +1,32 @@
+name: PR60 Checkpoint Red Proof
+on:
+  push:
+    branches: [fix/checkpoint-index-run-binding-60]
+permissions:
+  contents: read
+jobs:
+  red-proof:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUN_LIVE_PROVIDER_TESTS: '0'
+      RUN_REAL_MODEL_TEST: '0'
+      RUN_LIVE_MODEL_TESTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/checkpoint-index-run-binding-60
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Prove checkpoint row binding regression is red
+        shell: bash
+        run: |
+          if python -m unittest -v tests.test_checkpoint_index_run_binding_60.TestCheckpointIndexRunBinding60.test_checkpoint_run_index_tamper_is_rejected; then
+            echo 'Expected vulnerable source to fail the adversarial regression, but it passed.'
+            exit 1
+          else
+            echo 'RED CONFIRMED'
+          fi
