@@ -74,13 +74,7 @@ class ContextCompiler:
 
     @staticmethod
     def _legacy_alias_for_canonical_scope(scope_key: str) -> Optional[str]:
-        """Return the exact legacy alias for one already-validated canonical key.
-
-        This is a migration-only compatibility mapping.  It never accepts or
-        creates wildcard scopes and it is derived only from the immutable
-        RuntimeContext scope through :func:`build_runtime_canonical_scope_plan`.
-        """
-
+        """Return the exact legacy alias for one already-validated canonical key."""
         prefix, sep, identifier = str(scope_key or "").partition(":")
         if not sep or not identifier:
             return None
@@ -98,16 +92,7 @@ class ContextCompiler:
         include_global: bool,
         business_id: str,
     ) -> Tuple[str, ...]:
-        """Build ordered canonical + legacy exact read scopes for migration.
-
-        Ordering preserves the canonical authority contract: project before
-        business, and GLOBAL only as the final fallback.  Each canonical scope
-        is immediately followed by its exact legacy alias so old records remain
-        readable while repositories are migrated.  ``SCOPE_BIZ_DEFAULT`` is a
-        legacy alias for the historical default workspace only; it is never
-        used for a real business tenant.
-        """
-
+        """Build ordered canonical + exact legacy read scopes for migration."""
         scopes: List[str] = []
         for canonical_scope in exact_scope_keys:
             cls._append_unique(scopes, canonical_scope)
@@ -124,8 +109,7 @@ class ContextCompiler:
         cls,
         ctx: RuntimeContext,
     ) -> Tuple[RuntimeCanonicalScopePlan, Tuple[str, ...], Tuple[str, ...]]:
-        """Resolve all retrieval scopes exclusively from immutable runtime authority."""
-
+        """Resolve retrieval scopes exclusively from immutable runtime authority."""
         plan = build_runtime_canonical_scope_plan(ctx)
         knowledge_scopes = cls._build_dual_read_scopes(
             plan.knowledge_scope_keys,
@@ -141,7 +125,6 @@ class ContextCompiler:
 
     def _memory_repository_supports_exact_scope(self) -> bool:
         """Detect the new exact-scope repository interface without executing it."""
-
         try:
             parameters = inspect.signature(self.memory_repo.list_memories).parameters.values()
         except (TypeError, ValueError):
@@ -154,18 +137,9 @@ class ContextCompiler:
     def _list_memories_for_exact_scope(self, scope: str) -> List[MemoryItem]:
         """Read one exact scope from new or legacy MemoryRepository interfaces.
 
-        ``ScopedMemoryRepository`` supports ``scope=`` directly.  The legacy
-        repository interface does not, so its compatibility path performs an
-        in-memory exact-scope filter immediately after the legacy list call.
-        No item outside the requested exact scope is returned to the compiler.
-        This fallback is intentionally temporary until backend repository
-        composition is migrated in the next platform batch.
-
-        Capability detection happens before execution so a real ``TypeError``
-        raised inside a scoped repository is never mistaken for an old method
-        signature and silently downgraded to the legacy compatibility path.
+        Capability detection happens before execution so a real TypeError raised
+        by a scoped repository cannot be mistaken for a legacy signature.
         """
-
         if self._memory_repository_supports_exact_scope():
             return list(self.memory_repo.list_memories(scope=scope))  # type: ignore[call-arg]
         return [
@@ -195,9 +169,7 @@ class ContextCompiler:
             else "GLOBAL"
         )
 
-        # ---------------------------------------------------------------------
-        # 1. Ephemeral Session Knowledge (Attachments) — Strictly scoped to chat_id
-        # ---------------------------------------------------------------------
+        # 1. Ephemeral Session Knowledge — strictly scoped to authoritative chat_id.
         if ctx.chat_id and self.session_knowledge:
             session_chunks = self.session_knowledge.search_session(
                 ctx.chat_id,
@@ -221,13 +193,10 @@ class ContextCompiler:
                     )
                 )
 
-        # ---------------------------------------------------------------------
-        # 2. Scoped Persistent Knowledge — canonical exact scopes + migration aliases
-        # ---------------------------------------------------------------------
+        # 2. Persistent Knowledge — canonical exact scopes + migration aliases.
         if self.knowledge_repo:
             prof = AgentAccessMatrix.get_profile(aid)
             allowed_sources = prof.allowed_knowledge_sources if prof else []
-
             seen_knowledge_ids: set = set()
             for scope in knowledge_scopes:
                 scoped_docs = self.knowledge_repo.list_documents(scope=scope)
@@ -270,9 +239,7 @@ class ContextCompiler:
                         )
                     )
 
-        # ---------------------------------------------------------------------
-        # 3. Institutional Memory — canonical exact scopes + migration aliases
-        # ---------------------------------------------------------------------
+        # 3. Institutional Memory — canonical exact scopes + migration aliases.
         if self.memory_repo:
             prof = AgentAccessMatrix.get_profile(aid)
             allowed_types = prof.allowed_memory_types if prof else []
@@ -321,17 +288,14 @@ class ContextCompiler:
                         )
                     )
 
-        # ---------------------------------------------------------------------
-        # 4. ToolGateway Execution Results — Preserving REAL vs MOCK/SANDBOX & EvidenceRole
-        # ---------------------------------------------------------------------
+        # 4. ToolGateway Execution Results — preserve real/mock and evidence role.
         if tool_receipts:
             for receipt in tool_receipts:
                 if receipt.status != ExecutionStatus.SUCCESS:
                     continue
 
                 mode = getattr(receipt, "execution_mode", ExecutionMode.MOCK)
-                is_real = (mode == ExecutionMode.REAL or str(mode).upper() in ("REAL", "EXECUTIONMODE.REAL"))
-
+                is_real = mode == ExecutionMode.REAL or str(mode).upper() in ("REAL", "EXECUTIONMODE.REAL")
                 cap = self.capability_registry.get_capability(receipt.capability_id) if self.capability_registry else None
                 evidence_role = getattr(cap, "evidence_role", EvidenceRole.NONE) if cap else EvidenceRole.NONE
                 if isinstance(evidence_role, str):
@@ -339,7 +303,6 @@ class ContextCompiler:
                         evidence_role = EvidenceRole(evidence_role.upper())
                     except ValueError:
                         evidence_role = EvidenceRole.NONE
-
                 if evidence_role != EvidenceRole.OBSERVATION:
                     continue
 
@@ -359,11 +322,8 @@ class ContextCompiler:
                     formatted_content = "{}"
 
                 res_hash = getattr(receipt, "result_hash", "") or (
-                    receipt.calculate_result_hash()
-                    if hasattr(receipt, "calculate_result_hash")
-                    else ""
+                    receipt.calculate_result_hash() if hasattr(receipt, "calculate_result_hash") else ""
                 )
-
                 sid = f"TOOL-{run_prefix}-{item_counter:03d}"
                 item_counter += 1
                 evidence_items.append(
@@ -389,9 +349,7 @@ class ContextCompiler:
                     )
                 )
 
-        # ---------------------------------------------------------------------
-        # 5. Token / Character Budgeting with Priority Allocation
-        # ---------------------------------------------------------------------
+        # 5. Token / character budgeting with trust-tier priority.
         def _tier_priority(item: EvidenceItem) -> int:
             if item.epistemic_tier == EpistemicTier.VERIFIED_SOURCE:
                 return 1
@@ -406,7 +364,6 @@ class ContextCompiler:
             return 6
 
         evidence_items.sort(key=_tier_priority)
-
         current_total_chars = 0
         final_items: List[EvidenceItem] = []
         truncated_count = 0
@@ -414,7 +371,6 @@ class ContextCompiler:
         for item in evidence_items:
             item_len = len(item.content)
             available = char_budget - current_total_chars
-
             if available <= 100:
                 item.truncated = True
                 item.content = f"[... Truncated due to total context budget of {char_budget} chars ...]"
@@ -422,7 +378,6 @@ class ContextCompiler:
                 final_items.append(item)
                 truncated_count += 1
                 break
-
             if item_len > available:
                 truncated_text = item.content[: available - 80] + "\n[... Source truncated by context compiler ...]"
                 item.truncated = True
@@ -436,11 +391,9 @@ class ContextCompiler:
                 final_items.append(item)
 
         provenance_index = {it.source_id: it for it in final_items}
-
-        tier_counts = {}
+        tier_counts: Dict[str, int] = {}
         for it in final_items:
-            t = it.epistemic_tier.value
-            tier_counts[t] = tier_counts.get(t, 0) + 1
+            tier_counts[it.epistemic_tier.value] = tier_counts.get(it.epistemic_tier.value, 0) + 1
 
         diagnostics = {
             "agent_id": aid,
@@ -475,43 +428,24 @@ class ContextCompiler:
         project_id: Optional[str] = None,
         query: str = "",
     ) -> AgentCompiledContext:
-        """Legacy compatibility wrapper compiling AgentCompiledContext."""
-        effective_ctx = ctx
-        if (chat_id and ctx.chat_id != chat_id) or (project_id and ctx.project_id != project_id):
-            effective_ctx = RuntimeContext(
-                run_id=ctx.run_id,
-                objective=ctx.objective,
-                business_id=ctx.business_id,
-                campaign_id=ctx.campaign_id,
-                user_id=ctx.user_id,
-                chat_id=chat_id or ctx.chat_id,
-                project_id=project_id or ctx.project_id,
-                current_stage=ctx.current_stage,
-                status=ctx.status,
-                knowledge_refs=list(ctx.knowledge_refs),
-                memory_refs=list(ctx.memory_refs),
-                execution_receipt_refs=list(ctx.execution_receipt_refs),
-                artifact_refs=list(ctx.artifact_refs),
-                approval_refs=list(ctx.approval_refs),
-                working_state=dict(ctx.working_state),
-                stage_outputs=dict(ctx.stage_outputs),
-                unresolved_questions=list(ctx.unresolved_questions),
-                constraints=list(ctx.constraints),
-                risk_flags=list(ctx.risk_flags),
-            )
+        """Legacy compatibility wrapper without authority-changing overrides.
 
-        pkg = self.compile_grounded_package(agent_id, effective_ctx)
-        session_chunks = [
-            it.content for it in pkg.evidence_items if it.source_type == "SESSION_ATTACHMENT"
-        ]
+        Historical callers may still pass the already-authoritative chat/project
+        identifier.  A different value is rejected instead of constructing a
+        new RuntimeContext with a different tenant/workspace boundary.
+        """
+        if chat_id is not None and chat_id != ctx.chat_id:
+            raise ValueError("CHAT_SCOPE_OVERRIDE_FORBIDDEN")
+        if project_id is not None and project_id != ctx.project_id:
+            raise ValueError("PROJECT_SCOPE_OVERRIDE_FORBIDDEN")
+
+        pkg = self.compile_grounded_package(agent_id, ctx)
+        session_chunks = [it.content for it in pkg.evidence_items if it.source_type == "SESSION_ATTACHMENT"]
         persistent_refs = [
             it.title_or_reference
             for it in pkg.evidence_items
             if it.source_type != "SESSION_ATTACHMENT"
-            and it.epistemic_tier in (
-                EpistemicTier.VERIFIED_SOURCE,
-                EpistemicTier.UNVERIFIED_SOURCE,
-            )
+            and it.epistemic_tier in (EpistemicTier.VERIFIED_SOURCE, EpistemicTier.UNVERIFIED_SOURCE)
         ]
         memory_cits = [
             it.title_or_reference
