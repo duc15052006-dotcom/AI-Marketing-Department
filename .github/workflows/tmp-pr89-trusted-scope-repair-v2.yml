@@ -1,0 +1,179 @@
+name: TMP PR89 Trusted Scope Repair V2
+
+on:
+  push:
+    branches:
+      - test/pr89-trusted-legacy-scope-repair
+
+permissions:
+  contents: write
+
+jobs:
+  targeted:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+
+      - name: Apply candidate repair in working tree
+        shell: python {0}
+        run: |
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"ANCHOR_COUNT_MISMATCH {path}: expected 1, got {count}\nANCHOR={old!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "runtime/context.py",
+              '    user_id: Optional[str] = None\n\n\nclass RuntimeContext(BaseModel):',
+              '    user_id: Optional[str] = None\n    trusted_knowledge_scope: Optional[str] = None\n    trusted_memory_scope: Optional[str] = None\n\n\nclass RuntimeContext(BaseModel):',
+          )
+          replace_once(
+              "runtime/context.py",
+              '    project_id: Optional[str] = Field(default=None, description="Optional associated workspace project ID")\n    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))',
+              '    project_id: Optional[str] = Field(default=None, description="Optional associated workspace project ID")\n    trusted_knowledge_scope: Optional[str] = Field(default=None, description="Trusted legacy knowledge scope bound at run creation")\n    trusted_memory_scope: Optional[str] = Field(default=None, description="Trusted legacy memory scope bound at run creation")\n    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))',
+          )
+          replace_once(
+              "runtime/context.py",
+              '            "campaign_id",\n            "user_id",\n        ):',
+              '            "campaign_id",\n            "user_id",\n            "trusted_knowledge_scope",\n            "trusted_memory_scope",\n        ):',
+          )
+          replace_once(
+              "runtime/context.py",
+              '            campaign_id=self.campaign_id,\n            user_id=self.user_id,\n        )',
+              '            campaign_id=self.campaign_id,\n            user_id=self.user_id,\n            trusted_knowledge_scope=self.trusted_knowledge_scope,\n            trusted_memory_scope=self.trusted_memory_scope,\n        )',
+          )
+
+          replace_once(
+              "runtime/engine.py",
+              '        knowledge_scopes = list(plan.knowledge_scope_keys)\n        memory_scopes = list(plan.memory_scope_keys)\n\n        project_id = str(plan.project_id or "").strip()',
+              '        knowledge_scopes = list(plan.knowledge_scope_keys)\n        memory_scopes = list(plan.memory_scope_keys)\n\n        authority = context.scope\n        trusted_knowledge_scope = str(authority.trusted_knowledge_scope or "").strip()\n        trusted_memory_scope = str(authority.trusted_memory_scope or "").strip()\n        if trusted_knowledge_scope and trusted_knowledge_scope.upper() != "GLOBAL":\n            knowledge_scopes.append(trusted_knowledge_scope)\n        if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":\n            memory_scopes.append(trusted_memory_scope)\n\n        project_id = str(plan.project_id or "").strip()',
+          )
+          replace_once(
+              "runtime/engine.py",
+              '        project_id: Optional[str] = None,\n        progress_sink: Optional[ProgressSink] = None,',
+              '        project_id: Optional[str] = None,\n        trusted_knowledge_scope: Optional[str] = None,\n        trusted_memory_scope: Optional[str] = None,\n        progress_sink: Optional[ProgressSink] = None,',
+          )
+          replace_once(
+              "runtime/engine.py",
+              '                chat_id=chat_id,\n                project_id=project_id,\n                status=RuntimeStatus.RUNNING,',
+              '                chat_id=chat_id,\n                project_id=project_id,\n                trusted_knowledge_scope=trusted_knowledge_scope,\n                trusted_memory_scope=trusted_memory_scope,\n                status=RuntimeStatus.RUNNING,',
+          )
+
+          replace_once(
+              "workspace/operator.py",
+              '            campaign_id=cid,\n            user_id=user_id,\n        )',
+              '            campaign_id=cid,\n            user_id=user_id,\n            trusted_knowledge_scope=biz.knowledge_scope if biz else None,\n            trusted_memory_scope=biz.memory_scope if biz else None,\n        )',
+          )
+
+          test_path = Path("tests/test_runtime_builder_canonical_lineage_scope_v1.py")
+          text = test_path.read_text(encoding="utf-8")
+          anchor = '\n\nif __name__ == "__main__":\n    unittest.main()\n'
+          if text.count(anchor) != 1:
+              raise SystemExit("TEST_ANCHOR_MISMATCH")
+          test_method = r'''
+
+    def test_trusted_legacy_scope_alias_is_immutable_and_working_state_spoof_cannot_redirect(self) -> None:
+        knowledge_repo = VersionedKnowledgeRepository()
+        memory_repo = ScopedMemoryRepository()
+
+        trusted_doc = self._save_knowledge(
+            knowledge_repo,
+            title="trusted-legacy-scope",
+            content="scope lineage TRUSTED_LEGACY_KNOWLEDGE",
+            scope="SCOPE_PILOT_CARDIO",
+        )
+        spoof_doc = self._save_knowledge(
+            knowledge_repo,
+            title="spoof-legacy-scope",
+            content="scope lineage SPOOFED_LEGACY_KNOWLEDGE",
+            scope="SCOPE_ATTACKER",
+        )
+        trusted_memory = self._save_memory(
+            memory_repo,
+            content="scope lineage TRUSTED_LEGACY_MEMORY",
+            scope="SCOPE_PILOT_CARDIO",
+        )
+        spoof_memory = self._save_memory(
+            memory_repo,
+            content="scope lineage SPOOFED_LEGACY_MEMORY",
+            scope="SCOPE_ATTACKER",
+        )
+
+        runtime = FiveAgentDepartmentRuntime(
+            model_gateway=object(),
+            knowledge_repo=knowledge_repo,
+            memory_repo=memory_repo,
+        )
+        runtime._call_agent_llm = lambda *args, **kwargs: ("CMO strategic framing", None)
+
+        context = runtime.start_run(
+            objective="scope lineage",
+            business_id="BIZ_A",
+            campaign_id="CAMP_A",
+            trusted_knowledge_scope="SCOPE_PILOT_CARDIO",
+            trusted_memory_scope="SCOPE_PILOT_CARDIO",
+        )
+
+        with self.assertRaises(AttributeError):
+            context.trusted_knowledge_scope = "SCOPE_ATTACKER"
+        with self.assertRaises(AttributeError):
+            context.trusted_memory_scope = "SCOPE_ATTACKER"
+
+        context.working_state["knowledge_scope"] = "SCOPE_ATTACKER"
+        context.working_state["memory_scope"] = "SCOPE_ATTACKER"
+
+        runtime.execute_stage_cmo_initial(context)
+
+        lineage_knowledge_ids = {
+            citation.knowledge_id for citation in runtime.lineage_inspector.get_all_citations()
+        }
+        self.assertIn(trusted_doc.knowledge_id, lineage_knowledge_ids)
+        self.assertNotIn(spoof_doc.knowledge_id, lineage_knowledge_ids)
+        self.assertIn(trusted_memory.memory_id, context.memory_refs)
+        self.assertNotIn(spoof_memory.memory_id, context.memory_refs)
+'''
+          test_path.write_text(text.replace(anchor, test_method + anchor, 1), encoding="utf-8")
+
+      - name: Compile candidate patch
+        shell: pwsh
+        run: |
+          python -m py_compile runtime/context.py runtime/engine.py workspace/operator.py tests/test_runtime_builder_canonical_lineage_scope_v1.py tests/test_phase6_2_pilot_and_v1_release.py
+
+      - name: Run targeted regressions
+        shell: pwsh
+        run: |
+          python -m unittest tests.test_runtime_builder_canonical_lineage_scope_v1 tests.test_context_compiler_dual_scope_read_v1 tests.test_runtime_canonical_scope_plan_v1 tests.test_runtime_builder_scope_isolation_v1 tests.test_phase6_2_pilot_and_v1_release -v
+
+      - name: Verify patch hygiene
+        shell: pwsh
+        run: |
+          git diff --check
+
+      - name: Commit validated candidate to temporary branch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/context.py runtime/engine.py workspace/operator.py tests/test_runtime_builder_canonical_lineage_scope_v1.py
+          git commit -m "test: validated PR89 trusted legacy scope repair"
+          git push origin HEAD:test/pr89-trusted-legacy-scope-repair
