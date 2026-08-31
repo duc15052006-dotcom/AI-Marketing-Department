@@ -25,7 +25,7 @@ from governance.access_matrix import AgentAccessMatrix
 from governance.claim_safety import FinalClaimAuditGateResult, ValidationDecision
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
 from integrations.models.gateway import UniversalModelGateway
-from knowledge.models import KnowledgeCitation
+from knowledge.models import AuthorityLevel, KnowledgeCitation
 from knowledge.repository import KnowledgeRepository, LocalKnowledgeRepository
 from memory.learning import LearningEvent, LearningRepository, LocalLearningRepository
 from memory.models import MemoryItem, MemoryType, PromotionState
@@ -396,6 +396,82 @@ class FiveAgentDepartmentRuntime:
         )
         return knowledge_result, memory_result
 
+    def _reconcile_grounded_stage_provenance(
+        self,
+        context: RuntimeContext,
+        grounded_pkg: GroundedContextPackage,
+        knowledge_result: Optional[KnowledgeRetrievalResult] = None,
+        memory_result: Optional[MemoryRetrievalResult] = None,
+    ) -> None:
+        """Make stage audit refs exactly match persistent evidence accepted by ContextCompiler.
+
+        Legacy builders remain useful for backward-compatible stage result objects,
+        but they are not an evidence authority. GroundedContextPackage is the
+        authoritative model-input boundary, so RuntimeContext refs, LineageInspector,
+        and stage citation lists must be rebuilt from its accepted knowledge/memory IDs.
+        """
+        grounded_knowledge_ids: List[str] = []
+        grounded_memory_ids: List[str] = []
+        seen_knowledge_ids: Set[str] = set()
+        seen_memory_ids: Set[str] = set()
+
+        for item in grounded_pkg.evidence_items:
+            metadata = item.metadata if isinstance(item.metadata, dict) else {}
+            knowledge_id = str(metadata.get("knowledge_id") or "").strip()
+            memory_id = str(metadata.get("memory_id") or "").strip()
+            if knowledge_id and knowledge_id not in seen_knowledge_ids:
+                seen_knowledge_ids.add(knowledge_id)
+                grounded_knowledge_ids.append(knowledge_id)
+            if memory_id and memory_id not in seen_memory_ids:
+                seen_memory_ids.add(memory_id)
+                grounded_memory_ids.append(memory_id)
+
+        if knowledge_result is not None:
+            existing_citations = {
+                citation.knowledge_id: citation for citation in knowledge_result.citations
+            }
+            grounded_documents = []
+            grounded_citations = []
+            for knowledge_id in grounded_knowledge_ids:
+                document = self.knowledge_repo.get_document(knowledge_id) if self.knowledge_repo else None
+                if document is None:
+                    continue
+                citation = existing_citations.get(knowledge_id)
+                if citation is None:
+                    chunk = document.chunks[0] if document.chunks else None
+                    citation = KnowledgeCitation(
+                        knowledge_id=document.knowledge_id,
+                        chunk_id=chunk.chunk_id if chunk else None,
+                        source_id=document.source_id,
+                        claim_ref=document.title,
+                        confidence=(
+                            1.0
+                            if document.authority_level == AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH
+                            else 0.85
+                        ),
+                    )
+                grounded_documents.append(document)
+                grounded_citations.append(citation)
+
+            knowledge_result.documents = grounded_documents
+            knowledge_result.citations = grounded_citations
+            knowledge_result.retrieved_count = len(grounded_documents)
+            for citation in grounded_citations:
+                context.knowledge_refs.append(citation.citation_id)
+                self.lineage_inspector.add_citation(citation)
+
+        if memory_result is not None:
+            grounded_memories = []
+            for memory_id in grounded_memory_ids:
+                memory = self.memory_repo.get_memory(memory_id) if self.memory_repo else None
+                if memory is not None:
+                    grounded_memories.append(memory)
+
+            memory_result.memories = grounded_memories
+            memory_result.retrieved_count = len(grounded_memories)
+            for memory in grounded_memories:
+                context.memory_refs.append(memory.memory_id)
+
     def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:
         """Retrieve active ProgressEmitter for run."""
         rid = context.run_id if context else run_id
@@ -751,14 +827,9 @@ class FiveAgentDepartmentRuntime:
 
         k_res, m_res = self._build_stage_lineage_context("cmo", context, include_memory=True)
 
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
-        for m in m_res.memories:
-            context.memory_refs.append(m.memory_id)
-
-        # Grounded Context Compilation
+        # Grounded Context Compilation is the authoritative model-input boundary.
         grounded_pkg = self.context_compiler.compile_grounded_package("cmo", context)
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res, m_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -849,9 +920,6 @@ class FiveAgentDepartmentRuntime:
             )
 
         k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
 
         # Invoke ToolGateway for search observation
         if emitter:
@@ -891,8 +959,9 @@ class FiveAgentDepartmentRuntime:
                 metadata={"execution_id": search_receipt.execution_id, "status": search_receipt.status.value},
             )
 
-        # Grounded Context Compilation with actual Tool Receipt content
+        # Grounded Context Compilation with actual Tool Receipt content.
         grounded_pkg = self.context_compiler.compile_grounded_package("intelligence", context, tool_receipts=[search_receipt])
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1101,14 +1170,9 @@ class FiveAgentDepartmentRuntime:
 
         k_res, m_res = self._build_stage_lineage_context("strategist", context, include_memory=True)
 
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
-        for m in m_res.memories:
-            context.memory_refs.append(m.memory_id)
-
-        # Grounded Context Compilation
+        # Grounded Context Compilation is the authoritative model-input boundary.
         grounded_pkg = self.context_compiler.compile_grounded_package("strategist", context)
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res, m_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1218,9 +1282,6 @@ class FiveAgentDepartmentRuntime:
             )
 
         k_res, _ = self._build_stage_lineage_context("creative", context, include_memory=False)
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
 
         # Invoke ToolGateway for local image generation / asset preparation
         idem_key = f"{context.run_id}:creative:image_generation:hero"
@@ -1244,8 +1305,9 @@ class FiveAgentDepartmentRuntime:
         if img_receipt.artifact_references:
             context.artifact_refs.extend(img_receipt.artifact_references)
 
-        # Grounded Context Compilation with image tool receipt
+        # Grounded Context Compilation with image tool receipt.
         grounded_pkg = self.context_compiler.compile_grounded_package("creative", context, tool_receipts=[img_receipt])
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1363,12 +1425,6 @@ class FiveAgentDepartmentRuntime:
 
         k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)
 
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
-        for m in m_res.memories:
-            context.memory_refs.append(m.memory_id)
-
         # Retrieve observed campaign telemetry through ToolGateway. A REAL
         # analytics receipt may enter grounded evidence; NO_DATA and legacy
         # MOCK analytics remain auditable receipts but are never promoted as
@@ -1408,6 +1464,7 @@ class FiveAgentDepartmentRuntime:
         grounded_pkg = self.context_compiler.compile_grounded_package(
             "performance", context, tool_receipts=grounded_receipts
         )
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res, m_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
