@@ -16,6 +16,15 @@ END_MARKER = (
     "                ProgressEventType.STAGE_COMPLETED,\n"
     "                stage=\"PERFORMANCE\",\n"
 )
+OLD_LLM_COMMENT = (
+    "        # COLLAB-05: every stage may append the optional machine handoff block\n"
+    "        # to the SAME single response (no second agent, no second model call).\n"
+)
+NEW_LLM_COMMENT = (
+    "        # COLLAB-05: each model response may append the optional machine handoff block.\n"
+    "        # Most stages use one model call. Performance is the explicit RC3 exception:\n"
+    "        # one permanent logical agent executes internal Pass 5A then Pass 5B.\n"
+)
 
 NEW_BLOCK = '''        # RC3 mandatory internal Performance two-pass micro-workflow.
         # Both invocations use the SAME permanent logical agent (performance):
@@ -136,9 +145,10 @@ NEW_BLOCK = '''        # RC3 mandatory internal Performance two-pass micro-workf
 
         # Deterministic merge: visible deliverables are retained separately and
         # combined in a stable order for backward-compatible funnel_kpi. For
-        # the machine handoff, epistemic buckets are A-then-B; Pass B owns any
-        # optional execution/evaluation extensions because it is the final
-        # governance pass. No model-generated value is silently fabricated.
+        # the machine handoff, epistemic buckets are A-then-B and exact
+        # duplicates are removed deterministically. Pass B owns any optional
+        # execution/evaluation extensions because it is the final governance
+        # pass. No model-generated value is silently fabricated.
         merged_visible = (
             "## Pass 5A — Measurement & Attribution\\n"
             f"{measurement_visible}\\n\\n"
@@ -155,7 +165,15 @@ NEW_BLOCK = '''        # RC3 mandatory internal Performance two-pass micro-workf
         for bucket in handoff_buckets:
             a_items = payload_a.get(bucket) if isinstance(payload_a.get(bucket), list) else []
             b_items = payload_b.get(bucket) if isinstance(payload_b.get(bucket), list) else []
-            merged_payload[bucket] = [*a_items, *b_items]
+            seen_items = set()
+            deduped_items = []
+            for item in [*a_items, *b_items]:
+                canonical = json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                if canonical in seen_items:
+                    continue
+                seen_items.add(canonical)
+                deduped_items.append(item)
+            merged_payload[bucket] = deduped_items
         for key, value in payload_b.items():
             if key not in handoff_buckets:
                 merged_payload[key] = value
@@ -211,26 +229,32 @@ def main() -> None:
 
     start = text.find(START_MARKER, method_pos)
     if start < 0:
-        if "performance_pass_protocol\": \"5A_5B" in text[method_pos:]:
-            print("Performance two-pass patch already present; no change.")
-            return
-        raise SystemExit("PATCH_ABORTED: expected single-pass start marker not found")
+        if '"performance_pass_protocol": "5A_5B"' in text[method_pos:]:
+            print("Performance two-pass patch already present; no stage change.")
+            patched = text
+        else:
+            raise SystemExit("PATCH_ABORTED: expected single-pass start marker not found")
+    else:
+        end = text.find(END_MARKER, start)
+        if end < 0:
+            raise SystemExit("PATCH_ABORTED: expected Performance completion marker not found")
 
-    end = text.find(END_MARKER, start)
-    if end < 0:
-        raise SystemExit("PATCH_ABORTED: expected Performance completion marker not found")
+        old_block = text[start:end]
+        required_old_fragments = (
+            'llm_perf, err = self._call_agent_llm("performance", sys_prompt, user_prompt, context=context)',
+            '"funnel_kpi": strip_handoff_block(llm_perf)',
+            'self._finalize_stage_handoff(context, "performance", "performance", llm_perf, output)',
+        )
+        missing = [fragment for fragment in required_old_fragments if fragment not in old_block]
+        if missing:
+            raise SystemExit(f"PATCH_ABORTED: current block shape changed; missing {missing!r}")
+        patched = text[:start] + NEW_BLOCK + text[end:]
 
-    old_block = text[start:end]
-    required_old_fragments = (
-        'llm_perf, err = self._call_agent_llm("performance", sys_prompt, user_prompt, context=context)',
-        '"funnel_kpi": strip_handoff_block(llm_perf)',
-        'self._finalize_stage_handoff(context, "performance", "performance", llm_perf, output)',
-    )
-    missing = [fragment for fragment in required_old_fragments if fragment not in old_block]
-    if missing:
-        raise SystemExit(f"PATCH_ABORTED: current block shape changed; missing {missing!r}")
+    if OLD_LLM_COMMENT in patched:
+        patched = patched.replace(OLD_LLM_COMMENT, NEW_LLM_COMMENT, 1)
+    elif NEW_LLM_COMMENT not in patched:
+        raise SystemExit("PATCH_ABORTED: _call_agent_llm handoff comment shape changed")
 
-    patched = text[:start] + NEW_BLOCK + text[end:]
     if patched.count('"performance_pass_protocol": "5A_5B"') < 2:
         raise SystemExit("PATCH_ABORTED: postcondition failed")
     ENGINE.write_text(patched, encoding="utf-8")
