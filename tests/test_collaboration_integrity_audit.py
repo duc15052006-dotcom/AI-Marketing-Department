@@ -454,7 +454,12 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
         final_out = rt.execute_stage_final_cmo(ctx)
 
         self.assertIn(final_out["approval_status"], ("APPROVED", "APPROVED_WITH_CONDITIONS"))
-        self.assertEqual(final_out["status"], "READY_FOR_DEPLOYMENT")
+        expected_status = (
+            "READY_FOR_DEPLOYMENT"
+            if final_out["approval_status"] == "APPROVED"
+            else "READY_FOR_HUMAN_APPROVAL"
+        )
+        self.assertEqual(final_out["status"], expected_status)
         self.assertGreaterEqual(final_out["claim_audit"]["hypotheses_count"], 1)
         self.assertEqual(final_out["claim_audit"]["blocked_claims"], 0)
 
