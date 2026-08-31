@@ -351,7 +351,9 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         rt2.run_workflow(objective="Đo lường model call", progress_sink=events.append)
 
         self.assertEqual(gw1.call_count, gw2.call_count)
-        # Six workflow stages now require seven model calls because the single\n        # permanent Performance agent executes mandatory internal Pass 5A + 5B.\n        self.assertEqual(gw2.call_count, 7)
+        # Six workflow stages now require seven model calls because the single
+        # permanent Performance agent executes mandatory internal Pass 5A + 5B.
+        self.assertEqual(gw2.call_count, 7)
 
     # 18. event sink does not add search calls
     def test_18_sink_does_not_add_search_calls(self) -> None:
@@ -377,7 +379,8 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         ctx, out, art = rt.run_workflow(objective="Chiến dịch sink hỏng", progress_sink=broken_sink)
 
         self.assertEqual(ctx.status, RuntimeStatus.COMPLETED)
-        # A broken progress sink must not add calls beyond the canonical seven.\n        self.assertEqual(gw.call_count, 7)
+        # A broken progress sink must not add calls beyond the canonical seven.
+        self.assertEqual(gw.call_count, 7)
 
     # 20. event sink failure does not mutate ModelPolicy or runtime status
     def test_20_sink_failure_does_not_mutate_policy(self) -> None:
