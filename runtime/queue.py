@@ -540,15 +540,29 @@ class RunManager:
             item = self._items.get(run_id)
             if item is None or item.status != RunQueueStatus.RECOVERY_REQUIRED:
                 return False
+
+            previous_status = item.status
+            previous_completed_at = item.completed_at
+            previous_recovery_reason = item.recovery_reason
+            previous_error = item.error
+
             item.status = resolution
             item.completed_at = datetime.now(timezone.utc)
             item.recovery_reason = sanitize_sensitive_text(note) if note else item.recovery_reason
             item.error = "RECOVERY_RECONCILED_CANCELLED" if resolution == RunQueueStatus.CANCELLED else "RECOVERY_RECONCILED_FAILED"
-            self._persist_update_locked(
-                item,
-                event_type="RECOVERY_RESOLVED",
-                message=note,
-            )
+            try:
+                self._persist_update_locked(
+                    item,
+                    event_type="RECOVERY_RESOLVED",
+                    message=note,
+                )
+            except JobStoreError:
+                # Never report a durable reconciliation that failed to persist.
+                item.status = previous_status
+                item.completed_at = previous_completed_at
+                item.recovery_reason = previous_recovery_reason
+                item.error = previous_error
+                raise
             return True
 
     def get_queue_stats(self) -> Dict[str, Any]:
