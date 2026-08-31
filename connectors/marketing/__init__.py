@@ -11,6 +11,17 @@ from connectors.marketing.models import (
     UnsupportedMarketingCapabilityError,
     policy_for,
 )
+from connectors.marketing.operations import (
+    ProviderOperationConflictError,
+    ProviderOperationError,
+    ProviderOperationIntegrityError,
+    ProviderOperationNotFoundError,
+    ProviderOperationRecord,
+    ProviderOperationRepository,
+    ProviderOperationScopeError,
+    ProviderOperationState,
+    ProviderOperationStoreError,
+)
 from connectors.marketing.preflight import (
     ProviderPreflightArtifact,
     ProviderPreflightConflictError,
@@ -39,6 +50,15 @@ __all__ = [
     "UnsafeMarketingPayloadError",
     "UnsupportedMarketingCapabilityError",
     "policy_for",
+    "ProviderOperationConflictError",
+    "ProviderOperationError",
+    "ProviderOperationIntegrityError",
+    "ProviderOperationNotFoundError",
+    "ProviderOperationRecord",
+    "ProviderOperationRepository",
+    "ProviderOperationScopeError",
+    "ProviderOperationState",
+    "ProviderOperationStoreError",
     "ProviderPreflightArtifact",
     "ProviderPreflightConflictError",
     "ProviderPreflightError",
