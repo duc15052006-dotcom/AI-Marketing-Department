@@ -208,6 +208,20 @@ class GovernedExecutionPipeline:
                 "approval_state": ApprovalState.REJECTED,
             }
 
+        # Non-terminal claim authorization states never grant autonomous
+        # execution authority. Only explicit APPROVED reaches the permission
+        # mode gate; PENDING/conditional states remain human-gated.
+        if self.final_authorization != "APPROVED":
+            return {
+                "decision": "READY_FOR_HUMAN_APPROVAL",
+                "action_id": getattr(action_request, "action_id", "ACT-001"),
+                "reason": (
+                    "Final claim authorization is not fully approved; "
+                    f"current state={self.final_authorization}. Human resolution/sign-off is required."
+                ),
+                "approval_state": ApprovalState.PENDING_APPROVAL,
+            }
+
         # 2. Permission Mode Evaluation
         if permission_mode == PermissionMode.MANUAL or permission_mode == PermissionMode.SUPERVISED:
             return {
