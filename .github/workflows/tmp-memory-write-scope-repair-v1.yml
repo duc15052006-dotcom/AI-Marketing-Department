@@ -1,0 +1,49 @@
+name: TMP Runtime Memory Write Scope Repair
+
+on:
+  push:
+    branches:
+      - test/runtime-memory-write-scope-repair-v1
+
+permissions:
+  contents: write
+
+jobs:
+  targeted:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply candidate repair
+        run: python scripts/tmp_memory_write_scope_repair_v1.py
+      - name: Compile candidate patch
+        run: python -m py_compile runtime/engine.py tests/test_runtime_memory_write_scope_authority_v1.py
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+      - name: Run targeted regressions
+        run: >-
+          python -m unittest
+          tests.test_runtime_memory_write_scope_authority_v1
+          tests.test_runtime_trusted_legacy_scope_authority_v1
+          tests.test_runtime_canonical_scope_plan_v1
+          tests.test_runtime_builder_scope_isolation_v1
+          tests.test_workspace_scope_provenance_isolation_60
+          tests.test_phase6_2_pilot_and_v1_release
+          -v
+      - name: Verify patch hygiene
+        run: git diff --check
+      - name: Commit validated candidate
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py
+          git commit -m "test: validated memory write scope repair"
+          git push origin HEAD:test/runtime-memory-write-scope-repair-v1
