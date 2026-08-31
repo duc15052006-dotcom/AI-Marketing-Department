@@ -1,0 +1,37 @@
+name: PR90 Targeted Workspace Scope Regression
+
+on:
+  push:
+    branches:
+      - fix/workspace-scope-provenance-isolation-60
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-scope-regression:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Run BUG 1 adversarial regression
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_workspace_scope_provenance_isolation_60
