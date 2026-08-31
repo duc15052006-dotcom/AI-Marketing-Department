@@ -75,6 +75,8 @@ class MarketingRegistrySandboxAdapter(BaseCapabilityAdapter):
         parameters: Dict[str, Any],
         run_id: str,
         business_id: str,
+        project_id: str,
+        brand_id: str,
     ) -> str:
         encoded = json.dumps(
             {
@@ -82,6 +84,8 @@ class MarketingRegistrySandboxAdapter(BaseCapabilityAdapter):
                 "parameters": parameters,
                 "run_id": run_id,
                 "business_id": business_id,
+                "project_id": project_id,
+                "brand_id": brand_id,
             },
             sort_keys=True,
             ensure_ascii=False,
@@ -109,6 +113,29 @@ class MarketingRegistrySandboxAdapter(BaseCapabilityAdapter):
         business_id: str = "",
         project_id: str = "",
     ) -> AdapterResult:
+        """Legacy adapter contract delegates with no trusted brand scope."""
+        return self.execute_with_trusted_scope(
+            capability_id=capability_id,
+            parameters=parameters,
+            timeout_seconds=timeout_seconds,
+            run_id=run_id,
+            business_id=business_id,
+            project_id=project_id,
+            brand_id="",
+        )
+
+    def execute_with_trusted_scope(
+        self,
+        capability_id: str,
+        parameters: Dict[str, Any],
+        timeout_seconds: float = 30.0,
+        *,
+        run_id: str = "",
+        business_id: str = "",
+        project_id: str = "",
+        brand_id: str = "",
+    ) -> AdapterResult:
+        """Execute after ToolGateway supplies trusted tenant/project/brand scope."""
         route = self._routes.get(str(capability_id or "").strip().lower())
         if route is None:
             return self._error("MARKETING_ROUTE_NOT_FOUND", "Marketing gateway route is not active.")
@@ -141,7 +168,14 @@ class MarketingRegistrySandboxAdapter(BaseCapabilityAdapter):
 
         try:
             request = ExternalMarketingRequest(
-                request_id=self._request_id(capability_id, dict(parameters), run_id, business_id),
+                request_id=self._request_id(
+                    capability_id,
+                    dict(parameters),
+                    run_id,
+                    business_id,
+                    project_id,
+                    brand_id,
+                ),
                 run_id=run_id,
                 connector_id=route.connector_id,
                 connection_id=str(parameters.get("connection_id") or ""),
@@ -151,10 +185,7 @@ class MarketingRegistrySandboxAdapter(BaseCapabilityAdapter):
                 resource_id=parameters.get("resource_id"),
                 business_id=business_id,
                 project_id=project_id or None,
-                # Brand scope is deliberately unavailable here. ToolRequest does
-                # not yet carry a trusted brand_id and model parameters may not
-                # invent one. Brand-restricted profiles therefore fail closed.
-                brand_id=None,
+                brand_id=brand_id or None,
                 idempotency_key=parameters.get("idempotency_key"),
                 payload=dict(payload),
             )
