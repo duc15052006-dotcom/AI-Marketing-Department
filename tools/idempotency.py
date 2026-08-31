@@ -18,6 +18,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+from contextlib import closing
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
@@ -129,24 +130,25 @@ class IdempotencyLedger:
 
     def _initialize_schema(self) -> None:
         try:
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS idempotency_ledger (
-                        reservation_id TEXT PRIMARY KEY,
-                        namespace_hash TEXT NOT NULL,
-                        key_hash TEXT NOT NULL,
-                        request_fingerprint TEXT NOT NULL,
-                        state TEXT NOT NULL,
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
+            with closing(self._connect()) as conn:
+                with conn:
+                    conn.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS idempotency_ledger (
+                            reservation_id TEXT PRIMARY KEY,
+                            namespace_hash TEXT NOT NULL,
+                            key_hash TEXT NOT NULL,
+                            request_fingerprint TEXT NOT NULL,
+                            state TEXT NOT NULL,
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        )
+                        """
                     )
-                    """
-                )
-                conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_idempotency_state "
-                    "ON idempotency_ledger(state, reservation_id)"
-                )
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_idempotency_state "
+                        "ON idempotency_ledger(state, reservation_id)"
+                    )
         except sqlite3.Error as exc:
             raise IdempotencyStoreError(
                 "IDEMPOTENCY_STORE_INIT_FAILED: " + sanitize_sensitive_text(str(exc))
@@ -280,30 +282,31 @@ class IdempotencyLedger:
                 return copy.deepcopy(record)
 
             try:
-                with self._connect() as conn:
-                    existing_row = conn.execute(
-                        "SELECT * FROM idempotency_ledger WHERE reservation_id=?",
-                        (reservation_id,),
-                    ).fetchone()
-                    if existing_row is not None:
-                        self._conflict(self._from_row(existing_row), fingerprint)
-                    conn.execute(
-                        """
-                        INSERT INTO idempotency_ledger(
-                            reservation_id, namespace_hash, key_hash,
-                            request_fingerprint, state, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            record.reservation_id,
-                            record.namespace_hash,
-                            record.key_hash,
-                            record.request_fingerprint,
-                            record.state.value,
-                            record.created_at,
-                            record.updated_at,
-                        ),
-                    )
+                with closing(self._connect()) as conn:
+                    with conn:
+                        existing_row = conn.execute(
+                            "SELECT * FROM idempotency_ledger WHERE reservation_id=?",
+                            (reservation_id,),
+                        ).fetchone()
+                        if existing_row is not None:
+                            self._conflict(self._from_row(existing_row), fingerprint)
+                        conn.execute(
+                            """
+                            INSERT INTO idempotency_ledger(
+                                reservation_id, namespace_hash, key_hash,
+                                request_fingerprint, state, created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                record.reservation_id,
+                                record.namespace_hash,
+                                record.key_hash,
+                                record.request_fingerprint,
+                                record.state.value,
+                                record.created_at,
+                                record.updated_at,
+                            ),
+                        )
                 return record
             except IdempotencyConflictError:
                 raise
@@ -328,7 +331,7 @@ class IdempotencyLedger:
                 record = self._records.get(key)
                 return copy.deepcopy(record) if record is not None else None
             try:
-                with self._connect() as conn:
+                with closing(self._connect()) as conn:
                     row = conn.execute(
                         "SELECT * FROM idempotency_ledger WHERE reservation_id=?",
                         (key,),
@@ -344,7 +347,7 @@ class IdempotencyLedger:
             if self.database_path is None:
                 return copy.deepcopy(list(self._records.values()))
             try:
-                with self._connect() as conn:
+                with closing(self._connect()) as conn:
                     rows = conn.execute(
                         "SELECT * FROM idempotency_ledger ORDER BY rowid"
                     ).fetchall()
@@ -381,22 +384,23 @@ class IdempotencyLedger:
                 self._records[reservation_id] = updated
                 return copy.deepcopy(updated)
             try:
-                with self._connect() as conn:
-                    cur = conn.execute(
-                        "UPDATE idempotency_ledger SET state=?, updated_at=? "
-                        "WHERE reservation_id=? AND state=?",
-                        (
-                            updated.state.value,
-                            updated.updated_at,
-                            reservation_id,
-                            current.state.value,
-                        ),
-                    )
-                    if cur.rowcount != 1:
-                        raise IdempotencyStoreError(
-                            "IDEMPOTENCY_CONCURRENT_TRANSITION_CONFLICT: "
-                            f"reservation_id={reservation_id}"
+                with closing(self._connect()) as conn:
+                    with conn:
+                        cur = conn.execute(
+                            "UPDATE idempotency_ledger SET state=?, updated_at=? "
+                            "WHERE reservation_id=? AND state=?",
+                            (
+                                updated.state.value,
+                                updated.updated_at,
+                                reservation_id,
+                                current.state.value,
+                            ),
                         )
+                        if cur.rowcount != 1:
+                            raise IdempotencyStoreError(
+                                "IDEMPOTENCY_CONCURRENT_TRANSITION_CONFLICT: "
+                                f"reservation_id={reservation_id}"
+                            )
                 return updated
             except IdempotencyStoreError:
                 raise
