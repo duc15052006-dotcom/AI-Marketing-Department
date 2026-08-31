@@ -19,6 +19,7 @@ from memory.models import MemoryItem, PromotionState
 from memory.promotion import MemoryPromotionEngine
 from memory.repository import LocalMemoryRepository, MemoryRepository
 from runtime.context import EpistemicTier, EvidenceItem, GroundedContextPackage, RuntimeContext
+from runtime.scope_bridge import build_runtime_canonical_scope_plan
 from tools.capabilities import CapabilityRegistry, EvidenceRole
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 
@@ -77,6 +78,7 @@ class ContextCompiler:
         run_prefix = ctx.run_id[:8] if ctx.run_id else "RUN000"
         evidence_items: List[EvidenceItem] = []
         item_counter = 1
+        scope_plan = build_runtime_canonical_scope_plan(ctx)
 
         # ---------------------------------------------------------------------
         # 1. Ephemeral Session Knowledge (Attachments) — Strictly scoped to chat_id
@@ -111,18 +113,23 @@ class ContextCompiler:
             prof = AgentAccessMatrix.get_profile(aid)
             allowed_sources = prof.allowed_knowledge_sources if prof else [SourceType.CANONICAL_FACT, SourceType.VERIFIED_EVIDENCE]
 
-            # Build strictly permitted scopes (Never retrieve un-scoped / wildcard)
-            scopes = ["GLOBAL"]
-            if ctx.business_id and ctx.business_id not in ("GLOBAL", "BIZ_DEFAULT"):
-                scopes.append(f"SCOPE_{ctx.business_id}")
-            elif ctx.business_id == "BIZ_DEFAULT":
-                scopes.append("SCOPE_BIZ_DEFAULT")
-
-            if ctx.project_id:
-                scopes.append(f"SCOPE_PROJ_{ctx.project_id}")
+            # Canonical exact scopes come from immutable RuntimeContext authority.
+            # Legacy exact scopes remain as migration compatibility only; no unscoped wildcard reads.
+            knowledge_scopes = list(scope_plan.knowledge_scope_keys)
+            project_id = scope_plan.project_id
+            business_id = scope_plan.business_id
+            if project_id and project_id.upper() != "GLOBAL":
+                knowledge_scopes.append(f"SCOPE_PROJ_{project_id}")
+            if business_id and business_id.upper() not in ("GLOBAL", "BIZ_DEFAULT"):
+                knowledge_scopes.append(f"SCOPE_{business_id}")
+            elif business_id.upper() == "BIZ_DEFAULT":
+                knowledge_scopes.append("SCOPE_BIZ_DEFAULT")
+            if scope_plan.include_global:
+                knowledge_scopes.append("GLOBAL")
+            knowledge_scopes = list(dict.fromkeys(knowledge_scopes))
 
             seen_knowledge_ids: set = set()
-            for s in scopes:
+            for s in knowledge_scopes:
                 scoped_docs = self.knowledge_repo.list_documents(scope=s)
                 valid_docs = [d for d in scoped_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
                 for doc in valid_docs[:4]:
@@ -160,12 +167,18 @@ class ContextCompiler:
             allowed_types = prof.allowed_memory_types if prof else []
             min_conf = ctx.memory_policy.get("min_confidence", 0.60) if ctx.memory_policy else 0.60
 
-            # Bounded memory scope
-            scope_target = f"SCOPE_{ctx.business_id}" if ctx.business_id and ctx.business_id != "BIZ_DEFAULT" else "GLOBAL"
+            # Canonical project/business scopes plus legacy business scope during migration.
+            memory_scopes = list(scope_plan.memory_scope_keys)
+            business_id = scope_plan.business_id
+            if business_id and business_id.upper() not in ("GLOBAL", "BIZ_DEFAULT"):
+                memory_scopes.append(f"SCOPE_{business_id}")
+            if scope_plan.include_global:
+                memory_scopes.append("GLOBAL")
+            allowed_memory_scopes = set(memory_scopes)
             all_mems = self.memory_repo.list_memories()
 
             for m in all_mems:
-                if getattr(m, "scope", "GLOBAL") not in (scope_target, "GLOBAL"):
+                if getattr(m, "scope", "GLOBAL") not in allowed_memory_scopes:
                     continue
                 if m.memory_type not in allowed_types:
                     continue
