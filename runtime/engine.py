@@ -33,6 +33,7 @@ from memory.repository import LocalMemoryRepository, MemoryRepository
 from chat.knowledge import SessionKnowledgeStore
 from chat.router import fold_vietnamese
 from runtime.artifacts import DepartmentRunArtifact, MemoryWriteCandidate
+from runtime.agent_prompt import AgentDnaLoadError, compose_runtime_agent_system_prompt
 from runtime.claim_verification import (
     BaseClaimVerifier,
     ClaimVerificationResult,
@@ -395,6 +396,11 @@ class FiveAgentDepartmentRuntime:
 
         # COLLAB-05: every stage may append the optional machine handoff block
         # to the SAME single response (no second agent, no second model call).
+        try:
+            system_instruction = compose_runtime_agent_system_prompt(agent_name, system_instruction)
+        except AgentDnaLoadError as exc:
+            return None, str(exc)
+
         system_instruction = system_instruction + HANDOFF_PROMPT_INSTRUCTION
 
         req = ModelRequest(
