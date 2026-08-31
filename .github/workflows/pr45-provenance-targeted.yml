@@ -16,6 +16,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
       - name: Compile touched runtime and regression
         run: python -m py_compile runtime/engine.py tests/test_claim_provenance_no_backfill_33.py
       - name: Run provenance regression
