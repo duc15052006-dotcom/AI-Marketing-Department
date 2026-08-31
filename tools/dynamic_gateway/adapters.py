@@ -44,8 +44,9 @@ class PluginRegistryAdapter(BaseCapabilityAdapter):
         return "plugin_registry_adapter"
 
     def execution_mode_for(self, capability_id: str) -> ExecutionMode:
-        # Raw plugin executors are treated as sandbox/extension code unless the
-        # executor returns an explicit AdapterResult with stronger provenance.
+        # V1 intentionally classifies plugin execution as SANDBOX regardless of
+        # plugin-returned metadata. Extension code cannot self-upgrade its audit
+        # provenance to REAL without a future trusted runtime policy.
         return ExecutionMode.SANDBOX
 
     def execute(
