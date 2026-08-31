@@ -41,6 +41,12 @@ def _canonical_json(payload: Dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
+def _sqlite_failure(operation: str, exc: sqlite3.Error) -> JobStoreError:
+    """Translate raw SQLite failures into the platform durability error boundary."""
+    safe = sanitize_sensitive_text(str(exc))
+    return JobStoreError(f"JOB_STORE_{operation}_FAILED: {safe}")
+
+
 @dataclass(frozen=True)
 class DurableJobRecord:
     """Serializable durable projection of one queue job."""
@@ -75,6 +81,7 @@ class DurableJobRecord:
         normalized = replace(
             self,
             run_id=self.run_id.strip(),
+            objective=sanitize_sensitive_text(self.objective),
             status=self.status.strip().upper(),
             error=sanitize_sensitive_text(self.error) if self.error else None,
             recovery_reason=sanitize_sensitive_text(self.recovery_reason) if self.recovery_reason else None,
@@ -271,6 +278,8 @@ class SQLiteJobRepository:
                 raise JobStoreConflictError(
                     f"JOB_ALREADY_EXISTS: run_id={normalized.run_id}"
                 ) from exc
+            except sqlite3.Error as exc:
+                raise _sqlite_failure("CREATE", exc) from exc
         return normalized
 
     def save_job(
@@ -282,44 +291,49 @@ class SQLiteJobRepository:
     ) -> DurableJobRecord:
         normalized = replace(record, updated_at=_utc_now_iso(), record_hash="").normalized()
         with self._lock:
-            with self._conn:
-                cur = self._conn.execute(
-                    """
-                    UPDATE jobs SET
-                        objective=?, business_id=?, project_id=?, chat_id=?, status=?,
-                        created_at=?, started_at=?, completed_at=?, error=?, recovery_reason=?,
-                        artifact_hash=?, attempt_count=?, updated_at=?, schema_version=?, record_hash=?
-                    WHERE run_id=?
-                    """,
-                    (
-                        normalized.objective,
-                        normalized.business_id,
-                        normalized.project_id,
-                        normalized.chat_id,
-                        normalized.status,
-                        normalized.created_at,
-                        normalized.started_at,
-                        normalized.completed_at,
-                        normalized.error,
-                        normalized.recovery_reason,
-                        normalized.artifact_hash,
-                        normalized.attempt_count,
-                        normalized.updated_at,
-                        normalized.schema_version,
-                        normalized.record_hash,
-                        normalized.run_id,
-                    ),
-                )
-                if cur.rowcount != 1:
-                    raise JobStoreConflictError(
-                        f"JOB_NOT_FOUND: run_id={normalized.run_id}"
+            try:
+                with self._conn:
+                    cur = self._conn.execute(
+                        """
+                        UPDATE jobs SET
+                            objective=?, business_id=?, project_id=?, chat_id=?, status=?,
+                            created_at=?, started_at=?, completed_at=?, error=?, recovery_reason=?,
+                            artifact_hash=?, attempt_count=?, updated_at=?, schema_version=?, record_hash=?
+                        WHERE run_id=?
+                        """,
+                        (
+                            normalized.objective,
+                            normalized.business_id,
+                            normalized.project_id,
+                            normalized.chat_id,
+                            normalized.status,
+                            normalized.created_at,
+                            normalized.started_at,
+                            normalized.completed_at,
+                            normalized.error,
+                            normalized.recovery_reason,
+                            normalized.artifact_hash,
+                            normalized.attempt_count,
+                            normalized.updated_at,
+                            normalized.schema_version,
+                            normalized.record_hash,
+                            normalized.run_id,
+                        ),
                     )
-                self._append_event_locked(
-                    normalized.run_id,
-                    event_type,
-                    normalized.status,
-                    message,
-                )
+                    if cur.rowcount != 1:
+                        raise JobStoreConflictError(
+                            f"JOB_NOT_FOUND: run_id={normalized.run_id}"
+                        )
+                    self._append_event_locked(
+                        normalized.run_id,
+                        event_type,
+                        normalized.status,
+                        message,
+                    )
+            except JobStoreError:
+                raise
+            except sqlite3.Error as exc:
+                raise _sqlite_failure("SAVE", exc) from exc
         return normalized
 
     def get_job(self, run_id: str) -> Optional[DurableJobRecord]:
@@ -381,18 +395,23 @@ class SQLiteJobRepository:
         audit instead of being hard-deleted.
         """
         with self._lock:
-            row = self._conn.execute(
-                "SELECT status, started_at FROM jobs WHERE run_id=?", (run_id,)
-            ).fetchone()
-            if row is None:
-                return False
-            if row["status"] != "QUEUED" or row["started_at"] is not None:
-                raise JobStoreConflictError(
-                    f"JOB_DELETE_FORBIDDEN: run_id={run_id} has entered execution lifecycle"
-                )
-            with self._conn:
-                self._conn.execute("DELETE FROM jobs WHERE run_id=?", (run_id,))
-            return True
+            try:
+                row = self._conn.execute(
+                    "SELECT status, started_at FROM jobs WHERE run_id=?", (run_id,)
+                ).fetchone()
+                if row is None:
+                    return False
+                if row["status"] != "QUEUED" or row["started_at"] is not None:
+                    raise JobStoreConflictError(
+                        f"JOB_DELETE_FORBIDDEN: run_id={run_id} has entered execution lifecycle"
+                    )
+                with self._conn:
+                    self._conn.execute("DELETE FROM jobs WHERE run_id=?", (run_id,))
+                return True
+            except JobStoreError:
+                raise
+            except sqlite3.Error as exc:
+                raise _sqlite_failure("DELETE", exc) from exc
 
     def append_checkpoint(self, checkpoint: ExecutionCheckpoint) -> bool:
         calculated = checkpoint.calculate_checkpoint_hash()
@@ -429,15 +448,20 @@ class SQLiteJobRepository:
                         checkpoint.checkpoint_id,
                     )
             except sqlite3.IntegrityError as exc:
-                existing = self._conn.execute(
-                    "SELECT payload_hash FROM job_checkpoints WHERE checkpoint_id=?",
-                    (checkpoint.checkpoint_id,),
-                ).fetchone()
+                try:
+                    existing = self._conn.execute(
+                        "SELECT payload_hash FROM job_checkpoints WHERE checkpoint_id=?",
+                        (checkpoint.checkpoint_id,),
+                    ).fetchone()
+                except sqlite3.Error as lookup_exc:
+                    raise _sqlite_failure("CHECKPOINT_LOOKUP", lookup_exc) from lookup_exc
                 if existing is not None and existing["payload_hash"] == payload_hash:
                     return False
                 raise JobStoreConflictError(
                     f"CHECKPOINT_ALREADY_EXISTS: checkpoint_id={checkpoint.checkpoint_id}"
                 ) from exc
+            except sqlite3.Error as exc:
+                raise _sqlite_failure("CHECKPOINT_SAVE", exc) from exc
         return True
 
     def list_checkpoints(self, run_id: str) -> List[Dict[str, Any]]:
