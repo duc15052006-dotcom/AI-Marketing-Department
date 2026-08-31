@@ -7,6 +7,7 @@ across the Five-Agent Department:
 - Human Approval Gate for high-risk / publishing / financial actions
 - Side-effect-safe retry, timeout handling, and error normalization
 - Generates immutable ExecutionReceipts for every invocation
+- Journals consequential execution intent before adapter dispatch
 """
 
 from __future__ import annotations
@@ -18,8 +19,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from schemas.base import BaseModel, Field
 
+from schemas.base import BaseModel, Field
 from tools.adapters import (
     AnalyticsAdapter,
     BaseCapabilityAdapter,
@@ -30,15 +31,27 @@ from tools.adapters import (
     PublishingAdapter,
     SearchAdapter,
 )
-from tools.capabilities import CapabilityCategory, CapabilityDescriptor, CapabilityRegistry, PermissionLevel, RiskLevel
-from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
-from tools.security import PolicyDecision, PolicyEngine
+from tools.capabilities import (
+    CapabilityCategory,
+    CapabilityDescriptor,
+    CapabilityRegistry,
+    PermissionLevel,
+    RiskLevel,
+)
+from tools.receipts import (
+    ExecutionMode,
+    ExecutionReceipt,
+    ExecutionReceiptRepository,
+    ExecutionStatus,
+)
+from tools.security import PolicyEngine
 
 logger = logging.getLogger("tool_gateway")
 
 
 class ToolRequest(BaseModel):
     """Standardized tool invocation envelope passed into the Tool Gateway."""
+
     request_id: str = Field(default_factory=lambda: f"REQ-{uuid.uuid4().hex[:12].upper()}")
     run_id: str = Field(default="RUN-DEFAULT-001", description="Campaign or workflow execution run ID")
     agent_id: str = Field(..., description="Requesting agent: 'cmo' | 'intelligence' | 'strategist' | 'creative' | 'performance'")
@@ -52,12 +65,15 @@ class ToolRequest(BaseModel):
 
     def calculate_request_hash(self) -> str:
         """Compute SHA-256 hash of the request parameters."""
-        raw = f"{self.run_id}:{self.agent_id}:{self.capability_id}:{json.dumps(self.parameters, sort_keys=True, ensure_ascii=False)}"
+        raw = (
+            f"{self.run_id}:{self.agent_id}:{self.capability_id}:"
+            f"{json.dumps(self.parameters, sort_keys=True, ensure_ascii=False)}"
+        )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 class ToolGateway:
-    """Central gateway orchestrating all capability executions with policy, safety, and receipts."""
+    """Central gateway orchestrating capability executions with policy and receipts."""
 
     def __init__(
         self,
@@ -66,25 +82,36 @@ class ToolGateway:
         receipt_repository: Optional[ExecutionReceiptRepository] = None,
     ) -> None:
         if capability_registry is None:
-            raise ValueError("ToolGateway requires an explicit CapabilityRegistry instance. Pass capability_registry= to the constructor.")
+            raise ValueError(
+                "ToolGateway requires an explicit CapabilityRegistry instance. "
+                "Pass capability_registry= to the constructor."
+            )
         self.registry = capability_registry
         self.policy_engine = policy_engine or PolicyEngine()
         self.receipt_repository = receipt_repository or ExecutionReceiptRepository()
         self._adapters: Dict[str, BaseCapabilityAdapter] = {}
         self._register_default_adapters()
 
-    def register_adapter(self, adapter: BaseCapabilityAdapter, aliases: Optional[List[str]] = None) -> None:
+    def register_adapter(
+        self,
+        adapter: BaseCapabilityAdapter,
+        aliases: Optional[List[str]] = None,
+    ) -> None:
         """Register a provider adapter and optional capability provider aliases."""
         self._adapters[adapter.adapter_name.lower()] = adapter
         if aliases:
             for alias in aliases:
                 self._adapters[alias.lower()] = adapter
-        logger.info(f"Registered tool adapter: {adapter.adapter_name} (aliases: {aliases or []})")
+        logger.info(
+            "Registered tool adapter: %s (aliases: %s)",
+            adapter.adapter_name,
+            aliases or [],
+        )
 
     def bind_adapter_alias(self, alias: str, adapter: BaseCapabilityAdapter) -> None:
         """Explicitly bind a capability provider alias to an adapter instance."""
         self._adapters[alias.lower()] = adapter
-        logger.info(f"Bound tool adapter alias '{alias}' to adapter: {adapter.adapter_name}")
+        logger.info("Bound tool adapter alias '%s' to adapter: %s", alias, adapter.adapter_name)
 
     def get_adapter(self, adapter_name: str) -> Optional[BaseCapabilityAdapter]:
         """Retrieve registered adapter by name."""
@@ -150,7 +177,7 @@ class ToolGateway:
         capability_id: str,
         adapter_result: Optional[Any] = None,
     ) -> ExecutionMode:
-        """Resolve truthful execution provenance for both success and failure receipts."""
+        """Resolve truthful execution provenance for success and failure receipts."""
         resolver = getattr(adapter, "execution_mode_for", None)
         if callable(resolver):
             try:
@@ -179,13 +206,45 @@ class ToolGateway:
         """Return an audit reference that cannot be replayed as approval authority."""
         if not value:
             return None
-        if value.startswith("pending_appr_"):
+        if value.startswith("pending_appr_") or value.startswith("approval_ref_"):
             return value
         digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
         return f"approval_ref_{digest}"
 
+    def _error_receipt(
+        self,
+        request: ToolRequest,
+        *,
+        provider: str,
+        request_hash: str,
+        started_at: datetime,
+        status: ExecutionStatus,
+        error_class: str,
+        error_message: str,
+        business_id: Optional[str],
+        approval_reference: Optional[str] = None,
+        execution_mode: ExecutionMode = ExecutionMode.MOCK,
+    ) -> ExecutionReceipt:
+        return ExecutionReceipt(
+            run_id=request.run_id,
+            agent_id=request.agent_id,
+            capability_id=request.capability_id,
+            provider=provider,
+            request_hash=request_hash,
+            started_at=started_at,
+            completed_at=datetime.now(timezone.utc),
+            status=status,
+            execution_mode=execution_mode,
+            error_class=error_class,
+            error_message=error_message,
+            approval_reference=approval_reference,
+            business_id=business_id,
+            project_id=request.project_id,
+            chat_id=request.chat_id,
+        )
+
     def execute(self, request: ToolRequest) -> ExecutionReceipt:
-        """Execute a tool capability with complete governance, permissions, and receipt creation."""
+        """Execute a tool capability with governance, durable intent, and receipts."""
         start_time = datetime.now(timezone.utc)
         req_hash = request.calculate_request_hash()
 
@@ -200,23 +259,21 @@ class ToolGateway:
         # 1. Capability Discovery
         cap = self.registry.get_capability(request.capability_id)
         if not cap:
-            completed_time = datetime.now(timezone.utc)
-            receipt = ExecutionReceipt(
-                run_id=request.run_id,
-                agent_id=request.agent_id,
-                capability_id=request.capability_id,
-                provider="gateway",
-                request_hash=req_hash,
-                started_at=start_time,
-                completed_at=completed_time,
-                status=ExecutionStatus.ERROR,
-                error_class="CAPABILITY_NOT_FOUND",
-                error_message=f"Capability '{request.capability_id}' is not registered in CapabilityRegistry.",
-                business_id=effective_business_id,
-                project_id=request.project_id,
-                chat_id=request.chat_id,
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider="gateway",
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.ERROR,
+                    error_class="CAPABILITY_NOT_FOUND",
+                    error_message=(
+                        f"Capability '{request.capability_id}' is not registered "
+                        "in CapabilityRegistry."
+                    ),
+                    business_id=effective_business_id,
+                )
             )
-            return self.receipt_repository.save_receipt(receipt)
 
         # 2. Permission & Safety Policy Gate
         decision = self.policy_engine.evaluate(
@@ -228,9 +285,16 @@ class ToolGateway:
             parameters=request.parameters,
         )
         if not decision.allowed:
-            completed_time = datetime.now(timezone.utc)
-            status = ExecutionStatus.APPROVAL_REQUIRED if decision.requires_human_approval else ExecutionStatus.BLOCKED
-            err_class = decision.error_code or ("HUMAN_APPROVAL_REQUIRED" if decision.requires_human_approval else "PERMISSION_DENIED")
+            status = (
+                ExecutionStatus.APPROVAL_REQUIRED
+                if decision.requires_human_approval
+                else ExecutionStatus.BLOCKED
+            )
+            err_class = decision.error_code or (
+                "HUMAN_APPROVAL_REQUIRED"
+                if decision.requires_human_approval
+                else "PERMISSION_DENIED"
+            )
             appr_ref = self._safe_approval_reference(request.approval_token)
             if decision.requires_human_approval and not request.approval_token:
                 pending_rec = self.policy_engine.create_pending_approval(
@@ -243,44 +307,38 @@ class ToolGateway:
                 )
                 appr_ref = pending_rec.pending_approval_id
 
-            receipt = ExecutionReceipt(
-                run_id=request.run_id,
-                agent_id=request.agent_id,
-                capability_id=request.capability_id,
-                provider=cap.provider,
-                request_hash=req_hash,
-                started_at=start_time,
-                completed_at=completed_time,
-                status=status,
-                error_class=err_class,
-                error_message=decision.reason,
-                approval_reference=appr_ref,
-                business_id=effective_business_id,
-                project_id=request.project_id,
-                chat_id=request.chat_id,
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=status,
+                    error_class=err_class,
+                    error_message=decision.reason,
+                    approval_reference=appr_ref,
+                    business_id=effective_business_id,
+                )
             )
-            return self.receipt_repository.save_receipt(receipt)
 
         # 3. Retrieve Provider Adapter
         adapter = self.get_adapter(cap.provider)
         if adapter is None:
-            completed_time = datetime.now(timezone.utc)
-            receipt = ExecutionReceipt(
-                run_id=request.run_id,
-                agent_id=request.agent_id,
-                capability_id=request.capability_id,
-                provider=cap.provider,
-                request_hash=req_hash,
-                started_at=start_time,
-                completed_at=completed_time,
-                status=ExecutionStatus.ERROR,
-                error_class="PROVIDER_NOT_CONFIGURED",
-                error_message=f"Provider adapter '{cap.provider}' is not registered with ToolGateway.",
-                business_id=effective_business_id,
-                project_id=request.project_id,
-                chat_id=request.chat_id,
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.ERROR,
+                    error_class="PROVIDER_NOT_CONFIGURED",
+                    error_message=(
+                        f"Provider adapter '{cap.provider}' is not registered "
+                        "with ToolGateway."
+                    ),
+                    business_id=effective_business_id,
+                )
             )
-            return self.receipt_repository.save_receipt(receipt)
 
         # 4. Atomic One-Shot Approval Claim for Consequential Actions
         cap_is_consequential = self._is_consequential_capability(cap)
@@ -289,24 +347,24 @@ class ToolGateway:
         if is_consequential:
             claimed = self.policy_engine.claim_approval(request.approval_token)
             if not claimed:
-                completed_time = datetime.now(timezone.utc)
-                receipt = ExecutionReceipt(
-                    run_id=request.run_id,
-                    agent_id=request.agent_id,
-                    capability_id=request.capability_id,
-                    provider=adapter.adapter_name,
-                    request_hash=req_hash,
-                    started_at=start_time,
-                    completed_at=completed_time,
-                    status=ExecutionStatus.APPROVAL_REQUIRED,
-                    error_class="APPROVAL_ALREADY_CLAIMED",
-                    error_message="APPROVAL_ALREADY_CLAIMED: Approval authority is unavailable, expired, or has already been spent.",
-                    approval_reference=self._safe_approval_reference(request.approval_token),
-                    business_id=effective_business_id,
-                    project_id=request.project_id,
-                    chat_id=request.chat_id,
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=adapter.adapter_name,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.APPROVAL_REQUIRED,
+                        error_class="APPROVAL_ALREADY_CLAIMED",
+                        error_message=(
+                            "APPROVAL_ALREADY_CLAIMED: Approval authority is unavailable, "
+                            "expired, or has already been spent."
+                        ),
+                        approval_reference=self._safe_approval_reference(
+                            request.approval_token
+                        ),
+                        business_id=effective_business_id,
+                    )
                 )
-                return self.receipt_repository.save_receipt(receipt)
 
         # 5. Execute Invocation with Side-Effect-Safe Timeout & Retries
         timeout = request.timeout_seconds or cap.timeout_policy
@@ -322,8 +380,32 @@ class ToolGateway:
         last_exc: Optional[BaseException] = None
         exception_error_code: Optional[str] = None
         ambiguous_external_outcome = False
+        execution_intent = None
 
         try:
+            # Critical ordering invariant:
+            # PREPARED -> DISPATCHING is durably committed before adapter.execute.
+            # Any crash after DISPATCHING and before finalization is ambiguous and
+            # must never be interpreted as proof that the side effect did not run.
+            if cap_is_consequential:
+                execution_intent = self.receipt_repository.prepare_execution_intent(
+                    request_id=request.request_id,
+                    run_id=request.run_id,
+                    agent_id=request.agent_id,
+                    capability_id=request.capability_id,
+                    provider=adapter.adapter_name,
+                    request_hash=req_hash,
+                    business_id=effective_business_id,
+                    project_id=request.project_id,
+                    chat_id=request.chat_id,
+                    approval_reference=self._safe_approval_reference(
+                        request.approval_token
+                    ),
+                )
+                self.receipt_repository.mark_execution_intent_dispatching(
+                    execution_intent.intent_id
+                )
+
             for attempt in range(max_retries + 1):
                 try:
                     adapter_res = adapter.execute(
@@ -398,18 +480,26 @@ class ToolGateway:
             if ambiguous_external_outcome:
                 err_code = "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME"
                 err_msg = (
-                    "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME: The external action may have been accepted "
-                    "before execution raised an exception; automatic retry was suppressed to prevent "
-                    "duplicate side effects."
+                    "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME: The external action may have "
+                    "been accepted before execution raised an exception; automatic "
+                    "retry was suppressed to prevent duplicate side effects."
                 )
             elif adapter_res is not None:
                 err_code = adapter_res.error_code or "EXECUTION_ERROR"
                 err_msg = adapter_res.error_message or "Tool adapter execution failed."
             else:
                 err_code = exception_error_code or "EXECUTION_EXCEPTION"
-                err_msg = str(last_exc) if last_exc is not None else "Tool adapter execution failed."
+                err_msg = (
+                    str(last_exc)
+                    if last_exc is not None
+                    else "Tool adapter execution failed."
+                )
 
-            status = ExecutionStatus.TIMEOUT if err_code == "TIMEOUT" else ExecutionStatus.ERROR
+            status = (
+                ExecutionStatus.TIMEOUT
+                if err_code == "TIMEOUT"
+                else ExecutionStatus.ERROR
+            )
             mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
@@ -431,4 +521,10 @@ class ToolGateway:
                 chat_id=request.chat_id,
             )
 
+        if execution_intent is not None:
+            return self.receipt_repository.finalize_execution_intent(
+                execution_intent.intent_id,
+                receipt,
+                ambiguous=ambiguous_external_outcome,
+            )
         return self.receipt_repository.save_receipt(receipt)
