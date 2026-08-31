@@ -1,0 +1,28 @@
+name: PR45 Provenance Targeted Tests
+
+on:
+  push:
+    branches:
+      - fix/claim-provenance-no-scope-backfill-45
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile touched runtime and regression
+        run: python -m py_compile runtime/engine.py tests/test_claim_provenance_no_backfill_33.py
+      - name: Run provenance regression
+        run: python -m unittest tests.test_claim_provenance_no_backfill_33 -v
+      - name: Run adjacent claim and scope suites
+        run: |
+          python -m unittest \
+            tests.test_claim_evidence_binding \
+            tests.test_claim_verification_engine \
+            tests.test_prod_evidence_scope_01b -v
