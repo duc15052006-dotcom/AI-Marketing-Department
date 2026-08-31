@@ -16,13 +16,7 @@ class TrackingKnowledgeRepository(LocalKnowledgeRepository):
         super().__init__()
         self.requested_scopes = []
 
-    def list_documents(
-        self,
-        scope=None,
-        tags=None,
-        authority_level=None,
-        source_type=None,
-    ):
+    def list_documents(self, scope=None, tags=None, authority_level=None, source_type=None):
         if scope is None:
             raise AssertionError("ContextCompiler must never issue an unscoped knowledge read")
         self.requested_scopes.append(scope)
@@ -39,13 +33,7 @@ class TrackingLegacyMemoryRepository(LocalMemoryRepository):
         super().__init__()
         self.legacy_list_calls = 0
 
-    def list_memories(
-        self,
-        memory_type=None,
-        agent_source=None,
-        run_id=None,
-        promotion_level=None,
-    ):
+    def list_memories(self, memory_type=None, agent_source=None, run_id=None, promotion_level=None):
         self.legacy_list_calls += 1
         return super().list_memories(
             memory_type=memory_type,
@@ -111,7 +99,6 @@ class ContextCompilerCanonicalDualReadV1Tests(unittest.TestCase):
     def test_project_business_global_and_exact_legacy_aliases_are_read_in_authority_order(self) -> None:
         knowledge_repo = TrackingKnowledgeRepository()
         memory_repo = TrackingLegacyMemoryRepository()
-
         expected_scopes = [
             "PROJECT:PROJ_ALPHA",
             "SCOPE_PROJ_PROJ_ALPHA",
@@ -178,10 +165,7 @@ class ContextCompilerCanonicalDualReadV1Tests(unittest.TestCase):
         memory_repo.save_memory(_memory("SCOPE_BIZ_DEFAULT", "DEFAULT"))
         memory_repo.save_memory(_memory("SCOPE_BIZ_OTHER", "FOREIGN"))
 
-        context = RuntimeContext(
-            objective="default workspace",
-            business_id="BIZ_DEFAULT",
-        )
+        context = RuntimeContext(objective="default workspace", business_id="BIZ_DEFAULT")
         package = ContextCompiler(
             knowledge_repo=knowledge_repo,
             memory_repo=memory_repo,
@@ -190,10 +174,7 @@ class ContextCompilerCanonicalDualReadV1Tests(unittest.TestCase):
         self.assertEqual(knowledge_repo.requested_scopes, ["GLOBAL", "SCOPE_BIZ_DEFAULT"])
         self.assertEqual(package.diagnostics["knowledge_read_scopes"], ["GLOBAL", "SCOPE_BIZ_DEFAULT"])
         self.assertEqual(package.diagnostics["memory_read_scopes"], ["GLOBAL", "SCOPE_BIZ_DEFAULT"])
-        self.assertNotIn(
-            "SCOPE_BIZ_OTHER",
-            [item.scope for item in package.evidence_items],
-        )
+        self.assertNotIn("SCOPE_BIZ_OTHER", [item.scope for item in package.evidence_items])
 
     def test_invalid_authoritative_scope_fails_before_repository_reads(self) -> None:
         knowledge_repo = TrackingKnowledgeRepository()
@@ -227,6 +208,45 @@ class ContextCompilerCanonicalDualReadV1Tests(unittest.TestCase):
             ).compile_grounded_package("cmo", context)
 
         self.assertEqual(memory_repo.unscoped_calls, 0)
+
+    def test_legacy_compile_wrapper_cannot_change_authoritative_project_or_chat_scope(self) -> None:
+        knowledge_repo = TrackingKnowledgeRepository()
+        memory_repo = TrackingLegacyMemoryRepository()
+        context = RuntimeContext(
+            objective="keep authoritative scope",
+            business_id="BIZ_ALPHA",
+            project_id="PROJ_ALPHA",
+            chat_id="CHAT_ALPHA",
+        )
+        compiler = ContextCompiler(knowledge_repo=knowledge_repo, memory_repo=memory_repo)
+
+        with self.assertRaisesRegex(ValueError, "PROJECT_SCOPE_OVERRIDE_FORBIDDEN"):
+            compiler.compile_for_agent("cmo", context, project_id="PROJ_BETA")
+        with self.assertRaisesRegex(ValueError, "CHAT_SCOPE_OVERRIDE_FORBIDDEN"):
+            compiler.compile_for_agent("cmo", context, chat_id="CHAT_BETA")
+
+        self.assertEqual(knowledge_repo.requested_scopes, [])
+        self.assertEqual(memory_repo.legacy_list_calls, 0)
+
+    def test_legacy_compile_wrapper_accepts_identical_authoritative_scope_values(self) -> None:
+        knowledge_repo = TrackingKnowledgeRepository()
+        memory_repo = TrackingLegacyMemoryRepository()
+        context = RuntimeContext(
+            objective="same scope compatibility",
+            business_id="BIZ_ALPHA",
+            project_id="PROJ_ALPHA",
+            chat_id="CHAT_ALPHA",
+        )
+        result = ContextCompiler(
+            knowledge_repo=knowledge_repo,
+            memory_repo=memory_repo,
+        ).compile_for_agent(
+            "cmo",
+            context,
+            project_id="PROJ_ALPHA",
+            chat_id="CHAT_ALPHA",
+        )
+        self.assertEqual(result.agent_id, "cmo")
 
 
 if __name__ == "__main__":
