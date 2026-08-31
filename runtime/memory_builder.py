@@ -52,6 +52,7 @@ class MemoryContextBuilder:
         min_confidence: float = 0.60,
         include_raw: bool = False,
         max_chars: int = 2500,
+        scopes: Optional[List[str]] = None,
     ) -> MemoryRetrievalResult:
         """Retrieve and format unexpired, role-authorized memories."""
         aid = agent_id.lower()
@@ -72,19 +73,24 @@ class MemoryContextBuilder:
             allowed_promotions.add(PromotionState.RAW_OBSERVATION)
 
         all_memories = self.repository.list_memories()
+        effective_scopes = set(s for s in (scopes if scopes is not None else ["GLOBAL"]) if s)
         valid_memories: List[MemoryItem] = []
 
         for m in all_memories:
-            # 1. Type isolation
+            # 1. Workspace/tenant scope isolation. Missing scope metadata is
+            # treated as GLOBAL for backward compatibility, never as "all".
+            if getattr(m, "scope", "GLOBAL") not in effective_scopes:
+                continue
+            # 2. Type isolation
             if m.memory_type not in allowed_types:
                 continue
-            # 2. Promotion state gate (prohibit treating RAW_OBSERVATION as learning)
+            # 3. Promotion state gate (prohibit treating RAW_OBSERVATION as learning)
             if m.promotion_level not in allowed_promotions:
                 continue
-            # 3. Confidence threshold
+            # 4. Confidence threshold
             if m.confidence < min_confidence:
                 continue
-            # 4. Expiry / staleness check
+            # 5. Expiry / staleness check
             if MemoryPromotionEngine.audit_memory_staleness(m):
                 continue
             valid_memories.append(m)

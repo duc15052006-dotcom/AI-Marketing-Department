@@ -45,6 +45,7 @@ class KnowledgeContextBuilder:
         query_text: str = "",
         scope: Optional[str] = None,
         max_chars: int = 3500,
+        scopes: Optional[List[str]] = None,
     ) -> KnowledgeRetrievalResult:
         """Retrieve and format role-authorized knowledge with provenance tracking."""
         aid = agent_id.lower()
@@ -55,9 +56,26 @@ class KnowledgeContextBuilder:
                 context_text=f"=== KNOWLEDGE RETRIEVAL DENIED: Unrecognized agent '{agent_id}' ===",
             )
 
-        # Filter by agent's authorized knowledge sources and exclude RETIRED documents
+        # Scope is a trust boundary. Never pass None through to repositories,
+        # because LocalKnowledgeRepository interprets scope=None as "all documents".
+        # Explicit empty scopes also fail closed to no documents.
         allowed_sources = prof.allowed_knowledge_sources
-        all_docs = self.repository.list_documents(scope=scope)
+        if scopes is not None:
+            effective_scopes = list(dict.fromkeys(s for s in scopes if s))
+        elif scope:
+            effective_scopes = [scope]
+        else:
+            effective_scopes = ["GLOBAL"]
+
+        all_docs: List[KnowledgeDocument] = []
+        seen_knowledge_ids = set()
+        for allowed_scope in effective_scopes:
+            for doc in self.repository.list_documents(scope=allowed_scope):
+                if doc.knowledge_id in seen_knowledge_ids:
+                    continue
+                seen_knowledge_ids.add(doc.knowledge_id)
+                all_docs.append(doc)
+
         scoped_docs = [d for d in all_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
 
         # Match by query if provided, or take high-authority scoped docs

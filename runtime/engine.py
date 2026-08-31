@@ -262,6 +262,27 @@ class FiveAgentDepartmentRuntime:
             except Exception:
                 pass
 
+    @staticmethod
+    def _knowledge_scopes_for_context(context: RuntimeContext) -> List[str]:
+        # Mirror ContextCompiler knowledge visibility for provenance bookkeeping.
+        scopes = ["GLOBAL"]
+        if context.business_id and context.business_id not in ("GLOBAL", "BIZ_DEFAULT"):
+            scopes.append(f"SCOPE_{context.business_id}")
+        elif context.business_id == "BIZ_DEFAULT":
+            scopes.append("SCOPE_BIZ_DEFAULT")
+        if context.project_id:
+            scopes.append(f"SCOPE_PROJ_{context.project_id}")
+        return list(dict.fromkeys(scopes))
+
+    @staticmethod
+    def _memory_scopes_for_context(context: RuntimeContext) -> List[str]:
+        # Mirror the CURRENT ContextCompiler memory visibility.
+        # Project memory is intentionally handled in a separate hardening change.
+        scopes = ["GLOBAL"]
+        if context.business_id and context.business_id != "BIZ_DEFAULT":
+            scopes.append(f"SCOPE_{context.business_id}")
+        return list(dict.fromkeys(scopes))
+
     def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:
         """Retrieve active ProgressEmitter for run."""
         rid = context.run_id if context else run_id
@@ -612,8 +633,8 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn CMO Initial (Strategic Framing)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("cmo", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("cmo", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("cmo", query_text=context.objective, scopes=self._knowledge_scopes_for_context(context))
+        m_res = self.memory_builder.build_context_for_agent("cmo", query_text=context.objective, scopes=self._memory_scopes_for_context(context))
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
@@ -712,7 +733,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("intelligence", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("intelligence", query_text=context.objective, scopes=self._knowledge_scopes_for_context(context))
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
             self.lineage_inspector.add_citation(c)
@@ -963,8 +984,8 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Strategist (Positioning & Value Architecture)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("strategist", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("strategist", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("strategist", query_text=context.objective, scopes=self._knowledge_scopes_for_context(context))
+        m_res = self.memory_builder.build_context_for_agent("strategist", query_text=context.objective, scopes=self._memory_scopes_for_context(context))
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
@@ -1082,7 +1103,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Creative (Hooks & Asset Synthesis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("creative", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("creative", query_text=context.objective, scopes=self._knowledge_scopes_for_context(context))
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
             self.lineage_inspector.add_citation(c)
@@ -1226,8 +1247,8 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("performance", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("performance", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("performance", query_text=context.objective, scopes=self._knowledge_scopes_for_context(context))
+        m_res = self.memory_builder.build_context_for_agent("performance", query_text=context.objective, scopes=self._memory_scopes_for_context(context))
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
