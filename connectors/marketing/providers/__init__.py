@@ -9,6 +9,15 @@ from connectors.marketing.providers.meta import (
     MetaTransportError,
     UrllibMetaHttpTransport,
 )
+from connectors.marketing.providers.tiktok import (
+    TikTokExecutorError,
+    TikTokExecutorValidationError,
+    TikTokHttpResponse,
+    TikTokHttpTransport,
+    TikTokMarketingExecutor,
+    TikTokTransportError,
+    UrllibTikTokHttpTransport,
+)
 
 __all__ = [
     "MetaExecutorError",
@@ -18,4 +27,11 @@ __all__ = [
     "MetaMarketingExecutor",
     "MetaTransportError",
     "UrllibMetaHttpTransport",
+    "TikTokExecutorError",
+    "TikTokExecutorValidationError",
+    "TikTokHttpResponse",
+    "TikTokHttpTransport",
+    "TikTokMarketingExecutor",
+    "TikTokTransportError",
+    "UrllibTikTokHttpTransport",
 ]
