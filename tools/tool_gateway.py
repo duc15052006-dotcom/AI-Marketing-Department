@@ -38,6 +38,11 @@ from tools.capabilities import (
     PermissionLevel,
     RiskLevel,
 )
+from tools.idempotency import (
+    IdempotencyConflictError,
+    IdempotencyLedger,
+    IdempotencyStoreError,
+)
 from tools.receipts import (
     ExecutionMode,
     ExecutionReceipt,
@@ -103,6 +108,9 @@ class ToolGateway:
         self.registry = capability_registry
         self.policy_engine = policy_engine or PolicyEngine()
         self.receipt_repository = receipt_repository or ExecutionReceiptRepository()
+        self.idempotency_ledger = IdempotencyLedger(
+            database_path=self.receipt_repository.database_path
+        )
         self._adapters: Dict[str, BaseCapabilityAdapter] = {}
         self._register_default_adapters()
 
@@ -416,8 +424,67 @@ class ToolGateway:
         exception_error_code: Optional[str] = None
         ambiguous_external_outcome = False
         execution_intent = None
+        idempotency_record = None
 
         try:
+            # Durable idempotency authority is only engaged for REAL consequential
+            # actions carrying an explicit key. Run/agent/request ids are excluded
+            # from its namespace so a newly-approved replay still collides.
+            raw_idempotency_key = request.parameters.get("idempotency_key")
+            if (
+                cap_is_consequential
+                and self._resolve_execution_mode(adapter, cap.capability_id) == ExecutionMode.REAL
+                and isinstance(raw_idempotency_key, str)
+                and raw_idempotency_key.strip()
+            ):
+                try:
+                    idempotency_record = self.idempotency_ledger.reserve(
+                        capability_id=request.capability_id,
+                        provider=cap.provider,
+                        idempotency_key=raw_idempotency_key,
+                        connection_id=request.parameters.get("connection_id"),
+                        parameters=request.parameters,
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                        brand_id=effective_brand_id,
+                    )
+                except IdempotencyConflictError as exc:
+                    return self.receipt_repository.save_receipt(
+                        self._error_receipt(
+                            request,
+                            provider=adapter.adapter_name,
+                            request_hash=req_hash,
+                            started_at=start_time,
+                            status=ExecutionStatus.BLOCKED,
+                            error_class=exc.code,
+                            error_message=str(exc),
+                            approval_reference=self._safe_approval_reference(
+                                request.approval_token
+                            ),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            execution_mode=ExecutionMode.REAL,
+                        )
+                    )
+                except IdempotencyStoreError as exc:
+                    return self.receipt_repository.save_receipt(
+                        self._error_receipt(
+                            request,
+                            provider=adapter.adapter_name,
+                            request_hash=req_hash,
+                            started_at=start_time,
+                            status=ExecutionStatus.ERROR,
+                            error_class="IDEMPOTENCY_STORE_UNAVAILABLE",
+                            error_message=str(exc),
+                            approval_reference=self._safe_approval_reference(
+                                request.approval_token
+                            ),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            execution_mode=ExecutionMode.REAL,
+                        )
+                    )
+
             # Critical ordering invariant:
             # PREPARED -> DISPATCHING is durably committed before adapter execution.
             # Any crash after DISPATCHING and before finalization is ambiguous and
@@ -440,6 +507,32 @@ class ToolGateway:
                 self.receipt_repository.mark_execution_intent_dispatching(
                     execution_intent.intent_id
                 )
+                if idempotency_record is not None:
+                    try:
+                        idempotency_record = self.idempotency_ledger.mark_dispatching(
+                            idempotency_record.reservation_id
+                        )
+                    except IdempotencyStoreError as exc:
+                        predispatch_receipt = self._error_receipt(
+                            request,
+                            provider=adapter.adapter_name,
+                            request_hash=req_hash,
+                            started_at=start_time,
+                            status=ExecutionStatus.ERROR,
+                            error_class="IDEMPOTENCY_STORE_UNAVAILABLE",
+                            error_message=str(exc),
+                            approval_reference=self._safe_approval_reference(
+                                request.approval_token
+                            ),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            execution_mode=ExecutionMode.REAL,
+                        )
+                        return self.receipt_repository.finalize_execution_intent(
+                            execution_intent.intent_id,
+                            predispatch_receipt,
+                            ambiguous=False,
+                        )
 
             for attempt in range(max_retries + 1):
                 try:
@@ -569,9 +662,28 @@ class ToolGateway:
             )
 
         if execution_intent is not None:
-            return self.receipt_repository.finalize_execution_intent(
+            stored_receipt = self.receipt_repository.finalize_execution_intent(
                 execution_intent.intent_id,
                 receipt,
                 ambiguous=ambiguous_external_outcome,
             )
-        return self.receipt_repository.save_receipt(receipt)
+        else:
+            stored_receipt = self.receipt_repository.save_receipt(receipt)
+
+        if idempotency_record is not None:
+            try:
+                self.idempotency_ledger.settle(
+                    idempotency_record.reservation_id,
+                    ambiguous=ambiguous_external_outcome,
+                )
+            except IdempotencyStoreError as exc:
+                # Do not transform a completed external action into a retryable
+                # client failure. A DISPATCHING reservation remains fail-closed
+                # and therefore still prevents duplicate replay.
+                logger.error(
+                    "Failed to settle idempotency reservation %s: %s",
+                    idempotency_record.reservation_id,
+                    exc,
+                )
+
+        return stored_receipt
