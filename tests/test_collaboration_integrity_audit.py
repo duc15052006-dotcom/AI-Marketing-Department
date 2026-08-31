@@ -904,7 +904,12 @@ class TestDataOriginIntegrity(unittest.TestCase):
         self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"], replies["intelligence"])
         self.assertEqual(ctx.stage_outputs["strategist"]["positioning"], replies["strategist"])
         self.assertEqual(ctx.stage_outputs["creative"]["creative_synthesis"], replies["creative"])
-        self.assertEqual(ctx.stage_outputs["performance"]["funnel_kpi"], replies["performance"])
+        perf_out = ctx.stage_outputs["performance"]
+        self.assertEqual(perf_out["performance_pass_protocol"], "5A_5B")
+        self.assertEqual(perf_out["performance_passes_completed"], 2)
+        self.assertEqual(perf_out["measurement_attribution"], replies["performance"])
+        self.assertEqual(perf_out["experimentation_governance"], replies["performance"])
+        self.assertIn(replies["performance"], perf_out["funnel_kpi"])
 
     # 12/13/14. invariants
     def test_12_five_agent_invariant_intact(self):
