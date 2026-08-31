@@ -111,9 +111,15 @@ class ContextCompiler:
             prof = AgentAccessMatrix.get_profile(aid)
             allowed_sources = prof.allowed_knowledge_sources if prof else [SourceType.CANONICAL_FACT, SourceType.VERIFIED_EVIDENCE]
 
-            # Build strictly permitted scopes (Never retrieve un-scoped / wildcard)
+            # Build strictly permitted scopes (Never retrieve un-scoped / wildcard).
+            # OperatorWorkspace may bind an explicit per-business scope in working_state;
+            # honor it as the current workspace boundary, otherwise use the canonical
+            # business-id-derived scope used by direct runtime callers.
             scopes = ["GLOBAL"]
-            if ctx.business_id and ctx.business_id not in ("GLOBAL", "BIZ_DEFAULT"):
+            configured_knowledge_scope = str(ctx.working_state.get("knowledge_scope") or "").strip()
+            if configured_knowledge_scope and configured_knowledge_scope != "GLOBAL":
+                scopes.append(configured_knowledge_scope)
+            elif ctx.business_id and ctx.business_id not in ("GLOBAL", "BIZ_DEFAULT"):
                 scopes.append(f"SCOPE_{ctx.business_id}")
             elif ctx.business_id == "BIZ_DEFAULT":
                 scopes.append("SCOPE_BIZ_DEFAULT")
@@ -160,8 +166,14 @@ class ContextCompiler:
             allowed_types = prof.allowed_memory_types if prof else []
             min_conf = ctx.memory_policy.get("min_confidence", 0.60) if ctx.memory_policy else 0.60
 
-            # Bounded memory scope
-            scope_target = f"SCOPE_{ctx.business_id}" if ctx.business_id and ctx.business_id != "BIZ_DEFAULT" else "GLOBAL"
+            # Bounded memory scope. OperatorWorkspace may provide a configured
+            # business memory scope; direct runtime callers retain the existing
+            # business-id-derived fallback semantics.
+            configured_memory_scope = str(ctx.working_state.get("memory_scope") or "").strip()
+            if configured_memory_scope:
+                scope_target = configured_memory_scope
+            else:
+                scope_target = f"SCOPE_{ctx.business_id}" if ctx.business_id and ctx.business_id != "BIZ_DEFAULT" else "GLOBAL"
             all_mems = self.memory_repo.list_memories()
 
             for m in all_mems:
@@ -390,4 +402,3 @@ class ContextCompiler:
             constraints=ctx.constraints,
             raw_prompt_payload=pkg.render_prompt_section(),
         )
-
