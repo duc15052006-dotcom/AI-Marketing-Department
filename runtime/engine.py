@@ -1210,28 +1210,45 @@ class FiveAgentDepartmentRuntime:
         for m in m_res.memories:
             context.memory_refs.append(m.memory_id)
 
-        # Invoke ToolGateway for analytics calculation
-        idem_key = f"{context.run_id}:performance:kpi_calculation:cac"
+        # Retrieve observed campaign telemetry through ToolGateway. A REAL
+        # analytics receipt may enter grounded evidence; NO_DATA and legacy
+        # MOCK analytics remain auditable receipts but are never promoted as
+        # empirical Performance evidence.
+        idem_key = f"{context.run_id}:performance:analytics_retrieval:{context.campaign_id}"
         if idem_key in self._executed_tool_idempotency_keys:
-            calc_receipt = self._executed_tool_idempotency_keys[idem_key]
+            analytics_receipt = self._executed_tool_idempotency_keys[idem_key]
         else:
-            calc_req = ToolRequest(
+            analytics_req = ToolRequest(
                 run_id=context.run_id,
                 agent_id="performance",
-                capability_id="kpi_calculation",
-                parameters={"metric_name": "target_cac", "target_value": 150.0},
+                capability_id="analytics_retrieval",
+                parameters={"campaign_id": context.campaign_id},
                 business_id=context.business_id,
                 project_id=context.project_id,
                 chat_id=context.chat_id,
             )
-            calc_receipt = self.tool_gateway.execute(calc_req)
-            self._executed_tool_idempotency_keys[idem_key] = calc_receipt
+            analytics_receipt = self.tool_gateway.execute(analytics_req)
+            self._executed_tool_idempotency_keys[idem_key] = analytics_receipt
 
-        context.execution_receipt_refs.append(calc_receipt.execution_id)
-        self.lineage_inspector.add_receipt(calc_receipt)
+        context.execution_receipt_refs.append(analytics_receipt.execution_id)
+        self.lineage_inspector.add_receipt(analytics_receipt)
 
-        # Grounded Context Compilation with KPI calc tool receipt
-        grounded_pkg = self.context_compiler.compile_grounded_package("performance", context, tool_receipts=[calc_receipt])
+        receipt_mode = getattr(analytics_receipt.execution_mode, "value", str(analytics_receipt.execution_mode)).upper()
+        has_real_telemetry = (
+            analytics_receipt.status == ExecutionStatus.SUCCESS and receipt_mode == "REAL"
+        )
+        if has_real_telemetry:
+            telemetry_status = "REAL_AVAILABLE"
+        elif analytics_receipt.status != ExecutionStatus.SUCCESS:
+            error_code = analytics_receipt.error_class or analytics_receipt.status.value
+            telemetry_status = f"NO_OBSERVED_DATA:{error_code}"
+        else:
+            telemetry_status = f"NON_REAL_TELEMETRY_IGNORED:{receipt_mode or 'UNKNOWN'}"
+
+        grounded_receipts = [analytics_receipt] if has_real_telemetry else []
+        grounded_pkg = self.context_compiler.compile_grounded_package(
+            "performance", context, tool_receipts=grounded_receipts
+        )
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1253,7 +1270,9 @@ class FiveAgentDepartmentRuntime:
                 "error": "PREVIOUS_STAGE_FAILED",
                 "funnel_kpi": "",
                 "experiment_blueprint": {},
-                "calc_receipt_id": calc_receipt.execution_id,
+                "analytics_receipt_id": analytics_receipt.execution_id,
+                "analytics_data_status": telemetry_status,
+                "calc_receipt_id": None,
                 "citations": [c.citation_id for c in k_res.citations],
             }
             context.stage_outputs["performance"] = output
@@ -1270,7 +1289,10 @@ class FiveAgentDepartmentRuntime:
         # COLLAB-06: Performance evaluates the ACTUAL creative work, not a
         # synthetic/absent concept_name.
         creative_synthesis = context.stage_outputs.get("creative", {}).get("creative_synthesis", "") or ""
-        evidence_section = grounded_pkg.render_prompt_section()
+        evidence_section = (
+            f"OBSERVED TELEMETRY STATUS: {telemetry_status}\n"
+            f"{grounded_pkg.render_prompt_section()}"
+        )
         user_prompt = (
             f"Objective: {context.objective}\n"
             f"Strategy: {strat_pos}\n"
@@ -1298,7 +1320,9 @@ class FiveAgentDepartmentRuntime:
                 "error": err or "MODEL_PROVIDER_FAILURE",
                 "funnel_kpi": "",
                 "experiment_blueprint": {},
-                "calc_receipt_id": calc_receipt.execution_id,
+                "analytics_receipt_id": analytics_receipt.execution_id,
+                "analytics_data_status": telemetry_status,
+                "calc_receipt_id": None,
                 "citations": [c.citation_id for c in k_res.citations],
             }
             context.stage_outputs["performance"] = output
@@ -1313,7 +1337,9 @@ class FiveAgentDepartmentRuntime:
             # COLLAB-04: no structured experiment was actually produced;
             # blueprint stays empty instead of an invented hypothesis/metric.
             "experiment_blueprint": {},
-            "calc_receipt_id": calc_receipt.execution_id,
+            "analytics_receipt_id": analytics_receipt.execution_id,
+            "analytics_data_status": telemetry_status,
+            "calc_receipt_id": None,
             "field_origins": {
                 "funnel_kpi": "AGENT_DERIVED",
                 "experiment_blueprint": "NOT_PROVIDED",
