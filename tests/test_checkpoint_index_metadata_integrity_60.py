@@ -58,6 +58,12 @@ class TestCheckpointIndexMetadataIntegrity60(unittest.TestCase):
         raw.commit()
         raw.close()
 
+    def _clear_checkpoints(self) -> None:
+        raw = sqlite3.connect(str(self.db_path))
+        raw.execute("DELETE FROM job_checkpoints")
+        raw.commit()
+        raw.close()
+
     def test_tampered_redundant_metadata_cannot_be_trusted_over_hashed_payload(self) -> None:
         cases = (
             (
@@ -94,11 +100,14 @@ class TestCheckpointIndexMetadataIntegrity60(unittest.TestCase):
             with self.subTest(field=field):
                 checkpoint = self._append_checkpoint(suffix)
                 self._tamper(sql, params_for(checkpoint))
-                with self.assertRaisesRegex(
-                    JobStoreIntegrityError,
-                    rf"CHECKPOINT_METADATA_INTEGRITY_MISMATCH: .*field={field}",
-                ):
-                    self.repo.list_checkpoints(query_run_id)
+                try:
+                    with self.assertRaisesRegex(
+                        JobStoreIntegrityError,
+                        rf"CHECKPOINT_METADATA_INTEGRITY_MISMATCH: .*field={field}",
+                    ):
+                        self.repo.list_checkpoints(query_run_id)
+                finally:
+                    self._clear_checkpoints()
 
 
 if __name__ == "__main__":
