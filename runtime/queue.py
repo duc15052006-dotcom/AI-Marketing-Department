@@ -289,10 +289,6 @@ class RunManager:
         with self._enqueue_lock:
             if not self._accepting_runs or self._stop_event.is_set():
                 raise RuntimeError("RUN_MANAGER_SHUTDOWN: run manager is not accepting new work")
-            if self._queue.full():
-                raise RuntimeError(
-                    f"RUN_QUEUE_FULL: queue capacity {self.max_queue_size} reached; retry later"
-                )
 
             if run_id:
                 with self._lock:
@@ -300,6 +296,12 @@ class RunManager:
                         raise RunIdAlreadyExistsError(
                             f"RUN_ID_ALREADY_EXISTS: queue already tracks run_id={run_id}"
                         )
+            if self._queue.full():
+                raise RuntimeError(
+                    f"RUN_QUEUE_FULL: queue capacity {self.max_queue_size} reached; retry later"
+                )
+
+            if run_id:
                 if not self.runtime.is_reserved_run_id(run_id):
                     rid = self.runtime.reserve_run_id(custom_id=run_id, trusted=True)
                 else:
@@ -334,20 +336,38 @@ class RunManager:
             return item
 
     def _sync_item_status(self, item: QueueItem) -> None:
-        if item.status in self.ACTIVE_STATUSES:
-            if hasattr(self.runtime, "get_active_context"):
-                ctx = self.runtime.get_active_context(item.run_id)
-            else:
-                ctx = getattr(self.runtime, "_active_contexts", {}).get(item.run_id)
-            if ctx:
-                if ctx.status == RuntimeStatus.WAITING_FOR_APPROVAL:
-                    item.status = RunQueueStatus.WAITING_APPROVAL
-                elif ctx.status == RuntimeStatus.RUNNING:
-                    item.status = RunQueueStatus.RUNNING
-                elif ctx.status == RuntimeStatus.PAUSED:
-                    item.status = RunQueueStatus.PAUSED
-                elif ctx.status == RuntimeStatus.CANCELLED:
-                    item.status = RunQueueStatus.CANCELLED
+        if item.status not in self.ACTIVE_STATUSES:
+            return
+
+        if hasattr(self.runtime, "get_active_context"):
+            ctx = self.runtime.get_active_context(item.run_id)
+        else:
+            ctx = getattr(self.runtime, "_active_contexts", {}).get(item.run_id)
+        if not ctx:
+            return
+
+        now = datetime.now(timezone.utc)
+        if ctx.status == RuntimeStatus.WAITING_FOR_APPROVAL:
+            item.status = RunQueueStatus.WAITING_APPROVAL
+            item.completed_at = None
+        elif ctx.status == RuntimeStatus.WAITING_FOR_TOOL:
+            item.status = RunQueueStatus.WAITING_TOOL
+            item.completed_at = None
+        elif ctx.status == RuntimeStatus.RUNNING:
+            item.status = RunQueueStatus.RUNNING
+            item.completed_at = None
+        elif ctx.status == RuntimeStatus.PAUSED:
+            item.status = RunQueueStatus.PAUSED
+            item.completed_at = None
+        elif ctx.status == RuntimeStatus.CANCELLED:
+            item.status = RunQueueStatus.CANCELLED
+            item.completed_at = item.completed_at or now
+        elif ctx.status == RuntimeStatus.FAILED:
+            item.status = RunQueueStatus.FAILED
+            item.completed_at = item.completed_at or now
+        elif ctx.status == RuntimeStatus.COMPLETED:
+            item.status = RunQueueStatus.COMPLETED
+            item.completed_at = item.completed_at or now
 
     def get_run(self, run_id: str) -> Optional[QueueItem]:
         with self._lock:
@@ -378,6 +398,7 @@ class RunManager:
         }
 
     def cancel_run(self, run_id: str) -> bool:
+        previous_status: Optional[RunQueueStatus] = None
         should_signal_runtime = False
         with self._lock:
             item = self._items.get(run_id)
@@ -392,16 +413,29 @@ class RunManager:
             else:
                 should_signal_runtime = True
 
-        if should_signal_runtime:
-            try:
-                self.runtime.cancel_run(run_id)
-            except Exception as exc:
-                safe_error = sanitize_sensitive_text(str(exc))
-                with self._lock:
-                    item = self._items.get(run_id)
-                    if item is not None:
-                        item.error = f"CANCEL_SIGNAL_FAILED: {safe_error}"
-                return False
+        if not should_signal_runtime:
+            return True
+
+        try:
+            signal_result = self.runtime.cancel_run(run_id)
+        except Exception as exc:
+            safe_error = sanitize_sensitive_text(str(exc))
+            with self._lock:
+                item = self._items.get(run_id)
+                if item is not None and item.status == RunQueueStatus.CANCELLED:
+                    item.status = previous_status or RunQueueStatus.RUNNING
+                    item.error = f"CANCEL_SIGNAL_FAILED: {safe_error}"
+                    item.completed_at = None
+            return False
+
+        if signal_result is False:
+            with self._lock:
+                item = self._items.get(run_id)
+                if item is not None and item.status == RunQueueStatus.CANCELLED:
+                    item.status = previous_status or RunQueueStatus.RUNNING
+                    item.error = "CANCEL_SIGNAL_REJECTED"
+                    item.completed_at = None
+            return False
         return True
 
     def shutdown(
@@ -464,6 +498,7 @@ class RunManager:
                         continue
                     item.status = RunQueueStatus.RUNNING
                     item.started_at = datetime.now(timezone.utc)
+                    item.completed_at = None
 
                 try:
                     # Execute Supervised Campaign through Canonical Department Runtime Entrypoint.
@@ -478,18 +513,31 @@ class RunManager:
 
                     with self._lock:
                         item.artifact = artifact
+                        now = datetime.now(timezone.utc)
                         if ctx.status == RuntimeStatus.CANCELLED or item.status == RunQueueStatus.CANCELLED:
                             item.status = RunQueueStatus.CANCELLED
                             item.error = "RUN_CANCELLED"
+                            item.completed_at = now
                         elif ctx.status == RuntimeStatus.WAITING_FOR_APPROVAL:
                             item.status = RunQueueStatus.WAITING_APPROVAL
+                            item.error = None
+                            item.completed_at = None
+                        elif ctx.status == RuntimeStatus.WAITING_FOR_TOOL:
+                            item.status = RunQueueStatus.WAITING_TOOL
+                            item.error = None
+                            item.completed_at = None
+                        elif ctx.status == RuntimeStatus.PAUSED:
+                            item.status = RunQueueStatus.PAUSED
+                            item.error = None
+                            item.completed_at = None
                         elif ctx.status == RuntimeStatus.FAILED or cmo_final.get("status") == "FAILED":
                             item.status = RunQueueStatus.FAILED
                             item.error = sanitize_sensitive_text(cmo_final.get("reason") or "RUN_FAILED")
+                            item.completed_at = now
                         else:
                             item.status = RunQueueStatus.COMPLETED
                             item.error = None
-                        item.completed_at = datetime.now(timezone.utc)
+                            item.completed_at = now
                 except Exception as exc:
                     with self._lock:
                         item.status = RunQueueStatus.FAILED
