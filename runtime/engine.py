@@ -1978,7 +1978,7 @@ class FiveAgentDepartmentRuntime:
                 source_type = ""
                 metadata: Dict[str, Any] = {}
                 if isinstance(evidence_item, dict):
-                    scope = str(evidence_item.get("scope", "GLOBAL"))
+                    scope = str(evidence_item.get("scope") or "")
                     source_type = str(evidence_item.get("source_type", "DOCUMENT"))
                     metadata = evidence_item.get("metadata", {}) or {}
                 elif evidence_item is not None:
@@ -2004,9 +2004,15 @@ class FiveAgentDepartmentRuntime:
                     claim_meta["run_id"] = context.run_id
                     claim_meta["chat_id"] = context.chat_id
                     claim_meta["project_id"] = context.project_id
-                    source_meta["tenant_id"] = source_meta.get("tenant_id") or context.business_id
-                    source_meta["chat_id"] = source_meta.get("chat_id") or context.chat_id
-                    source_meta["project_id"] = source_meta.get("project_id") or context.project_id
+                    # Source provenance must come from the evidence itself, never from
+                    # the active run. An explicit business scope may establish
+                    # tenant identity without requiring duplicate tenant metadata.
+                    declared_tenant = source_meta.get("tenant_id") or source_meta.get("brand_id")
+                    if not declared_tenant and scope and scope != "GLOBAL":
+                        if scope.startswith("SCOPE_"):
+                            source_meta["tenant_id"] = scope[len("SCOPE_"):]
+                        elif scope == context.business_id:
+                            source_meta["tenant_id"] = scope
 
                     # Pre-verify scope boundary
                     if scope and scope != "GLOBAL" and context.business_id:
