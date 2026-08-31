@@ -292,7 +292,7 @@ class MarketingGatewaySandboxV1Tests(unittest.TestCase):
         self.assertEqual(0, report.marketing_capabilities)
         self.assertIsNone(gateway.get_capability(self.analytics_capability))
 
-    def test_live_spec_is_refused_even_if_registration_was_explicitly_opted_in(self) -> None:
+    def test_live_spec_remains_default_denied_without_runtime_live_opt_in(self) -> None:
         registry = MarketingConnectorRegistry(self.control_plane, allow_live_registration=True)
         registry.register(
             MarketingConnectorSpec(
@@ -306,7 +306,7 @@ class MarketingGatewaySandboxV1Tests(unittest.TestCase):
         report = gateway.sync_marketing()
         self.assertFalse(report.success)
         self.assertIn("marketing:conn_meta_marketing", report.errors)
-        self.assertIn("LIVE_MARKETING_EXECUTION_UNSUPPORTED", report.errors["marketing:conn_meta_marketing"])
+        self.assertIn("LIVE_MARKETING_EXECUTION_DISABLED", report.errors["marketing:conn_meta_marketing"])
         self.assertIsNone(gateway.get_capability(self.analytics_capability))
 
     def test_write_contract_still_requires_idempotency_before_adapter_success(self) -> None:
