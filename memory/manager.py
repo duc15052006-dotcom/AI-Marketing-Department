@@ -152,7 +152,7 @@ class MemoryManager:
             promotion_level=promotion_level,
             scope=scope_key,
             expiry_or_review_date=expiry_or_review_date,
-            metadata={"scope_key": scope_key, **sanitized_metadata},
+            metadata={**sanitized_metadata, "scope_key": scope_key},
         )
         self._apply_retention(memory)
         duplicate = self._find_duplicate(memory)
