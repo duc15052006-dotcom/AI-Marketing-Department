@@ -1,0 +1,49 @@
+name: Apply EMPTY Handoff Branch Patch
+
+on:
+  push:
+    branches: [fix/preserve-empty-structured-handoff-41]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[empty-handoff-patched]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/preserve-empty-structured-handoff-41
+          fetch-depth: 0
+
+      - name: Apply exact EMPTY payload preservation patch
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("runtime/engine.py")
+          text = path.read_text(encoding="utf-8")
+          old = '            payload=payload if parse_status == "OK" else None,\n'
+          new = '            payload=payload if parse_status in ("OK", "EMPTY") else None,\n'
+          if text.count(old) != 1:
+              raise SystemExit(f"ANCHOR_COUNT={text.count(old)}")
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify exact patch shape
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- runtime/engine.py
+          test "$(grep -c 'payload=payload if parse_status in ("OK", "EMPTY") else None' runtime/engine.py)" -eq 1
+          python -m py_compile runtime/engine.py tests/test_structured_handoff_empty_extension_29.py
+
+      - name: Commit branch-only patch and remove helper workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-empty-handoff-branch-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py .github/workflows/apply-empty-handoff-branch-patch.yml
+          git commit -m "Preserve valid extension-only structured handoffs [empty-handoff-patched]"
+          git push origin HEAD:fix/preserve-empty-structured-handoff-41
