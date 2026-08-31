@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from chat.knowledge import SessionKnowledgeStore
 from governance.access_matrix import AgentAccessMatrix
@@ -19,6 +19,7 @@ from memory.models import MemoryItem, PromotionState
 from memory.promotion import MemoryPromotionEngine
 from memory.repository import LocalMemoryRepository, MemoryRepository
 from runtime.context import EpistemicTier, EvidenceItem, GroundedContextPackage, RuntimeContext
+from runtime.scope_bridge import RuntimeCanonicalScopePlan, build_runtime_canonical_scope_plan
 from tools.capabilities import CapabilityRegistry, EvidenceRole
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 
@@ -64,6 +65,99 @@ class ContextCompiler:
         self.memory_repo = memory_repo or LocalMemoryRepository()
         self.capability_registry = capability_registry or CapabilityRegistry()
 
+    @staticmethod
+    def _append_unique(values: List[str], value: Optional[str]) -> None:
+        clean = str(value or "").strip()
+        if clean and clean not in values:
+            values.append(clean)
+
+    @staticmethod
+    def _legacy_alias_for_canonical_scope(scope_key: str) -> Optional[str]:
+        """Return the exact legacy alias for one already-validated canonical key.
+
+        This is a migration-only compatibility mapping.  It never accepts or
+        creates wildcard scopes and it is derived only from the immutable
+        RuntimeContext scope through :func:`build_runtime_canonical_scope_plan`.
+        """
+
+        prefix, sep, identifier = str(scope_key or "").partition(":")
+        if not sep or not identifier:
+            return None
+        if prefix == "PROJECT":
+            return f"SCOPE_PROJ_{identifier}"
+        if prefix == "BUSINESS":
+            return f"SCOPE_{identifier}"
+        return None
+
+    @classmethod
+    def _build_dual_read_scopes(
+        cls,
+        exact_scope_keys: Sequence[str],
+        *,
+        include_global: bool,
+        business_id: str,
+    ) -> Tuple[str, ...]:
+        """Build ordered canonical + legacy exact read scopes for migration.
+
+        Ordering preserves the canonical authority contract: project before
+        business, and GLOBAL only as the final fallback.  Each canonical scope
+        is immediately followed by its exact legacy alias so old records remain
+        readable while repositories are migrated.  ``SCOPE_BIZ_DEFAULT`` is a
+        legacy alias for the historical default workspace only; it is never
+        used for a real business tenant.
+        """
+
+        scopes: List[str] = []
+        for canonical_scope in exact_scope_keys:
+            cls._append_unique(scopes, canonical_scope)
+            cls._append_unique(scopes, cls._legacy_alias_for_canonical_scope(canonical_scope))
+
+        if include_global:
+            cls._append_unique(scopes, "GLOBAL")
+            if str(business_id or "").strip().upper() == "BIZ_DEFAULT":
+                cls._append_unique(scopes, "SCOPE_BIZ_DEFAULT")
+        return tuple(scopes)
+
+    @classmethod
+    def _scope_candidates_from_context(
+        cls,
+        ctx: RuntimeContext,
+    ) -> Tuple[RuntimeCanonicalScopePlan, Tuple[str, ...], Tuple[str, ...]]:
+        """Resolve all retrieval scopes exclusively from immutable runtime authority."""
+
+        plan = build_runtime_canonical_scope_plan(ctx)
+        knowledge_scopes = cls._build_dual_read_scopes(
+            plan.knowledge_scope_keys,
+            include_global=plan.include_global,
+            business_id=plan.business_id,
+        )
+        memory_scopes = cls._build_dual_read_scopes(
+            plan.memory_scope_keys,
+            include_global=plan.include_global,
+            business_id=plan.business_id,
+        )
+        return plan, knowledge_scopes, memory_scopes
+
+    def _list_memories_for_exact_scope(self, scope: str) -> List[MemoryItem]:
+        """Read one exact scope from new or legacy MemoryRepository interfaces.
+
+        ``ScopedMemoryRepository`` supports ``scope=`` directly.  The legacy
+        repository interface does not, so its compatibility path performs an
+        in-memory exact-scope filter immediately after the legacy list call.
+        No item outside the requested exact scope is returned to the compiler.
+        This fallback is intentionally temporary until backend repository
+        composition is migrated in the next platform batch.
+        """
+
+        try:
+            return list(self.memory_repo.list_memories(scope=scope))  # type: ignore[call-arg]
+        except TypeError:
+            return [
+                memory
+                for memory in self.memory_repo.list_memories()
+                if str(getattr(memory, "scope", "GLOBAL") or "GLOBAL").strip() == scope
+            ]
+
     def compile_grounded_package(
         self,
         agent_id: str,
@@ -77,6 +171,13 @@ class ContextCompiler:
         run_prefix = ctx.run_id[:8] if ctx.run_id else "RUN000"
         evidence_items: List[EvidenceItem] = []
         item_counter = 1
+
+        scope_plan, knowledge_scopes, memory_scopes = self._scope_candidates_from_context(ctx)
+        primary_evidence_scope = (
+            scope_plan.knowledge_scope_keys[0]
+            if scope_plan.knowledge_scope_keys
+            else "GLOBAL"
+        )
 
         # ---------------------------------------------------------------------
         # 1. Ephemeral Session Knowledge (Attachments) — Strictly scoped to chat_id
@@ -105,32 +206,31 @@ class ContextCompiler:
                 )
 
         # ---------------------------------------------------------------------
-        # 2. Scoped Persistent Knowledge — Strictly scoped (GLOBAL, Business, Project)
+        # 2. Scoped Persistent Knowledge — canonical exact scopes + migration aliases
         # ---------------------------------------------------------------------
         if self.knowledge_repo:
             prof = AgentAccessMatrix.get_profile(aid)
-            allowed_sources = prof.allowed_knowledge_sources if prof else [SourceType.CANONICAL_FACT, SourceType.VERIFIED_EVIDENCE]
-
-            # Build strictly permitted scopes (Never retrieve un-scoped / wildcard)
-            scopes = ["GLOBAL"]
-            if ctx.business_id and ctx.business_id not in ("GLOBAL", "BIZ_DEFAULT"):
-                scopes.append(f"SCOPE_{ctx.business_id}")
-            elif ctx.business_id == "BIZ_DEFAULT":
-                scopes.append("SCOPE_BIZ_DEFAULT")
-
-            if ctx.project_id:
-                scopes.append(f"SCOPE_PROJ_{ctx.project_id}")
+            allowed_sources = prof.allowed_knowledge_sources if prof else []
 
             seen_knowledge_ids: set = set()
-            for s in scopes:
-                scoped_docs = self.knowledge_repo.list_documents(scope=s)
-                valid_docs = [d for d in scoped_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
+            for scope in knowledge_scopes:
+                # Always pass an exact scope.  Never call list_documents() without
+                # scope because legacy implementations may interpret that as all
+                # tenants/projects.
+                scoped_docs = self.knowledge_repo.list_documents(scope=scope)
+                valid_docs = [
+                    d
+                    for d in scoped_docs
+                    if d.source_type in allowed_sources and d.freshness != "RETIRED"
+                ]
                 for doc in valid_docs[:4]:
                     if doc.knowledge_id in seen_knowledge_ids:
                         continue
                     seen_knowledge_ids.add(doc.knowledge_id)
-                    # Map canonical authority level to EpistemicTier
-                    if doc.authority_level in (AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH, AuthorityLevel.TIER_2_VERIFIED_RESEARCH):
+                    if doc.authority_level in (
+                        AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
+                        AuthorityLevel.TIER_2_VERIFIED_RESEARCH,
+                    ):
                         tier = EpistemicTier.VERIFIED_SOURCE
                     else:
                         tier = EpistemicTier.UNVERIFIED_SOURCE
@@ -143,58 +243,70 @@ class ContextCompiler:
                             source_id=sid,
                             epistemic_tier=tier,
                             source_type=doc.source_type.value if hasattr(doc.source_type, "value") else str(doc.source_type),
-                            scope=doc.scope or s,
+                            scope=doc.scope or scope,
                             title_or_reference=f"Knowledge Doc: {doc.title} (ID: {doc.knowledge_id}, Auth: {doc.authority_level.value})",
                             content=raw_text,
                             original_length=len(raw_text),
                             included_length=len(raw_text),
-                            metadata={"knowledge_id": doc.knowledge_id, "version": doc.version, "authority": doc.authority_level.value},
+                            metadata={
+                                "knowledge_id": doc.knowledge_id,
+                                "version": doc.version,
+                                "authority": doc.authority_level.value,
+                                "retrieval_scope": scope,
+                            },
                         )
                     )
 
         # ---------------------------------------------------------------------
-        # 3. Institutional Memory — Strictly separating VERIFIED from CANDIDATE
+        # 3. Institutional Memory — canonical exact scopes + migration aliases
         # ---------------------------------------------------------------------
         if self.memory_repo:
             prof = AgentAccessMatrix.get_profile(aid)
             allowed_types = prof.allowed_memory_types if prof else []
             min_conf = ctx.memory_policy.get("min_confidence", 0.60) if ctx.memory_policy else 0.60
+            seen_memory_ids: set = set()
 
-            # Bounded memory scope
-            scope_target = f"SCOPE_{ctx.business_id}" if ctx.business_id and ctx.business_id != "BIZ_DEFAULT" else "GLOBAL"
-            all_mems = self.memory_repo.list_memories()
+            for scope in memory_scopes:
+                for m in self._list_memories_for_exact_scope(scope):
+                    if m.memory_id in seen_memory_ids:
+                        continue
+                    if m.memory_type not in allowed_types:
+                        continue
+                    if m.confidence < min_conf:
+                        continue
+                    if MemoryPromotionEngine.audit_memory_staleness(m):
+                        continue
+                    seen_memory_ids.add(m.memory_id)
 
-            for m in all_mems:
-                if getattr(m, "scope", "GLOBAL") not in (scope_target, "GLOBAL"):
-                    continue
-                if m.memory_type not in allowed_types:
-                    continue
-                if m.confidence < min_conf:
-                    continue
-                if MemoryPromotionEngine.audit_memory_staleness(m):
-                    continue
+                    if m.promotion_level in (
+                        PromotionState.VERIFIED_MEMORY,
+                        PromotionState.PROMOTED_LEARNING,
+                    ):
+                        tier = EpistemicTier.VERIFIED_MEMORY
+                    else:
+                        tier = EpistemicTier.CANDIDATE_MEMORY
 
-                if m.promotion_level in (PromotionState.VERIFIED_MEMORY, PromotionState.PROMOTED_LEARNING):
-                    tier = EpistemicTier.VERIFIED_MEMORY
-                else:
-                    tier = EpistemicTier.CANDIDATE_MEMORY
-
-                sid = f"MEM-{run_prefix}-{item_counter:03d}"
-                item_counter += 1
-                mem_text = f"[{m.memory_type.value} | Agent: {m.agent_source} | Conf: {m.confidence:.2f}]\n{m.content}"
-                evidence_items.append(
-                    EvidenceItem(
-                        source_id=sid,
-                        epistemic_tier=tier,
-                        source_type="INSTITUTIONAL_MEMORY",
-                        scope=getattr(m, "scope", "GLOBAL"),
-                        title_or_reference=f"Memory Ref [{m.memory_id}] ({tier.value})",
-                        content=mem_text,
-                        original_length=len(mem_text),
-                        included_length=len(mem_text),
-                        metadata={"memory_id": m.memory_id, "promotion_level": m.promotion_level.value, "confidence": m.confidence},
+                    sid = f"MEM-{run_prefix}-{item_counter:03d}"
+                    item_counter += 1
+                    mem_text = f"[{m.memory_type.value} | Agent: {m.agent_source} | Conf: {m.confidence:.2f}]\n{m.content}"
+                    evidence_items.append(
+                        EvidenceItem(
+                            source_id=sid,
+                            epistemic_tier=tier,
+                            source_type="INSTITUTIONAL_MEMORY",
+                            scope=getattr(m, "scope", "GLOBAL"),
+                            title_or_reference=f"Memory Ref [{m.memory_id}] ({tier.value})",
+                            content=mem_text,
+                            original_length=len(mem_text),
+                            included_length=len(mem_text),
+                            metadata={
+                                "memory_id": m.memory_id,
+                                "promotion_level": m.promotion_level.value,
+                                "confidence": m.confidence,
+                                "retrieval_scope": scope,
+                            },
+                        )
                     )
-                )
 
         # ---------------------------------------------------------------------
         # 4. ToolGateway Execution Results — Preserving REAL vs MOCK/SANDBOX & EvidenceRole
@@ -208,7 +320,6 @@ class ContextCompiler:
                 mode = getattr(receipt, "execution_mode", ExecutionMode.MOCK)
                 is_real = (mode == ExecutionMode.REAL or str(mode).upper() in ("REAL", "EXECUTIONMODE.REAL"))
 
-                # Capability evidence role lookup
                 cap = self.capability_registry.get_capability(receipt.capability_id) if self.capability_registry else None
                 evidence_role = getattr(cap, "evidence_role", EvidenceRole.NONE) if cap else EvidenceRole.NONE
                 if isinstance(evidence_role, str):
@@ -217,23 +328,16 @@ class ContextCompiler:
                     except ValueError:
                         evidence_role = EvidenceRole.NONE
 
-                # Only OBSERVATION role capabilities can produce EvidenceItems
                 if evidence_role != EvidenceRole.OBSERVATION:
-                    # ACTION, COMPUTATION, GENERATIVE, NONE receipts do NOT create EvidenceItems.
-                    # They remain immutably preserved in ExecutionReceiptRepository, RuntimeContext.execution_receipt_refs,
-                    # lineage_inspector, and DepartmentRunArtifact.execution_receipts with their truthful execution_mode.
                     continue
 
-                # For OBSERVATION capabilities:
                 if is_real:
                     tier = EpistemicTier.SOURCE_BACKED_OBSERVATION
                     title_prefix = f"Live Tool Observation ({receipt.capability_id})"
                 else:
-                    # MOCK or SANDBOX observation (e.g. simulated web_search)
                     tier = EpistemicTier.MOCK_OR_SANDBOX
                     title_prefix = f"Simulated Tool Output ({mode.value if hasattr(mode, 'value') else mode})"
 
-                # Format actual result content (consume receipt.output or receipt.data)
                 payload = receipt.output if receipt.output is not None else receipt.data
                 if isinstance(payload, (dict, list)):
                     formatted_content = json.dumps(payload, indent=2, ensure_ascii=False)
@@ -242,7 +346,11 @@ class ContextCompiler:
                 else:
                     formatted_content = "{}"
 
-                res_hash = getattr(receipt, "result_hash", "") or (receipt.calculate_result_hash() if hasattr(receipt, "calculate_result_hash") else "")
+                res_hash = getattr(receipt, "result_hash", "") or (
+                    receipt.calculate_result_hash()
+                    if hasattr(receipt, "calculate_result_hash")
+                    else ""
+                )
 
                 sid = f"TOOL-{run_prefix}-{item_counter:03d}"
                 item_counter += 1
@@ -251,7 +359,7 @@ class ContextCompiler:
                         source_id=sid,
                         epistemic_tier=tier,
                         source_type="TOOL_RECEIPT",
-                        scope=f"SCOPE_{ctx.business_id}" if ctx.business_id else "GLOBAL",
+                        scope=primary_evidence_scope,
                         title_or_reference=f"{title_prefix} [Receipt: {receipt.execution_id} | Cap: {receipt.capability_id}]",
                         content=formatted_content,
                         original_length=len(formatted_content),
@@ -296,7 +404,6 @@ class ContextCompiler:
             available = char_budget - current_total_chars
 
             if available <= 100:
-                # No budget remaining for this item
                 item.truncated = True
                 item.content = f"[... Truncated due to total context budget of {char_budget} chars ...]"
                 item.included_length = len(item.content)
@@ -305,7 +412,6 @@ class ContextCompiler:
                 break
 
             if item_len > available:
-                # Truncate individual item to fit remaining budget
                 truncated_text = item.content[: available - 80] + "\n[... Source truncated by context compiler ...]"
                 item.truncated = True
                 item.included_length = len(truncated_text)
@@ -333,6 +439,12 @@ class ContextCompiler:
             "char_budget": char_budget,
             "chat_id_scoped": ctx.chat_id,
             "business_id_scoped": ctx.business_id,
+            "project_id_scoped": ctx.project_id,
+            "canonical_knowledge_scopes": list(scope_plan.knowledge_scope_keys),
+            "canonical_memory_scopes": list(scope_plan.memory_scope_keys),
+            "knowledge_read_scopes": list(knowledge_scopes),
+            "memory_read_scopes": list(memory_scopes),
+            "global_fallback_enabled": scope_plan.include_global,
         }
 
         return GroundedContextPackage(
@@ -377,9 +489,23 @@ class ContextCompiler:
             )
 
         pkg = self.compile_grounded_package(agent_id, effective_ctx)
-        session_chunks = [it.content for it in pkg.evidence_items if it.source_type == "SESSION_ATTACHMENT"]
-        persistent_refs = [it.title_or_reference for it in pkg.evidence_items if it.source_type != "SESSION_ATTACHMENT" and it.epistemic_tier in (EpistemicTier.VERIFIED_SOURCE, EpistemicTier.UNVERIFIED_SOURCE)]
-        memory_cits = [it.title_or_reference for it in pkg.evidence_items if it.source_type == "INSTITUTIONAL_MEMORY"]
+        session_chunks = [
+            it.content for it in pkg.evidence_items if it.source_type == "SESSION_ATTACHMENT"
+        ]
+        persistent_refs = [
+            it.title_or_reference
+            for it in pkg.evidence_items
+            if it.source_type != "SESSION_ATTACHMENT"
+            and it.epistemic_tier in (
+                EpistemicTier.VERIFIED_SOURCE,
+                EpistemicTier.UNVERIFIED_SOURCE,
+            )
+        ]
+        memory_cits = [
+            it.title_or_reference
+            for it in pkg.evidence_items
+            if it.source_type == "INSTITUTIONAL_MEMORY"
+        ]
 
         return AgentCompiledContext(
             agent_id=agent_id,
@@ -390,4 +516,3 @@ class ContextCompiler:
             constraints=ctx.constraints,
             raw_prompt_payload=pkg.render_prompt_section(),
         )
-
