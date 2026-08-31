@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import base64
+from pathlib import Path
+
+
+def _lines(path: str) -> list[str]:
+    return Path(path).read_text(encoding="utf-8").splitlines()
+
+
+def _write(path: str, lines: list[str]) -> None:
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def insert_after_unique(path: str, exact: str, additions: list[str]) -> None:
+    lines = _lines(path)
+    hits = [i for i, line in enumerate(lines) if line == exact]
+    if len(hits) != 1:
+        raise SystemExit(f"ANCHOR_COUNT_MISMATCH {path}: {exact!r}: {len(hits)}")
+    i = hits[0]
+    lines[i + 1:i + 1] = additions
+    _write(path, lines)
+
+
+def insert_before_unique(path: str, exact: str, additions: list[str]) -> None:
+    lines = _lines(path)
+    hits = [i for i, line in enumerate(lines) if line == exact]
+    if len(hits) != 1:
+        raise SystemExit(f"ANCHOR_COUNT_MISMATCH {path}: {exact!r}: {len(hits)}")
+    i = hits[0]
+    lines[i:i] = additions
+    _write(path, lines)
+
+
+def insert_after_between(path: str, start_line: str, end_line: str, exact: str, additions: list[str]) -> None:
+    lines = _lines(path)
+    starts = [i for i, line in enumerate(lines) if line == start_line]
+    if len(starts) != 1:
+        raise SystemExit(f"REGION_START_MISMATCH {path}: {start_line!r}: {len(starts)}")
+    start = starts[0]
+    ends = [i for i in range(start + 1, len(lines)) if lines[i] == end_line]
+    if not ends:
+        raise SystemExit(f"REGION_END_MISMATCH {path}: {end_line!r}")
+    end = ends[0]
+    hits = [i for i in range(start, end + 1) if lines[i] == exact]
+    if len(hits) != 1:
+        raise SystemExit(f"REGION_ANCHOR_MISMATCH {path}: {exact!r}: {len(hits)}")
+    i = hits[0]
+    lines[i + 1:i + 1] = additions
+    _write(path, lines)
+
+
+# Bind exact legacy workspace aliases into immutable runtime authority.
+insert_after_unique("runtime/context.py", "    user_id: Optional[str] = None", [
+    "    trusted_knowledge_scope: Optional[str] = None",
+    "    trusted_memory_scope: Optional[str] = None",
+])
+insert_after_unique(
+    "runtime/context.py",
+    "    project_id: Optional[str] = Field(default=None, description=\"Optional associated workspace project ID\")",
+    [
+        "    trusted_knowledge_scope: Optional[str] = Field(default=None, description=\"Trusted legacy knowledge scope bound at run creation\")",
+        "    trusted_memory_scope: Optional[str] = Field(default=None, description=\"Trusted legacy memory scope bound at run creation\")",
+    ],
+)
+insert_after_unique("runtime/context.py", "            \"user_id\",", [
+    "            \"trusted_knowledge_scope\",",
+    "            \"trusted_memory_scope\",",
+])
+insert_after_unique("runtime/context.py", "            user_id=self.user_id,", [
+    "            trusted_knowledge_scope=self.trusted_knowledge_scope,",
+    "            trusted_memory_scope=self.trusted_memory_scope,",
+])
+
+# Feed immutable aliases through the canonical scope plan so both prompt grounding
+# and deterministic lineage reads share exactly the same authority.
+insert_after_unique("runtime/scope_bridge.py", "    campaign_id = _clean(authority.campaign_id)", [
+    "    trusted_knowledge_scope = _clean(authority.trusted_knowledge_scope)",
+    "    trusted_memory_scope = _clean(authority.trusted_memory_scope)",
+])
+insert_before_unique("runtime/scope_bridge.py", "    return RuntimeCanonicalScopePlan(", [
+    "    # Exact legacy aliases are accepted only after a trusted workspace binds",
+    "    # them into immutable RuntimeContext authority at run creation.",
+    "    if trusted_knowledge_scope and trusted_knowledge_scope.upper() != \"GLOBAL\":",
+    "        if trusted_knowledge_scope not in knowledge_keys:",
+    "            knowledge_keys.append(trusted_knowledge_scope)",
+    "    if trusted_memory_scope and trusted_memory_scope.upper() != \"GLOBAL\":",
+    "        if trusted_memory_scope not in memory_keys:",
+    "            memory_keys.append(trusted_memory_scope)",
+    "",
+])
+
+insert_after_between(
+    "runtime/engine.py",
+    "    def start_run(",
+    "    ) -> RuntimeContext:",
+    "        project_id: Optional[str] = None,",
+    [
+        "        trusted_knowledge_scope: Optional[str] = None,",
+        "        trusted_memory_scope: Optional[str] = None,",
+    ],
+)
+insert_after_between(
+    "runtime/engine.py",
+    "    def start_run(",
+    "                status=RuntimeStatus.RUNNING,",
+    "                project_id=project_id,",
+    [
+        "                trusted_knowledge_scope=trusted_knowledge_scope,",
+        "                trusted_memory_scope=trusted_memory_scope,",
+    ],
+)
+insert_after_between(
+    "workspace/operator.py",
+    "    def create_run(",
+    "        if biz:",
+    "            user_id=user_id,",
+    [
+        "            trusted_knowledge_scope=biz.knowledge_scope if biz else None,",
+        "            trusted_memory_scope=biz.memory_scope if biz else None,",
+    ],
+)
+
+# New adversarial regression: exact trusted alias remains visible to ContextCompiler
+# and stage lineage, while mutable working_state spoofing cannot redirect reads.
+test_b64 = "ZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IHVuaXR0ZXN0Cgpmcm9tIGtub3dsZWRnZS5tb2RlbHMgaW1wb3J0IEF1dGhvcml0eUxldmVsLCBLbm93bGVkZ2VEb2N1bWVudCwgS25vd2xlZGdlU291cmNlLCBTb3VyY2VUeXBlCmZyb20ga25vd2xlZGdlLnZlcnNpb25lZF9yZXBvc2l0b3J5IGltcG9ydCBWZXJzaW9uZWRLbm93bGVkZ2VSZXBvc2l0b3J5CmZyb20gbWVtb3J5Lm1vZGVscyBpbXBvcnQgTWVtb3J5SXRlbSwgTWVtb3J5VHlwZSwgUHJvbW90aW9uU3RhdGUKZnJvbSBtZW1vcnkuc2NvcGVkX3JlcG9zaXRvcnkgaW1wb3J0IFNjb3BlZE1lbW9yeVJlcG9zaXRvcnkKZnJvbSBydW50aW1lLmVuZ2luZSBpbXBvcnQgRml2ZUFnZW50RGVwYXJ0bWVudFJ1bnRpbWUKCgpjbGFzcyBSdW50aW1lVHJ1c3RlZExlZ2FjeVNjb3BlQXV0aG9yaXR5VjFUZXN0cyh1bml0dGVzdC5UZXN0Q2FzZSk6CiAgICBAc3RhdGljbWV0aG9kCiAgICBkZWYgX3NhdmVfa25vd2xlZGdlKHJlcG9zaXRvcnksICosIHRpdGxlOiBzdHIsIGNvbnRlbnQ6IHN0ciwgc2NvcGU6IHN0cikgLT4gS25vd2xlZGdlRG9jdW1lbnQ6CiAgICAgICAgc291cmNlID0gcmVwb3NpdG9yeS5zYXZlX3NvdXJjZSgKICAgICAgICAgICAgS25vd2xlZGdlU291cmNlKAogICAgICAgICAgICAgICAgc291cmNlX25hbWU9dGl0bGUsCiAgICAgICAgICAgICAgICBzb3VyY2VfdXJsX29yX3BhdGg9ZiJtYW51YWw6Ly97dGl0bGV9IiwKICAgICAgICAgICAgICAgIHNvdXJjZV90eXBlPVNvdXJjZVR5cGUuTUFSS0VUX1JFU0VBUkNILAogICAgICAgICAgICAgICAgYXV0aG9yaXR5X3Njb3JlPTAuOTUsCiAgICAgICAgICAgICkKICAgICAgICApCiAgICAgICAgcmV0dXJuIHJlcG9zaXRvcnkuc2F2ZV9kb2N1bWVudCgKICAgICAgICAgICAgS25vd2xlZGdlRG9jdW1lbnQoCiAgICAgICAgICAgICAgICBzb3VyY2VfaWQ9c291cmNlLnNvdXJjZV9pZCwKICAgICAgICAgICAgICAgIHRpdGxlPXRpdGxlLAogICAgICAgICAgICAgICAgc291cmNlX3R5cGU9U291cmNlVHlwZS5NQVJLRVRfUkVTRUFSQ0gsCiAgICAgICAgICAgICAgICBjb250ZW50PWNvbnRlbnQsCiAgICAgICAgICAgICAgICBhdXRob3JpdHlfbGV2ZWw9QXV0aG9yaXR5TGV2ZWwuVElFUl8yX1ZFUklGSUVEX1JFU0VBUkNILAogICAgICAgICAgICAgICAgc2NvcGU9c2NvcGUsCiAgICAgICAgICAgICkKICAgICAgICApCgogICAgQHN0YXRpY21ldGhvZAogICAgZGVmIF9zYXZlX21lbW9yeShyZXBvc2l0b3J5LCAqLCBjb250ZW50OiBzdHIsIHNjb3BlOiBzdHIpIC0+IE1lbW9yeUl0ZW06CiAgICAgICAgcmV0dXJuIHJlcG9zaXRvcnkuc2F2ZV9tZW1vcnkoCiAgICAgICAgICAgIE1lbW9yeUl0ZW0oCiAgICAgICAgICAgICAgICBtZW1vcnlfdHlwZT1NZW1vcnlUeXBlLkVQSVNPRElDX01FTU9SWSwKICAgICAgICAgICAgICAgIGFnZW50X3NvdXJjZT0iaW50ZWxsaWdlbmNlIiwKICAgICAgICAgICAgICAgIHJ1bl9pZD1mIlJVTi17c2NvcGV9IiwKICAgICAgICAgICAgICAgIGNvbnRlbnQ9Y29udGVudCwKICAgICAgICAgICAgICAgIGNvbnRleHQ9eyJxdWVyeSI6ICJzY29wZSBsaW5lYWdlIn0sCiAgICAgICAgICAgICAgICBldmlkZW5jZV9yZWZzPVtmIkVWSURFTkNFLXtzY29wZX0iXSwKICAgICAgICAgICAgICAgIGNvbmZpZGVuY2U9MC45NSwKICAgICAgICAgICAgICAgIHByb21vdGlvbl9sZXZlbD1Qcm9tb3Rpb25TdGF0ZS5WRVJJRklFRF9NRU1PUlksCiAgICAgICAgICAgICAgICBzY29wZT1zY29wZSwKICAgICAgICAgICAgKQogICAgICAgICkKCiAgICBkZWYgdGVzdF90cnVzdGVkX2xlZ2FjeV9zY29wZV9hbGlhc19pc19pbW11dGFibGVfdmlzaWJsZV90b19jb21waWxlcl9hbmRfc3Bvb2ZfcmVzaXN0YW50KHNlbGYpIC0+IE5vbmU6CiAgICAgICAga25vd2xlZGdlX3JlcG8gPSBWZXJzaW9uZWRLbm93bGVkZ2VSZXBvc2l0b3J5KCkKICAgICAgICBtZW1vcnlfcmVwbyA9IFNjb3BlZE1lbW9yeVJlcG9zaXRvcnkoKQoKICAgICAgICB0cnVzdGVkX2RvYyA9IHNlbGYuX3NhdmVfa25vd2xlZGdlKAogICAgICAgICAgICBrbm93bGVkZ2VfcmVwbywKICAgICAgICAgICAgdGl0bGU9InRydXN0ZWQtbGVnYWN5LXNjb3BlIiwKICAgICAgICAgICAgY29udGVudD0ic2NvcGUgbGluZWFnZSBUUlVTVEVEX0xFR0FDWV9LTk9XTEVER0UiLAogICAgICAgICAgICBzY29wZT0iU0NPUEVfUElMT1RfQ0FSRElPIiwKICAgICAgICApCiAgICAgICAgc3Bvb2ZfZG9jID0gc2VsZi5fc2F2ZV9rbm93bGVkZ2UoCiAgICAgICAgICAgIGtub3dsZWRnZV9yZXBvLAogICAgICAgICAgICB0aXRsZT0ic3Bvb2YtbGVnYWN5LXNjb3BlIiwKICAgICAgICAgICAgY29udGVudD0ic2NvcGUgbGluZWFnZSBTUE9PRkVEX0xFR0FDWV9LTk9XTEVER0UiLAogICAgICAgICAgICBzY29wZT0iU0NPUEVfQVRUQUNLRVIiLAogICAgICAgICkKICAgICAgICB0cnVzdGVkX21lbW9yeSA9IHNlbGYuX3NhdmVfbWVtb3J5KAogICAgICAgICAgICBtZW1vcnlfcmVwbywKICAgICAgICAgICAgY29udGVudD0ic2NvcGUgbGluZWFnZSBUUlVTVEVEX0xFR0FDWV9NRU1PUlkiLAogICAgICAgICAgICBzY29wZT0iU0NPUEVfUElMT1RfQ0FSRElPIiwKICAgICAgICApCiAgICAgICAgc3Bvb2ZfbWVtb3J5ID0gc2VsZi5fc2F2ZV9tZW1vcnkoCiAgICAgICAgICAgIG1lbW9yeV9yZXBvLAogICAgICAgICAgICBjb250ZW50PSJzY29wZSBsaW5lYWdlIFNQT09GRURfTEVHQUNZX01FTU9SWSIsCiAgICAgICAgICAgIHNjb3BlPSJTQ09QRV9BVFRBQ0tFUiIsCiAgICAgICAgKQoKICAgICAgICBydW50aW1lID0gRml2ZUFnZW50RGVwYXJ0bWVudFJ1bnRpbWUoCiAgICAgICAgICAgIG1vZGVsX2dhdGV3YXk9b2JqZWN0KCksCiAgICAgICAgICAgIGtub3dsZWRnZV9yZXBvPWtub3dsZWRnZV9yZXBvLAogICAgICAgICAgICBtZW1vcnlfcmVwbz1tZW1vcnlfcmVwbywKICAgICAgICApCiAgICAgICAgcnVudGltZS5fY2FsbF9hZ2VudF9sbG0gPSBsYW1iZGEgKmFyZ3MsICoqa3dhcmdzOiAoIkNNTyBzdHJhdGVnaWMgZnJhbWluZyIsIE5vbmUpCgogICAgICAgIGNvbnRleHQgPSBydW50aW1lLnN0YXJ0X3J1bigKICAgICAgICAgICAgb2JqZWN0aXZlPSJzY29wZSBsaW5lYWdlIiwKICAgICAgICAgICAgYnVzaW5lc3NfaWQ9IkJJWl9BIiwKICAgICAgICAgICAgY2FtcGFpZ25faWQ9IkNBTVBfQSIsCiAgICAgICAgICAgIHRydXN0ZWRfa25vd2xlZGdlX3Njb3BlPSJTQ09QRV9QSUxPVF9DQVJESU8iLAogICAgICAgICAgICB0cnVzdGVkX21lbW9yeV9zY29wZT0iU0NPUEVfUElMT1RfQ0FSRElPIiwKICAgICAgICApCgogICAgICAgIHdpdGggc2VsZi5hc3NlcnRSYWlzZXMoQXR0cmlidXRlRXJyb3IpOgogICAgICAgICAgICBjb250ZXh0LnRydXN0ZWRfa25vd2xlZGdlX3Njb3BlID0gIlNDT1BFX0FUVEFDS0VSIgogICAgICAgIHdpdGggc2VsZi5hc3NlcnRSYWlzZXMoQXR0cmlidXRlRXJyb3IpOgogICAgICAgICAgICBjb250ZXh0LnRydXN0ZWRfbWVtb3J5X3Njb3BlID0gIlNDT1BFX0FUVEFDS0VSIgoKICAgICAgICBjb250ZXh0Lndvcmtpbmdfc3RhdGVbImtub3dsZWRnZV9zY29wZSJdID0gIlNDT1BFX0FUVEFDS0VSIgogICAgICAgIGNvbnRleHQud29ya2luZ19zdGF0ZVsibWVtb3J5X3Njb3BlIl0gPSAiU0NPUEVfQVRUQUNLRVIiCgogICAgICAgIGdyb3VuZGVkID0gcnVudGltZS5jb250ZXh0X2NvbXBpbGVyLmNvbXBpbGVfZ3JvdW5kZWRfcGFja2FnZSgiY21vIiwgY29udGV4dCkKICAgICAgICBncm91bmRlZF9rbm93bGVkZ2VfaWRzID0gewogICAgICAgICAgICBpdGVtLm1ldGFkYXRhLmdldCgia25vd2xlZGdlX2lkIikKICAgICAgICAgICAgZm9yIGl0ZW0gaW4gZ3JvdW5kZWQuZXZpZGVuY2VfaXRlbXMKICAgICAgICAgICAgaWYgaXRlbS5tZXRhZGF0YS5nZXQoImtub3dsZWRnZV9pZCIpCiAgICAgICAgfQogICAgICAgIGdyb3VuZGVkX21lbW9yeV9pZHMgPSB7CiAgICAgICAgICAgIGl0ZW0ubWV0YWRhdGEuZ2V0KCJtZW1vcnlfaWQiKQogICAgICAgICAgICBmb3IgaXRlbSBpbiBncm91bmRlZC5ldmlkZW5jZV9pdGVtcwogICAgICAgICAgICBpZiBpdGVtLm1ldGFkYXRhLmdldCgibWVtb3J5X2lkIikKICAgICAgICB9CiAgICAgICAgc2VsZi5hc3NlcnRJbih0cnVzdGVkX2RvYy5rbm93bGVkZ2VfaWQsIGdyb3VuZGVkX2tub3dsZWRnZV9pZHMpCiAgICAgICAgc2VsZi5hc3NlcnROb3RJbihzcG9vZl9kb2Mua25vd2xlZGdlX2lkLCBncm91bmRlZF9rbm93bGVkZ2VfaWRzKQogICAgICAgIHNlbGYuYXNzZXJ0SW4odHJ1c3RlZF9tZW1vcnkubWVtb3J5X2lkLCBncm91bmRlZF9tZW1vcnlfaWRzKQogICAgICAgIHNlbGYuYXNzZXJ0Tm90SW4oc3Bvb2ZfbWVtb3J5Lm1lbW9yeV9pZCwgZ3JvdW5kZWRfbWVtb3J5X2lkcykKCiAgICAgICAgcnVudGltZS5leGVjdXRlX3N0YWdlX2Ntb19pbml0aWFsKGNvbnRleHQpCgogICAgICAgIGxpbmVhZ2Vfa25vd2xlZGdlX2lkcyA9IHsKICAgICAgICAgICAgY2l0YXRpb24ua25vd2xlZGdlX2lkIGZvciBjaXRhdGlvbiBpbiBydW50aW1lLmxpbmVhZ2VfaW5zcGVjdG9yLmdldF9hbGxfY2l0YXRpb25zKCkKICAgICAgICB9CiAgICAgICAgc2VsZi5hc3NlcnRJbih0cnVzdGVkX2RvYy5rbm93bGVkZ2VfaWQsIGxpbmVhZ2Vfa25vd2xlZGdlX2lkcykKICAgICAgICBzZWxmLmFzc2VydE5vdEluKHNwb29mX2RvYy5rbm93bGVkZ2VfaWQsIGxpbmVhZ2Vfa25vd2xlZGdlX2lkcykKICAgICAgICBzZWxmLmFzc2VydEluKHRydXN0ZWRfbWVtb3J5Lm1lbW9yeV9pZCwgY29udGV4dC5tZW1vcnlfcmVmcykKICAgICAgICBzZWxmLmFzc2VydE5vdEluKHNwb29mX21lbW9yeS5tZW1vcnlfaWQsIGNvbnRleHQubWVtb3J5X3JlZnMpCgoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgIHVuaXR0ZXN0Lm1haW4oKQo="
+Path("tests/test_runtime_trusted_legacy_scope_authority_v1.py").write_bytes(base64.b64decode(test_b64))
