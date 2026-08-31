@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 path = Path("runtime/engine.py")
 text = path.read_text(encoding="utf-8")
@@ -58,24 +59,22 @@ new_tool_block = '''        # Retrieve observed campaign telemetry through ToolG
 '''
 stage = stage[:a] + new_tool_block + stage[b:]
 
-old_failed_field = '                "calc_receipt_id": calc_receipt.execution_id,\n'
-old_completed_field = '            "calc_receipt_id": calc_receipt.execution_id,\n'
-if stage.count(old_failed_field) != 2:
-    raise SystemExit(f"FAILED_RECEIPT_FIELD_COUNT={stage.count(old_failed_field)}")
-if stage.count(old_completed_field) != 1:
-    raise SystemExit(f"COMPLETED_RECEIPT_FIELD_COUNT={stage.count(old_completed_field)}")
-stage = stage.replace(
-    old_failed_field,
-    '                "analytics_receipt_id": analytics_receipt.execution_id,\n'
-    '                "analytics_data_status": telemetry_status,\n'
-    '                "calc_receipt_id": None,\n',
+receipt_pattern = re.compile(
+    r'(?m)^(?P<indent>\s*)"calc_receipt_id": calc_receipt\.execution_id,$'
 )
-stage = stage.replace(
-    old_completed_field,
-    '            "analytics_receipt_id": analytics_receipt.execution_id,\n'
-    '            "analytics_data_status": telemetry_status,\n'
-    '            "calc_receipt_id": None,\n',
-)
+matches = list(receipt_pattern.finditer(stage))
+if len(matches) != 3:
+    raise SystemExit(f"CALC_RECEIPT_LINE_COUNT={len(matches)}")
+
+def replace_receipt(match: re.Match[str]) -> str:
+    indent = match.group("indent")
+    return (
+        f'{indent}"analytics_receipt_id": analytics_receipt.execution_id,\n'
+        f'{indent}"analytics_data_status": telemetry_status,\n'
+        f'{indent}"calc_receipt_id": None,'
+    )
+
+stage = receipt_pattern.sub(replace_receipt, stage)
 
 evidence_anchor = "        evidence_section = grounded_pkg.render_prompt_section()\n"
 if stage.count(evidence_anchor) != 1:
