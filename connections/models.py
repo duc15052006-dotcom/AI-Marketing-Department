@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Dict, Mapping, Optional, Tuple
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import urlsplit
 
 
 class ConnectionProfileError(ValueError):
@@ -30,6 +30,9 @@ _SENSITIVE_KEY_MARKERS = (
     "private_key",
     "secret_key",
     "secret_value",
+    "credential",
+    "token",
+    "secret",
 )
 _SECRET_REF_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*:[^\s:][^\s]*$", re.IGNORECASE)
 
@@ -79,11 +82,10 @@ def _validate_endpoint(endpoint: Optional[str]) -> None:
     parsed = urlsplit(endpoint)
     if parsed.username is not None or parsed.password is not None:
         raise UnsafeConnectionProfileError("Endpoint must not embed username/password credentials.")
-    for key, _ in parse_qsl(parsed.query, keep_blank_values=True):
-        if _is_sensitive_key(key):
-            raise UnsafeConnectionProfileError(
-                f"Endpoint query parameter '{key}' looks credential-bearing; use secret_ref instead."
-            )
+    if parsed.query or parsed.fragment:
+        raise UnsafeConnectionProfileError(
+            "Connection endpoint must be a base endpoint without query parameters or fragments; request parameters belong at execution time."
+        )
 
 
 @dataclass(frozen=True)
