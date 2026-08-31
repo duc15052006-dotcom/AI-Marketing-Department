@@ -13,7 +13,9 @@ import io
 import json
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
+from urllib.parse import urlsplit, urlunsplit
 
+from governance.redaction import sanitize_sensitive_text
 from knowledge.lifecycle_models import (
     KnowledgeFileAsset,
     KnowledgeImportResult,
@@ -237,6 +239,26 @@ class KnowledgeFileManager:
             metadata={"ingestion_kind": "MANUAL_TEXT"},
         )
 
+    @staticmethod
+    def _sanitize_observed_url(url: str) -> str:
+        """Remove URL userinfo and redact credential-like values before persistence."""
+        raw = (url or "").strip()
+        if not raw:
+            return ""
+        try:
+            parsed = urlsplit(raw)
+        except ValueError:
+            return sanitize_sensitive_text(raw)
+        safe_netloc = parsed.netloc.rsplit("@", 1)[-1]
+        without_fragment = urlunsplit(
+            (parsed.scheme, safe_netloc, parsed.path, parsed.query, "")
+        )
+        safe_base = sanitize_sensitive_text(without_fragment)
+        if not parsed.fragment:
+            return safe_base
+        safe_fragment = sanitize_sensitive_text(parsed.fragment)
+        return f"{safe_base}#{safe_fragment}"
+
     def ingest_observed_url(
         self,
         url: str,
@@ -262,7 +284,7 @@ class KnowledgeFileManager:
             )
         return self._save_document(
             source_name=source_name,
-            source_locator=url,
+            source_locator=self._sanitize_observed_url(url),
             source_type=source_type,
             content=extracted_content,
             scope=scope or KnowledgeScope(),
