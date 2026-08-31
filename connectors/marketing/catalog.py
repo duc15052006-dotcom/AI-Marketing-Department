@@ -9,7 +9,7 @@ execution. Those remain separate explicit authorities.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Mapping, Optional
+from typing import Dict, Mapping
 
 from connectors.marketing.models import MarketingConnectorSpec, MarketingExecutionMode
 from connectors.marketing.operations import ProviderOperationRepository
@@ -20,7 +20,10 @@ from connectors.marketing.providers import (
     MetaMarketingExecutor,
     TrackedTikTokMarketingExecutor,
 )
-from connectors.marketing.registry import MarketingConnectorRegistry
+from connectors.marketing.registry import (
+    MarketingConnectorNotFoundError,
+    MarketingConnectorRegistry,
+)
 from connectors.models import AuthenticationType, ConnectorDescriptor, ReadWriteMode
 from connectors.registry import ConnectorRegistry
 from tools.capabilities import RiskLevel
@@ -239,8 +242,8 @@ class MarketingProviderCatalog:
                     f"Executor for '{cid}' does not match catalog provider '{spec_by_id[cid].provider}'."
                 )
 
-        # ConnectorRegistry descriptors are metadata only. Credential readiness
-        # is delegated to ConnectorControlPlane/ConnectionManager by metadata.
+        # Preflight all duplicate checks before any mutation so an install either
+        # begins from a clean compatible state or fails closed immediately.
         for descriptor in descriptors:
             existing = self.connector_registry.get_connector(descriptor.connector_id)
             if existing is not None and not replace:
@@ -251,7 +254,7 @@ class MarketingProviderCatalog:
         for spec in specs:
             try:
                 self.marketing_registry.get(spec.connector_id)
-            except Exception:
+            except MarketingConnectorNotFoundError:
                 pass
             else:
                 if not replace:
@@ -259,6 +262,16 @@ class MarketingProviderCatalog:
                         f"Marketing spec '{spec.connector_id}' already exists; use replace=True explicitly."
                     )
 
+        existing_bindings = self.executor_registry.list_bindings()
+        if not replace:
+            duplicates = sorted(expected_ids & set(existing_bindings))
+            if duplicates:
+                raise MarketingProviderCatalogBindingError(
+                    "LIVE executor bindings already exist for: " + ", ".join(duplicates)
+                )
+
+        # ConnectorRegistry descriptors are metadata only. Credential readiness
+        # is delegated to ConnectorControlPlane/ConnectionManager by metadata.
         for descriptor in descriptors:
             self.connector_registry.register_connector(descriptor)
         for spec in specs:
