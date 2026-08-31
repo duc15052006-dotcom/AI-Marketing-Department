@@ -1,13 +1,16 @@
-"""Secret resolution abstractions for connection profiles.
+"""Secret resolution adapters for connection profiles.
 
-No production secret is persisted by this module. Environment-backed resolution
-is read-only; the in-memory provider exists for tests and ephemeral runtime use.
+Connections does not own a second credential vault. Production resolution is
+adapted to the repository's existing ``SecureSecretStore`` authority, which
+already provides Windows DPAPI persistence, opaque versioned ``STORE:`` refs,
+``ENV:`` refs, and fail-closed behavior.
 """
 
 from __future__ import annotations
 
-import os
-from typing import Dict, Mapping, Optional, Protocol, Sequence
+from typing import Protocol, Sequence
+
+from integrations.models.secret_store import GLOBAL_SECRET_STORE
 
 
 class SecretProviderError(RuntimeError):
@@ -44,7 +47,7 @@ class SecretValue:
 
 
 class SecretProvider(Protocol):
-    """Provider contract for resolving an opaque secret reference."""
+    """Connection-facing provider contract for resolving opaque references."""
 
     def can_resolve(self, secret_ref: str) -> bool:
         ...
@@ -53,63 +56,43 @@ class SecretProvider(Protocol):
         ...
 
 
-class EnvironmentSecretProvider:
-    """Read-only provider for ``env:VARIABLE_NAME`` references."""
+class SecureStoreSecretProvider:
+    """Adapter over the repository's authoritative SecureSecretStore interface.
 
-    prefix = "env:"
+    The wrapped store may be ``GLOBAL_SECRET_STORE`` in production or the
+    existing ``InMemorySecretStore`` test double under explicit dependency
+    injection. This class never persists credentials itself.
+    """
 
-    def __init__(self, environ: Optional[Mapping[str, str]] = None) -> None:
-        self._environ = environ if environ is not None else os.environ
+    _SUPPORTED_PREFIXES = ("STORE:", "ENV:")
+
+    def __init__(self, secret_store=None) -> None:
+        self._secret_store = secret_store if secret_store is not None else GLOBAL_SECRET_STORE
 
     def can_resolve(self, secret_ref: str) -> bool:
-        return isinstance(secret_ref, str) and secret_ref.startswith(self.prefix)
+        if not isinstance(secret_ref, str):
+            return False
+        ref_upper = secret_ref.strip().upper()
+        return any(ref_upper.startswith(prefix) and len(ref_upper) > len(prefix) for prefix in self._SUPPORTED_PREFIXES)
 
     def get(self, secret_ref: str) -> SecretValue:
         if not self.can_resolve(secret_ref):
-            raise UnsupportedSecretReferenceError("EnvironmentSecretProvider only accepts env: references.")
-        variable_name = secret_ref[len(self.prefix):]
-        if not variable_name:
-            raise SecretNotFoundError("Environment secret reference is missing a variable name.")
-        value = self._environ.get(variable_name)
-        if not value:
-            raise SecretNotFoundError(f"Secret reference '{secret_ref}' could not be resolved.")
-        return SecretValue(value)
-
-
-class InMemorySecretProvider:
-    """Ephemeral provider for tests/local composition; never persists values."""
-
-    prefix = "memory:"
-
-    def __init__(self, values: Optional[Mapping[str, str]] = None) -> None:
-        self._values: Dict[str, str] = {}
-        for ref, value in (values or {}).items():
-            self.set(ref, value)
-
-    def can_resolve(self, secret_ref: str) -> bool:
-        return isinstance(secret_ref, str) and secret_ref.startswith(self.prefix)
-
-    def set(self, secret_ref: str, value: str) -> None:
-        if not self.can_resolve(secret_ref) or not secret_ref[len(self.prefix):]:
-            raise UnsupportedSecretReferenceError("InMemorySecretProvider requires memory:<name> references.")
-        if not isinstance(value, str) or not value:
-            raise ValueError("Secret value must be a non-empty string.")
-        self._values[secret_ref] = value
-
-    def delete(self, secret_ref: str) -> None:
-        self._values.pop(secret_ref, None)
-
-    def get(self, secret_ref: str) -> SecretValue:
-        if not self.can_resolve(secret_ref):
-            raise UnsupportedSecretReferenceError("InMemorySecretProvider only accepts memory: references.")
-        value = self._values.get(secret_ref)
+            raise UnsupportedSecretReferenceError(
+                "SecureStoreSecretProvider only accepts explicit STORE: or ENV: references."
+            )
+        value = self._secret_store.get_secret(secret_ref)
         if not value:
             raise SecretNotFoundError(f"Secret reference '{secret_ref}' could not be resolved.")
         return SecretValue(value)
 
 
 class CompositeSecretProvider:
-    """Route a secret reference to exactly one scheme-aware provider."""
+    """Route a secret reference to exactly one configured provider.
+
+    This is an extension point for future OS/keyring/vault integrations without
+    changing ConnectionManager. It does not introduce another persistence
+    authority by itself.
+    """
 
     def __init__(self, providers: Sequence[SecretProvider]) -> None:
         self._providers = tuple(providers)
