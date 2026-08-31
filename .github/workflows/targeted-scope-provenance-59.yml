@@ -1,0 +1,25 @@
+name: Targeted Scope Provenance 59
+
+on:
+  push:
+    branches:
+      - fix/workspace-scope-provenance-isolation-59
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Run workspace scope provenance regression
+        run: python -m unittest -v tests.test_workspace_scope_provenance_isolation_59
