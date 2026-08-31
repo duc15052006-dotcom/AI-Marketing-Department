@@ -478,7 +478,25 @@ class SQLiteJobRepository:
                     raise JobStoreIntegrityError(
                         f"CHECKPOINT_PAYLOAD_INTEGRITY_MISMATCH: checkpoint_id={row['checkpoint_id']}"
                     )
-                checkpoints.append(json.loads(payload_json))
+                payload = json.loads(payload_json)
+                try:
+                    payload_created_at = datetime.fromisoformat(str(payload.get("timestamp"))).isoformat()
+                except (TypeError, ValueError) as exc:
+                    raise JobStoreIntegrityError(
+                        f"CHECKPOINT_INDEX_METADATA_MISMATCH: checkpoint_id={row['checkpoint_id']} field=created_at"
+                    ) from exc
+                indexed_metadata = {
+                    "checkpoint_id": payload.get("checkpoint_id"),
+                    "run_id": payload.get("run_id"),
+                    "checkpoint_hash": payload.get("checkpoint_hash"),
+                    "created_at": payload_created_at,
+                }
+                for field, payload_value in indexed_metadata.items():
+                    if row[field] != payload_value:
+                        raise JobStoreIntegrityError(
+                            f"CHECKPOINT_INDEX_METADATA_MISMATCH: checkpoint_id={row['checkpoint_id']} field={field}"
+                        )
+                checkpoints.append(payload)
             return checkpoints
 
     def list_events(self, run_id: str) -> List[Dict[str, Any]]:
