@@ -1,7 +1,7 @@
 """Multi-Run Queue & Provider Resource Limiter for AI Marketing Department.
 
 Provides controlled concurrent execution, bounded queue backpressure, provider
-rate-limit throttling, and unified run lifecycle tracking.
+rate-limit throttling, durable local job state, and safe restart recovery.
 """
 
 from __future__ import annotations
@@ -19,6 +19,12 @@ from governance.redaction import sanitize_sensitive_text
 from runtime.artifacts import DepartmentRunArtifact
 from runtime.context import RunIdAlreadyExistsError, RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime
+from runtime.job_store import (
+    DurableJobRecord,
+    JobStoreConflictError,
+    JobStoreError,
+    SQLiteJobRepository,
+)
 
 logger = logging.getLogger("runtime_queue")
 
@@ -30,6 +36,7 @@ class RunQueueStatus(str, Enum):
     WAITING_TOOL = "WAITING_TOOL"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     PAUSED = "PAUSED"
+    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -206,6 +213,8 @@ class QueueItem:
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
+    recovery_reason: Optional[str] = None
+    attempt_count: int = 0
     artifact: Optional[DepartmentRunArtifact] = None
 
     def model_dump(self) -> Dict[str, Any]:
@@ -220,12 +229,14 @@ class QueueItem:
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "error": sanitize_sensitive_text(self.error) if self.error else None,
+            "recovery_reason": sanitize_sensitive_text(self.recovery_reason) if self.recovery_reason else None,
+            "attempt_count": self.attempt_count,
             "artifact_hash": self.artifact.final_artifact_hash if self.artifact else None,
         }
 
 
 class RunManager:
-    """Asynchronous bounded run queue and worker-pool controller."""
+    """Asynchronous bounded run queue with optional durable local recovery."""
 
     ACTIVE_STATUSES = {
         RunQueueStatus.QUEUED,
@@ -235,6 +246,11 @@ class RunManager:
         RunQueueStatus.WAITING_APPROVAL,
         RunQueueStatus.PAUSED,
     }
+    TERMINAL_STATUSES = {
+        RunQueueStatus.COMPLETED,
+        RunQueueStatus.FAILED,
+        RunQueueStatus.CANCELLED,
+    }
 
     def __init__(
         self,
@@ -242,6 +258,8 @@ class RunManager:
         max_workers: int = 2,
         resource_limiter: Optional[ResourceLimiter] = None,
         max_queue_size: int = 100,
+        job_repository: Optional[SQLiteJobRepository] = None,
+        recover_on_startup: bool = True,
     ) -> None:
         if not isinstance(max_workers, int) or isinstance(max_workers, bool) or max_workers < 0:
             raise ValueError("INVALID_WORKER_COUNT: max_workers must be a non-negative integer")
@@ -252,6 +270,7 @@ class RunManager:
         self.max_workers = max_workers
         self.max_queue_size = max_queue_size
         self.resource_limiter = resource_limiter or ResourceLimiter()
+        self.job_repository = job_repository
         self._queue: queue.Queue[QueueItem] = queue.Queue(maxsize=max_queue_size)
         self._items: Dict[str, QueueItem] = {}
         self._lock = threading.Lock()
@@ -260,10 +279,111 @@ class RunManager:
         self._accepting_runs = True
         self._workers: List[threading.Thread] = []
 
+        if self.job_repository is not None and recover_on_startup:
+            self._restore_durable_jobs()
+
         for i in range(max_workers):
             t = threading.Thread(target=self._worker_loop, name=f"RunWorker-{i}", daemon=True)
             t.start()
             self._workers.append(t)
+
+    @staticmethod
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        return datetime.fromisoformat(value)
+
+    @staticmethod
+    def _status_from_string(value: str) -> RunQueueStatus:
+        try:
+            return RunQueueStatus(value)
+        except ValueError as exc:
+            raise JobStoreError(f"UNKNOWN_DURABLE_JOB_STATUS: {value}") from exc
+
+    def _record_from_item(self, item: QueueItem) -> DurableJobRecord:
+        artifact_hash = None
+        if item.artifact is not None:
+            artifact_hash = getattr(item.artifact, "final_artifact_hash", None)
+        return DurableJobRecord(
+            run_id=item.run_id,
+            objective=item.objective,
+            business_id=item.business_id,
+            project_id=item.project_id,
+            chat_id=item.chat_id,
+            status=item.status.value,
+            created_at=item.created_at.isoformat(),
+            started_at=item.started_at.isoformat() if item.started_at else None,
+            completed_at=item.completed_at.isoformat() if item.completed_at else None,
+            error=sanitize_sensitive_text(item.error) if item.error else None,
+            recovery_reason=sanitize_sensitive_text(item.recovery_reason) if item.recovery_reason else None,
+            artifact_hash=artifact_hash,
+            attempt_count=item.attempt_count,
+        )
+
+    def _item_from_record(self, record: DurableJobRecord) -> QueueItem:
+        return QueueItem(
+            run_id=record.run_id,
+            objective=record.objective,
+            business_id=record.business_id,
+            project_id=record.project_id,
+            chat_id=record.chat_id,
+            status=self._status_from_string(record.status),
+            created_at=self._parse_datetime(record.created_at) or datetime.now(timezone.utc),
+            started_at=self._parse_datetime(record.started_at),
+            completed_at=self._parse_datetime(record.completed_at),
+            error=record.error,
+            recovery_reason=record.recovery_reason,
+            attempt_count=record.attempt_count,
+        )
+
+    def _persist_create_locked(self, item: QueueItem) -> None:
+        if self.job_repository is None:
+            return
+        self.job_repository.create_job(self._record_from_item(item))
+
+    def _persist_update_locked(
+        self,
+        item: QueueItem,
+        *,
+        event_type: str,
+        message: Optional[str] = None,
+    ) -> None:
+        if self.job_repository is None:
+            return
+        self.job_repository.save_job(
+            self._record_from_item(item),
+            event_type=event_type,
+            message=message,
+        )
+
+    def _persist_runtime_checkpoints(self, ctx: Any) -> None:
+        if self.job_repository is None:
+            return
+        for checkpoint in list(getattr(ctx, "checkpoints", []) or []):
+            self.job_repository.append_checkpoint(checkpoint)
+
+    def _restore_durable_jobs(self) -> None:
+        """Restore history but never auto-dispatch interrupted work.
+
+        Any persisted non-terminal job is converted to RECOVERY_REQUIRED. Even a
+        previously QUEUED job is not auto-replayed because the durable projection
+        alone cannot prove that another process or external connector did not
+        begin a side effect before the crash.
+        """
+        assert self.job_repository is not None
+        records = self.job_repository.list_jobs()
+        for record in records:
+            if record.status not in {status.value for status in self.TERMINAL_STATUSES} and record.status != RunQueueStatus.RECOVERY_REQUIRED.value:
+                record = self.job_repository.mark_recovery_required(
+                    record.run_id,
+                    reason=f"PROCESS_RESTART_RECONCILIATION_REQUIRED: previous_status={record.status}",
+                )
+            item = self._item_from_record(record)
+            if item.run_id in self._items:
+                raise RunIdAlreadyExistsError(
+                    f"RUN_ID_ALREADY_EXISTS: duplicate durable run_id={item.run_id}"
+                )
+            self._items[item.run_id] = item
 
     @property
     def is_shutdown(self) -> bool:
@@ -284,8 +404,6 @@ class RunManager:
                 "Use explicit human approval via the approvals API."
             )
 
-        # Serialize only admission/reservation. Workers can continue draining in parallel.
-        # Checking capacity before run-id reservation avoids leaking reserved IDs on overload.
         with self._enqueue_lock:
             if not self._accepting_runs or self._stop_event.is_set():
                 raise RuntimeError("RUN_MANAGER_SHUTDOWN: run manager is not accepting new work")
@@ -296,6 +414,11 @@ class RunManager:
                         raise RunIdAlreadyExistsError(
                             f"RUN_ID_ALREADY_EXISTS: queue already tracks run_id={run_id}"
                         )
+                if self.job_repository is not None and self.job_repository.get_job(run_id) is not None:
+                    raise RunIdAlreadyExistsError(
+                        f"RUN_ID_ALREADY_EXISTS: durable history already contains run_id={run_id}"
+                    )
+
             if self._queue.full():
                 raise RuntimeError(
                     f"RUN_QUEUE_FULL: queue capacity {self.max_queue_size} reached; retry later"
@@ -322,13 +445,17 @@ class RunManager:
                     raise RunIdAlreadyExistsError(
                         f"RUN_ID_ALREADY_EXISTS: queue already tracks run_id={rid}"
                     )
+                try:
+                    self._persist_create_locked(item)
+                except JobStoreConflictError as exc:
+                    raise RunIdAlreadyExistsError(str(exc)) from exc
                 self._items[rid] = item
                 try:
                     self._queue.put_nowait(item)
                 except queue.Full as exc:
-                    # Defensive rollback. With serialized admission and workers only draining,
-                    # this should be unreachable, but never leave a ghost queue item.
                     self._items.pop(rid, None)
+                    if self.job_repository is not None:
+                        self.job_repository.delete_unstarted_job(rid)
                     raise RuntimeError(
                         f"RUN_QUEUE_FULL: queue capacity {self.max_queue_size} reached; retry later"
                     ) from exc
@@ -346,6 +473,8 @@ class RunManager:
         if not ctx:
             return
 
+        previous_status = item.status
+        previous_completed_at = item.completed_at
         now = datetime.now(timezone.utc)
         if ctx.status == RuntimeStatus.WAITING_FOR_APPROVAL:
             item.status = RunQueueStatus.WAITING_APPROVAL
@@ -369,6 +498,9 @@ class RunManager:
             item.status = RunQueueStatus.COMPLETED
             item.completed_at = item.completed_at or now
 
+        if item.status != previous_status or item.completed_at != previous_completed_at:
+            self._persist_update_locked(item, event_type="RUNTIME_STATUS_SYNC")
+
     def get_run(self, run_id: str) -> Optional[QueueItem]:
         with self._lock:
             item = self._items.get(run_id)
@@ -382,15 +514,72 @@ class RunManager:
                 self._sync_item_status(item)
             return list(self._items.values())
 
+    def list_recovery_required(self) -> List[QueueItem]:
+        with self._lock:
+            return [
+                item for item in self._items.values()
+                if item.status == RunQueueStatus.RECOVERY_REQUIRED
+            ]
+
+    def resolve_recovery(
+        self,
+        run_id: str,
+        resolution: RunQueueStatus,
+        *,
+        note: Optional[str] = None,
+    ) -> bool:
+        """Close a recovered historical run after operator reconciliation.
+
+        Recovery never resumes the same run ID. If the operator determines a new
+        attempt is safe, it must be enqueued as a new run after reconciliation so
+        approvals, receipts, and side-effect history cannot be silently reused.
+        """
+        if resolution not in (RunQueueStatus.CANCELLED, RunQueueStatus.FAILED):
+            raise ValueError("INVALID_RECOVERY_RESOLUTION: use CANCELLED or FAILED")
+        with self._lock:
+            item = self._items.get(run_id)
+            if item is None or item.status != RunQueueStatus.RECOVERY_REQUIRED:
+                return False
+
+            previous_status = item.status
+            previous_completed_at = item.completed_at
+            previous_recovery_reason = item.recovery_reason
+            previous_error = item.error
+
+            item.status = resolution
+            item.completed_at = datetime.now(timezone.utc)
+            item.recovery_reason = sanitize_sensitive_text(note) if note else item.recovery_reason
+            item.error = "RECOVERY_RECONCILED_CANCELLED" if resolution == RunQueueStatus.CANCELLED else "RECOVERY_RECONCILED_FAILED"
+            try:
+                self._persist_update_locked(
+                    item,
+                    event_type="RECOVERY_RESOLVED",
+                    message=note,
+                )
+            except JobStoreError:
+                # Never report a durable reconciliation that failed to persist.
+                item.status = previous_status
+                item.completed_at = previous_completed_at
+                item.recovery_reason = previous_recovery_reason
+                item.error = previous_error
+                raise
+            return True
+
     def get_queue_stats(self) -> Dict[str, Any]:
         with self._lock:
             active = sum(1 for item in self._items.values() if item.status in self.ACTIVE_STATUSES)
+            recovery_required = sum(
+                1 for item in self._items.values()
+                if item.status == RunQueueStatus.RECOVERY_REQUIRED
+            )
             tracked = len(self._items)
         return {
             "queue_size": self._queue.qsize(),
             "queue_capacity": self.max_queue_size,
             "tracked_runs": tracked,
             "active_runs": active,
+            "recovery_required_runs": recovery_required,
+            "durability_enabled": self.job_repository is not None,
             "max_workers": self.max_workers,
             "alive_workers": sum(1 for worker in self._workers if worker.is_alive()),
             "accepting_runs": self._accepting_runs and not self._stop_event.is_set(),
@@ -410,6 +599,7 @@ class RunManager:
             item.error = "RUN_CANCELLED"
             if previous_status in (RunQueueStatus.QUEUED, RunQueueStatus.STARTING):
                 item.completed_at = datetime.now(timezone.utc)
+                self._persist_update_locked(item, event_type="CANCELLED_BEFORE_DISPATCH")
             else:
                 should_signal_runtime = True
 
@@ -426,6 +616,7 @@ class RunManager:
                     item.status = previous_status or RunQueueStatus.RUNNING
                     item.error = f"CANCEL_SIGNAL_FAILED: {safe_error}"
                     item.completed_at = None
+                    self._persist_update_locked(item, event_type="CANCEL_SIGNAL_FAILED", message=safe_error)
             return False
 
         if signal_result is False:
@@ -435,7 +626,16 @@ class RunManager:
                     item.status = previous_status or RunQueueStatus.RUNNING
                     item.error = "CANCEL_SIGNAL_REJECTED"
                     item.completed_at = None
+                    self._persist_update_locked(item, event_type="CANCEL_SIGNAL_REJECTED")
             return False
+
+        with self._lock:
+            item = self._items.get(run_id)
+            if item is not None:
+                item.status = RunQueueStatus.CANCELLED
+                item.error = "RUN_CANCELLED"
+                item.completed_at = item.completed_at or datetime.now(timezone.utc)
+                self._persist_update_locked(item, event_type="CANCELLED")
         return True
 
     def shutdown(
@@ -445,14 +645,7 @@ class RunManager:
         cancel_pending: bool = True,
         timeout_seconds: float = 5.0,
     ) -> bool:
-        """Stop accepting work and terminate worker polling safely.
-
-        ``cancel_pending=True`` marks runs that have not started as cancelled. Running
-        work is not force-killed here; callers should use ``cancel_run`` explicitly
-        when they want to signal the canonical runtime to stop an active run.
-
-        Returns True when all worker threads have stopped by the requested deadline.
-        """
+        """Stop accepting work and terminate worker polling safely."""
         if timeout_seconds < 0:
             raise ValueError("INVALID_TIMEOUT: timeout_seconds cannot be negative")
 
@@ -467,6 +660,7 @@ class RunManager:
                             item.status = RunQueueStatus.CANCELLED
                             item.error = "RUN_CANCELLED_ON_SHUTDOWN"
                             item.completed_at = now
+                            self._persist_update_locked(item, event_type="CANCELLED_ON_SHUTDOWN")
 
         if not wait:
             return all(not worker.is_alive() for worker in self._workers)
@@ -487,7 +681,6 @@ class RunManager:
                 continue
 
             try:
-                # A shutdown may arrive after queue.get() but before work starts.
                 if self._stop_event.is_set():
                     continue
 
@@ -495,13 +688,21 @@ class RunManager:
                     if item.status == RunQueueStatus.CANCELLED:
                         if item.completed_at is None:
                             item.completed_at = datetime.now(timezone.utc)
+                            self._persist_update_locked(item, event_type="CANCELLED_BEFORE_WORKER_START")
                         continue
                     item.status = RunQueueStatus.RUNNING
                     item.started_at = datetime.now(timezone.utc)
                     item.completed_at = None
+                    item.attempt_count += 1
+                    try:
+                        self._persist_update_locked(item, event_type="WORKER_STARTED")
+                    except JobStoreError as exc:
+                        item.status = RunQueueStatus.FAILED
+                        item.error = f"DURABILITY_START_PERSIST_FAILED: {sanitize_sensitive_text(str(exc))}"
+                        item.completed_at = datetime.now(timezone.utc)
+                        continue
 
                 try:
-                    # Execute Supervised Campaign through Canonical Department Runtime Entrypoint.
                     ctx = self.runtime.start_run(
                         objective=item.objective,
                         business_id=item.business_id or "BIZ_AD_HOC_EXPLORATION",
@@ -510,6 +711,25 @@ class RunManager:
                         reserved_run_id=item.run_id,
                     )
                     ctx, cmo_final, artifact = self.runtime.execute_run(ctx)
+
+                    try:
+                        self._persist_runtime_checkpoints(ctx)
+                    except JobStoreError as exc:
+                        with self._lock:
+                            item.artifact = artifact
+                            item.status = RunQueueStatus.RECOVERY_REQUIRED
+                            item.error = f"DURABILITY_CHECKPOINT_PERSIST_FAILED: {sanitize_sensitive_text(str(exc))}"
+                            item.recovery_reason = "CHECKPOINT_PERSISTENCE_INCOMPLETE_AFTER_EXECUTION"
+                            item.completed_at = None
+                            try:
+                                self._persist_update_locked(
+                                    item,
+                                    event_type="DURABILITY_RECONCILIATION_REQUIRED",
+                                    message=item.error,
+                                )
+                            except JobStoreError:
+                                pass
+                        continue
 
                     with self._lock:
                         item.artifact = artifact
@@ -538,10 +758,28 @@ class RunManager:
                             item.status = RunQueueStatus.COMPLETED
                             item.error = None
                             item.completed_at = now
+
+                        try:
+                            self._persist_update_locked(item, event_type="WORKER_FINISHED")
+                        except JobStoreError as exc:
+                            # Execution may already have produced external effects. Never
+                            # convert this into a normal retryable failure.
+                            item.status = RunQueueStatus.RECOVERY_REQUIRED
+                            item.error = f"DURABILITY_FINAL_PERSIST_FAILED: {sanitize_sensitive_text(str(exc))}"
+                            item.recovery_reason = "FINAL_STATE_PERSISTENCE_INCOMPLETE_AFTER_EXECUTION"
+                            item.completed_at = None
                 except Exception as exc:
                     with self._lock:
                         item.status = RunQueueStatus.FAILED
                         item.error = sanitize_sensitive_text(str(exc))
                         item.completed_at = datetime.now(timezone.utc)
+                        try:
+                            self._persist_update_locked(item, event_type="WORKER_FAILED", message=item.error)
+                        except JobStoreError:
+                            # DB still contains RUNNING from the start transition. On the
+                            # next process start that state will become RECOVERY_REQUIRED.
+                            item.status = RunQueueStatus.RECOVERY_REQUIRED
+                            item.recovery_reason = "FAILURE_STATE_PERSISTENCE_INCOMPLETE"
+                            item.completed_at = None
             finally:
                 self._queue.task_done()
