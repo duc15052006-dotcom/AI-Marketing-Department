@@ -223,7 +223,17 @@ class MarketingProviderCatalog:
         descriptors = default_connector_descriptors()
         specs = default_marketing_specs()
         expected_ids = {item.connector_id for item in specs}
-        supplied_ids = {str(key).strip().lower() for key in executors}
+
+        normalized_executors: Dict[str, MarketingLiveExecutor] = {}
+        for connector_id, executor in executors.items():
+            cid = str(connector_id).strip().lower()
+            if cid in normalized_executors:
+                raise MarketingProviderCatalogBindingError(
+                    f"Duplicate executor key after normalization for '{cid}'."
+                )
+            normalized_executors[cid] = executor
+
+        supplied_ids = set(normalized_executors)
         if supplied_ids != expected_ids:
             missing = sorted(expected_ids - supplied_ids)
             extra = sorted(supplied_ids - expected_ids)
@@ -233,13 +243,12 @@ class MarketingProviderCatalog:
 
         # Validate executor providers before mutating either registry.
         spec_by_id = {item.connector_id: item for item in specs}
-        for connector_id, executor in executors.items():
-            cid = str(connector_id).strip().lower()
+        for connector_id, executor in normalized_executors.items():
             provider = str(getattr(executor, "provider", "") or "").strip().lower()
             executor_name = str(getattr(executor, "executor_name", "") or "").strip()
-            if not executor_name or provider != spec_by_id[cid].provider:
+            if not executor_name or provider != spec_by_id[connector_id].provider:
                 raise MarketingProviderCatalogBindingError(
-                    f"Executor for '{cid}' does not match catalog provider '{spec_by_id[cid].provider}'."
+                    f"Executor for '{connector_id}' does not match catalog provider '{spec_by_id[connector_id].provider}'."
                 )
 
         # Preflight all duplicate checks before any mutation so an install either
@@ -277,7 +286,11 @@ class MarketingProviderCatalog:
         for spec in specs:
             self.marketing_registry.register(spec, replace=replace)
         for connector_id in sorted(expected_ids):
-            self.executor_registry.bind(connector_id, executors[connector_id], replace=replace)
+            self.executor_registry.bind(
+                connector_id,
+                normalized_executors[connector_id],
+                replace=replace,
+            )
 
         return MarketingProviderInstallReport(
             connector_ids=tuple(sorted(expected_ids)),
