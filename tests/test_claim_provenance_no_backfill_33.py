@@ -16,6 +16,9 @@ from tools.capabilities import CapabilityRegistry
 from tools.tool_gateway import ToolGateway
 
 
+_MISSING_SCOPE = object()
+
+
 class TestClaimProvenanceNoBackfill(unittest.TestCase):
     def setUp(self) -> None:
         self.verifier = MockClaimVerifier(
@@ -48,7 +51,7 @@ class TestClaimProvenanceNoBackfill(unittest.TestCase):
         )
 
     @staticmethod
-    def _source(source_id: str, *, scope_marker=object()) -> dict:
+    def _source(source_id: str, *, scope_marker=_MISSING_SCOPE) -> dict:
         source = {
             "source_id": source_id,
             "epistemic_tier": "VERIFIED_SOURCE",
@@ -56,7 +59,7 @@ class TestClaimProvenanceNoBackfill(unittest.TestCase):
             "content": "Device battery capacity is 5000mAh.",
             "metadata": {"authority": "TIER_1"},
         }
-        if not isinstance(scope_marker, object) or type(scope_marker) is not object:
+        if scope_marker is not _MISSING_SCOPE:
             source["scope"] = scope_marker
         return source
 
@@ -68,23 +71,25 @@ class TestClaimProvenanceNoBackfill(unittest.TestCase):
         self.assertEqual(supported, 0)
         self.assertEqual(hypotheses, 0)
         self.assertEqual(actions["claim_1"], "BLOCK_PUBLICATION")
-        self.assertTrue(any("SECURITY_SCOPE" in reason or "SCOPE_VIOLATION" in reason for reason in reasons))
+        self.assertTrue(any("SCOPE_VIOLATION" in reason for reason in reasons))
 
     def test_missing_scope_is_not_implicitly_promoted_to_global(self) -> None:
-        source = {
-            "source_id": "SRC_NO_SCOPE",
-            "epistemic_tier": "VERIFIED_SOURCE",
-            "source_type": "CANONICAL_FACT",
-            "content": "Device battery capacity is 5000mAh.",
-            "metadata": {"authority": "TIER_1"},
-        }
+        source = self._source("SRC_NO_SCOPE")
         total, supported, hypotheses, reasons, actions = self._scan(source)
 
         self.assertEqual(total, 1)
         self.assertEqual(supported, 0)
         self.assertEqual(hypotheses, 0)
         self.assertEqual(actions["claim_1"], "BLOCK_PUBLICATION")
-        self.assertTrue(any("SECURITY_SCOPE" in reason or "SCOPE_VIOLATION" in reason for reason in reasons))
+        self.assertTrue(any("Missing required tenant scope" in reason for reason in reasons))
+
+        ledger = self.context.working_state.get("claim_verification_ledger", [])
+        self.assertEqual(len(ledger), 1)
+        record = ledger[0]
+        self.assertEqual(str(record.get("verdict", "")).upper(), "SCOPE_VIOLATION")
+        findings = record.get("deterministic_findings") or {}
+        self.assertEqual(findings.get("guard_name"), "SECURITY_SCOPE_VIOLATION")
+        self.assertFalse(findings.get("passed", True))
 
     def test_explicit_business_scope_remains_authorizable_without_duplicate_tenant_metadata(self) -> None:
         source = self._source("SRC_BUSINESS", scope_marker="SCOPE_BIZ_ALPHA")
