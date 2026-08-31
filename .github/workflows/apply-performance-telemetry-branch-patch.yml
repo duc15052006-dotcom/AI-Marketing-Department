@@ -1,0 +1,136 @@
+name: Apply Performance Telemetry Branch Patch
+
+on:
+  push:
+    branches: [fix/performance-real-telemetry-42]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[performance-telemetry-patched]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/performance-real-telemetry-42
+          fetch-depth: 0
+
+      - name: Apply exact Performance telemetry patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("runtime/engine.py")
+          text = path.read_text(encoding="utf-8")
+          stage_start = text.index("    def execute_stage_performance(")
+          stage_end = text.index("    # ------------------------------------------------------------------\n    # Final CMO", stage_start)
+          before = text[:stage_start]
+          stage = text[stage_start:stage_end]
+          after = text[stage_end:]
+
+          old_tool_start = "        # Invoke ToolGateway for analytics calculation\n"
+          old_tool_end = '        prov_map = context.working_state.setdefault("provenance_index", {})\n'
+          if stage.count(old_tool_start) != 1 or stage.count(old_tool_end) != 1:
+              raise SystemExit(
+                  f"TOOL_ANCHORS start={stage.count(old_tool_start)} end={stage.count(old_tool_end)}"
+              )
+          a = stage.index(old_tool_start)
+          b = stage.index(old_tool_end, a)
+          new_tool_block = '''        # Retrieve observed campaign telemetry through ToolGateway. A REAL
+        # analytics receipt may enter grounded evidence; NO_DATA and legacy
+        # MOCK analytics remain auditable receipts but are never promoted as
+        # empirical Performance evidence.
+        idem_key = f"{context.run_id}:performance:analytics_retrieval:{context.campaign_id}"
+        if idem_key in self._executed_tool_idempotency_keys:
+            analytics_receipt = self._executed_tool_idempotency_keys[idem_key]
+        else:
+            analytics_req = ToolRequest(
+                run_id=context.run_id,
+                agent_id="performance",
+                capability_id="analytics_retrieval",
+                parameters={"campaign_id": context.campaign_id},
+                business_id=context.business_id,
+                project_id=context.project_id,
+                chat_id=context.chat_id,
+            )
+            analytics_receipt = self.tool_gateway.execute(analytics_req)
+            self._executed_tool_idempotency_keys[idem_key] = analytics_receipt
+
+        context.execution_receipt_refs.append(analytics_receipt.execution_id)
+        self.lineage_inspector.add_receipt(analytics_receipt)
+
+        receipt_mode = getattr(analytics_receipt.execution_mode, "value", str(analytics_receipt.execution_mode)).upper()
+        has_real_telemetry = (
+            analytics_receipt.status == ExecutionStatus.SUCCESS and receipt_mode == "REAL"
+        )
+        if has_real_telemetry:
+            telemetry_status = "REAL_AVAILABLE"
+        elif analytics_receipt.status != ExecutionStatus.SUCCESS:
+            error_code = analytics_receipt.error_class or analytics_receipt.status.value
+            telemetry_status = f"NO_OBSERVED_DATA:{error_code}"
+        else:
+            telemetry_status = f"NON_REAL_TELEMETRY_IGNORED:{receipt_mode or 'UNKNOWN'}"
+
+        grounded_receipts = [analytics_receipt] if has_real_telemetry else []
+        grounded_pkg = self.context_compiler.compile_grounded_package(
+            "performance", context, tool_receipts=grounded_receipts
+        )
+'''
+          stage = stage[:a] + new_tool_block + stage[b:]
+
+          old_receipt_field = '                "calc_receipt_id": calc_receipt.execution_id,\n'
+          old_receipt_field_completed = '            "calc_receipt_id": calc_receipt.execution_id,\n'
+          if stage.count(old_receipt_field) != 2:
+              raise SystemExit(f"FAILED_RECEIPT_FIELD_COUNT={stage.count(old_receipt_field)}")
+          if stage.count(old_receipt_field_completed) != 1:
+              raise SystemExit(f"COMPLETED_RECEIPT_FIELD_COUNT={stage.count(old_receipt_field_completed)}")
+          stage = stage.replace(
+              old_receipt_field,
+              '                "analytics_receipt_id": analytics_receipt.execution_id,\n'
+              '                "analytics_data_status": telemetry_status,\n'
+              '                "calc_receipt_id": None,\n',
+          )
+          stage = stage.replace(
+              old_receipt_field_completed,
+              '            "analytics_receipt_id": analytics_receipt.execution_id,\n'
+              '            "analytics_data_status": telemetry_status,\n'
+              '            "calc_receipt_id": None,\n',
+          )
+
+          evidence_anchor = "        evidence_section = grounded_pkg.render_prompt_section()\n"
+          if stage.count(evidence_anchor) != 1:
+              raise SystemExit(f"EVIDENCE_ANCHOR_COUNT={stage.count(evidence_anchor)}")
+          stage = stage.replace(
+              evidence_anchor,
+              '        evidence_section = (\n'
+              '            f"OBSERVED TELEMETRY STATUS: {telemetry_status}\\n"\n'
+              '            f"{grounded_pkg.render_prompt_section()}"\n'
+              '        )\n',
+              1,
+          )
+
+          text = before + stage + after
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify exact patch shape
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- runtime/engine.py
+          test "$(grep -c 'capability_id="analytics_retrieval"' runtime/engine.py)" -ge 2
+          test "$(grep -c 'NON_REAL_TELEMETRY_IGNORED' runtime/engine.py)" -eq 1
+          test "$(grep -c 'analytics_data_status' runtime/engine.py)" -eq 3
+          python -m py_compile runtime/engine.py tests/test_performance_real_telemetry_30.py
+          python -m unittest tests.test_performance_real_telemetry_30 -v
+
+      - name: Commit branch-only patch and remove helper workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-performance-telemetry-branch-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py .github/workflows/apply-performance-telemetry-branch-patch.yml
+          git commit -m "Use observed campaign telemetry in Performance stage [performance-telemetry-patched]"
+          git push origin HEAD:fix/performance-real-telemetry-42
