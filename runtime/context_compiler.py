@@ -7,6 +7,7 @@ filtered institutional memories, and ToolGateway execution receipts.
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -138,6 +139,18 @@ class ContextCompiler:
         )
         return plan, knowledge_scopes, memory_scopes
 
+    def _memory_repository_supports_exact_scope(self) -> bool:
+        """Detect the new exact-scope repository interface without executing it."""
+
+        try:
+            parameters = inspect.signature(self.memory_repo.list_memories).parameters.values()
+        except (TypeError, ValueError):
+            return False
+        return any(
+            parameter.name == "scope" or parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+
     def _list_memories_for_exact_scope(self, scope: str) -> List[MemoryItem]:
         """Read one exact scope from new or legacy MemoryRepository interfaces.
 
@@ -147,16 +160,19 @@ class ContextCompiler:
         No item outside the requested exact scope is returned to the compiler.
         This fallback is intentionally temporary until backend repository
         composition is migrated in the next platform batch.
+
+        Capability detection happens before execution so a real ``TypeError``
+        raised inside a scoped repository is never mistaken for an old method
+        signature and silently downgraded to the legacy compatibility path.
         """
 
-        try:
+        if self._memory_repository_supports_exact_scope():
             return list(self.memory_repo.list_memories(scope=scope))  # type: ignore[call-arg]
-        except TypeError:
-            return [
-                memory
-                for memory in self.memory_repo.list_memories()
-                if str(getattr(memory, "scope", "GLOBAL") or "GLOBAL").strip() == scope
-            ]
+        return [
+            memory
+            for memory in self.memory_repo.list_memories()
+            if str(getattr(memory, "scope", "GLOBAL") or "GLOBAL").strip() == scope
+        ]
 
     def compile_grounded_package(
         self,
@@ -214,9 +230,6 @@ class ContextCompiler:
 
             seen_knowledge_ids: set = set()
             for scope in knowledge_scopes:
-                # Always pass an exact scope.  Never call list_documents() without
-                # scope because legacy implementations may interpret that as all
-                # tenants/projects.
                 scoped_docs = self.knowledge_repo.list_documents(scope=scope)
                 valid_docs = [
                     d
@@ -314,7 +327,6 @@ class ContextCompiler:
         if tool_receipts:
             for receipt in tool_receipts:
                 if receipt.status != ExecutionStatus.SUCCESS:
-                    # Failed / blocked / timeout tool execution does NOT produce factual evidence
                     continue
 
                 mode = getattr(receipt, "execution_mode", ExecutionMode.MOCK)
