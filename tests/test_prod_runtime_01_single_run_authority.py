@@ -56,19 +56,22 @@ class MockScriptedGateway(UniversalModelGateway):
             "role": request.messages[0].role.value if request.messages else "",
         })
         sys_msg = request.messages[0].content if request.messages else ""
-        stage = "unknown"
-        if "Chief Marketing Officer (CMO) in your governed final synthesis" in sys_msg or "Final Governed Strategy" in sys_msg:
-            stage = "final_cmo"
-        elif "Chief Marketing Officer (CMO)" in sys_msg or "Decompose the user" in sys_msg:
-            stage = "cmo_initial"
-        elif "Intelligence Specialist" in sys_msg:
-            stage = "intelligence"
-        elif "Marketing Strategist" in sys_msg:
-            stage = "strategist"
-        elif "Creative Specialist" in sys_msg:
-            stage = "creative"
-        elif "Performance Specialist" in sys_msg:
-            stage = "performance"
+        stage_directive = sys_msg.split("=== CURRENT RUNTIME STAGE DIRECTIVE ===", 1)[-1]
+        resolved_agent = kwargs.get("agent_id") or (request.metadata or {}).get("agent_id")
+        if resolved_agent == "cmo":
+            stage = (
+                "final_cmo"
+                if any(marker in stage_directive for marker in (
+                    "Final Governed Go-To-Market",
+                    "Final Governed Strategy",
+                    "governed final synthesis",
+                ))
+                else "cmo_initial"
+            )
+        elif resolved_agent in {"intelligence", "strategist", "creative", "performance"}:
+            stage = resolved_agent
+        else:
+            stage = "unknown"
 
         if self.fail_stage and self.fail_stage == stage:
             return ModelResponse(
