@@ -611,8 +611,8 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn CMO Initial (Strategic Framing)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("cmo", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("cmo", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("cmo", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
+        m_res = self.memory_builder.build_context_for_agent("cmo", query_text=context.objective, scope=context.working_state.get("memory_scope"))
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
@@ -711,7 +711,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("intelligence", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("intelligence", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
             self.lineage_inspector.add_citation(c)
@@ -962,8 +962,8 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Strategist (Positioning & Value Architecture)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("strategist", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("strategist", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("strategist", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
+        m_res = self.memory_builder.build_context_for_agent("strategist", query_text=context.objective, scope=context.working_state.get("memory_scope"))
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
@@ -1081,7 +1081,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Creative (Hooks & Asset Synthesis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("creative", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("creative", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
             self.lineage_inspector.add_citation(c)
@@ -1225,8 +1225,8 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("performance", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("performance", query_text=context.objective)
+        k_res = self.knowledge_builder.build_context_for_agent("performance", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
+        m_res = self.memory_builder.build_context_for_agent("performance", query_text=context.objective, scope=context.working_state.get("memory_scope"))
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)

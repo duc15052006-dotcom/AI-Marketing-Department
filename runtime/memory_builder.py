@@ -52,8 +52,13 @@ class MemoryContextBuilder:
         min_confidence: float = 0.60,
         include_raw: bool = False,
         max_chars: int = 2500,
+        scope: Optional[str] = None,
     ) -> MemoryRetrievalResult:
-        """Retrieve and format unexpired, role-authorized memories."""
+        """Retrieve and format unexpired, role-authorized memories.
+
+        Missing/blank scope is deliberately GLOBAL, never a repository wildcard.
+        Callers that need business/project memory must provide its exact scope.
+        """
         aid = agent_id.lower()
         prof = AgentAccessMatrix.get_profile(aid)
         if not prof:
@@ -71,7 +76,14 @@ class MemoryContextBuilder:
         if include_raw:
             allowed_promotions.add(PromotionState.RAW_OBSERVATION)
 
-        all_memories = self.repository.list_memories()
+        # Legacy MemoryRepository has no scope parameter and list_memories()
+        # therefore returns every tenant/project. Enforce exact scope here.
+        effective_scope = str(scope or "GLOBAL").strip() or "GLOBAL"
+        all_memories = [
+            memory
+            for memory in self.repository.list_memories()
+            if getattr(memory, "scope", "GLOBAL") == effective_scope
+        ]
         valid_memories: List[MemoryItem] = []
 
         for m in all_memories:
