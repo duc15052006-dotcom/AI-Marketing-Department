@@ -209,7 +209,13 @@ class MemoryManager:
             )
         current = memory.promotion_level
         if current == target_state:
-            return MemoryPromotionResult(True, memory_id, current, target_state, "ALREADY_AT_TARGET")
+            return MemoryPromotionResult(
+                success=True,
+                memory_id=memory_id,
+                from_state=current,
+                to_state=target_state,
+                reason="ALREADY_AT_TARGET",
+            )
         expected = self._NEXT_PROMOTION.get(current)
         if expected != target_state:
             return MemoryPromotionResult(
@@ -235,7 +241,13 @@ class MemoryManager:
                 reason=review_rationale,
                 metadata={"from": current.value, "to": saved.promotion_level.value, "engine_reason": reason},
             )
-        return MemoryPromotionResult(success, memory_id, current, target_state, reason)
+        return MemoryPromotionResult(
+            success=success,
+            memory_id=memory_id,
+            from_state=current,
+            to_state=target_state,
+            reason=reason,
+        )
 
     def retire(self, memory_id: str, *, reason: str, actor: str = "operator") -> bool:
         updated = self.repository.mark_state(
@@ -312,5 +324,6 @@ class MemoryManager:
 
     def list_events(self, memory_id: Optional[str] = None) -> List[MemoryLifecycleEvent]:
         import copy
+
         events = self._events if memory_id is None else [event for event in self._events if event.memory_id == memory_id]
         return copy.deepcopy(events)
