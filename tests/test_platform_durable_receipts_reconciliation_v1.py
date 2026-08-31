@@ -171,6 +171,34 @@ class DurableReceiptsReconciliationV1Tests(unittest.TestCase):
                 tampered.get_receipt(saved.execution_id)
             tampered.close()
 
+    def test_sqlite_receipt_index_column_tamper_is_detected(self) -> None:
+        tamper_cases = (
+            ("run_id", "RUN-TAMPERED"),
+            ("agent_id", "creative"),
+            ("capability_id", "publish_social"),
+            ("status", ExecutionStatus.ERROR.value),
+        )
+        for column, tampered_value in tamper_cases:
+            with self.subTest(column=column):
+                with tempfile.TemporaryDirectory() as tmp:
+                    db_path = Path(tmp) / "index-tamper.sqlite3"
+                    repo = ExecutionReceiptRepository(database_path=db_path)
+                    saved = repo.save_receipt(self._receipt())
+                    repo.close()
+
+                    conn = sqlite3.connect(str(db_path))
+                    conn.execute(
+                        f"UPDATE execution_receipts SET {column}=? WHERE execution_id=?",
+                        (tampered_value, saved.execution_id),
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    tampered = ExecutionReceiptRepository(database_path=db_path)
+                    with self.assertRaises(ReceiptStoreIntegrityError):
+                        tampered.get_receipt(saved.execution_id)
+                    tampered.close()
+
     def test_prepared_intent_proves_dispatch_had_not_started(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "intent.sqlite3"

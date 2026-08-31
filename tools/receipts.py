@@ -444,6 +444,18 @@ class ExecutionReceiptRepository:
             raise ReceiptStoreIntegrityError(
                 f"EXECUTION_RECEIPT_ID_MISMATCH: execution_id={row['execution_id']}"
             )
+        indexed_metadata = {
+            "run_id": receipt.run_id,
+            "agent_id": receipt.agent_id,
+            "capability_id": receipt.capability_id,
+            "status": receipt.status.value,
+        }
+        for field, payload_value in indexed_metadata.items():
+            if row[field] != payload_value:
+                raise ReceiptStoreIntegrityError(
+                    f"EXECUTION_RECEIPT_INDEX_METADATA_MISMATCH: "
+                    f"execution_id={row['execution_id']} field={field}"
+                )
         return receipt
 
     @staticmethod
