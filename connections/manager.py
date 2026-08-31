@@ -108,6 +108,31 @@ class ConnectionManager:
                 f"Connection '{profile.connection_id}' is not available in the requested brand scope."
             )
 
+    def authorize_profile(
+        self,
+        connection_id: str,
+        *,
+        business_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        brand_id: Optional[str] = None,
+    ) -> ConnectionProfile:
+        """Authorize profile metadata without resolving credential material.
+
+        Health/control-plane code can use this method to enforce the exact same
+        enabled/scope policy as ``resolve`` while proving that no SecretProvider
+        lookup occurs merely to render status or choose an account.
+        """
+        profile = self.get(connection_id)
+        if not profile.enabled:
+            raise ConnectionDisabledError(f"Connection '{connection_id}' is disabled.")
+        self._enforce_scope(
+            profile,
+            business_id=business_id,
+            project_id=project_id,
+            brand_id=brand_id,
+        )
+        return profile
+
     def resolve(
         self,
         connection_id: str,
@@ -117,12 +142,8 @@ class ConnectionManager:
         brand_id: Optional[str] = None,
     ) -> ResolvedConnection:
         """Resolve a connection after enabled/scope checks, never before them."""
-        profile = self.get(connection_id)
-        if not profile.enabled:
-            raise ConnectionDisabledError(f"Connection '{connection_id}' is disabled.")
-
-        self._enforce_scope(
-            profile,
+        profile = self.authorize_profile(
+            connection_id,
             business_id=business_id,
             project_id=project_id,
             brand_id=brand_id,
