@@ -40,57 +40,33 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Repair exact assertion formatting
+      - name: Repair executable assertions
         shell: pwsh
         run: |
-          @'
-          from pathlib import Path
-
-          path = Path("tests/test_prod_runtime_progress_01.py")
-          text = path.read_text(encoding="utf-8")
-
-          bad_one = r'''        # Six workflow stages now require seven model calls because the single\n        # permanent Performance agent executes mandatory internal Pass 5A + 5B.\n        self.assertEqual(gw2.call_count, 7)'''
-          good_one = '''        # Six workflow stages now require seven model calls because the single
-        # permanent Performance agent executes mandatory internal Pass 5A + 5B.
-        self.assertEqual(gw2.call_count, 7)'''
-
-          bad_two = r'''        # A broken progress sink must not add calls beyond the canonical seven.\n        self.assertEqual(gw.call_count, 7)'''
-          good_two = '''        # A broken progress sink must not add calls beyond the canonical seven.
-        self.assertEqual(gw.call_count, 7)'''
-
-          for old, new in ((bad_one, good_one), (bad_two, good_two)):
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"PATCH_ABORTED: expected exactly one malformed block, got {count}")
-              text = text.replace(old, new, 1)
-
-          lines = text.splitlines()
-          required_assertions = {
-              "        self.assertEqual(gw2.call_count, 7)",
-              "        self.assertEqual(gw.call_count, 7)",
-          }
-          missing = required_assertions.difference(lines)
-          if missing:
-              raise SystemExit(f"PATCH_ABORTED: executable assertion lines missing: {sorted(missing)!r}")
-          if any("\\n        self.assertEqual" in line for line in lines):
-              raise SystemExit("PATCH_ABORTED: literal newline escape still masks an assertion")
-
-          path.write_text(text, encoding="utf-8")
-          print("Repaired progress call-count assertions as executable source lines.")
-          '@ | python -
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $path = "tests/test_prod_runtime_progress_01.py"
+          $text = [System.IO.File]::ReadAllText($path)
+          $bad1 = '        # Six workflow stages now require seven model calls because the single\n        # permanent Performance agent executes mandatory internal Pass 5A + 5B.\n        self.assertEqual(gw2.call_count, 7)'
+          $good1 = "        # Six workflow stages now require seven model calls because the single`n        # permanent Performance agent executes mandatory internal Pass 5A + 5B.`n        self.assertEqual(gw2.call_count, 7)"
+          $bad2 = '        # A broken progress sink must not add calls beyond the canonical seven.\n        self.assertEqual(gw.call_count, 7)'
+          $good2 = "        # A broken progress sink must not add calls beyond the canonical seven.`n        self.assertEqual(gw.call_count, 7)"
+          if (-not $text.Contains($bad1)) { throw "PATCH_ABORTED: malformed gw2 assertion block not found exactly" }
+          if (-not $text.Contains($bad2)) { throw "PATCH_ABORTED: malformed gw assertion block not found exactly" }
+          $text = $text.Replace($bad1, $good1).Replace($bad2, $good2)
+          [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+          $lines = [System.IO.File]::ReadAllLines($path)
+          if (-not ($lines -contains '        self.assertEqual(gw2.call_count, 7)')) { throw "gw2 assertion is not executable source" }
+          if (-not ($lines -contains '        self.assertEqual(gw.call_count, 7)')) { throw "gw assertion is not executable source" }
+          if (([System.IO.File]::ReadAllText($path)).Contains('\n        self.assertEqual')) { throw "literal newline escape still masks an assertion" }
           python -m compileall -q tests/test_prod_runtime_progress_01.py tests/test_performance_two_pass_32.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run focused regressions
         shell: pwsh
         run: |
-          python -m unittest -v `
-            tests.test_prod_runtime_progress_01 `
-            tests.test_performance_two_pass_32
+          python -m unittest -v tests.test_prod_runtime_progress_01 tests.test_performance_two_pass_32
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Commit verified invariant formatting
+      - name: Commit verified assertion repair
         shell: pwsh
         run: |
           git diff --exit-code -- . ':!tests/test_prod_runtime_progress_01.py'
