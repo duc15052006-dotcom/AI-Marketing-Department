@@ -109,25 +109,23 @@ class ToolGateway:
         self.register_adapter(FileStorageAdapter())
         self.register_adapter(AnalyticsAdapter(name="data_retrieval_adapter"))
         self.register_adapter(FileStorageAdapter())  # file_io_adapter
-        # Alias for db_storage_adapter and export_adapter
+
         class DBAdapter(FileStorageAdapter):
             @property
             def adapter_name(self) -> str:
                 return "db_storage_adapter"
+
         class ExportAdapter(FileStorageAdapter):
             @property
             def adapter_name(self) -> str:
                 return "export_adapter"
+
         self.register_adapter(DBAdapter())
         self.register_adapter(ExportAdapter())
 
     @staticmethod
     def _is_consequential_capability(cap: CapabilityDescriptor) -> bool:
-        """Return whether dispatch can produce externally consequential side effects.
-
-        Retry safety is a property of the capability itself, not of whether an
-        approval token happened to be supplied on this specific request.
-        """
+        """Return whether dispatch can produce externally consequential side effects."""
         return bool(
             cap.human_approval_required
             or cap.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
@@ -139,11 +137,7 @@ class ToolGateway:
 
     @staticmethod
     def _classify_retryable_exception(exc: BaseException) -> Optional[str]:
-        """Map only clearly transient built-in exception classes to retry codes.
-
-        Unknown adapter exceptions fail closed. They are never made implicitly
-        retryable merely because a capability has retries configured.
-        """
+        """Map only clearly transient built-in exception classes to retry codes."""
         if isinstance(exc, TimeoutError):
             return "TIMEOUT"
         if isinstance(exc, ConnectionError):
@@ -156,14 +150,7 @@ class ToolGateway:
         capability_id: str,
         adapter_result: Optional[Any] = None,
     ) -> ExecutionMode:
-        """Resolve truthful execution provenance for both success and failure receipts.
-
-        Adapters that multiplex REAL/MOCK/SANDBOX capabilities may expose
-        ``execution_mode_for(capability_id)``. That capability-level authority
-        takes precedence over an AdapterResult default so failed REAL calls are
-        never mislabeled MOCK. Unknown/legacy adapters fail closed to the result's
-        explicit mode, then MOCK.
-        """
+        """Resolve truthful execution provenance for both success and failure receipts."""
         resolver = getattr(adapter, "execution_mode_for", None)
         if callable(resolver):
             try:
@@ -187,10 +174,28 @@ class ToolGateway:
 
         return ExecutionMode.MOCK
 
+    @staticmethod
+    def _safe_approval_reference(value: Optional[str]) -> Optional[str]:
+        """Return an audit reference that cannot be replayed as approval authority."""
+        if not value:
+            return None
+        if value.startswith("pending_appr_"):
+            return value
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
+        return f"approval_ref_{digest}"
+
     def execute(self, request: ToolRequest) -> ExecutionReceipt:
         """Execute a tool capability with complete governance, permissions, and receipt creation."""
         start_time = datetime.now(timezone.utc)
         req_hash = request.calculate_request_hash()
+
+        # A request may omit business_id only when a valid server-side approval
+        # already pins the execution to one business. Never infer from caller data.
+        effective_business_id = request.business_id
+        if request.approval_token and not effective_business_id:
+            approval_record = self.policy_engine.get_approval(request.approval_token)
+            if approval_record is not None and approval_record.business_id:
+                effective_business_id = approval_record.business_id
 
         # 1. Capability Discovery
         cap = self.registry.get_capability(request.capability_id)
@@ -207,7 +212,7 @@ class ToolGateway:
                 status=ExecutionStatus.ERROR,
                 error_class="CAPABILITY_NOT_FOUND",
                 error_message=f"Capability '{request.capability_id}' is not registered in CapabilityRegistry.",
-                business_id=request.business_id,
+                business_id=effective_business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
             )
@@ -219,19 +224,20 @@ class ToolGateway:
             capability=cap,
             approval_token=request.approval_token,
             run_id=request.run_id,
+            business_id=effective_business_id,
             parameters=request.parameters,
         )
         if not decision.allowed:
             completed_time = datetime.now(timezone.utc)
             status = ExecutionStatus.APPROVAL_REQUIRED if decision.requires_human_approval else ExecutionStatus.BLOCKED
             err_class = decision.error_code or ("HUMAN_APPROVAL_REQUIRED" if decision.requires_human_approval else "PERMISSION_DENIED")
-            appr_ref = request.approval_token
-            if decision.requires_human_approval and not appr_ref:
+            appr_ref = self._safe_approval_reference(request.approval_token)
+            if decision.requires_human_approval and not request.approval_token:
                 pending_rec = self.policy_engine.create_pending_approval(
                     capability_id=request.capability_id,
                     parameters=request.parameters,
                     run_id=request.run_id,
-                    business_id=request.business_id,
+                    business_id=effective_business_id,
                     scope="",
                     risk_level=cap.risk_level,
                 )
@@ -249,7 +255,7 @@ class ToolGateway:
                 error_class=err_class,
                 error_message=decision.reason,
                 approval_reference=appr_ref,
-                business_id=request.business_id,
+                business_id=effective_business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
             )
@@ -270,7 +276,7 @@ class ToolGateway:
                 status=ExecutionStatus.ERROR,
                 error_class="PROVIDER_NOT_CONFIGURED",
                 error_message=f"Provider adapter '{cap.provider}' is not registered with ToolGateway.",
-                business_id=request.business_id,
+                business_id=effective_business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
             )
@@ -294,9 +300,9 @@ class ToolGateway:
                     completed_at=completed_time,
                     status=ExecutionStatus.APPROVAL_REQUIRED,
                     error_class="APPROVAL_ALREADY_CLAIMED",
-                    error_message="APPROVAL_ALREADY_CLAIMED: Approval token has already been claimed or consumed for execution.",
-                    approval_reference=request.approval_token,
-                    business_id=request.business_id,
+                    error_message="APPROVAL_ALREADY_CLAIMED: Approval authority is unavailable, expired, or has already been spent.",
+                    approval_reference=self._safe_approval_reference(request.approval_token),
+                    business_id=effective_business_id,
                     project_id=request.project_id,
                     chat_id=request.chat_id,
                 )
@@ -325,7 +331,7 @@ class ToolGateway:
                         parameters=request.parameters,
                         timeout_seconds=timeout,
                         run_id=request.run_id,
-                        business_id=request.business_id or "",
+                        business_id=effective_business_id or "",
                         project_id=request.project_id or "",
                     )
                     last_exc = None
@@ -335,15 +341,10 @@ class ToolGateway:
                     last_exc = exc
                     exception_error_code = self._classify_retryable_exception(exc)
 
-                    # Once a consequential dispatch begins, a thrown exception
-                    # leaves remote acceptance ambiguous. Re-dispatching could
-                    # duplicate publishing, scheduling, or financial side effects.
                     if cap_is_consequential:
                         ambiguous_external_outcome = True
                         break
 
-                    # Safe/read-only operations retry only explicitly classified
-                    # transient exception types and only when policy permits it.
                     if exception_error_code not in retryable_errors:
                         break
                     if attempt >= max_retries:
@@ -355,14 +356,9 @@ class ToolGateway:
                 if adapter_res.success:
                     break
 
-                # Consequential capabilities are one-dispatch per gateway call.
-                # Even a structured transient error can be ambiguous if the
-                # provider reports failure after an external action was accepted.
                 if cap_is_consequential:
                     break
 
-                # Structured failures are retryable only when the adapter's
-                # normalized error code is explicitly declared by the capability.
                 if adapter_res.error_code not in retryable_errors:
                     break
                 if attempt >= max_retries:
@@ -376,6 +372,7 @@ class ToolGateway:
         completed_time = datetime.now(timezone.utc)
 
         # 6. Assemble Receipt
+        safe_approval_ref = self._safe_approval_reference(request.approval_token)
         if adapter_res and adapter_res.success:
             mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
             receipt = ExecutionReceipt(
@@ -391,8 +388,8 @@ class ToolGateway:
                 data=adapter_res.data,
                 cost_or_token_usage=adapter_res.cost_or_tokens,
                 artifact_references=adapter_res.artifact_refs,
-                approval_reference=request.approval_token,
-                business_id=request.business_id,
+                approval_reference=safe_approval_ref,
+                business_id=effective_business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
                 observation_record=adapter_res.observation_record,
@@ -428,8 +425,8 @@ class ToolGateway:
                 error_message=err_msg,
                 cost_or_token_usage=adapter_res.cost_or_tokens if adapter_res else {},
                 artifact_references=adapter_res.artifact_refs if adapter_res else [],
-                approval_reference=request.approval_token,
-                business_id=request.business_id,
+                approval_reference=safe_approval_ref,
+                business_id=effective_business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
             )
