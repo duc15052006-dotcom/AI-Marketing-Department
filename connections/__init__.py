@@ -2,7 +2,7 @@
 
 This package intentionally does not integrate with the five agents yet. It is a
 shared platform primitive that keeps connection metadata separate from secret
-material.
+material and reuses the repository's authoritative SecureSecretStore.
 """
 
 from connections.manager import (
@@ -20,12 +20,11 @@ from connections.models import (
 )
 from connections.secrets import (
     CompositeSecretProvider,
-    EnvironmentSecretProvider,
-    InMemorySecretProvider,
     SecretNotFoundError,
     SecretProvider,
     SecretProviderError,
     SecretValue,
+    SecureStoreSecretProvider,
     UnsupportedSecretReferenceError,
 )
 
@@ -38,13 +37,12 @@ __all__ = [
     "ConnectionProfile",
     "ConnectionProfileError",
     "ConnectionScopeDeniedError",
-    "EnvironmentSecretProvider",
-    "InMemorySecretProvider",
     "ResolvedConnection",
     "SecretNotFoundError",
     "SecretProvider",
     "SecretProviderError",
     "SecretValue",
+    "SecureStoreSecretProvider",
     "UnsafeConnectionProfileError",
     "UnsupportedSecretReferenceError",
 ]
