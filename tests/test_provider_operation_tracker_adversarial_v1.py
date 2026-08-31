@@ -82,6 +82,25 @@ def _prepared() -> PreparedMarketingAction:
     )
 
 
+def _status_prepared() -> PreparedMarketingAction:
+    return PreparedMarketingAction(
+        request_fingerprint="b" * 64,
+        request_id="REQ-TRACK-STATUS-001",
+        run_id="RUN-TRACK-STATUS-001",
+        connector_id="tiktok_main",
+        provider="tiktok",
+        connection_id="conn_tiktok_main",
+        capability_id="analytics_retrieval",
+        effect="READ",
+        risk_level="LOW",
+        approval_required=False,
+        execution_mode=MarketingExecutionMode.LIVE,
+        business_id="BUS-1",
+        project_id="PROJ-1",
+        brand_id="BRAND-1",
+    )
+
+
 def _approved_payload() -> dict:
     return {
         "post_info": {
@@ -161,6 +180,22 @@ def _publish_request(preflight_id: str, key: str) -> ExternalMarketingRequest:
     )
 
 
+def _status_request(publish_id: str) -> ExternalMarketingRequest:
+    return ExternalMarketingRequest(
+        request_id="REQ-TRACK-STATUS-001",
+        run_id="RUN-TRACK-STATUS-001",
+        connector_id="tiktok_main",
+        connection_id="conn_tiktok_main",
+        capability_id="analytics_retrieval",
+        action="fetch_publish_status",
+        resource_type="post",
+        business_id="BUS-1",
+        project_id="PROJ-1",
+        brand_id="BRAND-1",
+        payload={"publish_id": publish_id},
+    )
+
+
 class ProviderOperationTrackerAdversarialV1Tests(unittest.TestCase):
     def test_processing_can_finalize_as_succeeded(self) -> None:
         repo = ProviderOperationRepository()
@@ -197,6 +232,58 @@ class ProviderOperationTrackerAdversarialV1Tests(unittest.TestCase):
         )
         self.assertEqual(failed.state, ProviderOperationState.FAILED)
         self.assertTrue(failed.state.terminal)
+
+    def test_tiktok_poll_maps_processing_to_succeeded(self) -> None:
+        operations = ProviderOperationRepository()
+        record = _create_operation(operations, suffix="poll-success")
+        operations.record_status(
+            record.operation_id,
+            state=ProviderOperationState.PROCESSING,
+            provider_status="PROCESSING_DOWNLOAD",
+        )
+        transport = _FakeTikTokTransport(
+            _response(200, {"data": {"status": "PUBLISH_COMPLETE"}, "error": {"code": "ok"}})
+        )
+        executor = TrackedTikTokMarketingExecutor(
+            transport=transport,
+            operation_repository=operations,
+        )
+
+        result = executor.execute(
+            prepared=_status_prepared(),
+            request=_status_request(record.external_operation_id),
+            credential=SecretValue("tiktok-secret"),
+            timeout_seconds=5,
+        )
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["operation_state"], "SUCCEEDED")
+        self.assertEqual(operations.get(record.operation_id).state, ProviderOperationState.SUCCEEDED)
+
+    def test_tiktok_poll_maps_processing_to_failed(self) -> None:
+        operations = ProviderOperationRepository()
+        record = _create_operation(operations, suffix="poll-failure")
+        operations.record_status(
+            record.operation_id,
+            state=ProviderOperationState.PROCESSING,
+            provider_status="PROCESSING_UPLOAD",
+        )
+        transport = _FakeTikTokTransport(
+            _response(200, {"data": {"status": "FAILED"}, "error": {"code": "ok"}})
+        )
+        executor = TrackedTikTokMarketingExecutor(
+            transport=transport,
+            operation_repository=operations,
+        )
+
+        result = executor.execute(
+            prepared=_status_prepared(),
+            request=_status_request(record.external_operation_id),
+            credential=SecretValue("tiktok-secret"),
+            timeout_seconds=5,
+        )
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["operation_state"], "FAILED")
+        self.assertEqual(operations.get(record.operation_id).state, ProviderOperationState.FAILED)
 
     def test_tracking_store_failure_after_publish_is_uncertain_and_preflight_blocks_replay(self) -> None:
         key = "idem-tracked-tiktok-store-failure-001"
