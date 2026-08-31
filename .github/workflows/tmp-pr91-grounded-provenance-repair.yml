@@ -1,0 +1,50 @@
+name: TMP PR91 Grounded Provenance Repair
+
+on:
+  push:
+    branches:
+      - test/pr91-grounded-provenance-repair-v1
+
+permissions:
+  contents: write
+
+jobs:
+  targeted:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply candidate repair
+        run: python scripts/tmp_pr91_grounded_provenance_repair.py
+      - name: Compile candidate patch
+        run: python -m py_compile runtime/engine.py tests/test_workspace_scope_provenance_isolation_60.py
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+      - name: Run targeted regressions
+        run: >-
+          python -m unittest
+          tests.test_workspace_scope_provenance_isolation_60
+          tests.test_runtime_builder_canonical_lineage_scope_v1
+          tests.test_runtime_trusted_legacy_scope_authority_v1
+          tests.test_context_compiler_dual_scope_read_v1
+          tests.test_runtime_canonical_scope_plan_v1
+          tests.test_runtime_builder_scope_isolation_v1
+          tests.test_phase6_2_pilot_and_v1_release
+          -v
+      - name: Verify patch hygiene
+        run: git diff --check
+      - name: Commit validated candidate
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py
+          git commit -m "test: validated PR91 grounded provenance repair"
+          git push origin HEAD:test/pr91-grounded-provenance-repair-v1
