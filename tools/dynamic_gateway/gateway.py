@@ -17,6 +17,10 @@ from schemas.base import BaseModel, Field
 from tools.capabilities import CapabilityDescriptor, CapabilityRegistry
 from tools.dynamic_gateway.adapters import McpRegistryAdapter, PluginRegistryAdapter
 from tools.dynamic_gateway.marketing import MarketingGatewayRoute, MarketingRegistrySandboxAdapter
+from tools.dynamic_gateway.marketing_live import (
+    MarketingLiveExecutorRegistry,
+    MarketingRegistryLiveAdapter,
+)
 from tools.dynamic_gateway.registry import CompositeCapabilityRegistry
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository
 from tools.security import PolicyEngine
@@ -47,6 +51,8 @@ class DynamicToolGateway:
         plugin_registry: Optional[PluginRegistry] = None,
         mcp_registry: Optional[McpServerRegistry] = None,
         marketing_registry: Optional[MarketingConnectorRegistry] = None,
+        marketing_live_executor_registry: Optional[MarketingLiveExecutorRegistry] = None,
+        allow_live_marketing_execution: bool = False,
         policy_engine: Optional[PolicyEngine] = None,
         receipt_repository: Optional[ExecutionReceiptRepository] = None,
     ) -> None:
@@ -63,6 +69,34 @@ class DynamicToolGateway:
             else None
         )
 
+        if marketing_registry is None and marketing_live_executor_registry is not None:
+            raise ValueError("marketing_live_executor_registry requires marketing_registry.")
+        if (
+            marketing_registry is not None
+            and marketing_live_executor_registry is not None
+            and marketing_live_executor_registry.marketing_registry is not marketing_registry
+        ):
+            raise ValueError(
+                "marketing_live_executor_registry must be bound to the same MarketingConnectorRegistry instance."
+            )
+        self.marketing_live_executor_registry = (
+            marketing_live_executor_registry
+            if marketing_live_executor_registry is not None
+            else MarketingLiveExecutorRegistry(marketing_registry)
+            if marketing_registry is not None
+            else None
+        )
+        self.allow_live_marketing_execution = bool(allow_live_marketing_execution)
+        self._marketing_live_adapter = (
+            MarketingRegistryLiveAdapter(
+                marketing_registry,
+                self.marketing_live_executor_registry,
+                allow_live_execution=self.allow_live_marketing_execution,
+            )
+            if marketing_registry is not None and self.marketing_live_executor_registry is not None
+            else None
+        )
+
         self.gateway = ToolGateway(
             capability_registry=self.registry,
             policy_engine=policy_engine,
@@ -72,6 +106,8 @@ class DynamicToolGateway:
         self.gateway.register_adapter(self._mcp_adapter)
         if self._marketing_adapter is not None:
             self.gateway.register_adapter(self._marketing_adapter)
+        if self._marketing_live_adapter is not None:
+            self.gateway.register_adapter(self._marketing_live_adapter)
 
     def _bind_provider_aliases(self, descriptors: List[CapabilityDescriptor]) -> None:
         for descriptor in descriptors:
@@ -80,6 +116,8 @@ class DynamicToolGateway:
                 self.gateway.bind_adapter_alias(provider, self._plugin_adapter)
             elif provider.startswith("mcp:"):
                 self.gateway.bind_adapter_alias(provider, self._mcp_adapter)
+            elif provider.startswith("marketing-live:") and self._marketing_live_adapter is not None:
+                self.gateway.bind_adapter_alias(provider, self._marketing_live_adapter)
             elif provider.startswith("marketing:") and self._marketing_adapter is not None:
                 self.gateway.bind_adapter_alias(provider, self._marketing_adapter)
 
@@ -129,6 +167,7 @@ class DynamicToolGateway:
         connector_id: str,
         provider: str,
         base_capability_id: str,
+        execution_mode: MarketingExecutionMode = MarketingExecutionMode.SANDBOX,
     ) -> CapabilityDescriptor:
         base = self.registry.base_registry.get_capability(base_capability_id)
         if base is None:
@@ -140,15 +179,25 @@ class DynamicToolGateway:
         if policy.is_write:
             required.append("idempotency_key")
         dynamic_id = self._marketing_capability_id(connector_id, base_capability_id)
+        is_live = execution_mode is MarketingExecutionMode.LIVE
+        mode_label = "LIVE" if is_live else "SANDBOX"
+        capability_provider = (
+            f"marketing-live:{connector_id.strip().lower()}"
+            if is_live
+            else f"marketing:{connector_id.strip().lower()}"
+        )
+        description = (
+            f"Trusted LIVE external marketing route for connector '{connector_id}'. "
+            "Provider execution is permitted only after ToolGateway governance, explicit runtime LIVE opt-in, exact executor binding, and scoped credential resolution."
+            if is_live
+            else f"Sandbox-governed external marketing route for connector '{connector_id}'. No provider network call or real external side effect is permitted in this version."
+        )
         return CapabilityDescriptor(
             capability_id=dynamic_id,
-            name=f"{base.name} via {provider} [SANDBOX]",
+            name=f"{base.name} via {provider} [{mode_label}]",
             category=base.category,
             evidence_role=base.evidence_role,
-            description=(
-                f"Sandbox-governed external marketing route for connector '{connector_id}'. "
-                "No provider network call or real external side effect is permitted in this version."
-            ),
+            description=description,
             input_schema={
                 "type": "object",
                 "required": required,
@@ -175,28 +224,31 @@ class DynamicToolGateway:
             risk_level=policy.risk_level,
             human_approval_required=policy.approval_required,
             supported_agents=list(base.supported_agents),
-            provider=f"marketing:{connector_id.strip().lower()}",
-            availability="MOCK_ONLY",
+            provider=capability_provider,
+            availability="AVAILABLE" if is_live else "MOCK_ONLY",
             cost_policy=base.cost_policy,
             timeout_policy=base.timeout_policy,
+            # V1 intentionally suppresses automatic replay for all marketing
+            # routes. Consequential writes are additionally protected by the
+            # ToolGateway durable-intent ambiguity semantics.
             retry_policy={"max_retries": 0, "backoff_seconds": 0.0, "retryable_errors": []},
             audit_policy={"log_payload": True, "redact_secrets": True, "emit_receipt": True},
         )
 
     def sync_marketing(self) -> DynamicGatewaySyncReport:
-        """Expose only SANDBOX marketing specs as namespaced governed capabilities.
+        """Expose governed SANDBOX or explicitly enabled LIVE marketing specs.
 
-        CONTRACT_ONLY specs stay non-executable. LIVE specs are explicitly rejected
-        by this adapter version even if their registry was created with live
-        registration opt-in. Real provider execution requires a later dedicated
-        driver boundary after approval and secret resolution are wired together.
+        CONTRACT_ONLY specs stay non-executable. LIVE requires three independent
+        authorities: registry registration opt-in, DynamicToolGateway runtime
+        execution opt-in, and an exact trusted executor binding for the connector.
         """
         report = DynamicGatewaySyncReport()
         if self.marketing_registry is None or self._marketing_adapter is None:
             return report
 
         configured_sources = set()
-        routes: Dict[str, MarketingGatewayRoute] = {}
+        sandbox_routes: Dict[str, MarketingGatewayRoute] = {}
+        live_routes: Dict[str, MarketingGatewayRoute] = {}
 
         for spec in self.marketing_registry.list_specs():
             source = f"marketing:{spec.connector_id.strip().lower()}"
@@ -206,13 +258,25 @@ class DynamicToolGateway:
                 if self.registry.remove_dynamic_source(source):
                     report.removed_sources.append(source)
                 continue
+
             if spec.execution_mode is MarketingExecutionMode.LIVE:
-                if self.registry.remove_dynamic_source(source):
-                    report.removed_sources.append(source)
-                report.errors[source] = (
-                    "LIVE_MARKETING_EXECUTION_UNSUPPORTED: sandbox gateway adapter refuses LIVE specs."
-                )
-                continue
+                if not self.allow_live_marketing_execution or self._marketing_live_adapter is None:
+                    if self.registry.remove_dynamic_source(source):
+                        report.removed_sources.append(source)
+                    report.errors[source] = (
+                        "LIVE_MARKETING_EXECUTION_DISABLED: explicit trusted DynamicToolGateway opt-in is required."
+                    )
+                    continue
+                if (
+                    self.marketing_live_executor_registry is None
+                    or not self.marketing_live_executor_registry.is_bound(spec.connector_id)
+                ):
+                    if self.registry.remove_dynamic_source(source):
+                        report.removed_sources.append(source)
+                    report.errors[source] = (
+                        "LIVE_MARKETING_EXECUTOR_NOT_BOUND: exact trusted connector executor binding is required."
+                    )
+                    continue
 
             try:
                 descriptors: List[CapabilityDescriptor] = []
@@ -222,9 +286,14 @@ class DynamicToolGateway:
                         connector_id=spec.connector_id,
                         provider=spec.provider,
                         base_capability_id=base_capability_id,
+                        execution_mode=spec.execution_mode,
                     )
                     dynamic_id = descriptor.capability_id.lower()
-                    if dynamic_id in routes or dynamic_id in staged_routes:
+                    if (
+                        dynamic_id in sandbox_routes
+                        or dynamic_id in live_routes
+                        or dynamic_id in staged_routes
+                    ):
                         raise ValueError(f"Duplicate marketing capability route '{dynamic_id}'.")
                     descriptors.append(descriptor)
                     staged_routes[dynamic_id] = MarketingGatewayRoute(
@@ -235,7 +304,10 @@ class DynamicToolGateway:
 
                 report.marketing_capabilities += self.registry.replace_dynamic_source(source, descriptors)
                 self._bind_provider_aliases(descriptors)
-                routes.update(staged_routes)
+                if spec.execution_mode is MarketingExecutionMode.LIVE:
+                    live_routes.update(staged_routes)
+                else:
+                    sandbox_routes.update(staged_routes)
             except Exception as exc:
                 if self.registry.remove_dynamic_source(source):
                     report.removed_sources.append(source)
@@ -246,7 +318,9 @@ class DynamicToolGateway:
                 if self.registry.remove_dynamic_source(source):
                     report.removed_sources.append(source)
 
-        self._marketing_adapter.replace_routes(routes)
+        self._marketing_adapter.replace_routes(sandbox_routes)
+        if self._marketing_live_adapter is not None:
+            self._marketing_live_adapter.replace_routes(live_routes)
         return report
 
     def sync_all(self) -> DynamicGatewaySyncReport:
