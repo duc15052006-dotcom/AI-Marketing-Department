@@ -28,6 +28,7 @@ from connectors.marketing.providers.tiktok import (
     TikTokTransportError,
     UrllibTikTokHttpTransport,
 )
+from connectors.marketing.providers.tiktok_tracking import TrackedTikTokMarketingExecutor
 
 __all__ = [
     "GoogleAdsReadExecutor",
@@ -52,4 +53,5 @@ __all__ = [
     "TikTokMarketingExecutor",
     "TikTokTransportError",
     "UrllibTikTokHttpTransport",
+    "TrackedTikTokMarketingExecutor",
 ]
