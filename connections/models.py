@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, replace
+from types import MappingProxyType
 from typing import Any, Dict, Mapping, Optional, Tuple
 from urllib.parse import parse_qsl, urlsplit
 
@@ -47,9 +48,29 @@ def _validate_public_metadata(value: Any, path: str = "metadata") -> None:
                     f"Raw credential field '{path}.{key}' is not allowed; store it in a SecretProvider and keep only secret_ref."
                 )
             _validate_public_metadata(child, f"{path}.{key}")
-    elif isinstance(value, (list, tuple, set)):
+    elif isinstance(value, (list, tuple, set, frozenset)):
         for index, child in enumerate(value):
             _validate_public_metadata(child, f"{path}[{index}]")
+
+
+def _freeze_public_metadata(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(key): _freeze_public_metadata(child) for key, child in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_public_metadata(child) for child in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_freeze_public_metadata(child) for child in value)
+    return value
+
+
+def _thaw_public_metadata(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _thaw_public_metadata(child) for key, child in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_public_metadata(child) for child in value]
+    if isinstance(value, frozenset):
+        return sorted((_thaw_public_metadata(child) for child in value), key=repr)
+    return value
 
 
 def _validate_endpoint(endpoint: Optional[str]) -> None:
@@ -101,7 +122,7 @@ class ConnectionProfile:
 
         object.__setattr__(self, "project_ids", tuple(dict.fromkeys(self.project_ids)))
         object.__setattr__(self, "brand_ids", tuple(dict.fromkeys(self.brand_ids)))
-        object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(self, "metadata", _freeze_public_metadata(dict(self.metadata)))
 
     def with_updates(self, **updates: Any) -> "ConnectionProfile":
         """Return a validated replacement profile."""
@@ -119,7 +140,7 @@ class ConnectionProfile:
             "business_id": self.business_id,
             "project_ids": list(self.project_ids),
             "brand_ids": list(self.brand_ids),
-            "metadata": dict(self.metadata),
+            "metadata": _thaw_public_metadata(self.metadata),
         }
 
     def __repr__(self) -> str:
