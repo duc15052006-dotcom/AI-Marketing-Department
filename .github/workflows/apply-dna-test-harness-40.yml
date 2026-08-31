@@ -1,0 +1,42 @@
+name: Apply DNA Test Harness Patch
+
+on:
+  push:
+    branches: [fix/runtime-full-agent-dna-39-v2]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[dna-test-harness-patched]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-full-agent-dna-39-v2
+          fetch-depth: 0
+
+      - name: Patch brittle prompt-text test doubles
+        run: python scripts/_patch_dna_test_harness_40.py
+
+      - name: Verify focused regressions
+        shell: bash
+        run: |
+          git diff --check
+          python -m py_compile tests/test_prod_core_authority_01a.py tests/test_prod_runtime_01_single_run_authority.py tests/test_runtime_agent_dna_wiring_28.py
+          python -m unittest \
+            tests.test_prod_core_authority_01a.TestFailureShortCircuit \
+            tests.test_prod_runtime_01_single_run_authority.TestProdRuntime01SingleRunAuthority.test_11_middle_stage_failure_marks_context_failed_deterministically \
+            tests.test_runtime_agent_dna_wiring_28 -v
+
+      - name: Commit test-harness fix and remove temporary helpers
+        shell: bash
+        run: |
+          rm .github/workflows/apply-dna-test-harness-40.yml
+          rm scripts/_patch_dna_test_harness_40.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_prod_core_authority_01a.py tests/test_prod_runtime_01_single_run_authority.py tests/test_runtime_agent_dna_wiring_28.py .github/workflows/apply-dna-test-harness-40.yml scripts/_patch_dna_test_harness_40.py
+          git commit -m "Use runtime agent metadata in DNA test doubles [dna-test-harness-patched]"
+          git push origin HEAD:fix/runtime-full-agent-dna-39-v2
