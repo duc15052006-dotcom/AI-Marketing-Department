@@ -676,6 +676,8 @@ class FiveAgentDepartmentRuntime:
         trusted_run_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
+        trusted_knowledge_scope: Optional[str] = None,
+        trusted_memory_scope: Optional[str] = None,
         progress_sink: Optional[ProgressSink] = None,
         mode: str = ProgressMode.FULL_WORKFLOW.value,
     ) -> RuntimeContext:
@@ -718,6 +720,8 @@ class FiveAgentDepartmentRuntime:
                 user_id=user_id,
                 chat_id=chat_id,
                 project_id=project_id,
+                trusted_knowledge_scope=trusted_knowledge_scope,
+                trusted_memory_scope=trusted_memory_scope,
                 status=RuntimeStatus.RUNNING,
                 current_stage=RuntimeStage.INIT,
                 model_policy=pol_dict,
