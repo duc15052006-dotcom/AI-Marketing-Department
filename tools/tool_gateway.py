@@ -61,14 +61,28 @@ class ToolRequest(BaseModel):
     timeout_seconds: Optional[float] = Field(default=None, description="Optional override for execution timeout")
     business_id: Optional[str] = Field(default=None, description="Tenant/business scope")
     project_id: Optional[str] = Field(default=None, description="Associated workspace project ID")
+    brand_id: Optional[str] = Field(default=None, description="Trusted brand scope for account-bound operations")
     chat_id: Optional[str] = Field(default=None, description="Associated chat session ID")
 
-    def calculate_request_hash(self) -> str:
-        """Compute SHA-256 hash of the request parameters."""
-        raw = (
-            f"{self.run_id}:{self.agent_id}:{self.capability_id}:"
-            f"{json.dumps(self.parameters, sort_keys=True, ensure_ascii=False)}"
-        )
+    def calculate_request_hash(
+        self,
+        *,
+        business_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        brand_id: Optional[str] = None,
+    ) -> str:
+        """Compute SHA-256 hash of parameters plus trusted execution scope."""
+        effective_business_id = self.business_id if business_id is None else business_id
+        effective_project_id = self.project_id if project_id is None else project_id
+        effective_brand_id = self.brand_id if brand_id is None else brand_id
+        payload = json.dumps(self.parameters, sort_keys=True, ensure_ascii=False)
+        if effective_business_id is None and effective_project_id is None and effective_brand_id is None:
+            raw = f"{self.run_id}:{self.agent_id}:{self.capability_id}:{payload}"
+        else:
+            raw = (
+                f"v2:{self.run_id}:{self.agent_id}:{self.capability_id}:"
+                f"{effective_business_id or ''}:{effective_project_id or ''}:{effective_brand_id or ''}:{payload}"
+            )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -222,6 +236,7 @@ class ToolGateway:
         error_class: str,
         error_message: str,
         business_id: Optional[str],
+        project_id: Optional[str],
         approval_reference: Optional[str] = None,
         execution_mode: ExecutionMode = ExecutionMode.MOCK,
     ) -> ExecutionReceipt:
@@ -239,22 +254,34 @@ class ToolGateway:
             error_message=error_message,
             approval_reference=approval_reference,
             business_id=business_id,
-            project_id=request.project_id,
+            project_id=project_id,
             chat_id=request.chat_id,
         )
 
     def execute(self, request: ToolRequest) -> ExecutionReceipt:
         """Execute a tool capability with governance, durable intent, and receipts."""
         start_time = datetime.now(timezone.utc)
-        req_hash = request.calculate_request_hash()
 
-        # A request may omit business_id only when a valid server-side approval
-        # already pins the execution to one business. Never infer from caller data.
+        # Approval authority may restore omitted trusted scope, but model-controlled
+        # parameters are never used to infer business/project/brand context.
         effective_business_id = request.business_id
-        if request.approval_token and not effective_business_id:
+        effective_project_id = request.project_id
+        effective_brand_id = request.brand_id
+        if request.approval_token:
             approval_record = self.policy_engine.get_approval(request.approval_token)
-            if approval_record is not None and approval_record.business_id:
-                effective_business_id = approval_record.business_id
+            if approval_record is not None:
+                if not effective_business_id and approval_record.business_id:
+                    effective_business_id = approval_record.business_id
+                if not effective_project_id and approval_record.project_id:
+                    effective_project_id = approval_record.project_id
+                if not effective_brand_id and approval_record.brand_id:
+                    effective_brand_id = approval_record.brand_id
+
+        req_hash = request.calculate_request_hash(
+            business_id=effective_business_id,
+            project_id=effective_project_id,
+            brand_id=effective_brand_id,
+        )
 
         # 1. Capability Discovery
         cap = self.registry.get_capability(request.capability_id)
@@ -272,6 +299,7 @@ class ToolGateway:
                         "in CapabilityRegistry."
                     ),
                     business_id=effective_business_id,
+                    project_id=effective_project_id,
                 )
             )
 
@@ -283,6 +311,8 @@ class ToolGateway:
             run_id=request.run_id,
             business_id=effective_business_id,
             parameters=request.parameters,
+            project_id=effective_project_id,
+            brand_id=effective_brand_id,
         )
         if not decision.allowed:
             status = (
@@ -304,6 +334,8 @@ class ToolGateway:
                     business_id=effective_business_id,
                     scope="",
                     risk_level=cap.risk_level,
+                    project_id=effective_project_id,
+                    brand_id=effective_brand_id,
                 )
                 appr_ref = pending_rec.pending_approval_id
 
@@ -318,6 +350,7 @@ class ToolGateway:
                     error_message=decision.reason,
                     approval_reference=appr_ref,
                     business_id=effective_business_id,
+                    project_id=effective_project_id,
                 )
             )
 
@@ -337,6 +370,7 @@ class ToolGateway:
                         "with ToolGateway."
                     ),
                     business_id=effective_business_id,
+                    project_id=effective_project_id,
                 )
             )
 
@@ -363,6 +397,7 @@ class ToolGateway:
                             request.approval_token
                         ),
                         business_id=effective_business_id,
+                        project_id=effective_project_id,
                     )
                 )
 
@@ -384,7 +419,7 @@ class ToolGateway:
 
         try:
             # Critical ordering invariant:
-            # PREPARED -> DISPATCHING is durably committed before adapter.execute.
+            # PREPARED -> DISPATCHING is durably committed before adapter execution.
             # Any crash after DISPATCHING and before finalization is ambiguous and
             # must never be interpreted as proof that the side effect did not run.
             if cap_is_consequential:
@@ -396,7 +431,7 @@ class ToolGateway:
                     provider=adapter.adapter_name,
                     request_hash=req_hash,
                     business_id=effective_business_id,
-                    project_id=request.project_id,
+                    project_id=effective_project_id,
                     chat_id=request.chat_id,
                     approval_reference=self._safe_approval_reference(
                         request.approval_token
@@ -408,14 +443,26 @@ class ToolGateway:
 
             for attempt in range(max_retries + 1):
                 try:
-                    adapter_res = adapter.execute(
-                        capability_id=cap.capability_id,
-                        parameters=request.parameters,
-                        timeout_seconds=timeout,
-                        run_id=request.run_id,
-                        business_id=effective_business_id or "",
-                        project_id=request.project_id or "",
-                    )
+                    scoped_execute = getattr(adapter, "execute_with_trusted_scope", None)
+                    if callable(scoped_execute):
+                        adapter_res = scoped_execute(
+                            capability_id=cap.capability_id,
+                            parameters=request.parameters,
+                            timeout_seconds=timeout,
+                            run_id=request.run_id,
+                            business_id=effective_business_id or "",
+                            project_id=effective_project_id or "",
+                            brand_id=effective_brand_id or "",
+                        )
+                    else:
+                        adapter_res = adapter.execute(
+                            capability_id=cap.capability_id,
+                            parameters=request.parameters,
+                            timeout_seconds=timeout,
+                            run_id=request.run_id,
+                            business_id=effective_business_id or "",
+                            project_id=effective_project_id or "",
+                        )
                     last_exc = None
                     exception_error_code = None
                 except Exception as exc:
@@ -472,7 +519,7 @@ class ToolGateway:
                 artifact_references=adapter_res.artifact_refs,
                 approval_reference=safe_approval_ref,
                 business_id=effective_business_id,
-                project_id=request.project_id,
+                project_id=effective_project_id,
                 chat_id=request.chat_id,
                 observation_record=adapter_res.observation_record,
             )
@@ -517,7 +564,7 @@ class ToolGateway:
                 artifact_references=adapter_res.artifact_refs if adapter_res else [],
                 approval_reference=safe_approval_ref,
                 business_id=effective_business_id,
-                project_id=request.project_id,
+                project_id=effective_project_id,
                 chat_id=request.chat_id,
             )
 
