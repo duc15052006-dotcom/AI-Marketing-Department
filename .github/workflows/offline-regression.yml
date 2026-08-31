@@ -58,7 +58,7 @@ jobs:
       - name: Compile Python sources
         shell: pwsh
         run: |
-          python -m compileall -q app_api chat config connections connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          python -m compileall -q app_api chat config connections connectors creative_engine governance integrations knowledge memory observability runtime schemas scripts tools workspace tests 2>&1 | Tee-Object -FilePath .ci-results/compile.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run repair regressions
