@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from connections.models import ConnectionProfile
-from connections.secrets import SecretProvider, SecretValue
+from connections.secrets import SecretProvider, SecretValue, UnsupportedSecretReferenceError
 
 
 class ConnectionManagerError(RuntimeError):
@@ -48,6 +48,10 @@ class ConnectionManager:
         self._profiles: Dict[str, ConnectionProfile] = {}
 
     def register(self, profile: ConnectionProfile, *, replace: bool = False) -> ConnectionProfile:
+        if not self._secret_provider.can_resolve(profile.secret_ref):
+            raise UnsupportedSecretReferenceError(
+                f"No configured SecretProvider accepts reference '{profile.secret_ref}'."
+            )
         existing = self._profiles.get(profile.connection_id)
         if existing is not None and not replace:
             raise ConnectionAlreadyExistsError(
