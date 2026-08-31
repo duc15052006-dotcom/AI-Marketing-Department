@@ -86,6 +86,8 @@ def build_runtime_canonical_scope_plan(context: RuntimeContext) -> RuntimeCanoni
     business_id = _clean(authority.business_id)
     project_id = _clean(authority.project_id)
     campaign_id = _clean(authority.campaign_id)
+    trusted_knowledge_scope = _clean(authority.trusted_knowledge_scope)
+    trusted_memory_scope = _clean(authority.trusted_memory_scope)
 
     knowledge_keys = []
     memory_keys = []
@@ -101,6 +103,15 @@ def build_runtime_canonical_scope_plan(context: RuntimeContext) -> RuntimeCanoni
             knowledge_keys.append(knowledge_key)
         if memory_key not in memory_keys:
             memory_keys.append(memory_key)
+
+    # Exact legacy aliases are accepted only after a trusted workspace binds
+    # them into immutable RuntimeContext authority at run creation.
+    if trusted_knowledge_scope and trusted_knowledge_scope.upper() != "GLOBAL":
+        if trusted_knowledge_scope not in knowledge_keys:
+            knowledge_keys.append(trusted_knowledge_scope)
+    if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":
+        if trusted_memory_scope not in memory_keys:
+            memory_keys.append(trusted_memory_scope)
 
     return RuntimeCanonicalScopePlan(
         run_id=authority.run_id,
