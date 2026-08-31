@@ -1,0 +1,37 @@
+name: Checkpoint Index Metadata Red Proof 60
+
+on:
+  push:
+    branches: [fix/checkpoint-index-metadata-integrity-60]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Run checkpoint metadata adversarial regression
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_checkpoint_index_metadata_integrity_60
