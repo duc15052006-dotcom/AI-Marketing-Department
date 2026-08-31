@@ -72,15 +72,15 @@ class SecureStoreSecretProvider:
     def can_resolve(self, secret_ref: str) -> bool:
         if not isinstance(secret_ref, str):
             return False
-        ref_upper = secret_ref.strip().upper()
-        return any(ref_upper.startswith(prefix) and len(ref_upper) > len(prefix) for prefix in self._SUPPORTED_PREFIXES)
+        ref = secret_ref.strip()
+        return any(ref.startswith(prefix) and len(ref) > len(prefix) for prefix in self._SUPPORTED_PREFIXES)
 
     def get(self, secret_ref: str) -> SecretValue:
         if not self.can_resolve(secret_ref):
             raise UnsupportedSecretReferenceError(
-                "SecureStoreSecretProvider only accepts explicit STORE: or ENV: references."
+                "SecureStoreSecretProvider only accepts canonical STORE: or ENV: references."
             )
-        value = self._secret_store.get_secret(secret_ref)
+        value = self._secret_store.get_secret(secret_ref.strip())
         if not value:
             raise SecretNotFoundError(f"Secret reference '{secret_ref}' could not be resolved.")
         return SecretValue(value)
