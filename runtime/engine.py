@@ -71,9 +71,10 @@ from runtime.handoff import (
     render_handoff_sections,
     strip_handoff_block,
 )
-from runtime.knowledge_builder import KnowledgeContextBuilder
+from runtime.knowledge_builder import KnowledgeContextBuilder, KnowledgeRetrievalResult
 from runtime.lineage import LineageInspector
-from runtime.memory_builder import MemoryContextBuilder
+from runtime.memory_builder import MemoryContextBuilder, MemoryRetrievalResult
+from runtime.scope_bridge import build_runtime_canonical_scope_plan
 from tools.capabilities import CapabilityRegistry
 from tools.evidence import EvidenceBuilder, EvidenceBundleSemanticValidator, GroundingContextBuilder, SubjectIdentity, SemanticCoherenceStatus
 from tools.observation.models import ObservationRecord
@@ -261,6 +262,139 @@ class FiveAgentDepartmentRuntime:
                 )
             except Exception:
                 pass
+
+
+    @staticmethod
+    def _ordered_unique_scope_keys(values: List[str]) -> List[str]:
+        """Return non-blank exact scope keys in stable priority order."""
+        seen: Set[str] = set()
+        ordered: List[str] = []
+        for value in values:
+            key = str(value or "").strip()
+            if key and key not in seen:
+                seen.add(key)
+                ordered.append(key)
+        return ordered
+
+    def _stage_lineage_scope_keys(self, context: RuntimeContext) -> Tuple[List[str], List[str]]:
+        """Build exact builder scopes from immutable runtime authority only.
+
+        Canonical project/business keys are authoritative. Exact legacy keys are
+        derived from the same immutable IDs for migration compatibility; mutable
+        working_state scope hints are deliberately ignored. GLOBAL remains an
+        explicit exact fallback and never becomes an unscoped repository read.
+        """
+        plan = build_runtime_canonical_scope_plan(context)
+        knowledge_scopes = list(plan.knowledge_scope_keys)
+        memory_scopes = list(plan.memory_scope_keys)
+
+        project_id = str(plan.project_id or "").strip()
+        business_id = str(plan.business_id or "").strip()
+
+        if project_id and project_id.upper() != "GLOBAL":
+            legacy_project = f"SCOPE_PROJ_{project_id}"
+            knowledge_scopes.append(legacy_project)
+            memory_scopes.append(legacy_project)
+
+        if business_id and business_id.upper() not in ("GLOBAL", "BIZ_DEFAULT"):
+            # Both historical business encodings exist in workspace data. They
+            # are safe here because both are derived from immutable business_id.
+            legacy_business_keys = (
+                f"SCOPE_{business_id}",
+                f"SCOPE_BIZ_{business_id}",
+            )
+            knowledge_scopes.extend(legacy_business_keys)
+            memory_scopes.extend(legacy_business_keys)
+        elif business_id.upper() == "BIZ_DEFAULT":
+            # Historical default-business knowledge had a dedicated exact key;
+            # memory historically fell back directly to GLOBAL.
+            knowledge_scopes.append("SCOPE_BIZ_DEFAULT")
+
+        if plan.include_global:
+            knowledge_scopes.append("GLOBAL")
+            memory_scopes.append("GLOBAL")
+
+        return (
+            self._ordered_unique_scope_keys(knowledge_scopes),
+            self._ordered_unique_scope_keys(memory_scopes),
+        )
+
+    def _build_stage_lineage_context(
+        self,
+        agent_id: str,
+        context: RuntimeContext,
+        *,
+        include_memory: bool,
+    ) -> Tuple[KnowledgeRetrievalResult, MemoryRetrievalResult]:
+        """Aggregate bounded exact-scope builder results for stage lineage."""
+        knowledge_scopes, memory_scopes = self._stage_lineage_scope_keys(context)
+
+        documents = []
+        citations = []
+        knowledge_sections: List[str] = []
+        seen_knowledge_ids: Set[str] = set()
+        for scope in knowledge_scopes:
+            result = self.knowledge_builder.build_context_for_agent(
+                agent_id,
+                query_text=context.objective,
+                scope=scope,
+            )
+            if result.context_text:
+                knowledge_sections.append(result.context_text)
+            citation_by_knowledge_id = {
+                citation.knowledge_id: citation for citation in result.citations
+            }
+            for document in result.documents:
+                if document.knowledge_id in seen_knowledge_ids:
+                    continue
+                citation = citation_by_knowledge_id.get(document.knowledge_id)
+                if citation is None:
+                    continue
+                seen_knowledge_ids.add(document.knowledge_id)
+                documents.append(document)
+                citations.append(citation)
+                if len(documents) >= 6:
+                    break
+            if len(documents) >= 6:
+                break
+
+        knowledge_result = KnowledgeRetrievalResult(
+            agent_id=agent_id.lower(),
+            documents=documents,
+            citations=citations,
+            context_text=chr(10).join(knowledge_sections),
+            retrieved_count=len(documents),
+        )
+
+        memories = []
+        memory_sections: List[str] = []
+        seen_memory_ids: Set[str] = set()
+        if include_memory:
+            for scope in memory_scopes:
+                result = self.memory_builder.build_context_for_agent(
+                    agent_id,
+                    query_text=context.objective,
+                    scope=scope,
+                )
+                if result.context_text:
+                    memory_sections.append(result.context_text)
+                for memory in result.memories:
+                    if memory.memory_id in seen_memory_ids:
+                        continue
+                    seen_memory_ids.add(memory.memory_id)
+                    memories.append(memory)
+                    if len(memories) >= 5:
+                        break
+                if len(memories) >= 5:
+                    break
+
+        memory_result = MemoryRetrievalResult(
+            agent_id=agent_id.lower(),
+            memories=memories,
+            context_text=chr(10).join(memory_sections),
+            retrieved_count=len(memories),
+        )
+        return knowledge_result, memory_result
 
     def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:
         """Retrieve active ProgressEmitter for run."""
@@ -542,6 +676,8 @@ class FiveAgentDepartmentRuntime:
         trusted_run_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
+        trusted_knowledge_scope: Optional[str] = None,
+        trusted_memory_scope: Optional[str] = None,
         progress_sink: Optional[ProgressSink] = None,
         mode: str = ProgressMode.FULL_WORKFLOW.value,
     ) -> RuntimeContext:
@@ -584,6 +720,8 @@ class FiveAgentDepartmentRuntime:
                 user_id=user_id,
                 chat_id=chat_id,
                 project_id=project_id,
+                trusted_knowledge_scope=trusted_knowledge_scope,
+                trusted_memory_scope=trusted_memory_scope,
                 status=RuntimeStatus.RUNNING,
                 current_stage=RuntimeStage.INIT,
                 model_policy=pol_dict,
@@ -611,8 +749,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn CMO Initial (Strategic Framing)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("cmo", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
-        m_res = self.memory_builder.build_context_for_agent("cmo", query_text=context.objective, scope=context.working_state.get("memory_scope"))
+        k_res, m_res = self._build_stage_lineage_context("cmo", context, include_memory=True)
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
@@ -711,7 +848,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("intelligence", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
+        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
             self.lineage_inspector.add_citation(c)
@@ -962,8 +1099,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Strategist (Positioning & Value Architecture)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("strategist", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
-        m_res = self.memory_builder.build_context_for_agent("strategist", query_text=context.objective, scope=context.working_state.get("memory_scope"))
+        k_res, m_res = self._build_stage_lineage_context("strategist", context, include_memory=True)
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
@@ -1081,7 +1217,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Creative (Hooks & Asset Synthesis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("creative", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
+        k_res, _ = self._build_stage_lineage_context("creative", context, include_memory=False)
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
             self.lineage_inspector.add_citation(c)
@@ -1225,8 +1361,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("performance", query_text=context.objective, scope=context.working_state.get("knowledge_scope"))
-        m_res = self.memory_builder.build_context_for_agent("performance", query_text=context.objective, scope=context.working_state.get("memory_scope"))
+        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)
 
         for c in k_res.citations:
             context.knowledge_refs.append(c.citation_id)
