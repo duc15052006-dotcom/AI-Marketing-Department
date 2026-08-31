@@ -19,6 +19,20 @@ from tools.tool_gateway import ToolGateway
 _MISSING_SCOPE = object()
 
 
+def _as_mapping(value):
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump") and callable(value.model_dump):
+        return value.model_dump()
+    if hasattr(value, "dict") and callable(value.dict):
+        return value.dict()
+    return {}
+
+
+def _enum_value(value):
+    return getattr(value, "value", value)
+
+
 class TestClaimProvenanceNoBackfill(unittest.TestCase):
     def setUp(self) -> None:
         self.verifier = MockClaimVerifier(
@@ -85,9 +99,9 @@ class TestClaimProvenanceNoBackfill(unittest.TestCase):
 
         ledger = self.context.working_state.get("claim_verification_ledger", [])
         self.assertEqual(len(ledger), 1)
-        record = ledger[0]
-        self.assertEqual(str(record.get("verdict", "")).upper(), "SCOPE_VIOLATION")
-        findings = record.get("deterministic_findings") or {}
+        record = _as_mapping(ledger[0])
+        self.assertEqual(str(_enum_value(record.get("verdict", ""))).upper(), "SCOPE_VIOLATION")
+        findings = _as_mapping(record.get("deterministic_findings"))
         self.assertEqual(findings.get("guard_name"), "SECURITY_SCOPE_VIOLATION")
         self.assertFalse(findings.get("passed", True))
 
