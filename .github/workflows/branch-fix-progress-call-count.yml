@@ -40,7 +40,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Update exact model-call invariants
+      - name: Repair exact assertion formatting
         shell: pwsh
         run: |
           @'
@@ -48,26 +48,35 @@ jobs:
 
           path = Path("tests/test_prod_runtime_progress_01.py")
           text = path.read_text(encoding="utf-8")
-          replacements = [
-              (
-                  "        self.assertEqual(gw2.call_count, 6)\n",
-                  "        # Six workflow stages now require seven model calls because the single\\n"
-                  "        # permanent Performance agent executes mandatory internal Pass 5A + 5B.\\n"
-                  "        self.assertEqual(gw2.call_count, 7)\n",
-              ),
-              (
-                  "        self.assertEqual(gw.call_count, 6)\n",
-                  "        # A broken progress sink must not add calls beyond the canonical seven.\\n"
-                  "        self.assertEqual(gw.call_count, 7)\n",
-              ),
-          ]
-          for old, new in replacements:
+
+          bad_one = r'''        # Six workflow stages now require seven model calls because the single\n        # permanent Performance agent executes mandatory internal Pass 5A + 5B.\n        self.assertEqual(gw2.call_count, 7)'''
+          good_one = '''        # Six workflow stages now require seven model calls because the single
+        # permanent Performance agent executes mandatory internal Pass 5A + 5B.
+        self.assertEqual(gw2.call_count, 7)'''
+
+          bad_two = r'''        # A broken progress sink must not add calls beyond the canonical seven.\n        self.assertEqual(gw.call_count, 7)'''
+          good_two = '''        # A broken progress sink must not add calls beyond the canonical seven.
+        self.assertEqual(gw.call_count, 7)'''
+
+          for old, new in ((bad_one, good_one), (bad_two, good_two)):
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"PATCH_ABORTED: expected exactly one occurrence, got {count}: {old!r}")
+                  raise SystemExit(f"PATCH_ABORTED: expected exactly one malformed block, got {count}")
               text = text.replace(old, new, 1)
+
+          lines = text.splitlines()
+          required_assertions = {
+              "        self.assertEqual(gw2.call_count, 7)",
+              "        self.assertEqual(gw.call_count, 7)",
+          }
+          missing = required_assertions.difference(lines)
+          if missing:
+              raise SystemExit(f"PATCH_ABORTED: executable assertion lines missing: {sorted(missing)!r}")
+          if any("\\n        self.assertEqual" in line for line in lines):
+              raise SystemExit("PATCH_ABORTED: literal newline escape still masks an assertion")
+
           path.write_text(text, encoding="utf-8")
-          print("Updated progress model-call invariants from legacy 6 to canonical 7.")
+          print("Repaired progress call-count assertions as executable source lines.")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q tests/test_prod_runtime_progress_01.py tests/test_performance_two_pass_32.py
@@ -81,7 +90,7 @@ jobs:
             tests.test_performance_two_pass_32
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Commit verified invariant update
+      - name: Commit verified invariant formatting
         shell: pwsh
         run: |
           git diff --exit-code -- . ':!tests/test_prod_runtime_progress_01.py'
@@ -92,5 +101,5 @@ jobs:
           if ($LASTEXITCODE -ne 1) { exit $LASTEXITCODE }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Align progress model-call invariant with Performance 5A/5B"
+          git commit -m "Make Performance call-count assertions executable"
           git push origin HEAD:fix/performance-two-pass-44
