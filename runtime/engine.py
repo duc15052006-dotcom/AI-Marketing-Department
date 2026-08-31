@@ -2345,8 +2345,10 @@ class FiveAgentDepartmentRuntime:
         if audit_res is None:
             audit_res = self._fail_closed_audit("MISSING_AUDIT_RESULT", "Authorization audit produced no result.")
 
-        approved_for_deployment = audit_res.authorization_status in ("APPROVED", "APPROVED_WITH_CONDITIONS")
-        if not approved_for_deployment:
+        authorization_status = audit_res.authorization_status
+        approved_for_deployment = authorization_status == "APPROVED"
+        conditional_approval = authorization_status == "APPROVED_WITH_CONDITIONS"
+        if not approved_for_deployment and not conditional_approval:
             context.status = RuntimeStatus.FAILED
             joined_reasons = "; ".join(audit_res.blocking_reasons)[:400]
             context.risk_flags.append(f"FINAL_CMO_NOT_AUTHORIZED: {joined_reasons}")
@@ -2362,9 +2364,9 @@ class FiveAgentDepartmentRuntime:
         output = {
             "stage": "FINAL_CMO",
             "agent": "cmo",
-            "status": "READY_FOR_DEPLOYMENT" if approved_for_deployment else "NOT_READY",
+            "status": "READY_FOR_DEPLOYMENT" if approved_for_deployment else ("READY_FOR_HUMAN_APPROVAL" if conditional_approval else "NOT_READY"),
             "approval_status": audit_res.authorization_status,
-            "reason": "" if approved_for_deployment else "; ".join(audit_res.blocking_reasons)[:300],
+            "reason": "" if approved_for_deployment else ("CONDITIONS_REMAIN_UNRESOLVED" if conditional_approval else "; ".join(audit_res.blocking_reasons)[:300]),
             "claim_audit": audit_res.model_dump(),
             "master_gtm_plan": {
                 "objective": context.objective,
