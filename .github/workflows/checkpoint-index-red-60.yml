@@ -39,29 +39,31 @@ jobs:
 
           path = Path("runtime/job_store.py")
           text = path.read_text(encoding="utf-8")
-          old = '''                checkpoints.append(json.loads(payload_json))'''
-          new = '''                payload = json.loads(payload_json)
-                try:
-                    payload_created_at = datetime.fromisoformat(str(payload["timestamp"])).isoformat()
-                except (KeyError, TypeError, ValueError) as exc:
-                    raise JobStoreIntegrityError(
-                        f"CHECKPOINT_PAYLOAD_INVALID: checkpoint_id={row['checkpoint_id']} field=timestamp"
-                    ) from exc
-
-                trusted_metadata = {
-                    "checkpoint_id": str(payload.get("checkpoint_id") or ""),
-                    "run_id": str(payload.get("run_id") or ""),
-                    "checkpoint_hash": str(payload.get("checkpoint_hash") or ""),
-                    "created_at": payload_created_at,
-                }
-                for field, trusted_value in trusted_metadata.items():
-                    if str(row[field]) != trusted_value:
-                        trusted_checkpoint_id = trusted_metadata["checkpoint_id"] or "UNKNOWN"
-                        raise JobStoreIntegrityError(
-                            "CHECKPOINT_METADATA_INTEGRITY_MISMATCH: "
-                            f"checkpoint_id={trusted_checkpoint_id} field={field}"
-                        )
-                checkpoints.append(payload)'''
+          old = "                checkpoints.append(json.loads(payload_json))"
+          new = "\n".join([
+              "                payload = json.loads(payload_json)",
+              "                try:",
+              "                    payload_created_at = datetime.fromisoformat(str(payload[\"timestamp\"])).isoformat()",
+              "                except (KeyError, TypeError, ValueError) as exc:",
+              "                    raise JobStoreIntegrityError(",
+              "                        f\"CHECKPOINT_PAYLOAD_INVALID: checkpoint_id={row['checkpoint_id']} field=timestamp\"",
+              "                    ) from exc",
+              "",
+              "                trusted_metadata = {",
+              "                    \"checkpoint_id\": str(payload.get(\"checkpoint_id\") or \"\"),",
+              "                    \"run_id\": str(payload.get(\"run_id\") or \"\"),",
+              "                    \"checkpoint_hash\": str(payload.get(\"checkpoint_hash\") or \"\"),",
+              "                    \"created_at\": payload_created_at,",
+              "                }",
+              "                for field, trusted_value in trusted_metadata.items():",
+              "                    if str(row[field]) != trusted_value:",
+              "                        trusted_checkpoint_id = trusted_metadata[\"checkpoint_id\"] or \"UNKNOWN\"",
+              "                        raise JobStoreIntegrityError(",
+              "                            \"CHECKPOINT_METADATA_INTEGRITY_MISMATCH: \"",
+              "                            f\"checkpoint_id={trusted_checkpoint_id} field={field}\"",
+              "                        )",
+              "                checkpoints.append(payload)",
+          ])
           marker = "CHECKPOINT_METADATA_INTEGRITY_MISMATCH:"
           if old in text:
               if text.count(old) != 1:
