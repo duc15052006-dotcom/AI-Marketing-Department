@@ -288,6 +288,14 @@ class FiveAgentDepartmentRuntime:
         knowledge_scopes = list(plan.knowledge_scope_keys)
         memory_scopes = list(plan.memory_scope_keys)
 
+        authority = context.scope
+        trusted_knowledge_scope = str(authority.trusted_knowledge_scope or "").strip()
+        trusted_memory_scope = str(authority.trusted_memory_scope or "").strip()
+        if trusted_knowledge_scope and trusted_knowledge_scope.upper() != "GLOBAL":
+            knowledge_scopes.append(trusted_knowledge_scope)
+        if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":
+            memory_scopes.append(trusted_memory_scope)
+
         project_id = str(plan.project_id or "").strip()
         business_id = str(plan.business_id or "").strip()
 
@@ -676,6 +684,8 @@ class FiveAgentDepartmentRuntime:
         trusted_run_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
+        trusted_knowledge_scope: Optional[str] = None,
+        trusted_memory_scope: Optional[str] = None,
         progress_sink: Optional[ProgressSink] = None,
         mode: str = ProgressMode.FULL_WORKFLOW.value,
     ) -> RuntimeContext:
@@ -718,6 +728,8 @@ class FiveAgentDepartmentRuntime:
                 user_id=user_id,
                 chat_id=chat_id,
                 project_id=project_id,
+                trusted_knowledge_scope=trusted_knowledge_scope,
+                trusted_memory_scope=trusted_memory_scope,
                 status=RuntimeStatus.RUNNING,
                 current_stage=RuntimeStage.INIT,
                 model_policy=pol_dict,

@@ -62,6 +62,8 @@ class OperatorWorkspace:
             business_id=business_id,
             campaign_id=cid,
             user_id=user_id,
+            trusted_knowledge_scope=biz.knowledge_scope if biz else None,
+            trusted_memory_scope=biz.memory_scope if biz else None,
         )
         if biz:
             ctx.constraints.extend(biz.default_constraints)
