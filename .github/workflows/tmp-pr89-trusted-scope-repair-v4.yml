@@ -1,0 +1,70 @@
+name: TMP PR89 Trusted Scope Repair V4
+
+on:
+  push:
+    branches:
+      - test/pr89-trusted-legacy-scope-repair
+
+permissions:
+  contents: write
+
+jobs:
+  targeted:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+      - name: Apply candidate repair
+        shell: python {0}
+        run: |
+          from pathlib import Path
+          import base64
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"ANCHOR_COUNT_MISMATCH {path}: expected 1, got {count}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once("runtime/context.py", "    user_id: Optional[str] = None\n\n\nclass RuntimeContext(BaseModel):", "    user_id: Optional[str] = None\n    trusted_knowledge_scope: Optional[str] = None\n    trusted_memory_scope: Optional[str] = None\n\n\nclass RuntimeContext(BaseModel):")
+          replace_once("runtime/context.py", "    project_id: Optional[str] = Field(default=None, description=\"Optional associated workspace project ID\")\n    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))", "    project_id: Optional[str] = Field(default=None, description=\"Optional associated workspace project ID\")\n    trusted_knowledge_scope: Optional[str] = Field(default=None, description=\"Trusted legacy knowledge scope bound at run creation\")\n    trusted_memory_scope: Optional[str] = Field(default=None, description=\"Trusted legacy memory scope bound at run creation\")\n    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))")
+          replace_once("runtime/context.py", "            \"campaign_id\",\n            \"user_id\",\n        ):", "            \"campaign_id\",\n            \"user_id\",\n            \"trusted_knowledge_scope\",\n            \"trusted_memory_scope\",\n        ):")
+          replace_once("runtime/context.py", "            campaign_id=self.campaign_id,\n            user_id=self.user_id,\n        )", "            campaign_id=self.campaign_id,\n            user_id=self.user_id,\n            trusted_knowledge_scope=self.trusted_knowledge_scope,\n            trusted_memory_scope=self.trusted_memory_scope,\n        )")
+
+          replace_once("runtime/engine.py", "        knowledge_scopes = list(plan.knowledge_scope_keys)\n        memory_scopes = list(plan.memory_scope_keys)\n\n        project_id = str(plan.project_id or \"\").strip()", "        knowledge_scopes = list(plan.knowledge_scope_keys)\n        memory_scopes = list(plan.memory_scope_keys)\n\n        authority = context.scope\n        trusted_knowledge_scope = str(authority.trusted_knowledge_scope or \"\").strip()\n        trusted_memory_scope = str(authority.trusted_memory_scope or \"\").strip()\n        if trusted_knowledge_scope and trusted_knowledge_scope.upper() != \"GLOBAL\":\n            knowledge_scopes.append(trusted_knowledge_scope)\n        if trusted_memory_scope and trusted_memory_scope.upper() != \"GLOBAL\":\n            memory_scopes.append(trusted_memory_scope)\n\n        project_id = str(plan.project_id or \"\").strip()")
+          replace_once("runtime/engine.py", "        trusted_run_id: Optional[str] = None,\n        chat_id: Optional[str] = None,\n        project_id: Optional[str] = None,\n        progress_sink: Optional[ProgressSink] = None,", "        trusted_run_id: Optional[str] = None,\n        chat_id: Optional[str] = None,\n        project_id: Optional[str] = None,\n        trusted_knowledge_scope: Optional[str] = None,\n        trusted_memory_scope: Optional[str] = None,\n        progress_sink: Optional[ProgressSink] = None,")
+          replace_once("runtime/engine.py", "                user_id=user_id,\n                chat_id=chat_id,\n                project_id=project_id,\n                status=RuntimeStatus.RUNNING,", "                user_id=user_id,\n                chat_id=chat_id,\n                project_id=project_id,\n                trusted_knowledge_scope=trusted_knowledge_scope,\n                trusted_memory_scope=trusted_memory_scope,\n                status=RuntimeStatus.RUNNING,")
+
+          replace_once("workspace/operator.py", "            objective=objective,\n            business_id=business_id,\n            campaign_id=cid,\n            user_id=user_id,\n        )", "            objective=objective,\n            business_id=business_id,\n            campaign_id=cid,\n            user_id=user_id,\n            trusted_knowledge_scope=biz.knowledge_scope if biz else None,\n            trusted_memory_scope=biz.memory_scope if biz else None,\n        )")
+
+          test_b64 = "ZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IHVuaXR0ZXN0Cgpmcm9tIGtub3dsZWRnZS5tb2RlbHMgaW1wb3J0IEF1dGhvcml0eUxldmVsLCBLbm93bGVkZ2VEb2N1bWVudCwgS25vd2xlZGdlU291cmNlLCBTb3VyY2VUeXBlCmZyb20ga25vd2xlZGdlLnZlcnNpb25lZF9yZXBvc2l0b3J5IGltcG9ydCBWZXJzaW9uZWRLbm93bGVkZ2VSZXBvc2l0b3J5CmZyb20gbWVtb3J5Lm1vZGVscyBpbXBvcnQgTWVtb3J5SXRlbSwgTWVtb3J5VHlwZSwgUHJvbW90aW9uU3RhdGUKZnJvbSBtZW1vcnkuc2NvcGVkX3JlcG9zaXRvcnkgaW1wb3J0IFNjb3BlZE1lbW9yeVJlcG9zaXRvcnkKZnJvbSBydW50aW1lLmVuZ2luZSBpbXBvcnQgRml2ZUFnZW50RGVwYXJ0bWVudFJ1bnRpbWUKCgpjbGFzcyBSdW50aW1lVHJ1c3RlZExlZ2FjeVNjb3BlQXV0aG9yaXR5VjFUZXN0cyh1bml0dGVzdC5UZXN0Q2FzZSk6CiAgICBAc3RhdGljbWV0aG9kCiAgICBkZWYgX3NhdmVfa25vd2xlZGdlKHJlcG9zaXRvcnksICosIHRpdGxlOiBzdHIsIGNvbnRlbnQ6IHN0ciwgc2NvcGU6IHN0cikgLT4gS25vd2xlZGdlRG9jdW1lbnQ6CiAgICAgICAgc291cmNlID0gcmVwb3NpdG9yeS5zYXZlX3NvdXJjZSgKICAgICAgICAgICAgS25vd2xlZGdlU291cmNlKAogICAgICAgICAgICAgICAgc291cmNlX25hbWU9dGl0bGUsCiAgICAgICAgICAgICAgICBzb3VyY2VfdXJsX29yX3BhdGg9ZiJtYW51YWw6Ly97dGl0bGV9IiwKICAgICAgICAgICAgICAgIHNvdXJjZV90eXBlPVNvdXJjZVR5cGUuTUFSS0VUX1JFU0VBUkNILAogICAgICAgICAgICAgICAgYXV0aG9yaXR5X3Njb3JlPTAuOTUsCiAgICAgICAgICAgICkKICAgICAgICApCiAgICAgICAgcmV0dXJuIHJlcG9zaXRvcnkuc2F2ZV9kb2N1bWVudCgKICAgICAgICAgICAgS25vd2xlZGdlRG9jdW1lbnQoCiAgICAgICAgICAgICAgICBzb3VyY2VfaWQ9c291cmNlLnNvdXJjZV9pZCwKICAgICAgICAgICAgICAgIHRpdGxlPXRpdGxlLAogICAgICAgICAgICAgICAgc291cmNlX3R5cGU9U291cmNlVHlwZS5NQVJLRVRfUkVTRUFSQ0gsCiAgICAgICAgICAgICAgICBjb250ZW50PWNvbnRlbnQsCiAgICAgICAgICAgICAgICBhdXRob3JpdHlfbGV2ZWw9QXV0aG9yaXR5TGV2ZWwuVElFUl8yX1ZFUklGSUVEX1JFU0VBUkNILAogICAgICAgICAgICAgICAgc2NvcGU9c2NvcGUsCiAgICAgICAgICAgICkKICAgICAgICApCgogICAgQHN0YXRpY21ldGhvZAogICAgZGVmIF9zYXZlX21lbW9yeShyZXBvc2l0b3J5LCAqLCBjb250ZW50OiBzdHIsIHNjb3BlOiBzdHIpIC0+IE1lbW9yeUl0ZW06CiAgICAgICAgcmV0dXJuIHJlcG9zaXRvcnkuc2F2ZV9tZW1vcnkoCiAgICAgICAgICAgIE1lbW9yeUl0ZW0oCiAgICAgICAgICAgICAgICBtZW1vcnlfdHlwZT1NZW1vcnlUeXBlLkVQSVNPRElDX01FTU9SWSwKICAgICAgICAgICAgICAgIGFnZW50X3NvdXJjZT0iaW50ZWxsaWdlbmNlIiwKICAgICAgICAgICAgICAgIHJ1bl9pZD1mIlJVTi17c2NvcGV9IiwKICAgICAgICAgICAgICAgIGNvbnRlbnQ9Y29udGVudCwKICAgICAgICAgICAgICAgIGNvbnRleHQ9eyJxdWVyeSI6ICJzY29wZSBsaW5lYWdlIn0sCiAgICAgICAgICAgICAgICBldmlkZW5jZV9yZWZzPVtmIkVWSURFTkNFLXtzY29wZX0iXSwKICAgICAgICAgICAgICAgIGNvbmZpZGVuY2U9MC45NSwKICAgICAgICAgICAgICAgIHByb21vdGlvbl9sZXZlbD1Qcm9tb3Rpb25TdGF0ZS5WRVJJRklFRF9NRU1PUlksCiAgICAgICAgICAgICAgICBzY29wZT1zY29wZSwKICAgICAgICAgICAgKQogICAgICAgICkKCiAgICBkZWYgdGVzdF90cnVzdGVkX2xlZ2FjeV9zY29wZV9hbGlhc19pc19pbW11dGFibGVfYW5kX3dvcmtpbmdfc3RhdGVfc3Bvb2ZfY2Fubm90X3JlZGlyZWN0KHNlbGYpIC0+IE5vbmU6CiAgICAgICAga25vd2xlZGdlX3JlcG8gPSBWZXJzaW9uZWRLbm93bGVkZ2VSZXBvc2l0b3J5KCkKICAgICAgICBtZW1vcnlfcmVwbyA9IFNjb3BlZE1lbW9yeVJlcG9zaXRvcnkoKQoKICAgICAgICB0cnVzdGVkX2RvYyA9IHNlbGYuX3NhdmVfa25vd2xlZGdlKAogICAgICAgICAgICBrbm93bGVkZ2VfcmVwbywKICAgICAgICAgICAgdGl0bGU9InRydXN0ZWQtbGVnYWN5LXNjb3BlIiwKICAgICAgICAgICAgY29udGVudD0ic2NvcGUgbGluZWFnZSBUUlVTVEVEX0xFR0FDWV9LTk9XTEVER0UiLAogICAgICAgICAgICBzY29wZT0iU0NPUEVfUElMT1RfQ0FSRElPIiwKICAgICAgICApCiAgICAgICAgc3Bvb2ZfZG9jID0gc2VsZi5fc2F2ZV9rbm93bGVkZ2UoCiAgICAgICAgICAgIGtub3dsZWRnZV9yZXBvLAogICAgICAgICAgICB0aXRsZT0ic3Bvb2YtbGVnYWN5LXNjb3BlIiwKICAgICAgICAgICAgY29udGVudD0ic2NvcGUgbGluZWFnZSBTUE9PRkVEX0xFR0FDWV9LTk9XTEVER0UiLAogICAgICAgICAgICBzY29wZT0iU0NPUEVfQVRUQUNLRVIiLAogICAgICAgICkKICAgICAgICB0cnVzdGVkX21lbW9yeSA9IHNlbGYuX3NhdmVfbWVtb3J5KAogICAgICAgICAgICBtZW1vcnlfcmVwbywKICAgICAgICAgICAgY29udGVudD0ic2NvcGUgbGluZWFnZSBUUlVTVEVEX0xFR0FDWV9NRU1PUlkiLAogICAgICAgICAgICBzY29wZT0iU0NPUEVfUElMT1RfQ0FSRElPIiwKICAgICAgICApCiAgICAgICAgc3Bvb2ZfbWVtb3J5ID0gc2VsZi5fc2F2ZV9tZW1vcnkoCiAgICAgICAgICAgIG1lbW9yeV9yZXBvLAogICAgICAgICAgICBjb250ZW50PSJzY29wZSBsaW5lYWdlIFNQT09GRURfTEVHQUNZX01FTU9SWSIsCiAgICAgICAgICAgIHNjb3BlPSJTQ09QRV9BVFRBQ0tFUiIsCiAgICAgICAgKQoKICAgICAgICBydW50aW1lID0gRml2ZUFnZW50RGVwYXJ0bWVudFJ1bnRpbWUoCiAgICAgICAgICAgIG1vZGVsX2dhdGV3YXk9b2JqZWN0KCksCiAgICAgICAgICAgIGtub3dsZWRnZV9yZXBvPWtub3dsZWRnZV9yZXBvLAogICAgICAgICAgICBtZW1vcnlfcmVwbz1tZW1vcnlfcmVwbywKICAgICAgICApCiAgICAgICAgcnVudGltZS5fY2FsbF9hZ2VudF9sbG0gPSBsYW1iZGEgKmFyZ3MsICoqa3dhcmdzOiAoIkNNTyBzdHJhdGVnaWMgZnJhbWluZyIsIE5vbmUpCgogICAgICAgIGNvbnRleHQgPSBydW50aW1lLnN0YXJ0X3J1bigKICAgICAgICAgICAgb2JqZWN0aXZlPSJzY29wZSBsaW5lYWdlIiwKICAgICAgICAgICAgYnVzaW5lc3NfaWQ9IkJJWl9BIiwKICAgICAgICAgICAgY2FtcGFpZ25faWQ9IkNBTVBfQSIsCiAgICAgICAgICAgIHRydXN0ZWRfa25vd2xlZGdlX3Njb3BlPSJTQ09QRV9QSUxPVF9DQVJESU8iLAogICAgICAgICAgICB0cnVzdGVkX21lbW9yeV9zY29wZT0iU0NPUEVfUElMT1RfQ0FSRElPIiwKICAgICAgICApCgogICAgICAgIHdpdGggc2VsZi5hc3NlcnRSYWlzZXMoQXR0cmlidXRlRXJyb3IpOgogICAgICAgICAgICBjb250ZXh0LnRydXN0ZWRfa25vd2xlZGdlX3Njb3BlID0gIlNDT1BFX0FUVEFDS0VSIgogICAgICAgIHdpdGggc2VsZi5hc3NlcnRSYWlzZXMoQXR0cmlidXRlRXJyb3IpOgogICAgICAgICAgICBjb250ZXh0LnRydXN0ZWRfbWVtb3J5X3Njb3BlID0gIlNDT1BFX0FUVEFDS0VSIgoKICAgICAgICBjb250ZXh0Lndvcmtpbmdfc3RhdGVbImtub3dsZWRnZV9zY29wZSJdID0gIlNDT1BFX0FUVEFDS0VSIgogICAgICAgIGNvbnRleHQud29ya2luZ19zdGF0ZVsibWVtb3J5X3Njb3BlIl0gPSAiU0NPUEVfQVRUQUNLRVIiCgogICAgICAgIHJ1bnRpbWUuZXhlY3V0ZV9zdGFnZV9jbW9faW5pdGlhbChjb250ZXh0KQoKICAgICAgICBsaW5lYWdlX2tub3dsZWRnZV9pZHMgPSB7CiAgICAgICAgICAgIGNpdGF0aW9uLmtub3dsZWRnZV9pZCBmb3IgY2l0YXRpb24gaW4gcnVudGltZS5saW5lYWdlX2luc3BlY3Rvci5nZXRfYWxsX2NpdGF0aW9ucygpCiAgICAgICAgfQogICAgICAgIHNlbGYuYXNzZXJ0SW4odHJ1c3RlZF9kb2Mua25vd2xlZGdlX2lkLCBsaW5lYWdlX2tub3dsZWRnZV9pZHMpCiAgICAgICAgc2VsZi5hc3NlcnROb3RJbihzcG9vZl9kb2Mua25vd2xlZGdlX2lkLCBsaW5lYWdlX2tub3dsZWRnZV9pZHMpCiAgICAgICAgc2VsZi5hc3NlcnRJbih0cnVzdGVkX21lbW9yeS5tZW1vcnlfaWQsIGNvbnRleHQubWVtb3J5X3JlZnMpCiAgICAgICAgc2VsZi5hc3NlcnROb3RJbihzcG9vZl9tZW1vcnkubWVtb3J5X2lkLCBjb250ZXh0Lm1lbW9yeV9yZWZzKQoKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgICB1bml0dGVzdC5tYWluKCkK"
+          Path("tests/test_runtime_trusted_legacy_scope_authority_v1.py").write_bytes(base64.b64decode(test_b64))
+      - name: Compile candidate patch
+        shell: pwsh
+        run: python -m py_compile runtime/context.py runtime/engine.py workspace/operator.py tests/test_runtime_trusted_legacy_scope_authority_v1.py tests/test_phase6_2_pilot_and_v1_release.py
+      - name: Run targeted regressions
+        shell: pwsh
+        run: python -m unittest tests.test_runtime_builder_canonical_lineage_scope_v1 tests.test_runtime_trusted_legacy_scope_authority_v1 tests.test_context_compiler_dual_scope_read_v1 tests.test_runtime_canonical_scope_plan_v1 tests.test_runtime_builder_scope_isolation_v1 tests.test_phase6_2_pilot_and_v1_release -v
+      - name: Verify patch hygiene
+        shell: pwsh
+        run: git diff --check
+      - name: Commit validated candidate
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/context.py runtime/engine.py workspace/operator.py tests/test_runtime_trusted_legacy_scope_authority_v1.py
+          git commit -m "test: validated PR89 trusted legacy scope repair"
+          git push origin HEAD:test/pr89-trusted-legacy-scope-repair
