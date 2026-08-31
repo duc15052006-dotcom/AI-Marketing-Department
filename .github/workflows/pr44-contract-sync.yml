@@ -80,8 +80,15 @@ jobs:
           )
           replace_once(
               "tests/test_phase1a_runtime_integrity.py",
-              '        cmo_final = runtime.execute_stage_final_cmo(ctx)\n\n        self.assertEqual(cmo_final["status"], "FAILED")\n',
-              '        cmo_final = runtime.execute_stage_final_cmo(ctx)\n        self.assertEqual(call_count[0], 7)\n\n        self.assertEqual(cmo_final["status"], "FAILED")\n',
+              '        s5 = runtime.execute_stage_performance(ctx)\n'
+              '        self.assertEqual(s5["status"], "COMPLETED")\n'
+              '        cmo_final = runtime.execute_stage_final_cmo(ctx)\n\n'
+              '        self.assertEqual(cmo_final["status"], "FAILED")\n',
+              '        s5 = runtime.execute_stage_performance(ctx)\n'
+              '        self.assertEqual(s5["status"], "COMPLETED")\n'
+              '        cmo_final = runtime.execute_stage_final_cmo(ctx)\n'
+              '        self.assertEqual(call_count[0], 7)\n\n'
+              '        self.assertEqual(cmo_final["status"], "FAILED")\n',
           )
 
           replace_exact_count(
