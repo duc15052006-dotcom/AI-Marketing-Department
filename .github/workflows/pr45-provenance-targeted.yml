@@ -1,4 +1,4 @@
-name: PR45 Provenance Targeted Tests
+name: PR45 Provenance Targeted Repair
 
 on:
   push:
@@ -6,28 +6,86 @@ on:
       - fix/claim-provenance-no-scope-backfill-45
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  targeted:
-    runs-on: ubuntu-latest
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/claim-provenance-no-scope-backfill-45
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Install runtime dependencies
+          python-version: "3.12"
+      - name: Install dependencies
+        shell: pwsh
         run: |
-          python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
-      - name: Compile touched runtime and regression
-        run: python -m py_compile runtime/engine.py tests/test_claim_provenance_no_backfill_33.py
-      - name: Run provenance regression
-        run: python -m unittest tests.test_claim_provenance_no_backfill_33 -v
-      - name: Run adjacent claim and scope suites
+      - name: Apply guarded provenance patch
+        shell: pwsh
         run: |
-          python -m unittest \
-            tests.test_claim_evidence_binding \
-            tests.test_claim_verification_engine \
-            tests.test_prod_evidence_scope_01b -v
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+
+          p = Path('runtime/engine.py')
+          text = p.read_text(encoding='utf-8-sig')
+
+          old_scope = '                    scope = str(evidence_item.get("scope", "GLOBAL"))'
+          new_scope = '                    scope = str(evidence_item.get("scope") or "")'
+          if text.count(old_scope) != 1:
+              raise SystemExit(f'expected exactly one implicit-GLOBAL scope line, found {text.count(old_scope)}')
+          text = text.replace(old_scope, new_scope, 1)
+
+          old_backfill = '''                    source_meta["tenant_id"] = source_meta.get("tenant_id") or context.business_id
+                    source_meta["chat_id"] = source_meta.get("chat_id") or context.chat_id
+                    source_meta["project_id"] = source_meta.get("project_id") or context.project_id'''
+          new_backfill = '''                    # Source provenance must come from the evidence itself, never from
+                    # the active run. An explicit business scope may establish
+                    # tenant identity without requiring duplicate tenant metadata.
+                    declared_tenant = source_meta.get("tenant_id") or source_meta.get("brand_id")
+                    if not declared_tenant and scope and scope != "GLOBAL":
+                        if scope.startswith("SCOPE_"):
+                            source_meta["tenant_id"] = scope[len("SCOPE_"):]
+                        elif scope == context.business_id:
+                            source_meta["tenant_id"] = scope'''
+          if text.count(old_backfill) != 1:
+              raise SystemExit(f'expected exactly one active-run provenance backfill block, found {text.count(old_backfill)}')
+          text = text.replace(old_backfill, new_backfill, 1)
+
+          p.write_text(text, encoding='utf-8')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m py_compile runtime/engine.py tests/test_claim_provenance_no_backfill_33.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff -- runtime/engine.py
+      - name: Run targeted provenance and claim-binding suites
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_claim_provenance_no_backfill_33 `
+            tests.test_claim_evidence_binding `
+            tests.test_claim_verification_engine `
+            tests.test_prod_evidence_scope_01b
+      - name: Commit tested production patch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py
+          if (git diff --cached --quiet) { exit 0 }
+          git commit -m "harden: stop laundering missing claim evidence provenance"
+          git push origin HEAD:fix/claim-provenance-no-scope-backfill-45
