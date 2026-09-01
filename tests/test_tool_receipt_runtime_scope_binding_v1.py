@@ -62,6 +62,7 @@ class ToolReceiptRuntimeScopeBindingV1Tests(unittest.TestCase):
         cases = (
             self._receipt(run_id="RUN-SCOPE-B", marker="FOREIGN-RUN"),
             self._receipt(business_id="BIZ_B", marker="FOREIGN-BUSINESS"),
+            self._receipt(business_id=None, marker="MISSING-BUSINESS"),
             self._receipt(project_id="PROJ_B", marker="FOREIGN-PROJECT"),
             self._receipt(chat_id="CHAT_B", marker="FOREIGN-CHAT"),
         )
