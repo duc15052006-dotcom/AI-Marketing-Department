@@ -1,0 +1,71 @@
+name: TEMP PR95 Memory Write Compatibility V2
+
+on:
+  push:
+    branches:
+      - test/runtime-memory-write-scope-compat-v2
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile touched runtime and tests
+        shell: pwsh
+        run: |
+          python -m py_compile runtime/engine.py runtime/context.py tests/test_memory_write_scope_isolation_v1.py tests/test_runtime_memory_write_scope_authority_v1.py
+
+      - name: Run targeted memory scope regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_memory_write_scope_isolation_v1 `
+            tests.test_runtime_memory_write_scope_authority_v1 `
+            tests.test_runtime_trusted_legacy_scope_authority_v1 `
+            tests.test_runtime_canonical_scope_plan_v1 `
+            tests.test_runtime_builder_scope_isolation_v1 `
+            tests.test_workspace_scope_provenance_isolation_60 `
+            tests.test_phase6_2_pilot_and_v1_release
+
+      - name: Verify patch hygiene
+        shell: pwsh
+        run: |
+          git diff --check d350813b2ee1481490d26452549f6730454412cd..HEAD
+          $changed = git diff --name-only d350813b2ee1481490d26452549f6730454412cd..HEAD
+          $allowed = @(
+            ".github/workflows/temp-pr95-memory-write-compat-v2.yml",
+            "tests/test_memory_write_scope_isolation_v1.py"
+          )
+          $unexpected = @($changed | Where-Object { $_ -notin $allowed })
+          if ($unexpected.Count -gt 0) {
+            Write-Error ("Unexpected changed files: " + ($unexpected -join ", "))
+            exit 1
+          }
