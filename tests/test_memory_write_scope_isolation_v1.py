@@ -23,9 +23,12 @@ class MemoryWriteScopeIsolationV1Tests(unittest.TestCase):
             business_id="BIZ_ALPHA",
             campaign_id="CAMP_ALPHA",
             user_id="USER_ALPHA",
+            trusted_memory_scope=trusted_scope,
             status=RuntimeStatus.RUNNING,
         )
-        context.working_state["memory_scope"] = trusted_scope
+        # Mutable shared state is attacker-controlled and must never become
+        # persistence authority over the immutable trusted scope.
+        context.working_state["memory_scope"] = "SCOPE_ATTACKER"
         context.stage_outputs["final_cmo"] = {
             "status": "READY_FOR_DEPLOYMENT",
             "approval_status": "APPROVED_WITH_CONDITIONS",
@@ -36,9 +39,11 @@ class MemoryWriteScopeIsolationV1Tests(unittest.TestCase):
 
         self.assertEqual(len(memories), 1)
         self.assertEqual(memories[0].scope, trusted_scope)
+        self.assertNotEqual(memories[0].scope, "SCOPE_ATTACKER")
         self.assertNotEqual(memories[0].scope, "GLOBAL")
         self.assertEqual(len(artifact.learning_candidates), 1)
         self.assertEqual(artifact.learning_candidates[0].scope, trusted_scope)
+        self.assertNotEqual(artifact.learning_candidates[0].scope, "SCOPE_ATTACKER")
 
     def test_legacy_direct_candidate_without_scope_remains_global(self) -> None:
         candidate = MemoryWriteCandidate(
