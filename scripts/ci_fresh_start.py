@@ -29,6 +29,10 @@ def _expect_scope_violation(action: Callable[[], object]) -> None:
     raise AssertionError("expected_scope_violation")
 
 
+def _chunk_state(document: KnowledgeDocument) -> list[dict]:
+    return [chunk.model_dump() for chunk in document.chunks]
+
+
 def main() -> int:
     scope_a = KnowledgeScope(project_id="fresh-start-a").canonical_key()
     scope_b = KnowledgeScope(project_id="fresh-start-b").canonical_key()
@@ -71,6 +75,10 @@ def main() -> int:
                 changed_by="fresh-start-a",
                 summary="initial",
             )
+            first_chunks = _chunk_state(first)
+            if not first_chunks:
+                raise AssertionError("initial_chunks_missing_before_restart")
+
             updated = owner.get_document(first.knowledge_id)
             if updated is None:
                 raise AssertionError("missing_document_before_restart")
@@ -79,6 +87,9 @@ def main() -> int:
             second = owner.save_document(updated, changed_by="fresh-start-a", summary="second")
             if second.version != 2:
                 raise AssertionError("version_increment_failed")
+            second_chunks = _chunk_state(second)
+            if not second_chunks:
+                raise AssertionError("updated_chunks_missing_before_restart")
             owner.close()
 
             if not db_path.exists() or db_path.stat().st_size <= 0:
@@ -93,8 +104,19 @@ def main() -> int:
                 raise AssertionError("current_snapshot_corrupted_after_restart")
             if current.scope != scope_a:
                 raise AssertionError("scope_corrupted_after_restart")
-            if reopened.get_source(source.source_id) is None:
+            if _chunk_state(current) != second_chunks:
+                raise AssertionError("current_chunks_corrupted_after_restart")
+
+            persisted_source = reopened.get_source(source.source_id)
+            if persisted_source is None:
                 raise AssertionError("source_missing_after_restart")
+            if (
+                persisted_source.source_name != "Fresh-start source"
+                or persisted_source.source_url_or_path != "manual://fresh-start"
+                or persisted_source.source_type != SourceType.MARKET_RESEARCH
+                or persisted_source.authority_score != 0.99
+            ):
+                raise AssertionError("source_corrupted_after_restart")
 
             history = reopened.get_version_history(first.knowledge_id)
             if [item.version_number for item in history] != [1, 2]:
@@ -105,6 +127,8 @@ def main() -> int:
             prior = reopened.get_document_version(first.knowledge_id, 1)
             if prior is None or prior.content != "Version one" or prior.metadata.get("marker") != "v1":
                 raise AssertionError("prior_snapshot_corrupted_after_restart")
+            if _chunk_state(prior) != first_chunks:
+                raise AssertionError("prior_chunks_corrupted_after_restart")
             reopened.close()
 
             # A distinct private scope must fail closed after persistence/restart.
@@ -128,12 +152,29 @@ def main() -> int:
                     summary="forbidden",
                 )
             )
+            _expect_scope_violation(
+                lambda: other.save_document(
+                    KnowledgeDocument(
+                        knowledge_id=first.knowledge_id,
+                        source_id=source.source_id,
+                        title="Forbidden overwrite",
+                        source_type=SourceType.MARKET_RESEARCH,
+                        content="Must never overwrite the private boundary",
+                        scope=scope_a,
+                    ),
+                    changed_by="fresh-start-b",
+                    summary="forbidden overwrite",
+                )
+            )
             other.close()
 
             owner_final = SQLiteKnowledgeRepository(db_path, access_scope=scope_a)
             visible = owner_final.list_documents(scope=scope_a)
             if [item.knowledge_id for item in visible] != [first.knowledge_id]:
                 raise AssertionError("cross_scope_write_modified_owner_state")
+            persisted = owner_final.get_document(first.knowledge_id)
+            if persisted is None or persisted.version != 2 or persisted.content != "Version two":
+                raise AssertionError("cross_scope_update_modified_owner_state")
             owner_final.close()
 
         print("FRESH_START_DURABLE_KNOWLEDGE_OK")
