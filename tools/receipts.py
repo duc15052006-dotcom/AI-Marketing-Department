@@ -820,6 +820,7 @@ class ExecutionReceiptRepository:
                         raise ReceiptStoreIntegrityError(
                             f"EXECUTION_INTENT_RECEIPT_MISSING: intent_id={intent_id}"
                         )
+                    self._insert_receipt_locked(normalized_receipt)
                     return existing
 
                 if current.state != ExecutionIntentState.DISPATCHING or current.dispatch_count < 1:
