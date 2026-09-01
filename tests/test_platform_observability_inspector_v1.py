@@ -117,6 +117,7 @@ class PlatformInspectorV1Tests(unittest.TestCase):
             business_id="BUSINESS-A",
             project_id="PROJECT-1",
             chat_id="CHAT-1",
+            approval_reference="approval-super-secret-token-123456789",
             data={"access_token": "tool-secret-123456789", "published": True},
         )
         self.receipts.finalize_execution_intent(intent.intent_id, receipt)

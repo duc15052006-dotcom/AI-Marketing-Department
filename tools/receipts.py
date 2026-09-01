@@ -299,6 +299,7 @@ def _receipt_matches_intent_binding(receipt: ExecutionReceipt, intent: Execution
         and receipt.business_id == intent.business_id
         and receipt.project_id == intent.project_id
         and receipt.chat_id == intent.chat_id
+        and receipt.approval_reference == intent.approval_reference
     )
 
 
