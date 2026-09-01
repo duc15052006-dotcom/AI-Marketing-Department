@@ -1,4 +1,4 @@
-"""Adversarial regression for one-receipt/one-intent ownership.
+"""Adversarial RED regression for one-receipt/one-intent ownership.
 
 A single immutable execution receipt must not be reusable as finalization evidence
 for two distinct consequential execution intents, even when their other binding
