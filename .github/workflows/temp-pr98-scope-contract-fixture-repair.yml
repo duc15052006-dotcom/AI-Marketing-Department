@@ -1,0 +1,75 @@
+name: temp-pr98-scope-contract-fixture-repair
+
+on:
+  push:
+    branches:
+      - test/pr98-scope-contract-fixture-repair-v1
+    paths:
+      - .github/workflows/temp-pr98-scope-contract-fixture-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  targeted:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+
+      - name: Apply scope-contract fixture repair
+        run: python scripts/temp_pr98_scope_contract_fixture_repair.py
+
+      - name: Hygiene check
+        shell: pwsh
+        run: |
+          $changed = git diff --name-only
+          $expected = @(
+            'tests/test_phase1b_grounded_context.py',
+            'tests/test_collaboration_integrity_audit.py',
+            'tests/test_prod_truth_01_execution_truthfulness.py',
+            'tests/test_tool_receipt_runtime_scope_binding_v1.py'
+          )
+          $actual = @($changed | Where-Object { $_ -ne '' })
+          if (($actual | Sort-Object) -join "`n" -ne ($expected | Sort-Object) -join "`n") {
+            Write-Host "Unexpected changed files:"
+            $actual | ForEach-Object { Write-Host $_ }
+            exit 1
+          }
+
+      - name: Compile touched tests
+        run: python -m py_compile tests/test_phase1b_grounded_context.py tests/test_collaboration_integrity_audit.py tests/test_prod_truth_01_execution_truthfulness.py tests/test_tool_receipt_runtime_scope_binding_v1.py
+
+      - name: Targeted regression suite
+        run: >-
+          python -m unittest
+          tests.test_tool_receipt_runtime_scope_binding_v1
+          tests.test_phase1b_grounded_context
+          tests.test_collaboration_integrity_audit
+          tests.test_prod_truth_01_execution_truthfulness
+          tests.test_tool_receipt_provenance_04
+          tests.test_runtime_canonical_scope_plan_v1
+          -v
+
+      - name: Commit validated fixture repair
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_phase1b_grounded_context.py tests/test_collaboration_integrity_audit.py tests/test_prod_truth_01_execution_truthfulness.py tests/test_tool_receipt_runtime_scope_binding_v1.py
+          git commit -m "test: bind legacy tool receipt fixtures to runtime scope"
+          git push origin HEAD:test/pr98-scope-contract-fixture-repair-v1
