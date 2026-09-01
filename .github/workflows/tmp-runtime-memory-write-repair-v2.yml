@@ -1,0 +1,95 @@
+name: Temp Runtime Memory Write Repair v2
+
+on:
+  push:
+    branches:
+      - test/runtime-memory-write-scope-repair-v2
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-push-repair:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout active hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-memory-write-scope-authority-v1
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Apply exact write-back authority repair
+        shell: pwsh
+        run: |
+          $patch = @'
+          from pathlib import Path
+
+          path = Path("runtime/engine.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''        memory_scope_plan = build_runtime_canonical_scope_plan(context)
+          memory_write_scope = (
+              memory_scope_plan.memory_scope_keys[0]
+              if memory_scope_plan.memory_scope_keys
+              else "GLOBAL"
+          )'''
+          new = '''        memory_scope_plan = build_runtime_canonical_scope_plan(context)
+          trusted_memory_scope = str(context.scope.trusted_memory_scope or "").strip()
+          if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":
+              memory_write_scope = trusted_memory_scope
+          else:
+              memory_write_scope = next(
+                  (
+                      str(scope).strip()
+                      for scope in memory_scope_plan.memory_scope_keys
+                      if str(scope).strip()
+                      and str(scope).strip().upper() != "GLOBAL"
+                  ),
+                  "GLOBAL",
+              )'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"expected exactly one write-scope block, found {count}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          '@
+          $patch | python -
+      - name: Compile runtime
+        shell: pwsh
+        run: python -m compileall -q runtime
+      - name: Run targeted regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_memory_write_scope_authority_v1 tests.test_runtime_trusted_legacy_scope_authority_v1 tests.test_runtime_canonical_scope_plan_v1 tests.test_runtime_builder_scope_isolation_v1 tests.test_workspace_scope_provenance_isolation_60 tests.test_phase6_2_pilot_and_v1_release
+      - name: Verify patch scope
+        shell: pwsh
+        run: |
+          git diff --check
+          $changed = @(git diff --name-only)
+          if ($changed.Count -ne 1 -or $changed[0] -ne "runtime/engine.py") {
+            Write-Error "Unexpected changed files: $($changed -join ', ')"
+            exit 1
+          }
+      - name: Commit validated repair to active branch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py
+          git commit -m "fix(runtime): preserve trusted memory writeback authority"
+          git push origin HEAD:fix/runtime-memory-write-scope-authority-v1
