@@ -2490,11 +2490,19 @@ class FiveAgentDepartmentRuntime:
         # exact project/business/trusted migration scope; GLOBAL is the explicit
         # fallback only when the run has no private memory scope.
         memory_scope_plan = build_runtime_canonical_scope_plan(context)
-        memory_write_scope = (
-            memory_scope_plan.memory_scope_keys[0]
-            if memory_scope_plan.memory_scope_keys
-            else "GLOBAL"
-        )
+        trusted_memory_scope = str(context.scope.trusted_memory_scope or "").strip()
+        if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":
+            memory_write_scope = trusted_memory_scope
+        else:
+            memory_write_scope = next(
+                (
+                    str(scope).strip()
+                    for scope in memory_scope_plan.memory_scope_keys
+                    if str(scope).strip()
+                    and str(scope).strip().upper() != "GLOBAL"
+                ),
+                "GLOBAL",
+            )
 
         # 1. Propose Memory Candidates only if run completed successfully.
         # COLLAB-04: template memories removed. Exactly ONE factual
