@@ -405,6 +405,10 @@ class ExecutionReceiptRepository:
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_intents_state ON execution_intents(state, intent_id)"
             )
+            self._conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_intents_receipt_owner "
+                "ON execution_intents(receipt_execution_id) WHERE receipt_execution_id IS NOT NULL"
+            )
 
     @staticmethod
     def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:
@@ -751,6 +755,31 @@ class ExecutionReceiptRepository:
             )
         return normalized
 
+    def _assert_receipt_owner_locked(self, *, intent_id: str, execution_id: str) -> None:
+        if self._conn is None:
+            owner_intent_id = next(
+                (
+                    candidate.intent_id
+                    for candidate in self._intents.values()
+                    if candidate.intent_id != intent_id
+                    and candidate.receipt_execution_id == execution_id
+                ),
+                None,
+            )
+        else:
+            row = self._conn.execute(
+                "SELECT intent_id FROM execution_intents "
+                "WHERE receipt_execution_id=? AND intent_id<>? LIMIT 1",
+                (execution_id, intent_id),
+            ).fetchone()
+            owner_intent_id = row["intent_id"] if row is not None else None
+        if owner_intent_id is not None:
+            raise ReceiptStoreConflictError(
+                "EXECUTION_RECEIPT_ALREADY_LINKED_TO_OTHER_INTENT: "
+                f"execution_id={execution_id} intent_id={intent_id} "
+                f"owner_intent_id={owner_intent_id}"
+            )
+
     def mark_execution_intent_dispatching(self, intent_id: str) -> ExecutionIntent:
         """Persist DISPATCHING before entering adapter code."""
         self._ensure_open()
@@ -804,6 +833,10 @@ class ExecutionReceiptRepository:
                     raise ReceiptStoreIntegrityError(
                         f"EXECUTION_INTENT_RECEIPT_BINDING_MISMATCH: intent_id={intent_id}"
                     )
+                self._assert_receipt_owner_locked(
+                    intent_id=intent_id,
+                    execution_id=normalized_receipt.execution_id,
+                )
 
                 target_state = (
                     ExecutionIntentState.AMBIGUOUS if ambiguous else ExecutionIntentState.FINALIZED
