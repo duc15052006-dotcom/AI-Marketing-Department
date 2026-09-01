@@ -440,7 +440,7 @@ class ToolGateway:
                 try:
                     idempotency_record = self.idempotency_ledger.reserve(
                         capability_id=request.capability_id,
-                        provider=cap.provider,
+                        provider=adapter.adapter_name,
                         idempotency_key=raw_idempotency_key,
                         connection_id=request.parameters.get("connection_id"),
                         parameters=request.parameters,

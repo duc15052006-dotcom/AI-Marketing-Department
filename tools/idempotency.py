@@ -76,11 +76,18 @@ class IdempotencyRecord:
     state: IdempotencyState = IdempotencyState.RESERVED
     created_at: str = ""
     updated_at: str = ""
+    identity_version: int = 2
 
     def normalized(self) -> "IdempotencyRecord":
         state = self.state
         if not isinstance(state, IdempotencyState):
             state = IdempotencyState(str(state).strip().upper())
+        try:
+            identity_version = int(self.identity_version)
+        except (TypeError, ValueError) as exc:
+            raise IdempotencyStoreError("IDEMPOTENCY_IDENTITY_VERSION_INVALID") from exc
+        if identity_version < 1:
+            raise IdempotencyStoreError("IDEMPOTENCY_IDENTITY_VERSION_INVALID")
         required = {
             "reservation_id": self.reservation_id,
             "namespace_hash": self.namespace_hash,
@@ -100,11 +107,15 @@ class IdempotencyRecord:
             state=state,
             created_at=created_at,
             updated_at=self.updated_at or created_at,
+            identity_version=identity_version,
         )
 
 
 class IdempotencyLedger:
     """Fail-closed idempotency ledger with in-memory and SQLite modes."""
+
+    LEGACY_IDENTITY_VERSION = 1
+    CANONICAL_ADAPTER_IDENTITY_VERSION = 2
 
     def __init__(self, database_path: Optional[str | Path] = None) -> None:
         self._lock = threading.RLock()
@@ -141,13 +152,27 @@ class IdempotencyLedger:
                             request_fingerprint TEXT NOT NULL,
                             state TEXT NOT NULL,
                             created_at TEXT NOT NULL,
-                            updated_at TEXT NOT NULL
+                            updated_at TEXT NOT NULL,
+                            identity_version INTEGER NOT NULL DEFAULT 1
                         )
                         """
                     )
+                    columns = {
+                        str(row["name"])
+                        for row in conn.execute("PRAGMA table_info(idempotency_ledger)").fetchall()
+                    }
+                    if "identity_version" not in columns:
+                        conn.execute(
+                            "ALTER TABLE idempotency_ledger "
+                            "ADD COLUMN identity_version INTEGER NOT NULL DEFAULT 1"
+                        )
                     conn.execute(
                         "CREATE INDEX IF NOT EXISTS idx_idempotency_state "
                         "ON idempotency_ledger(state, reservation_id)"
+                    )
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_idempotency_legacy_key "
+                        "ON idempotency_ledger(identity_version, key_hash)"
                     )
         except sqlite3.Error as exc:
             raise IdempotencyStoreError(
@@ -214,6 +239,11 @@ class IdempotencyLedger:
 
     @staticmethod
     def _from_row(row: sqlite3.Row) -> IdempotencyRecord:
+        identity_version = (
+            int(row["identity_version"])
+            if "identity_version" in row.keys()
+            else IdempotencyLedger.LEGACY_IDENTITY_VERSION
+        )
         return IdempotencyRecord(
             reservation_id=row["reservation_id"],
             namespace_hash=row["namespace_hash"],
@@ -222,6 +252,7 @@ class IdempotencyLedger:
             state=IdempotencyState(row["state"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            identity_version=identity_version,
         ).normalized()
 
     def _conflict(self, existing: IdempotencyRecord, request_fingerprint: str) -> None:
@@ -234,6 +265,14 @@ class IdempotencyLedger:
         raise IdempotencyConflictError(
             "IDEMPOTENCY_KEY_CONFLICT",
             "This idempotency key is already reserved for a different governed action in the same trusted namespace.",
+            copy.deepcopy(existing),
+        )
+
+    @staticmethod
+    def _legacy_conflict(existing: IdempotencyRecord) -> None:
+        raise IdempotencyConflictError(
+            "IDEMPOTENCY_LEGACY_KEY_AMBIGUOUS",
+            "A pre-upgrade reservation exists for this opaque idempotency key, but its canonical adapter authority cannot be reconstructed safely; replay is blocked.",
             copy.deepcopy(existing),
         )
 
@@ -271,6 +310,7 @@ class IdempotencyLedger:
             namespace_hash=namespace_hash,
             key_hash=key_hash,
             request_fingerprint=fingerprint,
+            identity_version=self.CANONICAL_ADAPTER_IDENTITY_VERSION,
         ).normalized()
 
         with self._lock:
@@ -290,12 +330,21 @@ class IdempotencyLedger:
                         ).fetchone()
                         if existing_row is not None:
                             self._conflict(self._from_row(existing_row), fingerprint)
+                        legacy_row = conn.execute(
+                            "SELECT * FROM idempotency_ledger "
+                            "WHERE identity_version < ? AND key_hash=? "
+                            "ORDER BY rowid LIMIT 1",
+                            (self.CANONICAL_ADAPTER_IDENTITY_VERSION, key_hash),
+                        ).fetchone()
+                        if legacy_row is not None:
+                            self._legacy_conflict(self._from_row(legacy_row))
                         conn.execute(
                             """
                             INSERT INTO idempotency_ledger(
                                 reservation_id, namespace_hash, key_hash,
-                                request_fingerprint, state, created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                                request_fingerprint, state, created_at, updated_at,
+                                identity_version
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 record.reservation_id,
@@ -305,6 +354,7 @@ class IdempotencyLedger:
                                 record.state.value,
                                 record.created_at,
                                 record.updated_at,
+                                record.identity_version,
                             ),
                         )
                 return record
