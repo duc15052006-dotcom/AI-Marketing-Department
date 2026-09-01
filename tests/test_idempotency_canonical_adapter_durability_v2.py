@@ -239,24 +239,28 @@ class IdempotencyCanonicalAdapterDurabilityV2Tests(unittest.TestCase):
             brand_id=None,
         )
         now = datetime.now(timezone.utc).isoformat()
-        with sqlite3.connect(str(database_path)) as conn:
-            conn.execute(
-                """
-                INSERT INTO idempotency_ledger(
-                    reservation_id, namespace_hash, key_hash,
-                    request_fingerprint, state, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    reservation_id,
-                    namespace_hash,
-                    key_hash,
-                    fingerprint,
-                    "FINALIZED",
-                    now,
-                    now,
-                ),
-            )
+        conn = sqlite3.connect(str(database_path))
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO idempotency_ledger(
+                        reservation_id, namespace_hash, key_hash,
+                        request_fingerprint, state, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        reservation_id,
+                        namespace_hash,
+                        key_hash,
+                        fingerprint,
+                        "FINALIZED",
+                        now,
+                        now,
+                    ),
+                )
+        finally:
+            conn.close()
 
     def _storage_variants(self):
         yield "memory", None
