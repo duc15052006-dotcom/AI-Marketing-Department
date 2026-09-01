@@ -288,6 +288,20 @@ def _normalize_receipt(receipt: ExecutionReceipt) -> ExecutionReceipt:
     return normalized
 
 
+def _receipt_matches_intent_binding(receipt: ExecutionReceipt, intent: ExecutionIntent) -> bool:
+    """Require exact agreement across immutable execution authority dimensions."""
+    return (
+        receipt.run_id == intent.run_id
+        and receipt.agent_id == intent.agent_id
+        and receipt.capability_id == intent.capability_id
+        and receipt.provider == intent.provider
+        and receipt.request_hash == intent.request_hash
+        and receipt.business_id == intent.business_id
+        and receipt.project_id == intent.project_id
+        and receipt.chat_id == intent.chat_id
+    )
+
+
 class ExecutionReceiptRepository:
     """Receipt repository with optional crash-safe SQLite durability.
 
@@ -785,11 +799,7 @@ class ExecutionReceiptRepository:
                         f"EXECUTION_INTENT_NOT_FOUND: intent_id={intent_id}"
                     )
                 normalized_receipt, _, _ = self._receipt_payload(receipt)
-                if (
-                    normalized_receipt.run_id != current.run_id
-                    or normalized_receipt.capability_id != current.capability_id
-                    or normalized_receipt.request_hash != current.request_hash
-                ):
+                if not _receipt_matches_intent_binding(normalized_receipt, current):
                     raise ReceiptStoreIntegrityError(
                         f"EXECUTION_INTENT_RECEIPT_BINDING_MISMATCH: intent_id={intent_id}"
                     )
@@ -873,11 +883,7 @@ class ExecutionReceiptRepository:
                 raise ReceiptStoreIntegrityError(
                     f"AMBIGUOUS_INTENT_RECEIPT_MISSING: intent_id={intent_id}"
                 )
-            if receipt is not None and (
-                receipt.run_id != intent.run_id
-                or receipt.capability_id != intent.capability_id
-                or receipt.request_hash != intent.request_hash
-            ):
+            if receipt is not None and not _receipt_matches_intent_binding(receipt, intent):
                 raise ReceiptStoreIntegrityError(
                     f"AMBIGUOUS_INTENT_RECEIPT_BINDING_MISMATCH: intent_id={intent_id}"
                 )
@@ -904,11 +910,7 @@ class ExecutionReceiptRepository:
                 raise ReceiptStoreIntegrityError(
                     f"FINALIZED_INTENT_RECEIPT_MISSING: intent_id={intent_id}"
                 )
-            if (
-                receipt.run_id != intent.run_id
-                or receipt.capability_id != intent.capability_id
-                or receipt.request_hash != intent.request_hash
-            ):
+            if not _receipt_matches_intent_binding(receipt, intent):
                 raise ReceiptStoreIntegrityError(
                     f"FINALIZED_INTENT_RECEIPT_BINDING_MISMATCH: intent_id={intent_id}"
                 )
