@@ -1,0 +1,70 @@
+name: TEMP PR98 Receipt Scope Green
+
+on:
+  push:
+    branches:
+      - test/pr98-receipt-scope-green-v1
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile touched runtime and regressions
+        shell: pwsh
+        run: |
+          python -m py_compile runtime/context_compiler.py tests/test_tool_receipt_runtime_scope_binding_v1.py tests/test_tool_receipt_provenance_04.py tests/test_runtime_canonical_scope_plan_v1.py tests/test_runtime_builder_scope_isolation_v1.py tests/test_workspace_scope_provenance_isolation_60.py
+
+      - name: Run targeted scope and receipt regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_tool_receipt_runtime_scope_binding_v1 `
+            tests.test_tool_receipt_provenance_04 `
+            tests.test_runtime_canonical_scope_plan_v1 `
+            tests.test_runtime_builder_scope_isolation_v1 `
+            tests.test_workspace_scope_provenance_isolation_60
+
+      - name: Verify candidate hygiene
+        shell: pwsh
+        run: |
+          git diff --check
+          $files = @(git diff --name-only 094116062b8b1815fac4636228eb18dd1692dcac HEAD)
+          $allowed = @('runtime/context_compiler.py', '.github/workflows/temp-pr98-receipt-scope-green.yml')
+          $unexpected = @($files | Where-Object { $_ -notin $allowed })
+          if ($unexpected.Count -gt 0) {
+            Write-Error ("Unexpected changed files: " + ($unexpected -join ', '))
+            exit 1
+          }
+          if ('runtime/context_compiler.py' -notin $files) {
+            Write-Error 'Candidate production file missing from diff.'
+            exit 1
+          }
