@@ -45,9 +45,13 @@ jobs:
             'tests/test_tool_receipt_runtime_scope_binding_v1.py'
           )
           $actual = @($changed | Where-Object { $_ -ne '' })
-          if (($actual | Sort-Object) -join "`n" -ne ($expected | Sort-Object) -join "`n") {
+          $actualJoined = (($actual | Sort-Object) -join "`n")
+          $expectedJoined = (($expected | Sort-Object) -join "`n")
+          if ($actualJoined -ne $expectedJoined) {
             Write-Host "Unexpected changed files:"
             $actual | ForEach-Object { Write-Host $_ }
+            Write-Host "Expected changed files:"
+            $expected | ForEach-Object { Write-Host $_ }
             exit 1
           }
 
