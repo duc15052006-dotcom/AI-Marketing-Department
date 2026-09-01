@@ -1,3 +1,5 @@
+"""Adversarial regression for idempotency authority across provider aliases."""
+
 from __future__ import annotations
 
 import tempfile
