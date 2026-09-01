@@ -334,7 +334,7 @@ class ContextCompiler:
                         source_id=sid,
                         epistemic_tier=tier,
                         source_type="TOOL_RECEIPT",
-                        scope=f"SCOPE_{ctx.business_id}" if ctx.business_id else "GLOBAL",
+                        scope=scope_plan.knowledge_scope_keys[0] if scope_plan.project_id and scope_plan.project_id.upper() != "GLOBAL" else (f"SCOPE_{ctx.business_id}" if ctx.business_id else "GLOBAL"),
                         title_or_reference=f"{title_prefix} [Receipt: {receipt.execution_id} | Cap: {receipt.capability_id}]",
                         content=formatted_content,
                         original_length=len(formatted_content),
