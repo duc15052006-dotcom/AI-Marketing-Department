@@ -43,26 +43,30 @@ jobs:
 
           path = Path("runtime/engine.py")
           text = path.read_text(encoding="utf-8")
-          old = '''        memory_scope_plan = build_runtime_canonical_scope_plan(context)
-          memory_write_scope = (
-              memory_scope_plan.memory_scope_keys[0]
-              if memory_scope_plan.memory_scope_keys
-              else "GLOBAL"
-          )'''
-          new = '''        memory_scope_plan = build_runtime_canonical_scope_plan(context)
-          trusted_memory_scope = str(context.scope.trusted_memory_scope or "").strip()
-          if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":
-              memory_write_scope = trusted_memory_scope
-          else:
-              memory_write_scope = next(
-                  (
-                      str(scope).strip()
-                      for scope in memory_scope_plan.memory_scope_keys
-                      if str(scope).strip()
-                      and str(scope).strip().upper() != "GLOBAL"
-                  ),
-                  "GLOBAL",
-              )'''
+          old = "\n".join([
+              "        memory_scope_plan = build_runtime_canonical_scope_plan(context)",
+              "        memory_write_scope = (",
+              "            memory_scope_plan.memory_scope_keys[0]",
+              "            if memory_scope_plan.memory_scope_keys",
+              "            else \"GLOBAL\"",
+              "        )",
+          ])
+          new = "\n".join([
+              "        memory_scope_plan = build_runtime_canonical_scope_plan(context)",
+              "        trusted_memory_scope = str(context.scope.trusted_memory_scope or \"\").strip()",
+              "        if trusted_memory_scope and trusted_memory_scope.upper() != \"GLOBAL\":",
+              "            memory_write_scope = trusted_memory_scope",
+              "        else:",
+              "            memory_write_scope = next(",
+              "                (",
+              "                    str(scope).strip()",
+              "                    for scope in memory_scope_plan.memory_scope_keys",
+              "                    if str(scope).strip()",
+              "                    and str(scope).strip().upper() != \"GLOBAL\"",
+              "                ),",
+              "                \"GLOBAL\",",
+              "            )",
+          ])
           count = text.count(old)
           if count != 1:
               raise SystemExit(f"expected exactly one write-scope block, found {count}")
