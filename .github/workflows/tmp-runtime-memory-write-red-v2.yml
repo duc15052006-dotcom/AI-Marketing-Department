@@ -1,0 +1,37 @@
+name: Temp Runtime Memory Write RED v2
+
+on:
+  push:
+    branches:
+      - test/runtime-memory-write-scope-regression-red-v2
+
+permissions:
+  contents: read
+
+jobs:
+  red-regression:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Run decision-memory write-scope RED regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_memory_write_scope_authority_v1
