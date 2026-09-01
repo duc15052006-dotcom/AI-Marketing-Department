@@ -26,6 +26,10 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
     def _repository(self, scope_key: str) -> SQLiteKnowledgeRepository:
         return SQLiteKnowledgeRepository(self.db_path, access_scope=scope_key)
 
+    @staticmethod
+    def _chunk_state(document: KnowledgeDocument) -> list[dict]:
+        return [chunk.model_dump() for chunk in document.chunks]
+
     def _seed_source_and_document(self, repository: SQLiteKnowledgeRepository) -> KnowledgeDocument:
         source = repository.save_source(
             KnowledgeSource(
@@ -68,11 +72,13 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
             else:
                 os.environ["AI_MARKETING_KNOWLEDGE_EPHEMERAL"] = old_ephemeral
 
-    def test_restart_preserves_document_source_metadata_and_history(self) -> None:
+    def test_restart_preserves_document_source_metadata_chunks_and_history(self) -> None:
         repository = self._repository(self.scope_a)
         first = self._seed_source_and_document(repository)
         source_id = first.source_id
         knowledge_id = first.knowledge_id
+        first_chunks = self._chunk_state(first)
+        self.assertTrue(first_chunks)
 
         updated = repository.get_document(knowledge_id)
         self.assertIsNotNone(updated)
@@ -81,6 +87,8 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
         updated.metadata["marker"] = "v2"
         second = repository.save_document(updated, changed_by="tenant-a", summary="second")
         self.assertEqual(second.version, 2)
+        second_chunks = self._chunk_state(second)
+        self.assertTrue(second_chunks)
         repository.close()
 
         reopened = self._repository(self.scope_a)
@@ -90,7 +98,15 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
         self.assertEqual(current.content, "Updated durable content")
         self.assertEqual(current.metadata["marker"], "v2")
         self.assertEqual(current.scope, self.scope_a)
-        self.assertIsNotNone(reopened.get_source(source_id))
+        self.assertEqual(self._chunk_state(current), second_chunks)
+
+        source = reopened.get_source(source_id)
+        self.assertIsNotNone(source)
+        assert source is not None
+        self.assertEqual(source.source_name, "Durability fixture")
+        self.assertEqual(source.source_url_or_path, "manual://durability-fixture")
+        self.assertEqual(source.source_type, SourceType.MARKET_RESEARCH)
+        self.assertEqual(source.authority_score, 0.95)
 
         history = reopened.get_version_history(knowledge_id)
         self.assertEqual([item.version_number for item in history], [1, 2])
@@ -101,6 +117,7 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
         assert prior is not None
         self.assertEqual(prior.content, "Initial durable content")
         self.assertEqual(prior.metadata["marker"], "v1")
+        self.assertEqual(self._chunk_state(prior), first_chunks)
         reopened.close()
 
     def test_persisted_non_owner_read_is_denied_after_restart(self) -> None:
@@ -119,7 +136,7 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
             other_tenant.get_source(saved.source_id)
         other_tenant.close()
 
-    def test_cross_tenant_query_and_write_fail_closed(self) -> None:
+    def test_cross_tenant_query_write_and_update_fail_closed(self) -> None:
         owner = self._repository(self.scope_a)
         saved = self._seed_source_and_document(owner)
         owner.close()
@@ -132,18 +149,34 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
 
         foreign = KnowledgeDocument(
             source_id=saved.source_id,
-            title="Forbidden overwrite",
+            title="Forbidden write",
             source_type=SourceType.MARKET_RESEARCH,
             content="Tenant B must not write into tenant A scope",
             scope=self.scope_a,
         )
         with self.assertRaisesRegex(PermissionError, r"^scope_violation$"):
             other_tenant.save_document(foreign, changed_by="tenant-b", summary="forbidden")
+
+        forged_update = KnowledgeDocument(
+            knowledge_id=saved.knowledge_id,
+            source_id=saved.source_id,
+            title="Forbidden overwrite",
+            source_type=SourceType.MARKET_RESEARCH,
+            content="Tenant B must not overwrite tenant A knowledge",
+            scope=self.scope_a,
+        )
+        with self.assertRaisesRegex(PermissionError, r"^scope_violation$"):
+            other_tenant.save_document(forged_update, changed_by="tenant-b", summary="forbidden overwrite")
         other_tenant.close()
 
         owner_reopened = self._repository(self.scope_a)
         documents = owner_reopened.list_documents(scope=self.scope_a)
         self.assertEqual([doc.knowledge_id for doc in documents], [saved.knowledge_id])
+        persisted = owner_reopened.get_document(saved.knowledge_id)
+        self.assertIsNotNone(persisted)
+        assert persisted is not None
+        self.assertEqual(persisted.version, 1)
+        self.assertEqual(persisted.content, "Initial durable content")
         owner_reopened.close()
 
 
