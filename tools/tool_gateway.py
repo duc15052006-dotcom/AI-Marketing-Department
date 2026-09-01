@@ -438,9 +438,71 @@ class ToolGateway:
                 and raw_idempotency_key.strip()
             ):
                 try:
+                    resolved_provider = str(adapter.adapter_name or "").strip()
+                    resolved_provider_key = resolved_provider.lower()
+
+                    # Pre-fix versions persisted the capability alias as provider
+                    # authority. Probe aliases still bound to this exact adapter so
+                    # durable historical reservations remain fail-closed after the
+                    # canonical authority switches to adapter.adapter_name.
+                    for legacy_provider in sorted(
+                        name
+                        for name, bound_adapter in self._adapters.items()
+                        if bound_adapter is adapter and name != resolved_provider_key
+                    ):
+                        legacy_reservation_id, _, _ = self.idempotency_ledger.reservation_identity(
+                            capability_id=request.capability_id,
+                            provider=legacy_provider,
+                            idempotency_key=raw_idempotency_key,
+                            connection_id=request.parameters.get("connection_id"),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            brand_id=effective_brand_id,
+                        )
+                        legacy_record = self.idempotency_ledger.get(legacy_reservation_id)
+                        if legacy_record is None:
+                            continue
+                        legacy_fingerprint = self.idempotency_ledger.semantic_fingerprint(
+                            capability_id=request.capability_id,
+                            provider=legacy_provider,
+                            parameters=request.parameters,
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            brand_id=effective_brand_id,
+                        )
+                        if legacy_record.request_fingerprint == legacy_fingerprint:
+                            conflict_code = "IDEMPOTENCY_REPLAY_BLOCKED"
+                            conflict_message = (
+                                "This idempotency key is already reserved for the same governed "
+                                "action under a legacy provider alias; automatic replay is forbidden."
+                            )
+                        else:
+                            conflict_code = "IDEMPOTENCY_KEY_CONFLICT"
+                            conflict_message = (
+                                "This idempotency key is already reserved for a different governed "
+                                "action under a legacy provider alias."
+                            )
+                        return self.receipt_repository.save_receipt(
+                            self._error_receipt(
+                                request,
+                                provider=adapter.adapter_name,
+                                request_hash=req_hash,
+                                started_at=start_time,
+                                status=ExecutionStatus.BLOCKED,
+                                error_class=conflict_code,
+                                error_message=f"{conflict_code}: {conflict_message}",
+                                approval_reference=self._safe_approval_reference(
+                                    request.approval_token
+                                ),
+                                business_id=effective_business_id,
+                                project_id=effective_project_id,
+                                execution_mode=ExecutionMode.REAL,
+                            )
+                        )
+
                     idempotency_record = self.idempotency_ledger.reserve(
                         capability_id=request.capability_id,
-                        provider=cap.provider,
+                        provider=resolved_provider,
                         idempotency_key=raw_idempotency_key,
                         connection_id=request.parameters.get("connection_id"),
                         parameters=request.parameters,
