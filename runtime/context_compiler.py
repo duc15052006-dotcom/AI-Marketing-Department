@@ -31,6 +31,8 @@ _KNOWLEDGE_AUTHORITY_RANK = {
     AuthorityLevel.TIER_3_SECONDARY_INDUSTRY_DATA: 2,
     AuthorityLevel.TIER_4_UNVERIFIED_OBSERVATION: 3,
 }
+_DEFAULT_BUSINESS_RECEIPT_SCOPE_IDS = {"", "GLOBAL", "BIZ_DEFAULT"}
+_GLOBAL_PROJECT_RECEIPT_SCOPE_IDS = {"", "GLOBAL"}
 
 
 def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
@@ -46,6 +48,39 @@ def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
     freshness = getattr(document, "freshness", "")
     lifecycle_state = str(getattr(freshness, "value", freshness)).strip().upper()
     return lifecycle_state not in _INACTIVE_KNOWLEDGE_STATES
+
+
+def _clean_scope_value(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_business_receipt_scope(value: object) -> str:
+    key = _clean_scope_value(value)
+    return "" if key.upper() in _DEFAULT_BUSINESS_RECEIPT_SCOPE_IDS else key
+
+
+def _normalize_project_receipt_scope(value: object) -> str:
+    key = _clean_scope_value(value)
+    return "" if key.upper() in _GLOBAL_PROJECT_RECEIPT_SCOPE_IDS else key
+
+
+def _receipt_matches_runtime_scope(receipt: ExecutionReceipt, ctx: RuntimeContext) -> bool:
+    """Fail closed unless a receipt belongs to the immutable runtime authority.
+
+    Default/global business and project sentinels are normalized to the same
+    unscoped compatibility value used by the canonical runtime scope planner.
+    Private business/project/chat dimensions must otherwise match exactly.
+    """
+    authority = ctx.scope
+    if _clean_scope_value(receipt.run_id) != _clean_scope_value(authority.run_id):
+        return False
+    if _normalize_business_receipt_scope(receipt.business_id) != _normalize_business_receipt_scope(authority.business_id):
+        return False
+    if _normalize_project_receipt_scope(receipt.project_id) != _normalize_project_receipt_scope(authority.project_id):
+        return False
+    if _clean_scope_value(receipt.chat_id) != _clean_scope_value(authority.chat_id):
+        return False
+    return True
 
 
 @dataclass
@@ -247,6 +282,10 @@ class ContextCompiler:
             for receipt in tool_receipts:
                 if receipt.status != ExecutionStatus.SUCCESS:
                     # Failed / blocked / timeout tool execution does NOT produce factual evidence
+                    continue
+                if not _receipt_matches_runtime_scope(receipt, ctx):
+                    # GroundedContextPackage is a model-input authority boundary.
+                    # Foreign or ambiguously-scoped receipts never become evidence.
                     continue
 
                 mode = getattr(receipt, "execution_mode", ExecutionMode.MOCK)
