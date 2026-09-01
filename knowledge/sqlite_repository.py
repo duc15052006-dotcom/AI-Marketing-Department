@@ -148,7 +148,8 @@ class SQLiteKnowledgeRepository(VersionedKnowledgeRepository):
 
     @staticmethod
     def _normalize_scope(scope: Optional[str]) -> str:
-        return str(scope or "GLOBAL").strip().upper()
+        normalized = str(scope or "GLOBAL").strip()
+        return "GLOBAL" if normalized.upper() == "GLOBAL" else normalized
 
     def _conn(self) -> sqlite3.Connection:
         if self._connection is None:
