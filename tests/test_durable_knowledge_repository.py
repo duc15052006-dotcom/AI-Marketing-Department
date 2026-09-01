@@ -1,17 +1,15 @@
-"""Adversarial regression tests for durable, scope-safe knowledge storage.
-
-RED-first contract: these tests intentionally target the durable repository
-implementation before production code is added.
-"""
+"""Adversarial regression tests for durable, scope-safe knowledge storage."""
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from knowledge.lifecycle_models import KnowledgeScope
 from knowledge.models import AuthorityLevel, KnowledgeDocument, KnowledgeSource, SourceType
+from knowledge.repository import LocalKnowledgeRepository
 from knowledge.sqlite_repository import SQLiteKnowledgeRepository
 
 
@@ -48,6 +46,27 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
             metadata={"owner": "tenant-a", "marker": "v1"},
         )
         return repository.save_document(document, changed_by="tenant-a", summary="initial")
+
+    def test_local_repository_facade_uses_durable_backend_by_default(self) -> None:
+        facade_path = Path(self.temp_dir.name) / "facade.sqlite3"
+        old_db_path = os.environ.get("AI_MARKETING_KNOWLEDGE_DB_PATH")
+        old_ephemeral = os.environ.get("AI_MARKETING_KNOWLEDGE_EPHEMERAL")
+        try:
+            os.environ["AI_MARKETING_KNOWLEDGE_DB_PATH"] = str(facade_path)
+            os.environ.pop("AI_MARKETING_KNOWLEDGE_EPHEMERAL", None)
+            repository = LocalKnowledgeRepository()
+            self.assertIsInstance(repository, SQLiteKnowledgeRepository)
+            repository.close()
+            self.assertTrue(facade_path.exists())
+        finally:
+            if old_db_path is None:
+                os.environ.pop("AI_MARKETING_KNOWLEDGE_DB_PATH", None)
+            else:
+                os.environ["AI_MARKETING_KNOWLEDGE_DB_PATH"] = old_db_path
+            if old_ephemeral is None:
+                os.environ.pop("AI_MARKETING_KNOWLEDGE_EPHEMERAL", None)
+            else:
+                os.environ["AI_MARKETING_KNOWLEDGE_EPHEMERAL"] = old_ephemeral
 
     def test_restart_preserves_document_source_metadata_and_history(self) -> None:
         repository = self._repository(self.scope_a)
@@ -96,6 +115,8 @@ class DurableKnowledgeRepositoryTests(unittest.TestCase):
             other_tenant.get_document_version(saved.knowledge_id, 1)
         with self.assertRaisesRegex(PermissionError, r"^scope_violation$"):
             other_tenant.get_version_history(saved.knowledge_id)
+        with self.assertRaisesRegex(PermissionError, r"^scope_violation$"):
+            other_tenant.get_source(saved.source_id)
         other_tenant.close()
 
     def test_cross_tenant_query_and_write_fail_closed(self) -> None:
