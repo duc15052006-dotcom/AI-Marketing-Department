@@ -25,6 +25,7 @@ jobs:
       RUN_LIVE_MODEL_TESTS: "0"
       PYTHONUTF8: "1"
       PYTHONDONTWRITEBYTECODE: "1"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
     steps:
       - name: Checkout repository with full history
         uses: actions/checkout@v4
@@ -120,12 +121,10 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/durable-knowledge-regressions.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run full hermetic unittest discovery
+      - name: Run full hermetic CI and fresh-start guard
         timeout-minutes: 35
-        shell: pwsh
-        run: |
-          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: cmd
+        run: python scripts/run_ci.py && python scripts/ci_fresh_start.py
 
       - name: Upload CI evidence
         if: always()
