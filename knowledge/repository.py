@@ -7,7 +7,9 @@ for all durable reference knowledge.
 from __future__ import annotations
 
 import abc
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from knowledge.models import (
     AuthorityLevel,
@@ -17,6 +19,24 @@ from knowledge.models import (
     KnowledgeVersion,
     SourceType,
 )
+
+
+def get_default_knowledge_database_path() -> Path:
+    """Return the durable per-user production knowledge database path.
+
+    ``AI_MARKETING_KNOWLEDGE_DB_PATH`` is an explicit operations/test override.
+    Otherwise Windows uses APPDATA/LOCALAPPDATA and non-Windows systems use the
+    user's home directory. The parent directory is created by the SQLite backend.
+    """
+
+    override = os.environ.get("AI_MARKETING_KNOWLEDGE_DB_PATH")
+    if override:
+        return Path(override).expanduser()
+
+    app_data = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+    if app_data:
+        return Path(app_data) / "AI-Marketing-Department" / "knowledge" / "knowledge.sqlite3"
+    return Path.home() / ".ai-marketing-department" / "knowledge" / "knowledge.sqlite3"
 
 
 class KnowledgeRepository(abc.ABC):
@@ -58,7 +78,21 @@ class KnowledgeRepository(abc.ABC):
 
 
 class LocalKnowledgeRepository(KnowledgeRepository):
-    """In-memory and local repository implementing provider-neutral knowledge management."""
+    """Compatibility facade for the application's local knowledge repository.
+
+    Normal runtime construction is durable and returns SQLiteKnowledgeRepository.
+    ``AI_MARKETING_KNOWLEDGE_EPHEMERAL=1`` is reserved for hermetic legacy tests
+    that intentionally exercise the historical in-memory behavior.
+    """
+
+    def __new__(cls):
+        if cls is LocalKnowledgeRepository and os.environ.get("AI_MARKETING_KNOWLEDGE_EPHEMERAL") != "1":
+            # Lazy import avoids a module cycle: sqlite_repository ->
+            # versioned_repository -> KnowledgeRepository (this module).
+            from knowledge.sqlite_repository import SQLiteKnowledgeRepository
+
+            return SQLiteKnowledgeRepository(get_default_knowledge_database_path())
+        return super().__new__(cls)
 
     def __init__(self) -> None:
         self._documents: Dict[str, KnowledgeDocument] = {}
