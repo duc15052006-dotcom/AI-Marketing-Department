@@ -14,6 +14,20 @@ from schemas.base import BaseModel, Field
 
 
 _INACTIVE_KNOWLEDGE_STATES = {"SUPERSEDED", "RETIRED", "DELETED"}
+_KNOWLEDGE_AUTHORITY_RANK = {
+    AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH: 0,
+    AuthorityLevel.TIER_2_VERIFIED_RESEARCH: 1,
+    AuthorityLevel.TIER_3_SECONDARY_INDUSTRY_DATA: 2,
+    AuthorityLevel.TIER_4_UNVERIFIED_OBSERVATION: 3,
+}
+
+
+def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
+    """Rank higher-authority knowledge first while leaving unknown future tiers last."""
+    return _KNOWLEDGE_AUTHORITY_RANK.get(
+        document.authority_level,
+        len(_KNOWLEDGE_AUTHORITY_RANK),
+    )
 
 
 def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
@@ -82,6 +96,9 @@ class KnowledgeContextBuilder:
             for d in all_docs
             if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
         ]
+        # Bound selection only after a stable authority sort so earlier low-tier
+        # insertion order cannot crowd out higher-authority evidence.
+        scoped_docs = sorted(scoped_docs, key=_knowledge_authority_rank)
 
         # Match by query if provided, or take high-authority scoped docs
         if query_text:
