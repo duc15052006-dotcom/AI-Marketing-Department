@@ -1,4 +1,8 @@
-"""Adversarial regression for execution intent/receipt approval provenance binding."""
+"""Adversarial regression for execution intent/receipt approval provenance binding.
+
+The RED state intentionally leaves production unchanged and requires the durable
+intent's approval audit reference to remain correlated with the finalized receipt.
+"""
 
 from __future__ import annotations
 
