@@ -39,17 +39,34 @@ class TestInactiveKnowledgeGrounding61(unittest.TestCase):
             )
         )
 
-    def test_superseded_and_deleted_never_enter_grounding_or_lineage(self) -> None:
+    def test_superseded_and_deleted_never_enter_builder_grounding_or_lineage(self) -> None:
         # ACTIVE/FRESH are current/legacy active states. STALE remains deliberately
         # retrievable in VersionedKnowledgeRepository, so this regression must not
         # over-tighten that compatibility contract. RETIRED, SUPERSEDED and DELETED
-        # are inactive lifecycle states and must never reach the model boundary.
+        # are inactive lifecycle states and must never reach retrieval/model boundaries.
         self._save_doc("KNOW-ACTIVE", KnowledgeLifecycleState.ACTIVE.value)
         self._save_doc("KNOW-FRESH", "FRESH")
         self._save_doc("KNOW-STALE", KnowledgeLifecycleState.STALE.value)
         self._save_doc("KNOW-SUPERSEDED", KnowledgeLifecycleState.SUPERSEDED.value)
         self._save_doc("KNOW-DELETED", KnowledgeLifecycleState.DELETED.value)
         self._save_doc("KNOW-RETIRED", KnowledgeLifecycleState.RETIRED.value)
+
+        expected_allowed = {"KNOW-ACTIVE", "KNOW-FRESH", "KNOW-STALE"}
+        forbidden = {"KNOW-SUPERSEDED", "KNOW-DELETED", "KNOW-RETIRED"}
+
+        # Legacy/public builder boundary must fail closed on inactive lifecycle states,
+        # even though LocalKnowledgeRepository itself remains lifecycle-agnostic.
+        builder_result = self.runtime.knowledge_builder.build_context_for_agent(
+            "cmo",
+            query_text=self.PROBE,
+            scope="SCOPE_BIZ_A",
+        )
+        builder_ids = {doc.knowledge_id for doc in builder_result.documents}
+        self.assertTrue(expected_allowed.issubset(builder_ids))
+        self.assertTrue(
+            builder_ids.isdisjoint(forbidden),
+            f"inactive knowledge reached KnowledgeContextBuilder: {sorted(builder_ids & forbidden)}",
+        )
 
         ctx = self.runtime.start_run(
             objective=self.PROBE,
@@ -62,9 +79,6 @@ class TestInactiveKnowledgeGrounding61(unittest.TestCase):
             for item in grounded.evidence_items
             if isinstance(item.metadata, dict) and item.metadata.get("knowledge_id")
         }
-
-        expected_allowed = {"KNOW-ACTIVE", "KNOW-FRESH", "KNOW-STALE"}
-        forbidden = {"KNOW-SUPERSEDED", "KNOW-DELETED", "KNOW-RETIRED"}
 
         self.assertTrue(expected_allowed.issubset(grounded_ids))
         self.assertTrue(
