@@ -127,6 +127,31 @@ class IdempotencyResolvedProviderAuthorityV1Tests(unittest.TestCase):
         self.assertEqual(1, self.adapter.call_count)
         self.assertEqual(1, len(self.gateway.idempotency_ledger.list_records()))
 
+    def test_legacy_alias_reservation_survives_resolved_authority_upgrade(self) -> None:
+        # Simulate durable evidence written by the pre-fix implementation, where
+        # the provider alias itself was part of the reservation authority.
+        legacy = self.gateway.idempotency_ledger.reserve(
+            capability_id=self.CAPABILITY_ID,
+            provider="provider_alias_a",
+            idempotency_key=self.PARAMS["idempotency_key"],
+            connection_id=None,
+            parameters=self.PARAMS,
+            business_id=None,
+            project_id=None,
+            brand_id=None,
+        )
+        self.gateway.idempotency_ledger.mark_dispatching(legacy.reservation_id)
+        self.gateway.idempotency_ledger.settle(legacy.reservation_id)
+
+        self._register_capability("provider_alias_b")
+        replay = self._approved_execute("RUN-LEGACY-ALIAS-AUTHORITY-001")
+
+        self.assertEqual(ExecutionStatus.BLOCKED, replay.status)
+        self.assertEqual("IDEMPOTENCY_REPLAY_BLOCKED", replay.error_class)
+        self.assertEqual("external_publish_adapter", replay.provider)
+        self.assertEqual(0, self.adapter.call_count)
+        self.assertEqual(1, len(self.gateway.idempotency_ledger.list_records()))
+
 
 if __name__ == "__main__":
     unittest.main()
