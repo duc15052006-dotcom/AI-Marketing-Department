@@ -24,6 +24,16 @@ from tools.capabilities import CapabilityRegistry, EvidenceRole
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 
 
+_INACTIVE_KNOWLEDGE_STATES = {"SUPERSEDED", "RETIRED", "DELETED"}
+
+
+def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
+    """Match the governed repository lifecycle contract without blocking STALE."""
+    freshness = getattr(document, "freshness", "")
+    lifecycle_state = str(getattr(freshness, "value", freshness)).strip().upper()
+    return lifecycle_state not in _INACTIVE_KNOWLEDGE_STATES
+
+
 @dataclass
 class AgentCompiledContext:
     """Targeted, bounded prompt and reference context for an individual agent (legacy view)."""
@@ -131,7 +141,11 @@ class ContextCompiler:
             seen_knowledge_ids: set = set()
             for s in knowledge_scopes:
                 scoped_docs = self.knowledge_repo.list_documents(scope=s)
-                valid_docs = [d for d in scoped_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
+                valid_docs = [
+                    d
+                    for d in scoped_docs
+                    if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
+                ]
                 for doc in valid_docs[:4]:
                     if doc.knowledge_id in seen_knowledge_ids:
                         continue
@@ -403,4 +417,3 @@ class ContextCompiler:
             constraints=ctx.constraints,
             raw_prompt_payload=pkg.render_prompt_section(),
         )
-

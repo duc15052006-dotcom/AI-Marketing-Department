@@ -13,6 +13,16 @@ from knowledge.repository import KnowledgeRepository
 from schemas.base import BaseModel, Field
 
 
+_INACTIVE_KNOWLEDGE_STATES = {"SUPERSEDED", "RETIRED", "DELETED"}
+
+
+def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
+    """Match the governed repository lifecycle contract without blocking STALE."""
+    freshness = getattr(document, "freshness", "")
+    lifecycle_state = str(getattr(freshness, "value", freshness)).strip().upper()
+    return lifecycle_state not in _INACTIVE_KNOWLEDGE_STATES
+
+
 class KnowledgeQuery(BaseModel):
     """Structured query envelope for retrieving agent-scoped knowledge."""
     agent_id: str
@@ -63,10 +73,15 @@ class KnowledgeContextBuilder:
         # scope=None as "all documents", which can cross tenant/project borders.
         effective_scope = str(scope or "GLOBAL").strip() or "GLOBAL"
 
-        # Filter by agent's authorized knowledge sources and exclude RETIRED documents
+        # Match the governed repository lifecycle contract. STALE remains
+        # retrievable; SUPERSEDED/RETIRED/DELETED must never become context.
         allowed_sources = prof.allowed_knowledge_sources
         all_docs = self.repository.list_documents(scope=effective_scope)
-        scoped_docs = [d for d in all_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
+        scoped_docs = [
+            d
+            for d in all_docs
+            if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
+        ]
 
         # Match by query if provided, or take high-authority scoped docs
         if query_text:
