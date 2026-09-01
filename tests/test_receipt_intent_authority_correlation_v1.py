@@ -2,11 +2,15 @@
 
 A consequential execution intent must not be finalized by a receipt that merely
 copies the run/capability/request hash while contradicting another immutable
-correlation dimension.
+correlation dimension. Recovery/reconciliation must enforce the same binding on
+already-persisted finalized or ambiguous evidence.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+import tempfile
 import unittest
 
 from tools.receipts import (
@@ -21,8 +25,8 @@ from tools.receipts import (
 
 
 class ReceiptIntentAuthorityCorrelationV1Tests(unittest.TestCase):
-    def _prepared_repository(self):
-        repo = ExecutionReceiptRepository()
+    def _prepared_repository(self, *, database_path: Path | None = None):
+        repo = ExecutionReceiptRepository(database_path=database_path)
         intent = repo.prepare_execution_intent(
             request_id="REQ-AUTH-001",
             run_id="RUN-AUTH-001",
@@ -56,8 +60,9 @@ class ReceiptIntentAuthorityCorrelationV1Tests(unittest.TestCase):
         values.update(overrides)
         return ExecutionReceipt(**values)
 
-    def test_finalize_rejects_receipt_with_foreign_authority_dimension(self) -> None:
-        variants = {
+    @staticmethod
+    def _authority_variants():
+        return {
             "agent_id": {"agent_id": "creative"},
             "provider": {"provider": "foreign_publish_adapter"},
             "business_id": {"business_id": "BIZ-B"},
@@ -65,7 +70,8 @@ class ReceiptIntentAuthorityCorrelationV1Tests(unittest.TestCase):
             "chat_id": {"chat_id": "CHAT-B"},
         }
 
-        for dimension, overrides in variants.items():
+    def test_finalize_rejects_receipt_with_foreign_authority_dimension(self) -> None:
+        for dimension, overrides in self._authority_variants().items():
             with self.subTest(dimension=dimension):
                 repo, intent = self._prepared_repository()
                 foreign_receipt = self._receipt(**overrides)
@@ -81,6 +87,43 @@ class ReceiptIntentAuthorityCorrelationV1Tests(unittest.TestCase):
                 self.assertEqual(current.state, ExecutionIntentState.DISPATCHING)
                 self.assertIsNone(current.receipt_execution_id)
                 self.assertIsNone(repo.get_receipt(foreign_receipt.execution_id))
+
+    def test_recovery_rejects_persisted_foreign_authority_receipt(self) -> None:
+        """Legacy/corrupt-but-hash-valid links must fail closed after restart."""
+        target_states = {
+            ExecutionIntentState.FINALIZED: "FINALIZED_INTENT_RECEIPT_BINDING_MISMATCH",
+            ExecutionIntentState.AMBIGUOUS: "AMBIGUOUS_INTENT_RECEIPT_BINDING_MISMATCH",
+        }
+
+        for target_state, expected_error in target_states.items():
+            for dimension, overrides in self._authority_variants().items():
+                with self.subTest(state=target_state.value, dimension=dimension):
+                    with tempfile.TemporaryDirectory() as tmp:
+                        db_path = Path(tmp) / "authority-recovery.sqlite3"
+                        repo, intent = self._prepared_repository(database_path=db_path)
+                        foreign_receipt = self._receipt(**overrides)
+                        repo.save_receipt(foreign_receipt)
+
+                        current = repo.get_execution_intent(intent.intent_id)
+                        self.assertIsNotNone(current)
+                        forged_link = replace(
+                            current,
+                            state=target_state,
+                            receipt_execution_id=foreign_receipt.execution_id,
+                            record_hash="",
+                        )
+                        with repo._lock:
+                            with repo._conn:
+                                repo._replace_intent_locked(forged_link)
+                        repo.close()
+
+                        reopened = ExecutionReceiptRepository(database_path=db_path)
+                        with self.assertRaisesRegex(
+                            ReceiptStoreIntegrityError,
+                            expected_error,
+                        ):
+                            reopened.assess_execution_intent(intent.intent_id)
+                        reopened.close()
 
     def test_exact_authority_receipt_still_finalizes_and_reconciles(self) -> None:
         repo, intent = self._prepared_repository()
