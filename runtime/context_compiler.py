@@ -24,6 +24,30 @@ from tools.capabilities import CapabilityRegistry, EvidenceRole
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 
 
+_INACTIVE_KNOWLEDGE_STATES = {"SUPERSEDED", "RETIRED", "DELETED"}
+_KNOWLEDGE_AUTHORITY_RANK = {
+    AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH: 0,
+    AuthorityLevel.TIER_2_VERIFIED_RESEARCH: 1,
+    AuthorityLevel.TIER_3_SECONDARY_INDUSTRY_DATA: 2,
+    AuthorityLevel.TIER_4_UNVERIFIED_OBSERVATION: 3,
+}
+
+
+def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
+    """Rank higher-authority knowledge first while leaving unknown future tiers last."""
+    return _KNOWLEDGE_AUTHORITY_RANK.get(
+        document.authority_level,
+        len(_KNOWLEDGE_AUTHORITY_RANK),
+    )
+
+
+def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
+    """Match the governed repository lifecycle contract without blocking STALE."""
+    freshness = getattr(document, "freshness", "")
+    lifecycle_state = str(getattr(freshness, "value", freshness)).strip().upper()
+    return lifecycle_state not in _INACTIVE_KNOWLEDGE_STATES
+
+
 @dataclass
 class AgentCompiledContext:
     """Targeted, bounded prompt and reference context for an individual agent (legacy view)."""
@@ -131,7 +155,14 @@ class ContextCompiler:
             seen_knowledge_ids: set = set()
             for s in knowledge_scopes:
                 scoped_docs = self.knowledge_repo.list_documents(scope=s)
-                valid_docs = [d for d in scoped_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
+                valid_docs = [
+                    d
+                    for d in scoped_docs
+                    if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
+                ]
+                # Apply a stable authority sort before the per-scope evidence cap.
+                # Same-tier repository order is preserved by Python's stable sort.
+                valid_docs = sorted(valid_docs, key=_knowledge_authority_rank)
                 for doc in valid_docs[:4]:
                     if doc.knowledge_id in seen_knowledge_ids:
                         continue
@@ -403,4 +434,3 @@ class ContextCompiler:
             constraints=ctx.constraints,
             raw_prompt_payload=pkg.render_prompt_section(),
         )
-
