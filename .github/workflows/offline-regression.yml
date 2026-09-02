@@ -136,6 +136,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/idempotency-intent-dispatch-transition-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run idempotency ledger-dispatch transition regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_idempotency_ledger_dispatch_transition_failure_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/idempotency-ledger-dispatch-transition-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
