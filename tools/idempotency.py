@@ -1,9 +1,9 @@
 """Durable idempotency reservations for real consequential tool actions.
 
-The ledger is intentionally provider-neutral. It stores only hashes of the raw
-idempotency key and semantic request payload. When the Tool Gateway uses a
-file-backed ExecutionReceiptRepository, this ledger creates its table in the
-same SQLite database file so idempotency evidence survives process restarts.
+The ledger stores only hashes of raw idempotency keys and semantic request
+payloads. Provider-specific reservation ids are retained for backward
+compatibility, while a provider-neutral authority namespace prevents adapter
+alias churn from creating a second externally consequential dispatch.
 
 A reservation is conservative: once a key is reserved for an exact trusted
 scope/capability/connection namespace, automatic replay with that key is
@@ -76,6 +76,8 @@ class IdempotencyRecord:
     request_fingerprint: str
     state: IdempotencyState = IdempotencyState.RESERVED
     retryable_pre_dispatch: bool = False
+    authority_namespace_hash: str = ""
+    authority_fingerprint: str = ""
     created_at: str = ""
     updated_at: str = ""
 
@@ -101,6 +103,8 @@ class IdempotencyRecord:
             request_fingerprint=self.request_fingerprint.strip().lower(),
             state=state,
             retryable_pre_dispatch=bool(self.retryable_pre_dispatch),
+            authority_namespace_hash=str(self.authority_namespace_hash or "").strip().lower(),
+            authority_fingerprint=str(self.authority_fingerprint or "").strip().lower(),
             created_at=created_at,
             updated_at=self.updated_at or created_at,
         )
@@ -144,6 +148,8 @@ class IdempotencyLedger:
                             request_fingerprint TEXT NOT NULL,
                             state TEXT NOT NULL,
                             retryable_pre_dispatch INTEGER NOT NULL DEFAULT 0,
+                            authority_namespace_hash TEXT NOT NULL DEFAULT '',
+                            authority_fingerprint TEXT NOT NULL DEFAULT '',
                             created_at TEXT NOT NULL,
                             updated_at TEXT NOT NULL
                         )
@@ -160,9 +166,24 @@ class IdempotencyLedger:
                             "ALTER TABLE idempotency_ledger "
                             "ADD COLUMN retryable_pre_dispatch INTEGER NOT NULL DEFAULT 0"
                         )
+                    if "authority_namespace_hash" not in columns:
+                        conn.execute(
+                            "ALTER TABLE idempotency_ledger "
+                            "ADD COLUMN authority_namespace_hash TEXT NOT NULL DEFAULT ''"
+                        )
+                    if "authority_fingerprint" not in columns:
+                        conn.execute(
+                            "ALTER TABLE idempotency_ledger "
+                            "ADD COLUMN authority_fingerprint TEXT NOT NULL DEFAULT ''"
+                        )
                     conn.execute(
                         "CREATE INDEX IF NOT EXISTS idx_idempotency_state "
                         "ON idempotency_ledger(state, reservation_id)"
+                    )
+                    conn.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_idempotency_authority_namespace "
+                        "ON idempotency_ledger(authority_namespace_hash) "
+                        "WHERE authority_namespace_hash <> ''"
                     )
         except sqlite3.Error as exc:
             raise IdempotencyStoreError(
@@ -193,6 +214,55 @@ class IdempotencyLedger:
         )
 
     @staticmethod
+    def authority_namespace_identity(
+        *,
+        capability_id: str,
+        idempotency_key: str,
+        connection_id: Optional[str],
+        business_id: Optional[str],
+        project_id: Optional[str],
+        brand_id: Optional[str],
+    ) -> tuple[str, str]:
+        """Return provider-neutral authority namespace hash and key hash."""
+        key = str(idempotency_key or "").strip()
+        if not key:
+            raise IdempotencyStoreError("IDEMPOTENCY_KEY_REQUIRED")
+        key_hash = _hash(key)
+        authority_namespace = {
+            "schema_version": 1,
+            "capability_id": str(capability_id or "").strip().lower(),
+            "connection_id": str(connection_id or "").strip().lower(),
+            "business_id": str(business_id or "").strip(),
+            "project_id": str(project_id or "").strip(),
+            "brand_id": str(brand_id or "").strip(),
+            "key_hash": key_hash,
+        }
+        return _hash(authority_namespace), key_hash
+
+    @staticmethod
+    def authority_fingerprint_for(
+        *,
+        capability_id: str,
+        connection_id: Optional[str],
+        parameters: Dict[str, Any],
+        business_id: Optional[str],
+        project_id: Optional[str],
+        brand_id: Optional[str],
+    ) -> str:
+        """Hash governed action semantics without provider naming authority."""
+        return _hash(
+            {
+                "schema_version": 1,
+                "capability_id": str(capability_id or "").strip().lower(),
+                "connection_id": str(connection_id or "").strip().lower(),
+                "business_id": str(business_id or "").strip(),
+                "project_id": str(project_id or "").strip(),
+                "brand_id": str(brand_id or "").strip(),
+                "parameters": parameters,
+            }
+        )
+
+    @staticmethod
     def reservation_identity(
         *,
         capability_id: str,
@@ -203,12 +273,7 @@ class IdempotencyLedger:
         project_id: Optional[str],
         brand_id: Optional[str],
     ) -> tuple[str, str, str]:
-        """Return opaque reservation id, namespace hash, and key hash.
-
-        The raw key is never persisted or embedded in the reservation id.
-        Run/agent/request identifiers are intentionally excluded so replay from a
-        new run or newly-approved request collides with the existing reservation.
-        """
+        """Return legacy provider-specific reservation id, namespace hash, and key hash."""
         key = str(idempotency_key or "").strip()
         if not key:
             raise IdempotencyStoreError("IDEMPOTENCY_KEY_REQUIRED")
@@ -236,6 +301,8 @@ class IdempotencyLedger:
             request_fingerprint=row["request_fingerprint"],
             state=IdempotencyState(row["state"]),
             retryable_pre_dispatch=bool(row["retryable_pre_dispatch"]),
+            authority_namespace_hash=row["authority_namespace_hash"],
+            authority_fingerprint=row["authority_fingerprint"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         ).normalized()
@@ -253,6 +320,29 @@ class IdempotencyLedger:
             copy.deepcopy(existing),
         )
 
+    def _authority_conflict(
+        self,
+        existing: IdempotencyRecord,
+        authority_fingerprint: str,
+    ) -> None:
+        if not existing.authority_namespace_hash or not existing.authority_fingerprint:
+            raise IdempotencyConflictError(
+                "IDEMPOTENCY_REPLAY_BLOCKED",
+                "Historical idempotency authority predates provider-neutral lineage metadata; automatic replay is forbidden.",
+                copy.deepcopy(existing),
+            )
+        if existing.authority_fingerprint == authority_fingerprint:
+            raise IdempotencyConflictError(
+                "IDEMPOTENCY_REPLAY_BLOCKED",
+                "This idempotency key is already reserved for the same governed action under provider-neutral authority; automatic replay is forbidden.",
+                copy.deepcopy(existing),
+            )
+        raise IdempotencyConflictError(
+            "IDEMPOTENCY_KEY_CONFLICT",
+            "This idempotency key is already reserved for a different governed action in the same provider-neutral trusted namespace.",
+            copy.deepcopy(existing),
+        )
+
     @staticmethod
     def _can_claim_pre_dispatch_retry(
         existing: IdempotencyRecord, request_fingerprint: str
@@ -261,6 +351,17 @@ class IdempotencyLedger:
             existing.state == IdempotencyState.RESERVED
             and existing.retryable_pre_dispatch
             and existing.request_fingerprint == request_fingerprint
+        )
+
+    @staticmethod
+    def _can_claim_authority_retry(
+        existing: IdempotencyRecord, authority_fingerprint: str
+    ) -> bool:
+        return bool(
+            existing.state == IdempotencyState.RESERVED
+            and existing.retryable_pre_dispatch
+            and existing.authority_fingerprint
+            and existing.authority_fingerprint == authority_fingerprint
         )
 
     def reserve(
@@ -284,9 +385,27 @@ class IdempotencyLedger:
             project_id=project_id,
             brand_id=brand_id,
         )
+        authority_namespace_hash, authority_key_hash = self.authority_namespace_identity(
+            capability_id=capability_id,
+            idempotency_key=idempotency_key,
+            connection_id=connection_id,
+            business_id=business_id,
+            project_id=project_id,
+            brand_id=brand_id,
+        )
+        if authority_key_hash != key_hash:
+            raise IdempotencyStoreError("IDEMPOTENCY_AUTHORITY_KEY_HASH_MISMATCH")
         fingerprint = self.semantic_fingerprint(
             capability_id=capability_id,
             provider=provider,
+            parameters=parameters,
+            business_id=business_id,
+            project_id=project_id,
+            brand_id=brand_id,
+        )
+        authority_fingerprint = self.authority_fingerprint_for(
+            capability_id=capability_id,
+            connection_id=connection_id,
             parameters=parameters,
             business_id=business_id,
             project_id=project_id,
@@ -297,6 +416,8 @@ class IdempotencyLedger:
             namespace_hash=namespace_hash,
             key_hash=key_hash,
             request_fingerprint=fingerprint,
+            authority_namespace_hash=authority_namespace_hash,
+            authority_fingerprint=authority_fingerprint,
         ).normalized()
 
         with self._lock:
@@ -312,6 +433,34 @@ class IdempotencyLedger:
                         self._records[reservation_id] = claimed
                         return copy.deepcopy(claimed)
                     self._conflict(existing, fingerprint)
+
+                for authority_record in self._records.values():
+                    if authority_record.authority_namespace_hash == authority_namespace_hash:
+                        if self._can_claim_authority_retry(
+                            authority_record, authority_fingerprint
+                        ):
+                            claimed = replace(
+                                authority_record,
+                                retryable_pre_dispatch=False,
+                                updated_at=_utc_now_iso(),
+                            ).normalized()
+                            self._records[authority_record.reservation_id] = claimed
+                            return copy.deepcopy(claimed)
+                        self._authority_conflict(
+                            authority_record, authority_fingerprint
+                        )
+
+                # Rows created before provider-neutral metadata cannot be mapped
+                # back to their retired provider/scope without guessing. A same-key
+                # collision therefore remains fail-closed rather than permitting a
+                # potentially duplicate consequential action.
+                for legacy_record in self._records.values():
+                    if (
+                        not legacy_record.authority_namespace_hash
+                        and legacy_record.key_hash == key_hash
+                    ):
+                        self._authority_conflict(legacy_record, authority_fingerprint)
+
                 self._records[reservation_id] = record
                 return copy.deepcopy(record)
 
@@ -349,13 +498,63 @@ class IdempotencyLedger:
                                     updated_at=claimed_at,
                                 ).normalized()
                             self._conflict(existing, fingerprint)
+
+                        authority_row = conn.execute(
+                            "SELECT * FROM idempotency_ledger "
+                            "WHERE authority_namespace_hash=? LIMIT 1",
+                            (authority_namespace_hash,),
+                        ).fetchone()
+                        if authority_row is not None:
+                            authority_record = self._from_row(authority_row)
+                            if self._can_claim_authority_retry(
+                                authority_record, authority_fingerprint
+                            ):
+                                claimed_at = _utc_now_iso()
+                                cur = conn.execute(
+                                    "UPDATE idempotency_ledger "
+                                    "SET retryable_pre_dispatch=0, updated_at=? "
+                                    "WHERE reservation_id=? AND state=? "
+                                    "AND retryable_pre_dispatch=1 "
+                                    "AND authority_fingerprint=?",
+                                    (
+                                        claimed_at,
+                                        authority_record.reservation_id,
+                                        IdempotencyState.RESERVED.value,
+                                        authority_fingerprint,
+                                    ),
+                                )
+                                if cur.rowcount != 1:
+                                    raise IdempotencyStoreError(
+                                        "IDEMPOTENCY_PRE_DISPATCH_RETRY_CLAIM_CONFLICT: "
+                                        f"reservation_id={authority_record.reservation_id}"
+                                    )
+                                return replace(
+                                    authority_record,
+                                    retryable_pre_dispatch=False,
+                                    updated_at=claimed_at,
+                                ).normalized()
+                            self._authority_conflict(
+                                authority_record, authority_fingerprint
+                            )
+
+                        legacy_row = conn.execute(
+                            "SELECT * FROM idempotency_ledger "
+                            "WHERE key_hash=? AND authority_namespace_hash='' LIMIT 1",
+                            (key_hash,),
+                        ).fetchone()
+                        if legacy_row is not None:
+                            self._authority_conflict(
+                                self._from_row(legacy_row), authority_fingerprint
+                            )
+
                         conn.execute(
                             """
                             INSERT INTO idempotency_ledger(
                                 reservation_id, namespace_hash, key_hash,
                                 request_fingerprint, state, retryable_pre_dispatch,
+                                authority_namespace_hash, authority_fingerprint,
                                 created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 record.reservation_id,
@@ -364,6 +563,8 @@ class IdempotencyLedger:
                                 record.request_fingerprint,
                                 record.state.value,
                                 int(record.retryable_pre_dispatch),
+                                record.authority_namespace_hash,
+                                record.authority_fingerprint,
                                 record.created_at,
                                 record.updated_at,
                             ),
@@ -372,11 +573,38 @@ class IdempotencyLedger:
             except IdempotencyConflictError:
                 raise
             except sqlite3.IntegrityError:
-                # A concurrent writer may have won after the SELECT. Re-read and
-                # classify without ever allowing a second reservation.
+                # Either the provider-specific reservation id or the provider-
+                # neutral authority namespace may have been won concurrently.
                 existing = self.get(reservation_id)
                 if existing is not None:
                     self._conflict(existing, fingerprint)
+                try:
+                    with closing(self._connect()) as conn:
+                        authority_row = conn.execute(
+                            "SELECT * FROM idempotency_ledger "
+                            "WHERE authority_namespace_hash=? LIMIT 1",
+                            (authority_namespace_hash,),
+                        ).fetchone()
+                        if authority_row is not None:
+                            self._authority_conflict(
+                                self._from_row(authority_row), authority_fingerprint
+                            )
+                        legacy_row = conn.execute(
+                            "SELECT * FROM idempotency_ledger "
+                            "WHERE key_hash=? AND authority_namespace_hash='' LIMIT 1",
+                            (key_hash,),
+                        ).fetchone()
+                        if legacy_row is not None:
+                            self._authority_conflict(
+                                self._from_row(legacy_row), authority_fingerprint
+                            )
+                except IdempotencyConflictError:
+                    raise
+                except sqlite3.Error as exc:
+                    raise IdempotencyStoreError(
+                        "IDEMPOTENCY_RESERVE_FAILED: "
+                        + sanitize_sensitive_text(str(exc))
+                    ) from exc
                 raise IdempotencyStoreError("IDEMPOTENCY_RESERVATION_CONFLICT")
             except IdempotencyStoreError:
                 raise
