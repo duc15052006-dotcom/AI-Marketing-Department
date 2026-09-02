@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict
 
@@ -165,40 +166,41 @@ class IdempotencyRetiredProviderAliasHistoryV1Tests(unittest.TestCase):
                 brand_id=None,
             )
             timestamp = "2026-08-01T00:00:00+00:00"
-            with sqlite3.connect(str(database_path)) as conn:
-                conn.execute(
-                    """
-                    CREATE TABLE idempotency_ledger (
-                        reservation_id TEXT PRIMARY KEY,
-                        namespace_hash TEXT NOT NULL,
-                        key_hash TEXT NOT NULL,
-                        request_fingerprint TEXT NOT NULL,
-                        state TEXT NOT NULL,
-                        retryable_pre_dispatch INTEGER NOT NULL DEFAULT 0,
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL
+            with closing(sqlite3.connect(str(database_path))) as conn:
+                with conn:
+                    conn.execute(
+                        """
+                        CREATE TABLE idempotency_ledger (
+                            reservation_id TEXT PRIMARY KEY,
+                            namespace_hash TEXT NOT NULL,
+                            key_hash TEXT NOT NULL,
+                            request_fingerprint TEXT NOT NULL,
+                            state TEXT NOT NULL,
+                            retryable_pre_dispatch INTEGER NOT NULL DEFAULT 0,
+                            created_at TEXT NOT NULL,
+                            updated_at TEXT NOT NULL
+                        )
+                        """
                     )
-                    """
-                )
-                conn.execute(
-                    """
-                    INSERT INTO idempotency_ledger(
-                        reservation_id, namespace_hash, key_hash,
-                        request_fingerprint, state, retryable_pre_dispatch,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        reservation_id,
-                        namespace_hash,
-                        key_hash,
-                        request_fingerprint,
-                        "FINALIZED",
-                        0,
-                        timestamp,
-                        timestamp,
-                    ),
-                )
+                    conn.execute(
+                        """
+                        INSERT INTO idempotency_ledger(
+                            reservation_id, namespace_hash, key_hash,
+                            request_fingerprint, state, retryable_pre_dispatch,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            reservation_id,
+                            namespace_hash,
+                            key_hash,
+                            request_fingerprint,
+                            "FINALIZED",
+                            0,
+                            timestamp,
+                            timestamp,
+                        ),
+                    )
 
             self.gateway.idempotency_ledger = IdempotencyLedger(
                 database_path=database_path
