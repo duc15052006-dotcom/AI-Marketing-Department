@@ -7,8 +7,9 @@ same SQLite database file so idempotency evidence survives process restarts.
 
 A reservation is conservative: once a key is reserved for an exact trusted
 scope/capability/connection namespace, automatic replay with that key is
-blocked even if a later crash happened before the provider result was known.
-Operators may choose a new key after inspecting durable execution evidence.
+blocked unless the gateway durably certifies that a failed pre-dispatch attempt
+never entered adapter execution. That one retry authorization is stored and
+consumed atomically; ambiguous or dispatched states remain fail-closed.
 """
 
 from __future__ import annotations
@@ -74,6 +75,7 @@ class IdempotencyRecord:
     key_hash: str
     request_fingerprint: str
     state: IdempotencyState = IdempotencyState.RESERVED
+    retryable_pre_dispatch: bool = False
     created_at: str = ""
     updated_at: str = ""
 
@@ -98,6 +100,7 @@ class IdempotencyRecord:
             key_hash=self.key_hash.strip().lower(),
             request_fingerprint=self.request_fingerprint.strip().lower(),
             state=state,
+            retryable_pre_dispatch=bool(self.retryable_pre_dispatch),
             created_at=created_at,
             updated_at=self.updated_at or created_at,
         )
@@ -140,11 +143,23 @@ class IdempotencyLedger:
                             key_hash TEXT NOT NULL,
                             request_fingerprint TEXT NOT NULL,
                             state TEXT NOT NULL,
+                            retryable_pre_dispatch INTEGER NOT NULL DEFAULT 0,
                             created_at TEXT NOT NULL,
                             updated_at TEXT NOT NULL
                         )
                         """
                     )
+                    columns = {
+                        str(row["name"])
+                        for row in conn.execute(
+                            "PRAGMA table_info(idempotency_ledger)"
+                        ).fetchall()
+                    }
+                    if "retryable_pre_dispatch" not in columns:
+                        conn.execute(
+                            "ALTER TABLE idempotency_ledger "
+                            "ADD COLUMN retryable_pre_dispatch INTEGER NOT NULL DEFAULT 0"
+                        )
                     conn.execute(
                         "CREATE INDEX IF NOT EXISTS idx_idempotency_state "
                         "ON idempotency_ledger(state, reservation_id)"
@@ -220,6 +235,7 @@ class IdempotencyLedger:
             key_hash=row["key_hash"],
             request_fingerprint=row["request_fingerprint"],
             state=IdempotencyState(row["state"]),
+            retryable_pre_dispatch=bool(row["retryable_pre_dispatch"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         ).normalized()
@@ -235,6 +251,16 @@ class IdempotencyLedger:
             "IDEMPOTENCY_KEY_CONFLICT",
             "This idempotency key is already reserved for a different governed action in the same trusted namespace.",
             copy.deepcopy(existing),
+        )
+
+    @staticmethod
+    def _can_claim_pre_dispatch_retry(
+        existing: IdempotencyRecord, request_fingerprint: str
+    ) -> bool:
+        return bool(
+            existing.state == IdempotencyState.RESERVED
+            and existing.retryable_pre_dispatch
+            and existing.request_fingerprint == request_fingerprint
         )
 
     def reserve(
@@ -277,6 +303,14 @@ class IdempotencyLedger:
             if self.database_path is None:
                 existing = self._records.get(reservation_id)
                 if existing is not None:
+                    if self._can_claim_pre_dispatch_retry(existing, fingerprint):
+                        claimed = replace(
+                            existing,
+                            retryable_pre_dispatch=False,
+                            updated_at=_utc_now_iso(),
+                        ).normalized()
+                        self._records[reservation_id] = claimed
+                        return copy.deepcopy(claimed)
                     self._conflict(existing, fingerprint)
                 self._records[reservation_id] = record
                 return copy.deepcopy(record)
@@ -289,13 +323,39 @@ class IdempotencyLedger:
                             (reservation_id,),
                         ).fetchone()
                         if existing_row is not None:
-                            self._conflict(self._from_row(existing_row), fingerprint)
+                            existing = self._from_row(existing_row)
+                            if self._can_claim_pre_dispatch_retry(existing, fingerprint):
+                                claimed_at = _utc_now_iso()
+                                cur = conn.execute(
+                                    "UPDATE idempotency_ledger "
+                                    "SET retryable_pre_dispatch=0, updated_at=? "
+                                    "WHERE reservation_id=? AND state=? "
+                                    "AND retryable_pre_dispatch=1 AND request_fingerprint=?",
+                                    (
+                                        claimed_at,
+                                        reservation_id,
+                                        IdempotencyState.RESERVED.value,
+                                        fingerprint,
+                                    ),
+                                )
+                                if cur.rowcount != 1:
+                                    raise IdempotencyStoreError(
+                                        "IDEMPOTENCY_PRE_DISPATCH_RETRY_CLAIM_CONFLICT: "
+                                        f"reservation_id={reservation_id}"
+                                    )
+                                return replace(
+                                    existing,
+                                    retryable_pre_dispatch=False,
+                                    updated_at=claimed_at,
+                                ).normalized()
+                            self._conflict(existing, fingerprint)
                         conn.execute(
                             """
                             INSERT INTO idempotency_ledger(
                                 reservation_id, namespace_hash, key_hash,
-                                request_fingerprint, state, created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                                request_fingerprint, state, retryable_pre_dispatch,
+                                created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 record.reservation_id,
@@ -303,6 +363,7 @@ class IdempotencyLedger:
                                 record.key_hash,
                                 record.request_fingerprint,
                                 record.state.value,
+                                int(record.retryable_pre_dispatch),
                                 record.created_at,
                                 record.updated_at,
                             ),
@@ -317,6 +378,8 @@ class IdempotencyLedger:
                 if existing is not None:
                     self._conflict(existing, fingerprint)
                 raise IdempotencyStoreError("IDEMPOTENCY_RESERVATION_CONFLICT")
+            except IdempotencyStoreError:
+                raise
             except sqlite3.Error as exc:
                 raise IdempotencyStoreError(
                     "IDEMPOTENCY_RESERVE_FAILED: " + sanitize_sensitive_text(str(exc))
@@ -355,6 +418,63 @@ class IdempotencyLedger:
             except sqlite3.Error as exc:
                 raise IdempotencyStoreError(
                     "IDEMPOTENCY_LIST_FAILED: " + sanitize_sensitive_text(str(exc))
+                ) from exc
+
+    def mark_retryable_pre_dispatch(self, reservation_id: str) -> IdempotencyRecord:
+        """Authorize one retry only while the reservation is provably RESERVED."""
+        key = str(reservation_id or "").strip()
+        if not key:
+            raise IdempotencyStoreError("IDEMPOTENCY_RESERVATION_ID_REQUIRED")
+
+        with self._lock:
+            current = self.get(key)
+            if current is None:
+                raise IdempotencyStoreError(
+                    f"IDEMPOTENCY_RESERVATION_NOT_FOUND: reservation_id={key}"
+                )
+            if current.state != IdempotencyState.RESERVED:
+                raise IdempotencyStoreError(
+                    "IDEMPOTENCY_PRE_DISPATCH_RETRY_FORBIDDEN: "
+                    f"reservation_id={key} state={current.state.value}"
+                )
+            if current.retryable_pre_dispatch:
+                return current
+
+            updated = replace(
+                current,
+                retryable_pre_dispatch=True,
+                updated_at=_utc_now_iso(),
+            ).normalized()
+            if self.database_path is None:
+                self._records[key] = updated
+                return copy.deepcopy(updated)
+
+            try:
+                with closing(self._connect()) as conn:
+                    with conn:
+                        cur = conn.execute(
+                            "UPDATE idempotency_ledger "
+                            "SET retryable_pre_dispatch=1, updated_at=? "
+                            "WHERE reservation_id=? AND state=? "
+                            "AND retryable_pre_dispatch=0",
+                            (
+                                updated.updated_at,
+                                key,
+                                IdempotencyState.RESERVED.value,
+                            ),
+                        )
+                        if cur.rowcount != 1:
+                            raise IdempotencyStoreError(
+                                "IDEMPOTENCY_PRE_DISPATCH_RETRY_MARK_CONFLICT: "
+                                f"reservation_id={key}"
+                            )
+                return updated
+            except IdempotencyStoreError:
+                raise
+            except sqlite3.Error as exc:
+                raise IdempotencyStoreError(
+                    "IDEMPOTENCY_PRE_DISPATCH_RETRY_MARK_FAILED: "
+                    + sanitize_sensitive_text(str(exc))
                 ) from exc
 
     def release_reserved(self, reservation_id: str) -> None:
@@ -428,7 +548,12 @@ class IdempotencyLedger:
                     "IDEMPOTENCY_INVALID_TRANSITION: "
                     f"reservation_id={reservation_id} state={current.state.value} target={target.value}"
                 )
-            updated = replace(current, state=target, updated_at=_utc_now_iso()).normalized()
+            updated = replace(
+                current,
+                state=target,
+                retryable_pre_dispatch=False,
+                updated_at=_utc_now_iso(),
+            ).normalized()
 
             if self.database_path is None:
                 self._records[reservation_id] = updated
@@ -437,7 +562,8 @@ class IdempotencyLedger:
                 with closing(self._connect()) as conn:
                     with conn:
                         cur = conn.execute(
-                            "UPDATE idempotency_ledger SET state=?, updated_at=? "
+                            "UPDATE idempotency_ledger "
+                            "SET state=?, retryable_pre_dispatch=0, updated_at=? "
                             "WHERE reservation_id=? AND state=?",
                             (
                                 updated.state.value,
