@@ -745,7 +745,10 @@ class ToolGateway:
 
                 if cap_is_consequential:
                     returned_error_code = str(adapter_res.error_code or "").strip().upper()
-                    if returned_error_code in {"TIMEOUT", "NETWORK_ERROR"}:
+                    if (
+                        pinned_execution_mode == ExecutionMode.REAL
+                        and returned_error_code in {"TIMEOUT", "NETWORK_ERROR"}
+                    ):
                         ambiguous_external_outcome = True
                     break
 
