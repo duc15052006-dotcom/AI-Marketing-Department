@@ -34,6 +34,7 @@ class ReceiptIntentAuthorityCorrelationV1Tests(unittest.TestCase):
             capability_id="social_publishing",
             provider="social_publish_adapter",
             request_hash="HASH-AUTH-001",
+            execution_mode=ExecutionMode.REAL,
             business_id="BIZ-A",
             project_id="PROJ-A",
             chat_id="CHAT-A",

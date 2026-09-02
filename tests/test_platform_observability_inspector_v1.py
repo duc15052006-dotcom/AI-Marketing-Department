@@ -100,6 +100,7 @@ class PlatformInspectorV1Tests(unittest.TestCase):
             capability_id="social_publishing",
             provider="test",
             request_hash="request-hash-1",
+            execution_mode=ExecutionMode.REAL,
             business_id="BUSINESS-A",
             project_id="PROJECT-1",
             chat_id="CHAT-1",
