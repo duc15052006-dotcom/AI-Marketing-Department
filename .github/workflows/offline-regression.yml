@@ -112,6 +112,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/provider-registry-regressions.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run execution-mode provenance regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_receipt_execution_mode_provenance_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/execution-mode-provenance-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
