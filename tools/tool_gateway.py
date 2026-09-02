@@ -392,6 +392,36 @@ class ToolGateway:
         )
         is_consequential = bool(request.approval_token and cap_is_consequential)
 
+        raw_idempotency_key = request.parameters.get("idempotency_key")
+        if (
+            cap_is_consequential
+            and pinned_execution_mode == ExecutionMode.REAL
+            and (
+                not isinstance(raw_idempotency_key, str)
+                or not raw_idempotency_key.strip()
+            )
+        ):
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=adapter.adapter_name,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.BLOCKED,
+                    error_class="IDEMPOTENCY_KEY_REQUIRED",
+                    error_message=(
+                        "IDEMPOTENCY_KEY_REQUIRED: REAL consequential actions require "
+                        "an explicit non-empty idempotency_key before approval claim or dispatch."
+                    ),
+                    approval_reference=self._safe_approval_reference(
+                        request.approval_token
+                    ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                    execution_mode=ExecutionMode.REAL,
+                )
+            )
+
         if is_consequential:
             claimed = self.policy_engine.claim_approval(request.approval_token)
             if not claimed:
