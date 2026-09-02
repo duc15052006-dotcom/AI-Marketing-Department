@@ -27,25 +27,19 @@ jobs:
 
           path = Path("runtime/context.py")
           text = path.read_text(encoding="utf-8")
-          old = '''    def calculate_checkpoint_hash(self) -> str:
-              """Compute cryptographic hash of checkpoint state."""
-              raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}"
-              return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-          '''
-          new = '''    def calculate_checkpoint_hash(self) -> str:
-              """Compute cryptographic hash of checkpoint state."""
-              working_state = json.dumps(
-                  self.working_state_snapshot,
-                  sort_keys=True,
-                  ensure_ascii=False,
-                  separators=(",", ":"),
-                  default=str,
-              )
-              raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{working_state}"
-              return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-          '''
+          old = '        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}"'
+          new = (
+              '        working_state = json.dumps(\n'
+              '            self.working_state_snapshot,\n'
+              '            sort_keys=True,\n'
+              '            ensure_ascii=False,\n'
+              '            separators=(",", ":"),\n'
+              '            default=str,\n'
+              '        )\n'
+              '        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{working_state}"'
+          )
           if text.count(old) != 1:
-              raise SystemExit(f"expected exact checkpoint hash block once, found {text.count(old)}")
+              raise SystemExit(f"expected exact checkpoint hash line once, found {text.count(old)}")
           path.write_text(text.replace(old, new), encoding="utf-8")
           PY
 
@@ -55,6 +49,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add runtime/context.py
-          git diff --cached --exit-code && { echo "No production diff produced"; exit 1; } || true
+          if git diff --cached --quiet; then
+            echo "No production diff produced"
+            exit 1
+          fi
           git commit -m "fix: bind checkpoint hash to working state snapshot"
           git push origin HEAD:fix/checkpoint-semantic-hash-integrity-v1
