@@ -128,7 +128,8 @@ class DurableReceiptsReconciliationV1Tests(unittest.TestCase):
         parameters: Dict[str, Any] | None = None,
         run_id: str = "RUN-PUBLISH-DURABLE-001",
     ) -> ToolRequest:
-        params = parameters or {"message": "publish once"}
+        params = dict(parameters) if parameters is not None else {"message": "publish once"}
+        params.setdefault("idempotency_key", f"idem-{run_id.lower()}")
         approval = policy.create_server_approval(
             capability_id="durable_publish",
             parameters=params,
