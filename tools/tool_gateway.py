@@ -648,11 +648,26 @@ class ToolGateway:
                             project_id=effective_project_id,
                             execution_mode=pinned_execution_mode or ExecutionMode.MOCK,
                         )
-                        return self.receipt_repository.finalize_execution_intent(
-                            execution_intent.intent_id,
-                            predispatch_receipt,
-                            ambiguous=False,
+                        stored_predispatch_receipt = (
+                            self.receipt_repository.finalize_execution_intent(
+                                execution_intent.intent_id,
+                                predispatch_receipt,
+                                ambiguous=False,
+                            )
                         )
+                        try:
+                            self.idempotency_ledger.mark_retryable_pre_dispatch(
+                                idempotency_record.reservation_id
+                            )
+                        except IdempotencyStoreError as recovery_exc:
+                            # This includes the commit-then-raise case: a durable
+                            # DISPATCHING ledger state must never receive retry authority.
+                            logger.error(
+                                "Failed to authorize proven pre-dispatch idempotency retry %s: %s",
+                                idempotency_record.reservation_id,
+                                recovery_exc,
+                            )
+                        return stored_predispatch_receipt
 
             for attempt in range(max_retries + 1):
                 try:
