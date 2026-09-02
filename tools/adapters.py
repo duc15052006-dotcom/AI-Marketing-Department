@@ -204,6 +204,10 @@ class PublishingAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self._name
 
+    def execution_mode_for(self, capability_id: str) -> ExecutionMode:
+        """Declare sandbox provenance before any publishing dispatch occurs."""
+        return ExecutionMode.SANDBOX
+
     def execute(
         self,
         capability_id: str,

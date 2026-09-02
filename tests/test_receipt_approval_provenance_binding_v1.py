@@ -49,6 +49,7 @@ class ReceiptApprovalProvenanceBindingV1Tests(unittest.TestCase):
             capability_id="social_publishing",
             provider="social_publish_adapter",
             request_hash="HASH-APPROVAL-BIND-001",
+            execution_mode=ExecutionMode.REAL,
             approval_reference="approval_ref_AUTH_A",
             business_id="BIZ-A",
             project_id="PROJ-A",

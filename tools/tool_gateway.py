@@ -384,6 +384,11 @@ class ToolGateway:
 
         # 4. Atomic One-Shot Approval Claim for Consequential Actions
         cap_is_consequential = self._is_consequential_capability(cap)
+        pinned_execution_mode = (
+            self._resolve_execution_mode(adapter, cap.capability_id)
+            if cap_is_consequential
+            else None
+        )
         is_consequential = bool(request.approval_token and cap_is_consequential)
 
         if is_consequential:
@@ -433,7 +438,7 @@ class ToolGateway:
             raw_idempotency_key = request.parameters.get("idempotency_key")
             if (
                 cap_is_consequential
-                and self._resolve_execution_mode(adapter, cap.capability_id) == ExecutionMode.REAL
+                and pinned_execution_mode == ExecutionMode.REAL
                 and isinstance(raw_idempotency_key, str)
                 and raw_idempotency_key.strip()
             ):
@@ -559,6 +564,7 @@ class ToolGateway:
                     capability_id=request.capability_id,
                     provider=adapter.adapter_name,
                     request_hash=req_hash,
+                    execution_mode=pinned_execution_mode or ExecutionMode.MOCK,
                     business_id=effective_business_id,
                     project_id=effective_project_id,
                     chat_id=request.chat_id,
@@ -588,7 +594,7 @@ class ToolGateway:
                             ),
                             business_id=effective_business_id,
                             project_id=effective_project_id,
-                            execution_mode=ExecutionMode.REAL,
+                            execution_mode=pinned_execution_mode or ExecutionMode.MOCK,
                         )
                         return self.receipt_repository.finalize_execution_intent(
                             execution_intent.intent_id,
@@ -658,7 +664,11 @@ class ToolGateway:
         # 6. Assemble Receipt
         safe_approval_ref = self._safe_approval_reference(request.approval_token)
         if adapter_res and adapter_res.success:
-            mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
+            mode = (
+                pinned_execution_mode
+                if pinned_execution_mode is not None
+                else self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
+            )
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
                 agent_id=request.agent_id,
@@ -702,7 +712,11 @@ class ToolGateway:
                 if err_code == "TIMEOUT"
                 else ExecutionStatus.ERROR
             )
-            mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
+            mode = (
+                pinned_execution_mode
+                if pinned_execution_mode is not None
+                else self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
+            )
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
                 agent_id=request.agent_id,
