@@ -357,6 +357,56 @@ class IdempotencyLedger:
                     "IDEMPOTENCY_LIST_FAILED: " + sanitize_sensitive_text(str(exc))
                 ) from exc
 
+    def release_reserved(self, reservation_id: str) -> None:
+        """Release a reservation only while dispatch is provably not started."""
+        key = str(reservation_id or "").strip()
+        if not key:
+            raise IdempotencyStoreError("IDEMPOTENCY_RESERVATION_ID_REQUIRED")
+
+        with self._lock:
+            if self.database_path is None:
+                current = self._records.get(key)
+                if current is None:
+                    raise IdempotencyStoreError(
+                        f"IDEMPOTENCY_RESERVATION_NOT_FOUND: reservation_id={key}"
+                    )
+                if current.state != IdempotencyState.RESERVED:
+                    raise IdempotencyStoreError(
+                        "IDEMPOTENCY_RELEASE_FORBIDDEN: "
+                        f"reservation_id={key} state={current.state.value}"
+                    )
+                del self._records[key]
+                return
+
+            try:
+                with closing(self._connect()) as conn:
+                    with conn:
+                        cur = conn.execute(
+                            "DELETE FROM idempotency_ledger "
+                            "WHERE reservation_id=? AND state=?",
+                            (key, IdempotencyState.RESERVED.value),
+                        )
+                        if cur.rowcount == 1:
+                            return
+                        row = conn.execute(
+                            "SELECT state FROM idempotency_ledger WHERE reservation_id=?",
+                            (key,),
+                        ).fetchone()
+                        if row is None:
+                            raise IdempotencyStoreError(
+                                f"IDEMPOTENCY_RESERVATION_NOT_FOUND: reservation_id={key}"
+                            )
+                        raise IdempotencyStoreError(
+                            "IDEMPOTENCY_RELEASE_FORBIDDEN: "
+                            f"reservation_id={key} state={row['state']}"
+                        )
+            except IdempotencyStoreError:
+                raise
+            except sqlite3.Error as exc:
+                raise IdempotencyStoreError(
+                    "IDEMPOTENCY_RELEASE_FAILED: " + sanitize_sensitive_text(str(exc))
+                ) from exc
+
     def _transition(self, reservation_id: str, target: IdempotencyState) -> IdempotencyRecord:
         with self._lock:
             current = self.get(reservation_id)

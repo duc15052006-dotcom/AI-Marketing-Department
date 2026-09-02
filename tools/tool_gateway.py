@@ -557,21 +557,38 @@ class ToolGateway:
             # Any crash after DISPATCHING and before finalization is ambiguous and
             # must never be interpreted as proof that the side effect did not run.
             if cap_is_consequential:
-                execution_intent = self.receipt_repository.prepare_execution_intent(
-                    request_id=request.request_id,
-                    run_id=request.run_id,
-                    agent_id=request.agent_id,
-                    capability_id=request.capability_id,
-                    provider=adapter.adapter_name,
-                    request_hash=req_hash,
-                    execution_mode=pinned_execution_mode or ExecutionMode.MOCK,
-                    business_id=effective_business_id,
-                    project_id=effective_project_id,
-                    chat_id=request.chat_id,
-                    approval_reference=self._safe_approval_reference(
-                        request.approval_token
-                    ),
-                )
+                try:
+                    execution_intent = self.receipt_repository.prepare_execution_intent(
+                        request_id=request.request_id,
+                        run_id=request.run_id,
+                        agent_id=request.agent_id,
+                        capability_id=request.capability_id,
+                        provider=adapter.adapter_name,
+                        request_hash=req_hash,
+                        execution_mode=pinned_execution_mode or ExecutionMode.MOCK,
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                        chat_id=request.chat_id,
+                        approval_reference=self._safe_approval_reference(
+                            request.approval_token
+                        ),
+                    )
+                except Exception:
+                    if idempotency_record is not None:
+                        try:
+                            self.idempotency_ledger.release_reserved(
+                                idempotency_record.reservation_id
+                            )
+                        except IdempotencyStoreError as cleanup_exc:
+                            # Cleanup failure remains fail-closed: the reservation
+                            # stays present and therefore cannot permit a replay.
+                            logger.error(
+                                "Failed to release undispatched idempotency reservation %s: %s",
+                                idempotency_record.reservation_id,
+                                cleanup_exc,
+                            )
+                    raise
+
                 self.receipt_repository.mark_execution_intent_dispatching(
                     execution_intent.intent_id
                 )

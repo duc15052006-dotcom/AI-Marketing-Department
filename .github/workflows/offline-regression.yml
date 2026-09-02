@@ -120,6 +120,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/execution-mode-provenance-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run idempotency prepare-failure regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_idempotency_prepare_failure_orphan_reservation_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/idempotency-prepare-failure-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
