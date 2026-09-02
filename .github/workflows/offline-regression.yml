@@ -152,6 +152,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/idempotency-retired-provider-alias-history-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run REAL consequential idempotency-key requirement regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_real_consequential_idempotency_key_required_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/real-consequential-idempotency-key-required-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
