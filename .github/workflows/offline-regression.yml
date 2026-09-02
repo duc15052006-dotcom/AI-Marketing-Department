@@ -144,6 +144,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/idempotency-ledger-dispatch-transition-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run retired provider alias history regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_idempotency_retired_provider_alias_history_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/idempotency-retired-provider-alias-history-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
