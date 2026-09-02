@@ -744,6 +744,9 @@ class ToolGateway:
                     break
 
                 if cap_is_consequential:
+                    returned_error_code = str(adapter_res.error_code or "").strip().upper()
+                    if returned_error_code in {"TIMEOUT", "NETWORK_ERROR"}:
+                        ambiguous_external_outcome = True
                     break
 
                 if adapter_res.error_code not in retryable_errors:
@@ -790,8 +793,8 @@ class ToolGateway:
                 err_code = "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME"
                 err_msg = (
                     "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME: The external action may have "
-                    "been accepted before execution raised an exception; automatic "
-                    "retry was suppressed to prevent duplicate side effects."
+                    "been accepted before an uncertain execution outcome was reported; "
+                    "automatic retry was suppressed to prevent duplicate side effects."
                 )
             elif adapter_res is not None:
                 err_code = adapter_res.error_code or "EXECUTION_ERROR"
