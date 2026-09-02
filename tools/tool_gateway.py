@@ -44,6 +44,7 @@ from tools.idempotency import (
     IdempotencyStoreError,
 )
 from tools.receipts import (
+    ExecutionIntentState,
     ExecutionMode,
     ExecutionReceipt,
     ExecutionReceiptRepository,
@@ -589,9 +590,43 @@ class ToolGateway:
                             )
                     raise
 
-                self.receipt_repository.mark_execution_intent_dispatching(
-                    execution_intent.intent_id
-                )
+                try:
+                    self.receipt_repository.mark_execution_intent_dispatching(
+                        execution_intent.intent_id
+                    )
+                except Exception:
+                    # A transition call can fail either before or after its durable
+                    # state update. Release only when the repository can prove that
+                    # dispatch never started; uncertainty remains fail-closed.
+                    if idempotency_record is not None:
+                        try:
+                            current_intent = self.receipt_repository.get_execution_intent(
+                                execution_intent.intent_id
+                            )
+                        except Exception as inspect_exc:
+                            logger.error(
+                                "Failed to verify execution intent after dispatch transition error %s: %s",
+                                execution_intent.intent_id,
+                                inspect_exc,
+                            )
+                        else:
+                            if (
+                                current_intent is not None
+                                and current_intent.state == ExecutionIntentState.PREPARED
+                                and current_intent.dispatch_count == 0
+                            ):
+                                try:
+                                    self.idempotency_ledger.release_reserved(
+                                        idempotency_record.reservation_id
+                                    )
+                                except IdempotencyStoreError as cleanup_exc:
+                                    logger.error(
+                                        "Failed to release proven pre-dispatch idempotency reservation %s: %s",
+                                        idempotency_record.reservation_id,
+                                        cleanup_exc,
+                                    )
+                    raise
+
                 if idempotency_record is not None:
                     try:
                         idempotency_record = self.idempotency_ledger.mark_dispatching(
