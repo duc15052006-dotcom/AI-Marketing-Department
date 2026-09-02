@@ -160,6 +160,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/real-consequential-idempotency-key-required-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run durable receipt compatibility regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_platform_durable_receipts_reconciliation_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/durable-receipt-compatibility-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
