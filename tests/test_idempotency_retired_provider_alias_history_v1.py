@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 from typing import Any, Dict
 
 from tools.adapters import AdapterResult, BaseCapabilityAdapter
@@ -11,6 +14,7 @@ from tools.capabilities import (
     PermissionLevel,
     RiskLevel,
 )
+from tools.idempotency import IdempotencyLedger
 from tools.receipts import ExecutionMode, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import PolicyEngine
 from tools.tool_gateway import ToolGateway, ToolRequest
@@ -136,6 +140,78 @@ class IdempotencyRetiredProviderAliasHistoryV1Tests(unittest.TestCase):
         self.assertEqual(self.adapter.adapter_name, replay.provider)
         self.assertEqual(0, self.adapter.call_count)
         self.assertEqual(1, len(self.gateway.idempotency_ledger.list_records()))
+
+    def test_pre_metadata_sqlite_history_remains_fail_closed_after_migration(self) -> None:
+        # Build a database using the schema immediately before provider-neutral
+        # authority metadata existed. The retired provider alias is intentionally
+        # not recoverable from the live adapter registry after restart.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_path = Path(tmpdir) / "legacy-idempotency.sqlite3"
+            reservation_id, namespace_hash, key_hash = IdempotencyLedger.reservation_identity(
+                capability_id=self.CAPABILITY_ID,
+                provider=self.RETIRED_ALIAS,
+                idempotency_key=self.PARAMS["idempotency_key"],
+                connection_id=None,
+                business_id=None,
+                project_id=None,
+                brand_id=None,
+            )
+            request_fingerprint = IdempotencyLedger.semantic_fingerprint(
+                capability_id=self.CAPABILITY_ID,
+                provider=self.RETIRED_ALIAS,
+                parameters=self.PARAMS,
+                business_id=None,
+                project_id=None,
+                brand_id=None,
+            )
+            timestamp = "2026-08-01T00:00:00+00:00"
+            with sqlite3.connect(str(database_path)) as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE idempotency_ledger (
+                        reservation_id TEXT PRIMARY KEY,
+                        namespace_hash TEXT NOT NULL,
+                        key_hash TEXT NOT NULL,
+                        request_fingerprint TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        retryable_pre_dispatch INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO idempotency_ledger(
+                        reservation_id, namespace_hash, key_hash,
+                        request_fingerprint, state, retryable_pre_dispatch,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        reservation_id,
+                        namespace_hash,
+                        key_hash,
+                        request_fingerprint,
+                        "FINALIZED",
+                        0,
+                        timestamp,
+                        timestamp,
+                    ),
+                )
+
+            self.gateway.idempotency_ledger = IdempotencyLedger(
+                database_path=database_path
+            )
+            replay = self._approved_execute("RUN-RETIRED-ALIAS-LEGACY-SQLITE-001")
+
+            # Old rows cannot be given false provider lineage during migration.
+            # Missing lineage must remain fail-closed instead of permitting a
+            # potentially duplicate consequential external action.
+            self.assertEqual(ExecutionStatus.BLOCKED, replay.status)
+            self.assertEqual("IDEMPOTENCY_REPLAY_BLOCKED", replay.error_class)
+            self.assertEqual(0, self.adapter.call_count)
+            self.assertEqual(1, len(self.gateway.idempotency_ledger.list_records()))
 
 
 if __name__ == "__main__":
