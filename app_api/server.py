@@ -75,7 +75,11 @@ def write_backend_state(host: str, port: int) -> None:
     }
     temp_path = state_path.with_suffix(".tmp")
     try:
-        temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        serialized = json.dumps(payload, indent=2)
+        with temp_path.open("w", encoding="utf-8") as state_file:
+            state_file.write(serialized)
+            state_file.flush()
+            os.fsync(state_file.fileno())
         temp_path.replace(state_path)
     except Exception as ex:
         logger.warning(f"Could not write backend state file: {ex}")
