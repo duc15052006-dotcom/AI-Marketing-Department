@@ -1,0 +1,44 @@
+name: PR116 One-Shot Production Patch
+
+on:
+  push:
+    branches:
+      - fix/knowledge-ingest-authority-default-v1
+
+permissions:
+  contents: write
+
+jobs:
+  apply-exact-patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact one-line authority fallback patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app_api/server.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'authority_level=AuthorityLevel[body.get("authority_level", "TIER_1_CANONICAL_GROUND_TRUTH")] if body.get("authority_level") in AuthorityLevel.__members__ else AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,'
+          new = 'authority_level=AuthorityLevel[body.get("authority_level", "TIER_2_VERIFIED_RESEARCH")] if body.get("authority_level") in AuthorityLevel.__members__ else AuthorityLevel.TIER_2_VERIFIED_RESEARCH,'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"PATCH_PRECONDITION_FAILED: expected exactly 1 match, found {count}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Commit production fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app_api/server.py
+          git diff --cached --check
+          git diff --cached --exit-code --quiet && { echo "No production diff produced"; exit 1; } || true
+          git commit -m "fix: default knowledge ingest authority to tier 2"
+          git push origin HEAD:fix/knowledge-ingest-authority-default-v1
