@@ -215,6 +215,7 @@ class QueueItem:
     error: Optional[str] = None
     recovery_reason: Optional[str] = None
     attempt_count: int = 0
+    artifact_hash: Optional[str] = None
     artifact: Optional[DepartmentRunArtifact] = None
 
     def model_dump(self) -> Dict[str, Any]:
@@ -231,7 +232,7 @@ class QueueItem:
             "error": sanitize_sensitive_text(self.error) if self.error else None,
             "recovery_reason": sanitize_sensitive_text(self.recovery_reason) if self.recovery_reason else None,
             "attempt_count": self.attempt_count,
-            "artifact_hash": self.artifact.final_artifact_hash if self.artifact else None,
+            "artifact_hash": self.artifact.final_artifact_hash if self.artifact else self.artifact_hash,
         }
 
 
@@ -301,9 +302,11 @@ class RunManager:
             raise JobStoreError(f"UNKNOWN_DURABLE_JOB_STATUS: {value}") from exc
 
     def _record_from_item(self, item: QueueItem) -> DurableJobRecord:
-        artifact_hash = None
-        if item.artifact is not None:
-            artifact_hash = getattr(item.artifact, "final_artifact_hash", None)
+        artifact_hash = (
+            getattr(item.artifact, "final_artifact_hash", None)
+            if item.artifact is not None
+            else item.artifact_hash
+        )
         return DurableJobRecord(
             run_id=item.run_id,
             objective=item.objective,
@@ -334,6 +337,7 @@ class RunManager:
             error=record.error,
             recovery_reason=record.recovery_reason,
             attempt_count=record.attempt_count,
+            artifact_hash=record.artifact_hash,
         )
 
     def _persist_create_locked(self, item: QueueItem) -> None:
