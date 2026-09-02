@@ -141,6 +141,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/job-artifact-hash-restart-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run knowledge ingest authority default regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_knowledge_ingest_authority_default_adversarial_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/knowledge-ingest-authority-default-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh

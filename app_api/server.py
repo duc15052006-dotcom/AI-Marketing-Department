@@ -1577,7 +1577,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 format=fmt,
                 title=body.get("title", ""),
                 scope=body.get("scope", "GLOBAL"),
-                authority_level=AuthorityLevel[body.get("authority_level", "TIER_1_CANONICAL_GROUND_TRUTH")] if body.get("authority_level") in AuthorityLevel.__members__ else AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
+                authority_level=AuthorityLevel[body.get("authority_level", "TIER_2_VERIFIED_RESEARCH")] if body.get("authority_level") in AuthorityLevel.__members__ else AuthorityLevel.TIER_2_VERIFIED_RESEARCH,
             )
             res = APP_BACKEND.workspace.knowledge_lifecycle.ingest(req)
             self._send_json({"success": res.success, "document_id": res.document_id, "chunk_count": res.chunk_count, "error": res.error})
