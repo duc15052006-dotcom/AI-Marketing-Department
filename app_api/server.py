@@ -63,6 +63,11 @@ def get_backend_state_file_path() -> Path:
     return runtime_dir / "backend_instance.json"
 
 
+def get_job_store_file_path() -> Path:
+    """Return the durable queue database in the canonical per-user runtime directory."""
+    return get_backend_state_file_path().with_name("jobs.sqlite3")
+
+
 def write_backend_state(host: str, port: int) -> None:
     state_path = get_backend_state_file_path()
     payload = {
@@ -180,6 +185,7 @@ from runtime.artifacts import DepartmentRunArtifact
 from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, RuntimeStatus
 from runtime.context_compiler import ContextCompiler
 from runtime.engine import FiveAgentDepartmentRuntime, extract_explicit_user_constraints
+from runtime.job_store import SQLiteJobRepository
 from runtime.queue import ResourceLimiter, RunManager
 from integrations.models.settings_manager import (
     ModelSettingsManager,
@@ -277,10 +283,12 @@ class DepartmentAppBackend:
 
         # Context Compiler & Multi-Run Queue
         self.resource_limiter = ResourceLimiter()
+        self.job_repository = SQLiteJobRepository(get_job_store_file_path())
         self.run_manager = RunManager(
             runtime=self.runtime,
             max_workers=2,
             resource_limiter=self.resource_limiter,
+            job_repository=self.job_repository,
         )
 
         # Authoritative Model & Provider Settings Manager (PROD-MODEL-SETTINGS-01)
