@@ -105,11 +105,10 @@ class McpServerRegistry:
     @staticmethod
     def _policy_for(tool: McpToolDescriptor) -> Tuple[RiskLevel, List[PermissionLevel], bool]:
         annotations = tool.annotations
-        read_only = annotations.get("readOnlyHint") is True
         destructive = annotations.get("destructiveHint") is True
 
-        if read_only and not destructive:
-            return RiskLevel.LOW, [PermissionLevel.READ_ONLY], False
+        # MCP annotations are remote-controlled metadata. They may escalate local
+        # policy, but they are never authority to lower the authorization floor.
         if destructive:
             return RiskLevel.CRITICAL, [PermissionLevel.EXTERNAL_WRITE], True
         return RiskLevel.HIGH, [PermissionLevel.EXTERNAL_WRITE], True
