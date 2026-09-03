@@ -165,6 +165,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/app-backend-durable-job-store-wiring-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run plugin manifest policy immutability regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_plugin_manifest_policy_immutability_adversarial_v2 `
+            2>&1 | Tee-Object -FilePath .ci-results/plugin-manifest-policy-immutability-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
