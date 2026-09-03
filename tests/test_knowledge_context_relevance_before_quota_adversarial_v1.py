@@ -140,6 +140,38 @@ class KnowledgeContextRelevanceBeforeQuotaAdversarialV1Tests(unittest.TestCase):
             "All Tier 2 rows occupied the quota despite an equally relevant Tier 1 canonical document.",
         )
 
+    def test_opaque_machine_identifier_cannot_commandeer_semantic_relevance_quota(self) -> None:
+        stable_ids = []
+        for index in range(4):
+            knowledge_id = f"KNOW-STABLE-TIER1-{index}"
+            stable_ids.append(knowledge_id)
+            self._save_doc(
+                knowledge_id,
+                AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
+                title=f"ordinary canonical document {index}",
+                content=f"ordinary canonical content {index}",
+            )
+
+        opaque_probe = "PROVENANCE_GROUNDED_BOUNDARY_60"
+        opaque_id = "KNOW-OPAQUE-ID-MATCH"
+        self._save_doc(
+            opaque_id,
+            AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
+            title=f"exact query match {opaque_probe}",
+            content=f"exact query match {opaque_probe}",
+        )
+
+        ctx = self.runtime.start_run(objective=opaque_probe, business_id="BIZ_A")
+        grounded = self.runtime.context_compiler.compile_grounded_package("cmo", ctx)
+        grounded_ids = self._knowledge_ids(grounded)
+
+        self.assertEqual(stable_ids, grounded_ids)
+        self.assertNotIn(
+            opaque_id,
+            grounded_ids,
+            "Opaque machine identifiers must not be treated as semantic relevance signals that reorder the bounded knowledge quota.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
