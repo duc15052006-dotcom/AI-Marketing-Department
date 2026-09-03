@@ -157,6 +157,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/checkpoint-semantic-hash-integrity-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run production app backend durable job-store wiring regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_app_backend_durable_job_store_wiring_adversarial_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/app-backend-durable-job-store-wiring-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
