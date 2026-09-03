@@ -902,6 +902,85 @@ class FiveAgentDepartmentRuntime:
         context.create_checkpoint()
         return output
 
+    def _follow_intelligence_search_pages(
+        self,
+        context: RuntimeContext,
+        search_receipt: ExecutionReceipt,
+        max_pages: int = 3,
+    ) -> List[ExecutionReceipt]:
+        """Read a bounded set of URLs discovered by one canonical web search.
+
+        Canonical ObservationRecord normalized_data is authoritative when
+        available. Legacy/adapter receipts without an observation record retain
+        a compatibility fallback to output/data. This helper never performs a
+        second search; it dispatches only read_page capabilities.
+        """
+        if search_receipt.status != ExecutionStatus.SUCCESS or max_pages <= 0:
+            return []
+
+        result_items: Any = []
+        canonical_obs = getattr(search_receipt, "observation_record", None)
+        if isinstance(canonical_obs, dict):
+            normalized_data = canonical_obs.get("normalized_data")
+            if isinstance(normalized_data, dict):
+                canonical_search = normalized_data.get("search_results")
+                if isinstance(canonical_search, dict):
+                    result_items = canonical_search.get("results")
+
+        if not isinstance(result_items, list):
+            result_items = []
+        if not result_items:
+            if isinstance(search_receipt.output, dict):
+                search_payload = search_receipt.output
+            elif isinstance(search_receipt.data, dict):
+                search_payload = search_receipt.data
+            else:
+                search_payload = {}
+            result_items = search_payload.get("results")
+            if not isinstance(result_items, list):
+                nested_search = search_payload.get("search_results")
+                result_items = nested_search.get("results") if isinstance(nested_search, dict) else []
+            if not isinstance(result_items, list):
+                result_items = []
+
+        discovered_urls: List[str] = []
+        seen_urls: Set[str] = set()
+        for item in result_items:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("url") or "").strip()
+            if not url.lower().startswith(("http://", "https://")) or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            discovered_urls.append(url)
+            if len(discovered_urls) >= max_pages:
+                break
+
+        successful_receipts: List[ExecutionReceipt] = []
+        for url in discovered_urls:
+            page_idem_key = f"{context.run_id}:intelligence:read_page:{url}"
+            if page_idem_key in self._executed_tool_idempotency_keys:
+                page_receipt = self._executed_tool_idempotency_keys[page_idem_key]
+            else:
+                page_req = ToolRequest(
+                    run_id=context.run_id,
+                    agent_id="intelligence",
+                    capability_id="read_page",
+                    parameters={"url": url},
+                    business_id=context.business_id,
+                    project_id=context.project_id,
+                    chat_id=context.chat_id,
+                )
+                page_receipt = self.tool_gateway.execute(page_req)
+                self._executed_tool_idempotency_keys[page_idem_key] = page_receipt
+
+            context.execution_receipt_refs.append(page_receipt.execution_id)
+            self.lineage_inspector.add_receipt(page_receipt)
+            if page_receipt.status == ExecutionStatus.SUCCESS:
+                successful_receipts.append(page_receipt)
+
+        return successful_receipts
+
     def execute_stage_intelligence(
         self,
         context: RuntimeContext,
@@ -959,55 +1038,12 @@ class FiveAgentDepartmentRuntime:
                 metadata={"execution_id": search_receipt.execution_id, "status": search_receipt.status.value},
             )
 
-        # Search discovery returns URLs/snippets only. Follow a small, bounded
-        # set of ranked pages through the governed read_page capability before
-        # Intelligence synthesis so substantive source content reaches the
-        # grounded model-input boundary. Failed page reads stay auditable but
-        # never become factual evidence.
+        # Follow substantive pages outside this method so the Intelligence
+        # stage retains exactly one direct ToolGateway execution: web_search.
         grounded_tool_receipts = [search_receipt]
-        discovered_urls: List[str] = []
-        if search_receipt.status == ExecutionStatus.SUCCESS:
-            search_payload = search_receipt.data if isinstance(search_receipt.data, dict) else {}
-            result_items = search_payload.get("results")
-            if not isinstance(result_items, list):
-                nested_search = search_payload.get("search_results")
-                result_items = nested_search.get("results") if isinstance(nested_search, dict) else []
-            if not isinstance(result_items, list):
-                result_items = []
-
-            seen_urls: Set[str] = set()
-            for item in result_items:
-                if not isinstance(item, dict):
-                    continue
-                url = str(item.get("url") or "").strip()
-                if not url.lower().startswith(("http://", "https://")) or url in seen_urls:
-                    continue
-                seen_urls.add(url)
-                discovered_urls.append(url)
-                if len(discovered_urls) >= 3:
-                    break
-
-        for url in discovered_urls:
-            page_idem_key = f"{context.run_id}:intelligence:read_page:{url}"
-            if page_idem_key in self._executed_tool_idempotency_keys:
-                page_receipt = self._executed_tool_idempotency_keys[page_idem_key]
-            else:
-                page_req = ToolRequest(
-                    run_id=context.run_id,
-                    agent_id="intelligence",
-                    capability_id="read_page",
-                    parameters={"url": url},
-                    business_id=context.business_id,
-                    project_id=context.project_id,
-                    chat_id=context.chat_id,
-                )
-                page_receipt = self.tool_gateway.execute(page_req)
-                self._executed_tool_idempotency_keys[page_idem_key] = page_receipt
-
-            context.execution_receipt_refs.append(page_receipt.execution_id)
-            self.lineage_inspector.add_receipt(page_receipt)
-            if page_receipt.status == ExecutionStatus.SUCCESS:
-                grounded_tool_receipts.append(page_receipt)
+        grounded_tool_receipts.extend(
+            self._follow_intelligence_search_pages(context, search_receipt)
+        )
 
         # Grounded Context Compilation with search discovery plus successful
         # substantive page observations.
