@@ -49,20 +49,24 @@ jobs:
               raise SystemExit("JOB_STORE_PATH_HELPER_ALREADY_PRESENT")
           text = text.replace(helper_marker, helper + helper_marker, 1)
 
-          manager_old = '''        self.resource_limiter = ResourceLimiter()
-          self.run_manager = RunManager(
-              runtime=self.runtime,
-              max_workers=2,
-              resource_limiter=self.resource_limiter,
-          )'''
-          manager_new = '''        self.resource_limiter = ResourceLimiter()
-          self.job_repository = SQLiteJobRepository(get_job_store_file_path())
-          self.run_manager = RunManager(
-              runtime=self.runtime,
-              max_workers=2,
-              resource_limiter=self.resource_limiter,
-              job_repository=self.job_repository,
-          )'''
+          manager_old = "\n".join([
+              "        self.resource_limiter = ResourceLimiter()",
+              "        self.run_manager = RunManager(",
+              "            runtime=self.runtime,",
+              "            max_workers=2,",
+              "            resource_limiter=self.resource_limiter,",
+              "        )",
+          ])
+          manager_new = "\n".join([
+              "        self.resource_limiter = ResourceLimiter()",
+              "        self.job_repository = SQLiteJobRepository(get_job_store_file_path())",
+              "        self.run_manager = RunManager(",
+              "            runtime=self.runtime,",
+              "            max_workers=2,",
+              "            resource_limiter=self.resource_limiter,",
+              "            job_repository=self.job_repository,",
+              "        )",
+          ])
           if text.count(manager_old) != 1:
               raise SystemExit(f"RUN_MANAGER_MATCH_COUNT={text.count(manager_old)} expected=1")
           text = text.replace(manager_old, manager_new, 1)
