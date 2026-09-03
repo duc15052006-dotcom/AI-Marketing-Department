@@ -173,6 +173,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/plugin-manifest-policy-immutability-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run Intelligence discovered-page follow-up regression v2
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_intelligence_follow_search_results_adversarial_v2 `
+            2>&1 | Tee-Object -FilePath .ci-results/intelligence-follow-search-results-v2-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
