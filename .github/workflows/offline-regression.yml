@@ -189,6 +189,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/web-search-zero-results-truthfulness-v2-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run capability registry policy immutability regression v1
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_capability_registry_policy_immutability_adversarial_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/capability-registry-policy-immutability-v1-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
