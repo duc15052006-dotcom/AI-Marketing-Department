@@ -186,3 +186,6 @@ jobs:
         with:
           name: offline-regression-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
