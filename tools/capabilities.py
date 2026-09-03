@@ -6,6 +6,7 @@ and central registry for tool capabilities.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -95,25 +96,28 @@ class CapabilityRegistry:
         self._load_builtin_capabilities()
 
     def register_capability(self, descriptor: CapabilityDescriptor) -> None:
-        """Register or update a capability."""
+        """Register or update a capability using an isolated policy snapshot."""
         cid = descriptor.capability_id.lower()
-        self._capabilities[cid] = descriptor
+        self._capabilities[cid] = copy.deepcopy(descriptor)
 
     def get_capability(self, capability_id: str) -> Optional[CapabilityDescriptor]:
-        """Retrieve capability descriptor by ID."""
-        return self._capabilities.get(capability_id.lower())
+        """Retrieve an isolated capability descriptor by ID."""
+        descriptor = self._capabilities.get(capability_id.lower())
+        return copy.deepcopy(descriptor) if descriptor is not None else None
 
     def list_capabilities(self, category: Optional[CapabilityCategory] = None) -> List[CapabilityDescriptor]:
-        """List all capabilities, optionally filtered by category."""
+        """List isolated capability snapshots, optionally filtered by category."""
         if category is None:
-            return list(self._capabilities.values())
-        return [c for c in self._capabilities.values() if c.category == category]
+            capabilities = self._capabilities.values()
+        else:
+            capabilities = (c for c in self._capabilities.values() if c.category == category)
+        return [copy.deepcopy(c) for c in capabilities]
 
     def list_capabilities_for_agent(self, agent_id: str) -> List[CapabilityDescriptor]:
-        """List capabilities available for a specific agent role."""
+        """List isolated capability snapshots available for a specific agent role."""
         aid = agent_id.lower()
         return [
-            c for c in self._capabilities.values()
+            copy.deepcopy(c) for c in self._capabilities.values()
             if aid in [sa.lower() for sa in c.supported_agents] or "all" in [sa.lower() for sa in c.supported_agents]
         ]
 
