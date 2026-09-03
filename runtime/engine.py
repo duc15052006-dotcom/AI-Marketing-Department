@@ -959,8 +959,61 @@ class FiveAgentDepartmentRuntime:
                 metadata={"execution_id": search_receipt.execution_id, "status": search_receipt.status.value},
             )
 
-        # Grounded Context Compilation with actual Tool Receipt content.
-        grounded_pkg = self.context_compiler.compile_grounded_package("intelligence", context, tool_receipts=[search_receipt])
+        # Search discovery returns URLs/snippets only. Follow a small, bounded
+        # set of ranked pages through the governed read_page capability before
+        # Intelligence synthesis so substantive source content reaches the
+        # grounded model-input boundary. Failed page reads stay auditable but
+        # never become factual evidence.
+        grounded_tool_receipts = [search_receipt]
+        discovered_urls: List[str] = []
+        if search_receipt.status == ExecutionStatus.SUCCESS:
+            search_payload = search_receipt.data if isinstance(search_receipt.data, dict) else {}
+            result_items = search_payload.get("results")
+            if not isinstance(result_items, list):
+                nested_search = search_payload.get("search_results")
+                result_items = nested_search.get("results") if isinstance(nested_search, dict) else []
+            if not isinstance(result_items, list):
+                result_items = []
+
+            seen_urls: Set[str] = set()
+            for item in result_items:
+                if not isinstance(item, dict):
+                    continue
+                url = str(item.get("url") or "").strip()
+                if not url.lower().startswith(("http://", "https://")) or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                discovered_urls.append(url)
+                if len(discovered_urls) >= 3:
+                    break
+
+        for url in discovered_urls:
+            page_idem_key = f"{context.run_id}:intelligence:read_page:{url}"
+            if page_idem_key in self._executed_tool_idempotency_keys:
+                page_receipt = self._executed_tool_idempotency_keys[page_idem_key]
+            else:
+                page_req = ToolRequest(
+                    run_id=context.run_id,
+                    agent_id="intelligence",
+                    capability_id="read_page",
+                    parameters={"url": url},
+                    business_id=context.business_id,
+                    project_id=context.project_id,
+                    chat_id=context.chat_id,
+                )
+                page_receipt = self.tool_gateway.execute(page_req)
+                self._executed_tool_idempotency_keys[page_idem_key] = page_receipt
+
+            context.execution_receipt_refs.append(page_receipt.execution_id)
+            self.lineage_inspector.add_receipt(page_receipt)
+            if page_receipt.status == ExecutionStatus.SUCCESS:
+                grounded_tool_receipts.append(page_receipt)
+
+        # Grounded Context Compilation with search discovery plus successful
+        # substantive page observations.
+        grounded_pkg = self.context_compiler.compile_grounded_package(
+            "intelligence", context, tool_receipts=grounded_tool_receipts
+        )
         self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
