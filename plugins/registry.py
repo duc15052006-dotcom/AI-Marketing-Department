@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -112,24 +113,31 @@ class PluginRegistry:
         payload = json.dumps(manifest.model_dump(), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    def _get_internal(self, plugin_id: str) -> PluginRecord:
+        record = self._records.get(plugin_id)
+        if record is None:
+            raise PluginNotFoundError(plugin_id)
+        return record
+
     def register(self, manifest: PluginManifest, *, enabled: bool = False) -> PluginRecord:
-        self._validate_manifest(manifest)
-        pid = manifest.plugin_id
+        manifest_snapshot = copy.deepcopy(manifest)
+        self._validate_manifest(manifest_snapshot)
+        pid = manifest_snapshot.plugin_id
         if pid in self._records:
             raise PluginCollisionError(f"plugin '{pid}' is already registered")
 
-        new_ids = {self.capability_id(pid, tool.name) for tool in manifest.tools}
+        new_ids = {self.capability_id(pid, tool.name) for tool in manifest_snapshot.tools}
         overlap = new_ids & set(self.list_capability_ids())
         if overlap:
             raise PluginCollisionError(f"capability collision: {sorted(overlap)}")
 
         record = PluginRecord(
-            manifest=manifest,
+            manifest=manifest_snapshot,
             state=PluginState.ENABLED if enabled else PluginState.DISABLED,
-            fingerprint=self._fingerprint(manifest),
+            fingerprint=self._fingerprint(manifest_snapshot),
         )
         self._records[pid] = record
-        return record
+        return copy.deepcopy(record)
 
     def unregister(self, plugin_id: str) -> None:
         if plugin_id not in self._records:
@@ -140,28 +148,25 @@ class PluginRegistry:
             del self._executors[capability_id]
 
     def get(self, plugin_id: str) -> PluginRecord:
-        record = self._records.get(plugin_id)
-        if record is None:
-            raise PluginNotFoundError(plugin_id)
-        return record
+        return copy.deepcopy(self._get_internal(plugin_id))
 
     def list_plugins(self) -> List[PluginRecord]:
-        return [self._records[key] for key in sorted(self._records)]
+        return [copy.deepcopy(self._records[key]) for key in sorted(self._records)]
 
     def set_enabled(self, plugin_id: str, enabled: bool) -> PluginRecord:
-        record = self.get(plugin_id)
+        record = self._get_internal(plugin_id)
         if record.state == PluginState.QUARANTINED and enabled:
             raise PluginDisabledError(f"plugin '{plugin_id}' is quarantined")
         record.state = PluginState.ENABLED if enabled else PluginState.DISABLED
-        return record
+        return copy.deepcopy(record)
 
     def quarantine(self, plugin_id: str) -> PluginRecord:
-        record = self.get(plugin_id)
+        record = self._get_internal(plugin_id)
         record.state = PluginState.QUARANTINED
-        return record
+        return copy.deepcopy(record)
 
     def bind_executor(self, plugin_id: str, tool_name: str, executor: Executor) -> str:
-        record = self.get(plugin_id)
+        record = self._get_internal(plugin_id)
         if tool_name not in {tool.name for tool in record.manifest.tools}:
             raise PluginNotFoundError(f"tool '{tool_name}' not declared by plugin '{plugin_id}'")
         if not callable(executor):
@@ -172,7 +177,7 @@ class PluginRegistry:
 
     def execute(self, capability_id: str, parameters: Dict[str, Any], context: Optional[Any] = None) -> Any:
         plugin_id, tool_name = self._parse_capability_id(capability_id)
-        record = self.get(plugin_id)
+        record = self._get_internal(plugin_id)
         if record.state != PluginState.ENABLED:
             raise PluginDisabledError(f"plugin '{plugin_id}' is not enabled")
         if tool_name not in {tool.name for tool in record.manifest.tools}:
