@@ -433,7 +433,26 @@ class ObservationSearchAdapter(BaseCapabilityAdapter):
                 execution_mode=ExecutionMode.MOCK,
             )
 
-        exec_mode = ExecutionMode.REAL if result.backend_used and result.backend_used != "mock" else ExecutionMode.MOCK
+        result_data = result.data if isinstance(result.data, dict) else {}
+        search_results = result_data.get("search_results")
+        result_count = (
+            search_results.get("result_count")
+            if isinstance(search_results, dict)
+            else result_data.get("result_count")
+        )
+        backend_key = str(result.backend_used or "").strip().lower()
+        if backend_key in {"", "none"} or (
+            isinstance(result_count, (int, float)) and result_count <= 0
+        ):
+            return AdapterResult(
+                success=False,
+                error_code="NO_DATA",
+                error_message="Web search completed without discoverable results.",
+                latency_ms=latency_ms,
+                execution_mode=ExecutionMode.MOCK,
+            )
+
+        exec_mode = ExecutionMode.REAL if backend_key != "mock" else ExecutionMode.MOCK
         return AdapterResult(
             success=True,
             data=result.data,

@@ -181,6 +181,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/intelligence-follow-search-results-v2-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run web-search zero-result truthfulness regression v2
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_web_search_zero_results_truthfulness_v2 `
+            2>&1 | Tee-Object -FilePath .ci-results/web-search-zero-results-truthfulness-v2-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
