@@ -184,6 +184,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/production-durable-receipt-wiring-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run Intelligence discovered-page follow-up regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_intelligence_follow_search_results_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/intelligence-follow-search-results-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run full hermetic unittest discovery
         timeout-minutes: 35
         shell: pwsh
