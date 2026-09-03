@@ -44,9 +44,18 @@ def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
     )
 
 
+def _knowledge_relevance_tokens(value: object) -> set[str]:
+    """Tokenize semantic text while ignoring opaque underscore-delimited machine identifiers."""
+    return {
+        token
+        for token in re.findall(r"\w+", str(value or "").casefold(), flags=re.UNICODE)
+        if "_" not in token
+    }
+
+
 def _knowledge_relevance_score(document: KnowledgeDocument, objective: object) -> int:
     """Return deterministic lexical overlap between the runtime objective and a knowledge document."""
-    objective_tokens = set(re.findall(r"\w+", str(objective or "").casefold(), flags=re.UNICODE))
+    objective_tokens = _knowledge_relevance_tokens(objective)
     if not objective_tokens:
         return 0
 
@@ -57,7 +66,7 @@ def _knowledge_relevance_score(document: KnowledgeDocument, objective: object) -
             str(getattr(document, "content", "") or ""),
         ]
     )
-    document_tokens = set(re.findall(r"\w+", searchable_text.casefold(), flags=re.UNICODE))
+    document_tokens = _knowledge_relevance_tokens(searchable_text)
     return len(objective_tokens.intersection(document_tokens))
 
 
@@ -214,8 +223,8 @@ class ContextCompiler:
                     if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
                 ]
                 # Relevance is the primary bounded-selection key; authority remains
-                # the deterministic tie-break. If every relevance score is zero,
-                # this collapses to the prior authority-first behavior exactly.
+                # the deterministic tie-break. If every semantic relevance score is
+                # zero, stable sorting preserves the prior authority-first behavior.
                 valid_docs = sorted(
                     valid_docs,
                     key=lambda d: (
