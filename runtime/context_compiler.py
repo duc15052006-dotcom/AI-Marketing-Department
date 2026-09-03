@@ -8,6 +8,7 @@ filtered institutional memories, and ToolGateway execution receipts.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -41,6 +42,23 @@ def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
         document.authority_level,
         len(_KNOWLEDGE_AUTHORITY_RANK),
     )
+
+
+def _knowledge_relevance_score(document: KnowledgeDocument, objective: object) -> int:
+    """Return deterministic lexical overlap between the runtime objective and a knowledge document."""
+    objective_tokens = set(re.findall(r"\w+", str(objective or "").casefold(), flags=re.UNICODE))
+    if not objective_tokens:
+        return 0
+
+    searchable_text = " ".join(
+        [
+            str(getattr(document, "title", "") or ""),
+            " ".join(str(tag) for tag in (getattr(document, "tags", None) or [])),
+            str(getattr(document, "content", "") or ""),
+        ]
+    )
+    document_tokens = set(re.findall(r"\w+", searchable_text.casefold(), flags=re.UNICODE))
+    return len(objective_tokens.intersection(document_tokens))
 
 
 def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
@@ -195,9 +213,16 @@ class ContextCompiler:
                     for d in scoped_docs
                     if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
                 ]
-                # Apply a stable authority sort before the per-scope evidence cap.
-                # Same-tier repository order is preserved by Python's stable sort.
-                valid_docs = sorted(valid_docs, key=_knowledge_authority_rank)
+                # Relevance is the primary bounded-selection key; authority remains
+                # the deterministic tie-break. If every relevance score is zero,
+                # this collapses to the prior authority-first behavior exactly.
+                valid_docs = sorted(
+                    valid_docs,
+                    key=lambda d: (
+                        -_knowledge_relevance_score(d, ctx.objective),
+                        _knowledge_authority_rank(d),
+                    ),
+                )
                 for doc in valid_docs[:4]:
                     if doc.knowledge_id in seen_knowledge_ids:
                         continue
