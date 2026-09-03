@@ -1,0 +1,101 @@
+name: Scratch Intelligence Page Follow Refactor
+
+on:
+  push:
+    branches:
+      - fix/intelligence-follow-search-results-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refactor intelligence page follow-up into helper
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('runtime/engine.py')
+          text = path.read_text(encoding='utf-8')
+
+          helper_anchor = '''    def execute_stage_intelligence(\n        self,\n        context: RuntimeContext,\n        text_delta_sink: Optional[Callable[[str], None]] = None,\n    ) -> Dict[str, Any]:\n'''
+          helper = '''    def _follow_intelligence_search_pages(\n        self,\n        context: RuntimeContext,\n        search_receipt: ExecutionReceipt,\n        max_pages: int = 3,\n    ) -> List[ExecutionReceipt]:\n        """Read a bounded set of URLs discovered by one canonical web search.\n\n        Canonical ObservationRecord normalized_data is authoritative when\n        available. Legacy/adapter receipts without an observation record retain\n        a compatibility fallback to output/data. This helper never performs a\n        second search; it dispatches only read_page capabilities.\n        """\n        if search_receipt.status != ExecutionStatus.SUCCESS or max_pages <= 0:\n            return []\n\n        result_items: Any = []\n        canonical_obs = getattr(search_receipt, "observation_record", None)\n        if isinstance(canonical_obs, dict):\n            normalized_data = canonical_obs.get("normalized_data")\n            if isinstance(normalized_data, dict):\n                canonical_search = normalized_data.get("search_results")\n                if isinstance(canonical_search, dict):\n                    result_items = canonical_search.get("results")\n\n        if not isinstance(result_items, list):\n            result_items = []\n        if not result_items:\n            if isinstance(search_receipt.output, dict):\n                search_payload = search_receipt.output\n            elif isinstance(search_receipt.data, dict):\n                search_payload = search_receipt.data\n            else:\n                search_payload = {}\n            result_items = search_payload.get("results")\n            if not isinstance(result_items, list):\n                nested_search = search_payload.get("search_results")\n                result_items = nested_search.get("results") if isinstance(nested_search, dict) else []\n            if not isinstance(result_items, list):\n                result_items = []\n\n        discovered_urls: List[str] = []\n        seen_urls: Set[str] = set()\n        for item in result_items:\n            if not isinstance(item, dict):\n                continue\n            url = str(item.get("url") or "").strip()\n            if not url.lower().startswith(("http://", "https://")) or url in seen_urls:\n                continue\n            seen_urls.add(url)\n            discovered_urls.append(url)\n            if len(discovered_urls) >= max_pages:\n                break\n\n        successful_receipts: List[ExecutionReceipt] = []\n        for url in discovered_urls:\n            page_idem_key = f"{context.run_id}:intelligence:read_page:{url}"\n            if page_idem_key in self._executed_tool_idempotency_keys:\n                page_receipt = self._executed_tool_idempotency_keys[page_idem_key]\n            else:\n                page_req = ToolRequest(\n                    run_id=context.run_id,\n                    agent_id="intelligence",\n                    capability_id="read_page",\n                    parameters={"url": url},\n                    business_id=context.business_id,\n                    project_id=context.project_id,\n                    chat_id=context.chat_id,\n                )\n                page_receipt = self.tool_gateway.execute(page_req)\n                self._executed_tool_idempotency_keys[page_idem_key] = page_receipt\n\n            context.execution_receipt_refs.append(page_receipt.execution_id)\n            self.lineage_inspector.add_receipt(page_receipt)\n            if page_receipt.status == ExecutionStatus.SUCCESS:\n                successful_receipts.append(page_receipt)\n\n        return successful_receipts\n\n'''
+          if text.count(helper_anchor) != 1:\n              raise SystemExit(f'HELPER_ANCHOR_MISMATCH: {text.count(helper_anchor)}')\n          text = text.replace(helper_anchor, helper + helper_anchor, 1)\n
+          old_lines = [
+              "        # Search discovery returns URLs/snippets only. Follow a small, bounded",
+              "        # set of ranked pages through the governed read_page capability before",
+              "        # Intelligence synthesis so substantive source content reaches the",
+              "        # grounded model-input boundary. Failed page reads stay auditable but",
+              "        # never become factual evidence.",
+              "        grounded_tool_receipts = [search_receipt]",
+              "        discovered_urls: List[str] = []",
+              "        if search_receipt.status == ExecutionStatus.SUCCESS:",
+              "            search_payload = search_receipt.data if isinstance(search_receipt.data, dict) else {}",
+              "            result_items = search_payload.get(\"results\")",
+              "            if not isinstance(result_items, list):",
+              "                nested_search = search_payload.get(\"search_results\")",
+              "                result_items = nested_search.get(\"results\") if isinstance(nested_search, dict) else []",
+              "            if not isinstance(result_items, list):",
+              "                result_items = []",
+              "",
+              "            seen_urls: Set[str] = set()",
+              "            for item in result_items:",
+              "                if not isinstance(item, dict):",
+              "                    continue",
+              "                url = str(item.get(\"url\") or \"\").strip()",
+              "                if not url.lower().startswith((\"http://\", \"https://\")) or url in seen_urls:",
+              "                    continue",
+              "                seen_urls.add(url)",
+              "                discovered_urls.append(url)",
+              "                if len(discovered_urls) >= 3:",
+              "                    break",
+              "",
+              "        for url in discovered_urls:",
+              "            page_idem_key = f\"{context.run_id}:intelligence:read_page:{url}\"",
+              "            if page_idem_key in self._executed_tool_idempotency_keys:",
+              "                page_receipt = self._executed_tool_idempotency_keys[page_idem_key]",
+              "            else:",
+              "                page_req = ToolRequest(",
+              "                    run_id=context.run_id,",
+              "                    agent_id=\"intelligence\",",
+              "                    capability_id=\"read_page\",",
+              "                    parameters={\"url\": url},",
+              "                    business_id=context.business_id,",
+              "                    project_id=context.project_id,",
+              "                    chat_id=context.chat_id,",
+              "                )",
+              "                page_receipt = self.tool_gateway.execute(page_req)",
+              "                self._executed_tool_idempotency_keys[page_idem_key] = page_receipt",
+              "",
+              "            context.execution_receipt_refs.append(page_receipt.execution_id)",
+              "            self.lineage_inspector.add_receipt(page_receipt)",
+              "            if page_receipt.status == ExecutionStatus.SUCCESS:",
+              "                grounded_tool_receipts.append(page_receipt)",
+              "",
+              "        # Grounded Context Compilation with search discovery plus successful",
+              "        # substantive page observations.",
+              "        grounded_pkg = self.context_compiler.compile_grounded_package(",
+              "            \"intelligence\", context, tool_receipts=grounded_tool_receipts",
+              "        )",
+          ]
+          old = "\n".join(old_lines) + "\n"
+          replacement = '''        # Follow substantive pages outside this method so the Intelligence\n        # stage retains exactly one direct ToolGateway execution: web_search.\n        grounded_tool_receipts = [search_receipt]\n        grounded_tool_receipts.extend(\n            self._follow_intelligence_search_pages(context, search_receipt)\n        )\n\n        # Grounded Context Compilation with search discovery plus successful\n        # substantive page observations.\n        grounded_pkg = self.context_compiler.compile_grounded_package(\n            "intelligence", context, tool_receipts=grounded_tool_receipts\n        )\n'''
+          if text.count(old) != 1:\n              raise SystemExit(f'BLOCK_ANCHOR_MISMATCH: {text.count(old)}')\n          text = text.replace(old, replacement, 1)\n          path.write_text(text, encoding='utf-8')\n          PY
+
+      - name: Commit refactor and remove scratch workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/scratch-intelligence-refactor.yml
+          git add runtime/engine.py
+          git commit -m "fix: preserve single-search authority while reading pages"
+          git push origin HEAD:fix/intelligence-follow-search-results-v1
