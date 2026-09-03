@@ -1,4 +1,4 @@
-name: Capability Registry Policy RED V2
+name: Capability Registry Policy Immutability V2
 
 on:
   pull_request:
@@ -7,9 +7,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: capability-registry-policy-v2-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  red-regression:
-    name: Capability registry policy immutability RED V2
+  regression:
+    name: Capability registry policy immutability V2
     runs-on: windows-latest
     timeout-minutes: 15
     env:
@@ -39,8 +43,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
           $expectedHead = "${{ github.event.pull_request.head.sha || github.sha }}"
           $actualHead = (git rev-parse HEAD).Trim()
-          "expected_head_sha=$expectedHead" | Tee-Object -FilePath .ci-results/capability-registry-policy-red-v2-identity.txt
-          "actual_head_sha=$actualHead" | Tee-Object -FilePath .ci-results/capability-registry-policy-red-v2-identity.txt -Append
+          "expected_head_sha=$expectedHead" | Tee-Object -FilePath .ci-results/capability-registry-policy-v2-identity.txt
+          "actual_head_sha=$actualHead" | Tee-Object -FilePath .ci-results/capability-registry-policy-v2-identity.txt -Append
+          "github_ref=${{ github.ref }}" | Tee-Object -FilePath .ci-results/capability-registry-policy-v2-identity.txt -Append
+          "github_event_name=${{ github.event_name }}" | Tee-Object -FilePath .ci-results/capability-registry-policy-v2-identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/capability-registry-policy-v2-identity.txt -Append
           if ($actualHead -ne $expectedHead) {
             Write-Error "EXACT_HEAD_MISMATCH: expected $expectedHead but checked out $actualHead"
             exit 1
@@ -57,14 +64,14 @@ jobs:
         shell: pwsh
         run: |
           python -m unittest -v tests.test_capability_registry_policy_immutability_adversarial_v2 `
-            2>&1 | Tee-Object -FilePath .ci-results/capability-registry-policy-immutability-red-v2.log
+            2>&1 | Tee-Object -FilePath .ci-results/capability-registry-policy-immutability-v2.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload RED evidence
+      - name: Upload regression evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: capability-registry-policy-red-v2-${{ github.event.pull_request.head.sha || github.sha }}
+          name: capability-registry-policy-v2-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
