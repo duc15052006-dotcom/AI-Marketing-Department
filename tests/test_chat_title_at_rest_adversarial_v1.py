@@ -81,13 +81,23 @@ class ChatTitleAtRestAdversarialV1(unittest.TestCase):
             db_path = Path(tmp) / "chat.sqlite3"
             protector = _TestOnlyProtector()
 
-            # Reproduce the exact #153 state: the existing payload migration is
-            # already complete, but session titles are still stored plaintext.
             repo = SQLiteChatRepository(db_path=str(db_path), payload_protector=protector)
-            session = ChatSession(title=legacy_title)
+            session = ChatSession(title="temporary title")
             repo.save_session(session)
 
+            # Force the exact persisted state produced by #153: at_rest_v1 is
+            # complete, no title-specific migration marker exists, and title is
+            # plaintext. This remains valid after the production fix lands.
             with sqlite3.connect(str(db_path)) as conn:
+                conn.execute(
+                    "DELETE FROM chat_payload_migrations WHERE migration_key = ?",
+                    ("title_at_rest_v1",),
+                )
+                conn.execute(
+                    "UPDATE chat_sessions SET title = ? WHERE chat_id = ?",
+                    (legacy_title, session.chat_id),
+                )
+                conn.commit()
                 marker = conn.execute(
                     "SELECT 1 FROM chat_payload_migrations WHERE migration_key = ?",
                     ("at_rest_v1",),
