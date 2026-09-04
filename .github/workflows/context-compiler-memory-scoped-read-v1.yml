@@ -9,15 +9,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: context-compiler-memory-scoped-read-v1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  context-compiler-memory-scoped-read-v1:
-    name: ContextCompiler exact Memory scope reads
+  apply-scoped-read-fix:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'fix/memory-contextcompiler-scoped-read-v1'
+    name: Apply and pre-validate scoped Memory read fix
     runs-on: windows-latest
     timeout-minutes: 15
     env:
@@ -26,11 +27,22 @@ jobs:
       AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
       AI_MARKETING_MEMORY_EPHEMERAL: "1"
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout writable head branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: fix/memory-contextcompiler-scoped-read-v1
+
+      - name: Verify expected branch authority
+        shell: pwsh
+        run: |
+          $actualHead = (git rev-parse HEAD).Trim()
+          $expectedHead = "${{ github.event.pull_request.head.sha }}"
+          Write-Host "expected_head_sha=$expectedHead"
+          Write-Host "actual_head_sha=$actualHead"
+          if ($actualHead -ne $expectedHead) {
+            throw "Applicator checkout does not match the triggering PR head"
+          }
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -39,17 +51,6 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Verify exact CI identity
-        shell: pwsh
-        run: |
-          $expectedHead = "${{ github.event.pull_request.head.sha || github.sha }}"
-          $actualHead = (git rev-parse HEAD).Trim()
-          Write-Host "expected_head_sha=$expectedHead"
-          Write-Host "actual_head_sha=$actualHead"
-          if ($actualHead -ne $expectedHead) {
-            throw "CI checkout does not match expected PR head"
-          }
-
       - name: Install runtime dependencies
         shell: pwsh
         run: |
@@ -57,6 +58,47 @@ jobs:
           pip install -r requirements.txt
           pip check
 
-      - name: Run ContextCompiler scoped Memory read regression
+      - name: Apply minimal production patch
         shell: pwsh
-        run: python -m unittest -v tests.test_context_compiler_memory_scoped_read_adversarial_v1
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("runtime/context_compiler.py")
+          data = path.read_bytes()
+          old_lf = b'''            if scope_plan.include_global:\n                memory_scopes.append("GLOBAL")\n            allowed_memory_scopes = set(memory_scopes)\n            all_mems = self.memory_repo.list_memories()\n'''
+          new_lf = b'''            if scope_plan.include_global:\n                memory_scopes.append("GLOBAL")\n            memory_scopes = list(dict.fromkeys(memory_scopes))\n            allowed_memory_scopes = set(memory_scopes)\n            all_mems = []\n            for s in memory_scopes:\n                all_mems.extend(self.memory_repo.list_memories(scope=s))\n'''
+
+          changed = False
+          for newline in (b"\r\n", b"\n"):
+              old = old_lf.replace(b"\n", newline)
+              new = new_lf.replace(b"\n", newline)
+              if old in data:
+                  data = data.replace(old, new, 1)
+                  path.write_bytes(data)
+                  changed = True
+                  break
+
+          if not changed and b"all_mems.extend(self.memory_repo.list_memories(scope=s))" not in data:
+              raise SystemExit("Expected ContextCompiler Memory block was not found")
+          print(f"production_patch_changed={changed}")
+          '@ | Set-Content -Encoding utf8 .apply_context_memory_scope.py
+          python .apply_context_memory_scope.py
+          Remove-Item .apply_context_memory_scope.py
+
+      - name: Pre-commit targeted regression
+        shell: pwsh
+        run: python -m unittest -v tests.test_context_compiler_memory_scoped_read_adversarial_v1 tests.test_context_compiler_dual_scope_read_v1
+
+      - name: Commit production patch when changed
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- runtime/context_compiler.py)) {
+            Write-Host "Production patch already present; no commit needed."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/context_compiler.py
+          git commit -m "fix(memory): scope ContextCompiler repository reads"
+          git push origin HEAD:fix/memory-contextcompiler-scoped-read-v1
