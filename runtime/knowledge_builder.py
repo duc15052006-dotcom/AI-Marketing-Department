@@ -6,6 +6,7 @@ for each of the 5 permanent agents with full citation provenance.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 from governance.access_matrix import AgentAccessMatrix
 from knowledge.models import AuthorityLevel, KnowledgeCitation, KnowledgeDocument, SourceType
@@ -28,6 +29,32 @@ def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
         document.authority_level,
         len(_KNOWLEDGE_AUTHORITY_RANK),
     )
+
+
+def _knowledge_relevance_tokens(value: object) -> set[str]:
+    """Tokenize semantic text while ignoring opaque underscore-delimited machine identifiers."""
+    return {
+        token
+        for token in re.findall(r"\w+", str(value or "").casefold(), flags=re.UNICODE)
+        if "_" not in token
+    }
+
+
+def _knowledge_relevance_score(document: KnowledgeDocument, query_text: object) -> int:
+    """Return deterministic lexical overlap between a natural-language query and a document."""
+    query_tokens = _knowledge_relevance_tokens(query_text)
+    if not query_tokens:
+        return 0
+
+    searchable_text = " ".join(
+        [
+            str(getattr(document, "title", "") or ""),
+            " ".join(str(tag) for tag in (getattr(document, "tags", None) or [])),
+            str(getattr(document, "content", "") or ""),
+        ]
+    )
+    document_tokens = _knowledge_relevance_tokens(searchable_text)
+    return len(query_tokens.intersection(document_tokens))
 
 
 def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
@@ -100,14 +127,26 @@ class KnowledgeContextBuilder:
         # insertion order cannot crowd out higher-authority evidence.
         scoped_docs = sorted(scoped_docs, key=_knowledge_authority_rank)
 
-        # Match by query if provided, or take high-authority scoped docs
+        # Preserve exact full-query compatibility first. Natural-language queries
+        # that do not occur verbatim fall back to relevance-before-quota ranking;
+        # zero-overlap queries retain the prior stable authority-first behavior.
         if query_text:
             matched = []
             q_low = query_text.lower()
             for d in scoped_docs:
                 if q_low in d.title.lower() or q_low in d.content.lower() or any(q_low in t.lower() for t in d.tags):
                     matched.append(d)
-            target_docs = matched if matched else scoped_docs[:4]
+            if matched:
+                target_docs = matched
+            else:
+                ranked_docs = sorted(
+                    scoped_docs,
+                    key=lambda d: (
+                        -_knowledge_relevance_score(d, query_text),
+                        _knowledge_authority_rank(d),
+                    ),
+                )
+                target_docs = ranked_docs[:4]
         else:
             target_docs = scoped_docs[:4]
 
