@@ -8,6 +8,7 @@ from knowledge.models import AuthorityLevel, KnowledgeDocument, SourceType
 from knowledge.repository import LocalKnowledgeRepository
 from memory.repository import LocalMemoryRepository
 from runtime.engine import FiveAgentDepartmentRuntime
+from runtime.knowledge_builder import KnowledgeContextBuilder
 from tools.capabilities import CapabilityRegistry
 from tools.tool_gateway import ToolGateway
 
@@ -93,6 +94,43 @@ class KnowledgeContextRelevanceBeforeQuotaAdversarialV1Tests(unittest.TestCase):
             len(set(irrelevant_ids).intersection(grounded_ids)),
             4,
             "All four irrelevant Tier 1 documents consumed the per-scope quota ahead of relevant evidence.",
+        )
+
+    def test_natural_language_builder_query_does_not_fall_back_to_irrelevant_authority_only(self) -> None:
+        for index in range(4):
+            self._save_doc(
+                f"KNOW-BUILDER-IRRELEVANT-TIER1-{index}",
+                AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
+                title="Office brand typography specification",
+                content="Canonical logo spacing, font family, print margin, and stationery layout rules.",
+                tags=["branding", "typography", "stationery"],
+            )
+
+        relevant_id = "KNOW-BUILDER-RELEVANT-TIER2-CHARGER"
+        self._save_doc(
+            relevant_id,
+            AuthorityLevel.TIER_2_VERIFIED_RESEARCH,
+            title="USB C charger cable failure research",
+            content="Verified customer research on USB C charger cable failure rate, overheating complaints, and return reasons.",
+            tags=["usb c", "charger", "cable", "failure", "complaints", "returns"],
+        )
+
+        result = KnowledgeContextBuilder(self.knowledge_repo).build_context_for_agent(
+            "cmo",
+            query_text="Please analyze why customers complain about USB C charger cable failures and returns",
+            scope=self.SCOPE,
+        )
+        retrieved_ids = [doc.knowledge_id for doc in result.documents]
+
+        self.assertIn(
+            relevant_id,
+            retrieved_ids,
+            "Natural-language retrieval must use meaningful query terms before bounded authority fallback; the relevant document was dropped.",
+        )
+        self.assertLess(
+            sum(knowledge_id.startswith("KNOW-BUILDER-IRRELEVANT-TIER1-") for knowledge_id in retrieved_ids),
+            4,
+            "All four irrelevant high-authority documents consumed the builder quota after the full query sentence failed exact substring matching.",
         )
 
     def test_equal_relevance_still_prefers_higher_authority_before_quota(self) -> None:
