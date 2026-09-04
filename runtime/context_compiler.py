@@ -274,8 +274,11 @@ class ContextCompiler:
                 memory_scopes.append(f"SCOPE_{business_id}")
             if scope_plan.include_global:
                 memory_scopes.append("GLOBAL")
+            memory_scopes = list(dict.fromkeys(memory_scopes))
             allowed_memory_scopes = set(memory_scopes)
-            all_mems = self.memory_repo.list_memories()
+            all_mems = []
+            for s in memory_scopes:
+                all_mems.extend(self.memory_repo.list_memories(scope=s))
 
             for m in all_mems:
                 if getattr(m, "scope", "GLOBAL") not in allowed_memory_scopes:
