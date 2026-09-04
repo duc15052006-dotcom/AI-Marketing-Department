@@ -153,7 +153,7 @@ class DynamicGatewayV1Tests(unittest.TestCase):
         self.assertEqual(receipt.status, ExecutionStatus.ERROR)
         self.assertEqual(receipt.error_class, "CAPABILITY_NOT_FOUND")
 
-    def test_mcp_self_attested_read_only_tool_hits_approval_gate(self):
+    def test_mcp_self_attested_read_only_tool_is_blocked_by_local_permissions(self):
         clients = {}
 
         def factory(config):
@@ -179,8 +179,9 @@ class DynamicGatewayV1Tests(unittest.TestCase):
                 business_id="BIZ-9",
             )
         )
-        self.assertEqual(receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
-        self.assertIsNotNone(receipt.approval_reference)
+        self.assertEqual(receipt.status, ExecutionStatus.BLOCKED)
+        self.assertEqual(receipt.error_class, "PERMISSION_DENIED")
+        self.assertIsNone(receipt.approval_reference)
         self.assertEqual(clients["metrics"].calls, [])
 
     def test_mcp_destructive_tool_still_hits_approval_gate(self):
