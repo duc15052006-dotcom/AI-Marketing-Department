@@ -57,6 +57,11 @@ jobs:
           pip install -r requirements.txt
           pip check
 
-      - name: Run ContextCompiler scoped Memory read regression
+      - name: Run ContextCompiler and stacked Memory regressions
         shell: pwsh
-        run: python -m unittest -v tests.test_context_compiler_memory_scoped_read_adversarial_v1 tests.test_context_compiler_dual_scope_read_v1
+        run: |
+          python -m unittest -v `
+            tests.test_context_compiler_memory_scoped_read_adversarial_v1 `
+            tests.test_context_compiler_dual_scope_read_v1 `
+            tests.test_production_memory_restart_durability_adversarial_v1 `
+            tests.test_memory_sqlite_persistence_secret_boundary_adversarial_v1
