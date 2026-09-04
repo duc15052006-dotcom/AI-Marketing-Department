@@ -69,11 +69,15 @@ class MemorySQLitePersistenceSecretBoundaryAdversarialV1(unittest.TestCase):
                     if callable(close_repo):
                         close_repo()
 
-                with sqlite3.connect(str(db_path)) as connection:
+                connection = sqlite3.connect(str(db_path))
+                try:
                     row = connection.execute(
                         "SELECT payload FROM memories WHERE memory_id = ?",
                         (original.memory_id,),
                     ).fetchone()
+                finally:
+                    connection.close()
+
                 self.assertIsNotNone(row)
                 raw_payload = str(row[0])
 
