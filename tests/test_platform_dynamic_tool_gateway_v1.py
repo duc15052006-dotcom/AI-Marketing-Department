@@ -153,7 +153,7 @@ class DynamicGatewayV1Tests(unittest.TestCase):
         self.assertEqual(receipt.status, ExecutionStatus.ERROR)
         self.assertEqual(receipt.error_class, "CAPABILITY_NOT_FOUND")
 
-    def test_mcp_read_only_tool_routes_as_real_execution(self):
+    def test_mcp_self_attested_read_only_tool_hits_approval_gate(self):
         clients = {}
 
         def factory(config):
@@ -179,11 +179,9 @@ class DynamicGatewayV1Tests(unittest.TestCase):
                 business_id="BIZ-9",
             )
         )
-        self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
-        self.assertEqual(receipt.execution_mode, ExecutionMode.REAL)
-        self.assertEqual(receipt.data["structured_content"]["tool"], "lookup_metrics")
-        self.assertEqual(clients["metrics"].calls[0][1], {"campaign_id": "C-1"})
-        self.assertNotIn("business_id", clients["metrics"].calls[0][1])
+        self.assertEqual(receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
+        self.assertIsNotNone(receipt.approval_reference)
+        self.assertEqual(clients["metrics"].calls, [])
 
     def test_mcp_destructive_tool_still_hits_approval_gate(self):
         mcp_registry = McpServerRegistry(client_factory=lambda config: FakeMcpClient(config))
