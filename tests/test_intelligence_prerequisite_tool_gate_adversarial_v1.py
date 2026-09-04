@@ -21,7 +21,7 @@ class _SpyToolGateway:
         self.calls += 1
         return SimpleNamespace(
             execution_id="EXEC-SHOULD-NOT-EXIST",
-            status=ExecutionStatus.FAILED,
+            status=ExecutionStatus.ERROR,
             observation_record=None,
         )
 
