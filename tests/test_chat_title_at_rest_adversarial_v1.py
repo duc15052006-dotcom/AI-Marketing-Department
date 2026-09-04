@@ -74,6 +74,56 @@ class ChatTitleAtRestAdversarialV1(unittest.TestCase):
             self.assertIsNotNone(loaded_after_rename)
             self.assertEqual(loaded_after_rename.title, renamed_title)
 
+    def test_existing_at_rest_v1_database_migrates_plaintext_title(self) -> None:
+        legacy_title = "CHAT_TITLE_LEGACY_SECRET_5D20CB"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "chat.sqlite3"
+            protector = _TestOnlyProtector()
+
+            # Reproduce the exact #153 state: the existing payload migration is
+            # already complete, but session titles are still stored plaintext.
+            repo = SQLiteChatRepository(db_path=str(db_path), payload_protector=protector)
+            session = ChatSession(title=legacy_title)
+            repo.save_session(session)
+
+            with sqlite3.connect(str(db_path)) as conn:
+                marker = conn.execute(
+                    "SELECT 1 FROM chat_payload_migrations WHERE migration_key = ?",
+                    ("at_rest_v1",),
+                ).fetchone()
+                raw_before = conn.execute(
+                    "SELECT title FROM chat_sessions WHERE chat_id = ?",
+                    (session.chat_id,),
+                ).fetchone()[0]
+
+            self.assertIsNotNone(marker)
+            self.assertEqual(raw_before, legacy_title)
+
+            reopened = SQLiteChatRepository(db_path=str(db_path), payload_protector=protector)
+
+            with sqlite3.connect(str(db_path)) as conn:
+                raw_after = conn.execute(
+                    "SELECT title FROM chat_sessions WHERE chat_id = ?",
+                    (session.chat_id,),
+                ).fetchone()[0]
+                title_marker = conn.execute(
+                    "SELECT 1 FROM chat_payload_migrations WHERE migration_key = ?",
+                    ("title_at_rest_v1",),
+                ).fetchone()
+
+            self.assertNotEqual(
+                raw_after,
+                legacy_title,
+                "Existing #153 plaintext title was not migrated at repository startup.",
+            )
+            self.assertNotIn(legacy_title, raw_after)
+            self.assertIsNotNone(title_marker)
+
+            loaded = reopened.get_session(session.chat_id, include_messages=False)
+            self.assertIsNotNone(loaded)
+            self.assertEqual(loaded.title, legacy_title)
+
 
 if __name__ == "__main__":
     unittest.main()
