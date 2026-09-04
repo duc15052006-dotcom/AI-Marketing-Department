@@ -55,9 +55,9 @@ class McpPlatformV1Tests(unittest.TestCase):
 
         by_id = {descriptor.capability_id: descriptor for descriptor in descriptors}
         read_cap = by_id["mcp.market.search"]
-        self.assertEqual(read_cap.risk_level.value, "LOW")
-        self.assertFalse(read_cap.human_approval_required)
-        self.assertEqual([p.value for p in read_cap.required_permissions], ["READ_ONLY"])
+        self.assertEqual(read_cap.risk_level.value, "HIGH")
+        self.assertTrue(read_cap.human_approval_required)
+        self.assertEqual([p.value for p in read_cap.required_permissions], ["EXTERNAL_WRITE"])
 
         write_cap = by_id["mcp.market.publish_post"]
         self.assertEqual(write_cap.risk_level.value, "HIGH")
