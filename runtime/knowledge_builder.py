@@ -150,6 +150,7 @@ class KnowledgeContextBuilder:
         else:
             target_docs = scoped_docs[:4]
 
+        rendered_docs: List[KnowledgeDocument] = []
         citations: List[KnowledgeCitation] = []
         lines = [f"=== VERIFIED KNOWLEDGE CONTEXT FOR [{aid.upper()}] ==="]
         total_chars = 0
@@ -157,15 +158,6 @@ class KnowledgeContextBuilder:
         for doc in target_docs:
             chunk = doc.chunks[0] if doc.chunks else None
             chunk_id = chunk.chunk_id if chunk else "CHUNK-0"
-            citation = KnowledgeCitation(
-                knowledge_id=doc.knowledge_id,
-                chunk_id=chunk_id,
-                source_id=doc.source_id,
-                claim_ref=doc.title,
-                confidence=1.0 if doc.authority_level == AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH else 0.85,
-            )
-            citations.append(citation)
-
             doc_header = f"\n[KNOWLEDGE REF: {doc.knowledge_id} | Ver: {doc.version} | Auth: {doc.authority_level.value} | SourceType: {doc.source_type.value}]"
             doc_body = f"Title: {doc.title}\nContent: {doc.content[:600]}..."
             entry = f"{doc_header}\n{doc_body}"
@@ -174,6 +166,15 @@ class KnowledgeContextBuilder:
                 lines.append(f"\n[... Knowledge context truncated at {max_chars} chars budget limit ...]")
                 break
 
+            citation = KnowledgeCitation(
+                knowledge_id=doc.knowledge_id,
+                chunk_id=chunk_id,
+                source_id=doc.source_id,
+                claim_ref=doc.title,
+                confidence=1.0 if doc.authority_level == AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH else 0.85,
+            )
+            rendered_docs.append(doc)
+            citations.append(citation)
             lines.append(entry)
             total_chars += len(entry)
 
@@ -182,8 +183,8 @@ class KnowledgeContextBuilder:
 
         return KnowledgeRetrievalResult(
             agent_id=aid,
-            documents=target_docs,
+            documents=rendered_docs,
             citations=citations,
             context_text="\n".join(lines),
-            retrieved_count=len(target_docs),
+            retrieved_count=len(rendered_docs),
         )

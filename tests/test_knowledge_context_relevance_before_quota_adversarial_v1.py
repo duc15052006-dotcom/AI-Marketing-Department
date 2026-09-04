@@ -133,6 +133,42 @@ class KnowledgeContextRelevanceBeforeQuotaAdversarialV1Tests(unittest.TestCase):
             "All four irrelevant high-authority documents consumed the builder quota after the full query sentence failed exact substring matching.",
         )
 
+    def test_budget_truncation_does_not_claim_unrendered_knowledge(self) -> None:
+        query = "exact budget probe"
+        for index in range(2):
+            self._save_doc(
+                f"KNOW-BUDGET-PROBE-{index}",
+                AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
+                title=f"{query} document {index}",
+                content=f"{query} content {index} with enough text to exceed a one-character budget.",
+                tags=[query],
+            )
+
+        result = KnowledgeContextBuilder(self.knowledge_repo).build_context_for_agent(
+            "cmo",
+            query_text=query,
+            scope=self.SCOPE,
+            max_chars=1,
+        )
+
+        self.assertIn("Knowledge context truncated", result.context_text)
+        self.assertNotIn("[KNOWLEDGE REF:", result.context_text)
+        self.assertEqual(
+            [],
+            result.documents,
+            "Documents excluded by the render budget must not remain in the result provenance envelope.",
+        )
+        self.assertEqual(
+            [],
+            result.citations,
+            "A citation must not be emitted for a document that never crossed the context budget boundary.",
+        )
+        self.assertEqual(
+            0,
+            result.retrieved_count,
+            "retrieved_count must account for documents actually rendered into the returned context.",
+        )
+
     def test_equal_relevance_still_prefers_higher_authority_before_quota(self) -> None:
         common_title = "USB C charger cable safety evidence"
         common_content = "USB C charger cable safety failure complaints return reasons."
