@@ -345,7 +345,6 @@ class BrainCognitiveIntegrationCertificationV1(unittest.TestCase):
 
     def test_learning_is_scoped_and_single_success_does_not_become_institutional_truth(self) -> None:
         base = {
-            "candidate_id": "MC-1",
             "goal_id": GOAL_ID,
             "claim_id": "The bounded acquisition hypothesis repeatedly met its KPI",
             "agent_id": BrainAgentId.PERFORMANCE,
@@ -357,10 +356,10 @@ class BrainCognitiveIntegrationCertificationV1(unittest.TestCase):
             "evidence_refs": ["E-PERF-RESULT"],
         }
         one_run = evaluate_memory_candidate(
-            MemoryCandidate(**base, independent_run_count=1)
+            MemoryCandidate(candidate_id="MC-1", **base, independent_run_count=1)
         )
         repeated = evaluate_memory_candidate(
-            MemoryCandidate(**base, candidate_id="MC-3", independent_run_count=3)
+            MemoryCandidate(candidate_id="MC-3", **base, independent_run_count=3)
         )
         self.assertEqual(one_run.disposition, MemoryDisposition.CANDIDATE)
         self.assertEqual(repeated.disposition, MemoryDisposition.PROMOTED)
