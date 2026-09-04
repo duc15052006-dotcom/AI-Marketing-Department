@@ -185,10 +185,11 @@ def _side_qualifies(signals: List[EvidenceSignal]) -> bool:
 def assess_claim_evidence(request: ClaimEvidenceRequest) -> ClaimEvidenceAssessment:
     """Assess evidence conservatively for one exact goal/claim pair.
 
-    Evidence IDs are authoritative identities and are counted once. Evidence
-    bound to another goal/claim, neutral evidence, and duplicate IDs are ignored
-    for the target verdict. Source IDs establish independence: repeating the same
-    source cannot manufacture corroboration.
+    Evidence IDs are authoritative identities and identical replays are counted
+    once. Conflicting reuse of an ID fails closed before any verdict is returned,
+    including conflicts in records outside the target goal/claim. Other
+    out-of-scope and neutral evidence is ignored. Source IDs establish
+    independence: repeating the same source cannot manufacture corroboration.
     """
 
     if not isinstance(request, ClaimEvidenceRequest):
@@ -199,14 +200,26 @@ def assess_claim_evidence(request: ClaimEvidenceRequest) -> ClaimEvidenceAssessm
     supporting_refs: List[str] = []
     contradicting_refs: List[str] = []
     ignored_refs: List[str] = []
-    seen_evidence_ids = set()
+    evidence_identity_by_id = {}
 
     for signal in request.evidence:
-        if signal.evidence_id in seen_evidence_ids:
+        identity = (
+            signal.goal_id,
+            signal.claim_id,
+            signal.source_id,
+            signal.relation,
+            signal.strength,
+            signal.origin,
+        )
+        if signal.evidence_id in evidence_identity_by_id:
+            if evidence_identity_by_id[signal.evidence_id] != identity:
+                raise ValidationError(
+                    f"conflicting evidence_id: {signal.evidence_id}"
+                )
             if signal.evidence_id not in ignored_refs:
                 ignored_refs.append(signal.evidence_id)
             continue
-        seen_evidence_ids.add(signal.evidence_id)
+        evidence_identity_by_id[signal.evidence_id] = identity
 
         if signal.goal_id != request.goal_id or signal.claim_id != request.claim_id:
             ignored_refs.append(signal.evidence_id)
