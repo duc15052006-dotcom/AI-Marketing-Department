@@ -11,6 +11,7 @@ Ensures zero cross-chat knowledge leakage and survivability across app restarts.
 from __future__ import annotations
 
 import abc
+import base64
 import json
 import logging
 import os
@@ -23,6 +24,65 @@ from typing import Any, Dict, Generator, List, Optional
 from chat.session import AttachmentType, ChatAttachment, ChatMessage, ChatRole, ChatSession
 
 logger = logging.getLogger("chat_repository")
+
+
+class ChatPayloadProtectionError(RuntimeError):
+    """Raised when persisted chat payload cannot be safely protected/recovered."""
+
+
+class ChatPayloadProtector(abc.ABC):
+    """Narrow storage codec contract for sensitive chat payload text."""
+
+    @abc.abstractmethod
+    def protect_text(self, value: str) -> str:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def unprotect_text(self, persisted_value: str) -> str:
+        raise NotImplementedError
+
+
+class _DPAPIChatPayloadProtector(ChatPayloadProtector):
+    """Windows user-bound DPAPI envelope for chat payloads.
+
+    Uses the existing OS-backed DPAPI primitive from the credential security
+    module, but does not create or resolve credential refs. The constant entropy
+    provides purpose separation only; it is not a secret.
+    """
+
+    _PREFIX = "DPAPI1:"
+    _ENTROPY = b"AI-Marketing-Dept-Chat-Payload-v1"
+
+    def protect_text(self, value: str) -> str:
+        from integrations.models.secret_store import _win_dpapi_encrypt
+
+        try:
+            encrypted = _win_dpapi_encrypt(str(value).encode("utf-8"), self._ENTROPY)
+        except Exception as exc:
+            raise ChatPayloadProtectionError(
+                "CHAT_PAYLOAD_PROTECTION_UNAVAILABLE: refusing plaintext persistence"
+            ) from exc
+        return self._PREFIX + base64.b64encode(encrypted).decode("ascii")
+
+    def unprotect_text(self, persisted_value: str) -> str:
+        from integrations.models.secret_store import _win_dpapi_decrypt
+
+        raw = str(persisted_value)
+        if not raw.startswith(self._PREFIX):
+            raise ChatPayloadProtectionError(
+                "CHAT_PAYLOAD_UNPROTECTED_OR_CORRUPT: expected protected envelope"
+            )
+        try:
+            encrypted = base64.b64decode(raw[len(self._PREFIX):], validate=True)
+            plaintext = _win_dpapi_decrypt(encrypted, self._ENTROPY)
+            return plaintext.decode("utf-8")
+        except ChatPayloadProtectionError:
+            raise
+        except Exception as exc:
+            raise ChatPayloadProtectionError(
+                "CHAT_PAYLOAD_DECRYPT_FAILED: refusing unsafe fallback"
+            ) from exc
+
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "app_v1.sqlite"
 
@@ -96,18 +156,89 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
 
     CURRENT_SCHEMA_VERSION = 1
 
-    def __init__(self, db_path: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        payload_protector: Optional[ChatPayloadProtector] = None,
+    ) -> None:
         if db_path is None:
             from config.authority import get_runtime_config
             configured_path = get_runtime_config().department_db_path
             db_path = configured_path if configured_path else str(DEFAULT_DB_PATH)
         self.db_path = Path(db_path)
+        self._payload_protector = payload_protector or _DPAPIChatPayloadProtector()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def close(self) -> None:
         """Release repository resources."""
         pass
+
+    def _protect_text(self, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return self._payload_protector.protect_text(str(value))
+
+    def _unprotect_text(self, persisted_value: Optional[str]) -> Optional[str]:
+        if persisted_value is None:
+            return None
+        return self._payload_protector.unprotect_text(str(persisted_value))
+
+    def _migrate_v1_plaintext_payloads(self, conn: sqlite3.Connection) -> None:
+        """Atomically convert legacy sensitive TEXT payloads to protected envelopes."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_payload_migrations (
+                migration_key TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
+            """
+        )
+        marker = conn.execute(
+            "SELECT 1 FROM chat_payload_migrations WHERE migration_key = ?",
+            ("at_rest_v1",),
+        ).fetchone()
+        if marker:
+            return
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for row in conn.execute(
+                "SELECT chat_id, last_message_preview FROM chat_sessions"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE chat_sessions SET last_message_preview = ? WHERE chat_id = ?",
+                    (self._protect_text(row["last_message_preview"] or ""), row["chat_id"]),
+                )
+
+            for row in conn.execute(
+                "SELECT message_id, content, agent_outputs_json FROM chat_messages"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE chat_messages SET content = ?, agent_outputs_json = ? WHERE message_id = ?",
+                    (
+                        self._protect_text(row["content"]),
+                        self._protect_text(row["agent_outputs_json"]) if row["agent_outputs_json"] is not None else None,
+                        row["message_id"],
+                    ),
+                )
+
+            for row in conn.execute(
+                "SELECT attachment_id, content FROM chat_attachments"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE chat_attachments SET content = ? WHERE attachment_id = ?",
+                    (self._protect_text(row["content"]), row["attachment_id"]),
+                )
+
+            conn.execute(
+                "INSERT INTO chat_payload_migrations (migration_key, applied_at) VALUES (?, ?)",
+                ("at_rest_v1", datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
@@ -199,6 +330,8 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 )
                 conn.commit()
 
+            self._migrate_v1_plaintext_payloads(conn)
+
     # =========================================================================
     # ChatSession Methods
     # =========================================================================
@@ -229,7 +362,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                     session.optional_project_id,
                     session.optional_business_id,
                     1 if session.archived else 0,
-                    session.last_message_preview,
+                    self._protect_text(session.last_message_preview),
                     session.last_run_id,
                 ),
             )
@@ -358,7 +491,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 """,
                 (
                     message.created_at.isoformat() if isinstance(message.created_at, datetime) else str(message.created_at),
-                    preview,
+                    self._protect_text(preview),
                     message.run_id,
                     message.chat_id,
                 ),
@@ -391,12 +524,12 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 message.chat_id,
                 role_str,
                 message.sender_name,
-                message.content,
+                self._protect_text(message.content),
                 message.created_at.isoformat() if isinstance(message.created_at, datetime) else str(message.created_at),
                 message.run_id,
                 message.status,
                 message.sequence_number,
-                agent_out_str,
+                self._protect_text(agent_out_str) if agent_out_str is not None else None,
             ),
         )
 
@@ -466,7 +599,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 attachment.chat_id,
                 attachment.filename_or_url,
                 type_str,
-                attachment.content,
+                self._protect_text(attachment.content),
                 attachment.content_hash,
                 getattr(attachment, "source_type", "INLINE_UPLOAD"),
                 getattr(attachment, "local_storage_ref", None),
@@ -510,7 +643,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             optional_project_id=row["project_id"],
             optional_business_id=row["business_id"],
             archived=bool(row["archived"]),
-            last_message_preview=row["last_message_preview"] or "",
+            last_message_preview=self._unprotect_text(row["last_message_preview"]) or "",
             last_run_id=row["last_run_id"],
             messages=[],
             attachments=[],
@@ -527,7 +660,8 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
         elif role_str == "agent":
             role_enum = ChatRole.AGENT
 
-        agent_raw = json.loads(row["agent_outputs_json"]) if row["agent_outputs_json"] else {}
+        agent_payload = self._unprotect_text(row["agent_outputs_json"]) if row["agent_outputs_json"] is not None else None
+        agent_raw = json.loads(agent_payload) if agent_payload else {}
         agent_out = dict(agent_raw) if isinstance(agent_raw, dict) else {}
         version = agent_out.pop("_version", 1) if isinstance(agent_out, dict) else 1
         edit_history = agent_out.pop("_edit_history", []) if isinstance(agent_out, dict) else []
@@ -538,7 +672,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             chat_id=row["chat_id"],
             role=role_enum,
             sender_name=row["sender_name"],
-            content=row["content"],
+            content=self._unprotect_text(row["content"]) or "",
             created_at=created_dt,
             run_id=row["run_id"],
             status=row["status"],
@@ -564,7 +698,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             chat_id=row["chat_id"],
             filename_or_url=row["filename"],
             attachment_type=type_enum,
-            content=row["content"],
+            content=self._unprotect_text(row["content"]) or "",
             content_hash=row["content_hash"],
             created_at=created_dt,
             source_type=row["source_type"],
