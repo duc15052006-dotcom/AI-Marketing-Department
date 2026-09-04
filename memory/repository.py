@@ -51,11 +51,19 @@ class MemoryRepository(abc.ABC):
         agent_source: Optional[str] = None,
         run_id: Optional[str] = None,
         promotion_level: Optional[PromotionState] = None,
+        *,
+        scope: Optional[str] = None,
     ) -> List[MemoryItem]:
         pass
 
     @abc.abstractmethod
-    def query_memories(self, query: str, memory_types: Optional[List[MemoryType]] = None) -> List[MemoryItem]:
+    def query_memories(
+        self,
+        query: str,
+        memory_types: Optional[List[MemoryType]] = None,
+        *,
+        scope: Optional[str] = None,
+    ) -> List[MemoryItem]:
         pass
 
 
@@ -92,6 +100,8 @@ class LocalMemoryRepository(MemoryRepository):
         agent_source: Optional[str] = None,
         run_id: Optional[str] = None,
         promotion_level: Optional[PromotionState] = None,
+        *,
+        scope: Optional[str] = None,
     ) -> List[MemoryItem]:
         results = list(self._memories.values())
         if memory_type:
@@ -102,11 +112,20 @@ class LocalMemoryRepository(MemoryRepository):
             results = [m for m in results if m.run_id == run_id]
         if promotion_level:
             results = [m for m in results if m.promotion_level == promotion_level]
+        if scope is not None:
+            normalized_scope = str(scope or "GLOBAL")
+            results = [m for m in results if str(m.scope or "GLOBAL") == normalized_scope]
         return results
 
-    def query_memories(self, query: str, memory_types: Optional[List[MemoryType]] = None) -> List[MemoryItem]:
+    def query_memories(
+        self,
+        query: str,
+        memory_types: Optional[List[MemoryType]] = None,
+        *,
+        scope: Optional[str] = None,
+    ) -> List[MemoryItem]:
         q_lower = query.lower()
-        results = list(self._memories.values())
+        results = self.list_memories(scope=scope)
         if memory_types:
             results = [m for m in results if m.memory_type in memory_types]
         matched = []
