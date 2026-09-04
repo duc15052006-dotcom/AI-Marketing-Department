@@ -77,6 +77,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run repair regressions
+        timeout-minutes: 12
         shell: pwsh
         run: |
           python -m unittest -v `
@@ -99,6 +100,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run certified streaming regressions
+        timeout-minutes: 15
         shell: pwsh
         run: |
           python -m unittest -v `
@@ -110,6 +112,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run certified model settings regressions
+        timeout-minutes: 20
         shell: pwsh
         run: |
           python -m unittest -v tests.test_prod_model_settings_01 `
@@ -117,6 +120,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run certified provider registry regressions
+        timeout-minutes: 15
         shell: pwsh
         run: |
           python -m unittest -v tests.test_prod_model_gateway_01_provider_registry `
@@ -124,6 +128,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run stacked PR exact-head CI regression
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_stacked_pr_exact_head_ci_v1 `
@@ -131,6 +136,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run job artifact hash restart regression
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_job_artifact_hash_restart_contract_v1 `
@@ -138,6 +144,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run knowledge ingest authority default regression
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_knowledge_ingest_authority_default_adversarial_v1 `
@@ -145,6 +152,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run production knowledge restart durability regression v3
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_production_knowledge_restart_durability_adversarial_v3 `
@@ -152,6 +160,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run checkpoint semantic hash integrity regression
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_checkpoint_semantic_hash_integrity_adversarial_v1 `
@@ -159,6 +168,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run production app backend durable job-store wiring regression
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_app_backend_durable_job_store_wiring_adversarial_v1 `
@@ -166,6 +176,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run plugin manifest policy immutability regression
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_plugin_manifest_policy_immutability_adversarial_v2 `
@@ -173,16 +184,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run Intelligence discovered-page follow-up regression v2
+        timeout-minutes: 5
         shell: pwsh
         run: |
           python -m unittest -v tests.test_intelligence_follow_search_results_adversarial_v2 `
-            2>&1 | Tee-Object -FilePath .ci-results/intelligence-follow-search-results-v2.log
+            2>&1 | Tee-Object -FilePath .ci-results/intelligence-follow-search-results-v2-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
         shell: pwsh
         run: |
-          python -m unittest discover -v 2>&1 | Tee-Object -FilePath .ci-results/full-hermetic-unittest.log
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload CI evidence
