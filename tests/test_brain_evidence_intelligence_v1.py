@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import inspect
 import unittest
+from itertools import permutations
 
 import brain.evidence as evidence
 from brain.evidence import (
@@ -107,14 +108,72 @@ class BrainEvidenceIntelligenceV1Tests(unittest.TestCase):
 
     def test_duplicate_evidence_id_is_counted_once(self) -> None:
         first = self._signal(strength=EvidenceStrength.MODERATE)
-        duplicate = self._signal(
-            evidence_id="E-1",
-            source_id="SRC-2",
-            strength=EvidenceStrength.MODERATE,
-        )
+        duplicate = self._signal(strength=EvidenceStrength.MODERATE)
         result = assess_claim_evidence(self._request([first, duplicate]))
         self.assertEqual(result.verdict, ClaimVerdict.INSUFFICIENT)
         self.assertEqual(result.supporting_evidence_refs, ["E-1"])
+
+    def test_conflicting_evidence_identity_fails_closed_in_both_orders(self) -> None:
+        changes = {
+            "goal_id": "G-OTHER",
+            "claim_id": "C-OTHER",
+            "source_id": "SRC-OTHER",
+            "relation": EvidenceRelation.CONTRADICTS,
+            "strength": EvidenceStrength.WEAK,
+            "origin": EvidenceOrigin.DERIVED,
+        }
+        for field_name, value in changes.items():
+            first = self._signal()
+            conflicting = self._signal(**{field_name: value})
+            for signals in ((first, conflicting), (conflicting, first)):
+                with self.subTest(field=field_name, first=signals[0].model_dump()):
+                    with self.assertRaisesRegex(
+                        ValidationError, "conflicting evidence_id: E-1"
+                    ):
+                        assess_claim_evidence(self._request(signals))
+
+    def test_extra_support_and_replay_cannot_hide_identity_conflict(self) -> None:
+        support = self._signal()
+        contradiction = self._signal(relation=EvidenceRelation.CONTRADICTS)
+        independent = self._signal(evidence_id="E-2", source_id="SRC-2")
+        for signals in permutations((support, contradiction, independent)):
+            with self.subTest(order=[s.model_dump() for s in signals]):
+                # A repeated first record must not short-circuit later validation.
+                replayed = [signals[0], signals[0].model_copy(deep=True), *signals[1:]]
+                with self.assertRaisesRegex(
+                    ValidationError, "conflicting evidence_id: E-1"
+                ):
+                    assess_claim_evidence(self._request(replayed))
+
+    def test_normalized_identical_replay_retains_one_supporting_reference(self) -> None:
+        first = self._signal()
+        replay = self._signal(
+            evidence_id=" E-1 ",
+            goal_id=" G-1 ",
+            claim_id=" C-1 ",
+            source_id=" SRC-1 ",
+            relation=" supports ",
+            strength=" strong ",
+            origin=" observed ",
+        )
+        for signals in ((first, replay), (replay, first)):
+            result = assess_claim_evidence(self._request(signals))
+            self.assertEqual(result.verdict, ClaimVerdict.SUPPORTED)
+            self.assertEqual(result.supporting_evidence_refs, ["E-1"])
+
+    def test_identical_replay_preserves_independent_corroboration(self) -> None:
+        first = self._signal(strength=EvidenceStrength.MODERATE)
+        replay = self._signal(strength=EvidenceStrength.MODERATE)
+        independent = self._signal(
+            evidence_id="E-2",
+            source_id="SRC-2",
+            strength=EvidenceStrength.MODERATE,
+        )
+        for signals in permutations((first, replay, independent)):
+            result = assess_claim_evidence(self._request(signals))
+            self.assertEqual(result.verdict, ClaimVerdict.SUPPORTED)
+            self.assertEqual(set(result.supporting_evidence_refs), {"E-1", "E-2"})
+            self.assertEqual(len(result.supporting_evidence_refs), 2)
 
     def test_invalid_agent_enum_and_evidence_type_fail_closed(self) -> None:
         with self.assertRaises(ValidationError):
