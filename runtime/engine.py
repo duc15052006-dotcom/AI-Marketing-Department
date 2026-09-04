@@ -998,6 +998,32 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",
             )
 
+        # Intelligence prerequisite is terminal before lineage/research side effects.
+        # If the initial CMO already failed, this stage must not spend research
+        # tool budget, create receipts, or claim Knowledge/tool provenance.
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "INTELLIGENCE",
+                "agent": "intelligence",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "market_findings": "",
+                "search_receipt_id": None,
+                "citations": [],
+            }
+            context.stage_outputs["intelligence"] = output
+            context.create_checkpoint()
+            return output
+
         k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)
 
         # Invoke ToolGateway for search observation
