@@ -1370,6 +1370,34 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Creative (Hooks & Asset Synthesis)",
             )
 
+        # Creative prerequisite is terminal before retrieval/tool side effects.
+        # If Strategist already failed, this stage must not spend tool budget,
+        # create receipts/artifacts, or claim grounded Creative provenance.
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="CREATIVE",
+                    agent="CREATIVE",
+                    message="Giai đoạn Creative thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "CREATIVE",
+                "agent": "creative",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "concept_name": "",
+                "visual_asset_receipt": None,
+                "creative_synthesis": "",
+                "copy_headlines": [],
+                "citations": [],
+            }
+            context.stage_outputs["creative"] = output
+            context.create_checkpoint()
+            return output
+
         k_res, _ = self._build_stage_lineage_context("creative", context, include_memory=False)
 
         # Invoke ToolGateway for local image generation / asset preparation
