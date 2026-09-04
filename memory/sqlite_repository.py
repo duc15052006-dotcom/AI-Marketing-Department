@@ -190,6 +190,8 @@ class SQLiteMemoryRepository(MemoryRepository):
         agent_source: Optional[str] = None,
         run_id: Optional[str] = None,
         promotion_level: Optional[PromotionState] = None,
+        *,
+        scope: Optional[str] = None,
     ) -> List[MemoryItem]:
         clauses: List[str] = []
         params: List[Any] = []
@@ -206,6 +208,9 @@ class SQLiteMemoryRepository(MemoryRepository):
         if promotion_level is not None:
             clauses.append("promotion_level = ?")
             params.append(promotion_level.value)
+        if scope is not None:
+            clauses.append("scope_key = ?")
+            params.append(str(scope or "GLOBAL"))
 
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = f"SELECT payload FROM memories{where} ORDER BY rowid ASC"
@@ -217,9 +222,11 @@ class SQLiteMemoryRepository(MemoryRepository):
         self,
         query: str,
         memory_types: Optional[List[MemoryType]] = None,
+        *,
+        scope: Optional[str] = None,
     ) -> List[MemoryItem]:
         needle = str(query or "").lower()
-        results = self.list_memories()
+        results = self.list_memories(scope=scope)
         if memory_types:
             results = [memory for memory in results if memory.memory_type in memory_types]
         if not needle:

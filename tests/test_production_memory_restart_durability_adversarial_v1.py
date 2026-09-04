@@ -1,9 +1,9 @@
 """Adversarial production-memory durability regression.
 
-Production composition currently constructs ``LocalMemoryRepository``.  This
-regression requires that facade to preserve a complete MemoryItem across a
-fresh repository/process-style recreation when production durability is
-selected.
+Production composition currently constructs ``LocalMemoryRepository``.  These
+regressions require that facade to preserve a complete MemoryItem across a
+fresh repository/process-style recreation and to honor exact durable scope
+queries when production durability is selected.
 """
 
 from __future__ import annotations
@@ -69,6 +69,72 @@ class ProductionMemoryRestartDurabilityAdversarialV1(unittest.TestCase):
                     close_second = getattr(second_repo, "close", None)
                     if callable(close_second):
                         close_second()
+        finally:
+            if old_db_path is None:
+                os.environ.pop("AI_MARKETING_MEMORY_DB_PATH", None)
+            else:
+                os.environ["AI_MARKETING_MEMORY_DB_PATH"] = old_db_path
+
+            if old_ephemeral is None:
+                os.environ.pop("AI_MARKETING_MEMORY_EPHEMERAL", None)
+            else:
+                os.environ["AI_MARKETING_MEMORY_EPHEMERAL"] = old_ephemeral
+
+    def test_production_memory_scope_queries_exclude_foreign_tenant_rows(self) -> None:
+        old_db_path = os.environ.get("AI_MARKETING_MEMORY_DB_PATH")
+        old_ephemeral = os.environ.get("AI_MARKETING_MEMORY_EPHEMERAL")
+
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                db_path = Path(temp_dir) / "memory.sqlite3"
+                os.environ["AI_MARKETING_MEMORY_DB_PATH"] = str(db_path)
+                os.environ.pop("AI_MARKETING_MEMORY_EPHEMERAL", None)
+
+                scope_a = "BUSINESS:BIZ-A|PROJECT:PROJ-A"
+                scope_b = "BUSINESS:BIZ-B|PROJECT:PROJ-B"
+                memory_a = MemoryItem(
+                    memory_type=MemoryType.DECISION_MEMORY,
+                    agent_source="Strategist",
+                    run_id="RUN-TENANT-A",
+                    context={"marker": "tenant-scope-query"},
+                    content="tenant-scope-query alpha",
+                    confidence=0.91,
+                    promotion_level=PromotionState.VERIFIED_MEMORY,
+                    scope=scope_a,
+                )
+                memory_b = MemoryItem(
+                    memory_type=MemoryType.DECISION_MEMORY,
+                    agent_source="Strategist",
+                    run_id="RUN-TENANT-B",
+                    context={"marker": "tenant-scope-query"},
+                    content="tenant-scope-query beta",
+                    confidence=0.91,
+                    promotion_level=PromotionState.VERIFIED_MEMORY,
+                    scope=scope_b,
+                )
+
+                repo = LocalMemoryRepository()
+                try:
+                    repo.save_memory(memory_a)
+                    repo.save_memory(memory_b)
+
+                    scoped_list = repo.list_memories(scope=scope_a)
+                    self.assertEqual(
+                        [memory.memory_id for memory in scoped_list],
+                        [memory_a.memory_id],
+                        "Durable list_memories(scope=...) must exclude foreign tenant rows at the query boundary.",
+                    )
+
+                    scoped_query = repo.query_memories("tenant-scope-query", scope=scope_a)
+                    self.assertEqual(
+                        [memory.memory_id for memory in scoped_query],
+                        [memory_a.memory_id],
+                        "Durable query_memories(..., scope=...) must exclude foreign tenant rows at the query boundary.",
+                    )
+                finally:
+                    close_repo = getattr(repo, "close", None)
+                    if callable(close_repo):
+                        close_repo()
         finally:
             if old_db_path is None:
                 os.environ.pop("AI_MARKETING_MEMORY_DB_PATH", None)
