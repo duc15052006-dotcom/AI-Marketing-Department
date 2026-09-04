@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from governance.redaction import sanitize_sensitive_payload, sanitize_sensitive_text
 from memory.models import MemoryItem, MemoryType, PromotionState
 from memory.repository import MemoryRepository
 
@@ -53,6 +54,22 @@ def _memory_from_json(payload: str) -> MemoryItem:
         expiry_or_review_date=_parse_datetime(data.get("expiry_or_review_date")),
         metadata=dict(data.get("metadata") or {}),
     )
+
+
+def _sanitized_memory_payload(memory: MemoryItem) -> Dict[str, Any]:
+    """Return a persistence-safe copy without mutating caller-owned Memory state.
+
+    Structural authority fields stay byte-for-byte equivalent to the validated
+    ``MemoryItem``. Only payload-bearing fields that may contain external/user
+    credential material are passed through the shared governance sanitizer.
+    """
+
+    data: Dict[str, Any] = dict(memory.model_dump())
+    data["content"] = sanitize_sensitive_text(data.get("content"))
+    data["context"] = sanitize_sensitive_payload(dict(data.get("context") or {}))
+    data["metadata"] = sanitize_sensitive_payload(dict(data.get("metadata") or {}))
+    data["evidence_refs"] = sanitize_sensitive_payload(list(data.get("evidence_refs") or []))
+    return data
 
 
 class SQLiteMemoryRepository(MemoryRepository):
@@ -126,7 +143,7 @@ class SQLiteMemoryRepository(MemoryRepository):
         self.close()
 
     def save_memory(self, memory: MemoryItem) -> MemoryItem:
-        payload = _json_dumps(memory.model_dump())
+        payload = _json_dumps(_sanitized_memory_payload(memory))
         with self._lock, self._conn():
             self._conn().execute(
                 """
