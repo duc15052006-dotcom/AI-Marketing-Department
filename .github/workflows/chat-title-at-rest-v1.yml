@@ -4,21 +4,24 @@ on:
   push:
     branches:
       - hardening/chat-title-at-rest-v1
+  pull_request:
+    branches:
+      - hardening/chat-at-rest-protection-v1
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   chat-title-at-rest:
-    name: Guarded chat title at-rest applicator
+    name: Chat title at-rest protection
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Python 3.12
@@ -32,9 +35,13 @@ jobs:
           set -euo pipefail
           ACTUAL_SHA="$(git rev-parse HEAD)"
           echo "actual_sha=${ACTUAL_SHA}"
-          echo "expected_sha=${GITHUB_SHA}"
-          test "${ACTUAL_SHA}" = "${GITHUB_SHA}"
-          test "${GITHUB_REF_NAME}" = "hardening/chat-title-at-rest-v1"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            EXPECTED_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            EXPECTED_SHA="${GITHUB_SHA}"
+          fi
+          echo "expected_sha=${EXPECTED_SHA}"
+          test "${ACTUAL_SHA}" = "${EXPECTED_SHA}"
 
       - name: Install runtime dependencies
         shell: bash
@@ -43,31 +50,9 @@ jobs:
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
           python -m pip check
 
-      - name: Apply exact guarded production patch
-        shell: bash
-        run: python scripts/apply_chat_title_at_rest_patch.py
-
-      - name: Verify patch discipline
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --check
-          test "$(git status --porcelain | wc -l | tr -d ' ')" = "1"
-          git status --porcelain | grep -Fx " M chat/repository.py"
-
-      - name: Run title and parent at-rest regressions before commit
+      - name: Run chat title and parent at-rest regressions
         shell: bash
         run: |
           python -m unittest -v \
             tests.test_chat_title_at_rest_adversarial_v1 \
             tests.test_chat_at_rest_protection_adversarial_v1
-
-      - name: Commit and push production patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add chat/repository.py
-          git commit -m "fix(chat): protect session titles at rest v1"
-          git push origin HEAD:hardening/chat-title-at-rest-v1
