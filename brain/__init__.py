@@ -26,6 +26,14 @@ from brain.planning import (
     apply_plan_revision,
     ready_step_ids,
 )
+from brain.reasoning import (
+    ReasoningAssessment,
+    ReasoningDecision,
+    ReasoningDepth,
+    Reversibility,
+    SignalLevel,
+    select_reasoning_depth,
+)
 
 __all__ = [
     "ActionIntent",
@@ -40,10 +48,16 @@ __all__ = [
     "PlanStatus",
     "PlanStep",
     "PlanStepState",
+    "ReasoningAssessment",
+    "ReasoningDecision",
+    "ReasoningDepth",
+    "Reversibility",
     "RevisionTrigger",
+    "SignalLevel",
     "StopDecision",
     "StopReason",
     "UnknownRecord",
     "apply_plan_revision",
     "ready_step_ids",
+    "select_reasoning_depth",
 ]
