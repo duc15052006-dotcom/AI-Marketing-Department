@@ -16,6 +16,16 @@ from brain.contracts import (
     StopReason,
     UnknownRecord,
 )
+from brain.planning import (
+    PlanRevision,
+    PlanSnapshot,
+    PlanStatus,
+    PlanStep,
+    PlanStepState,
+    RevisionTrigger,
+    apply_plan_revision,
+    ready_step_ids,
+)
 
 __all__ = [
     "ActionIntent",
@@ -25,7 +35,15 @@ __all__ = [
     "EvidenceNeed",
     "GoalSpec",
     "GoalStatus",
+    "PlanRevision",
+    "PlanSnapshot",
+    "PlanStatus",
+    "PlanStep",
+    "PlanStepState",
+    "RevisionTrigger",
     "StopDecision",
     "StopReason",
     "UnknownRecord",
+    "apply_plan_revision",
+    "ready_step_ids",
 ]
