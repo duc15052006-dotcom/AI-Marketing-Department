@@ -10,7 +10,7 @@ permissions:
 jobs:
   regression:
     name: Brain stop intelligence V1
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
