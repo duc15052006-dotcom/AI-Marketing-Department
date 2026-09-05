@@ -23,6 +23,7 @@ jobs:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
       RUN_LIVE_MODEL_TESTS: "0"
+      EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       PYTHONUTF8: "1"
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
@@ -30,6 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -46,7 +48,11 @@ jobs:
           "github_ref=${{ github.ref }}" | Tee-Object -FilePath .ci-results/identity.txt -Append
           "runner_os=${{ runner.os }}" | Tee-Object -FilePath .ci-results/identity.txt -Append
           python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
-          git rev-parse HEAD 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          $actual = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "expected_sha=$env:EXPECTED_SHA" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          "actual_sha=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $env:EXPECTED_SHA) { throw "Checkout SHA does not match candidate SHA" }
 
       - name: Install runtime dependencies
         shell: pwsh
@@ -59,6 +65,17 @@ jobs:
         shell: pwsh
         run: |
           python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run combined tool and chat candidate regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_tool_gateway_timeout_policy_ceiling_adversarial_v1 `
+            tests.test_tool_gateway_capability_availability_gate_adversarial_v1 `
+            tests.test_chat_attachment_message_link_adversarial_v1 `
+            tests.test_chat_persistence_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/candidate-regressions.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run repair regressions
@@ -123,7 +140,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: offline-regression-${{ github.sha }}
+          name: offline-regression-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true

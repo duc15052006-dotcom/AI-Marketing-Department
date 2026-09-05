@@ -1,0 +1,56 @@
+name: Tool Capability Availability Gate V1
+
+on:
+  push:
+    branches:
+      - hardening/tool-capability-availability-gate-v1
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tool-capability-availability-gate:
+    name: Tool capability availability gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify exact CI identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          echo "actual_sha=${ACTUAL_SHA}"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            EXPECTED_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            EXPECTED_SHA="${GITHUB_SHA}"
+          fi
+          echo "expected_sha=${EXPECTED_SHA}"
+          test "${ACTUAL_SHA}" = "${EXPECTED_SHA}"
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          python -m pip check
+
+      - name: Run capability availability gate regression
+        shell: bash
+        run: |
+          python -m unittest -v tests.test_tool_gateway_capability_availability_gate_adversarial_v1

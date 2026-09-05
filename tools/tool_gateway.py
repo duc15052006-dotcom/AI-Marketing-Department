@@ -213,6 +213,28 @@ class ToolGateway:
             )
             return self.receipt_repository.save_receipt(receipt)
 
+        availability = str(cap.availability or "AVAILABLE").strip().upper()
+        if availability == "UNAVAILABLE":
+            completed_time = datetime.now(timezone.utc)
+            receipt = ExecutionReceipt(
+                run_id=request.run_id,
+                agent_id=request.agent_id,
+                capability_id=request.capability_id,
+                provider=cap.provider,
+                request_hash=req_hash,
+                started_at=start_time,
+                completed_at=completed_time,
+                status=ExecutionStatus.ERROR,
+                error_class="CAPABILITY_UNAVAILABLE",
+                error_message=(
+                    f"Capability '{request.capability_id}' is marked UNAVAILABLE and cannot be dispatched."
+                ),
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
+            )
+            return self.receipt_repository.save_receipt(receipt)
+
         # 2. Permission & Safety Policy Gate
         decision = self.policy_engine.evaluate(
             agent_id=request.agent_id,
@@ -303,7 +325,9 @@ class ToolGateway:
                 return self.receipt_repository.save_receipt(receipt)
 
         # 5. Execute Invocation with Side-Effect-Safe Timeout & Retries
-        timeout = request.timeout_seconds or cap.timeout_policy
+        timeout = cap.timeout_policy
+        if request.timeout_seconds is not None:
+            timeout = min(request.timeout_seconds, cap.timeout_policy)
         max_retries = max(0, int(cap.retry_policy.get("max_retries", 0) or 0))
         retryable_errors = set(cap.retry_policy.get("retryable_errors", []))
         try:
