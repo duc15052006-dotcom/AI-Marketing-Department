@@ -1,5 +1,6 @@
 name: Provider Operation CAS RED
 
+# Temporary branch-local harness used only to capture RED/GREEN evidence for PR #172.
 on:
   push:
     branches:
