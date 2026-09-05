@@ -240,6 +240,34 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             conn.rollback()
             raise
 
+    def _migrate_plaintext_session_titles(self, conn: sqlite3.Connection) -> None:
+        """Atomically protect session titles left plaintext by at_rest_v1."""
+        marker = conn.execute(
+            "SELECT 1 FROM chat_payload_migrations WHERE migration_key = ?",
+            ("title_at_rest_v1",),
+        ).fetchone()
+        if marker:
+            return
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for row in conn.execute(
+                "SELECT chat_id, title FROM chat_sessions"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE chat_sessions SET title = ? WHERE chat_id = ?",
+                    (self._protect_text(row["title"]), row["chat_id"]),
+                )
+
+            conn.execute(
+                "INSERT INTO chat_payload_migrations (migration_key, applied_at) VALUES (?, ?)",
+                ("title_at_rest_v1", datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(
@@ -331,6 +359,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 conn.commit()
 
             self._migrate_v1_plaintext_payloads(conn)
+            self._migrate_plaintext_session_titles(conn)
 
     # =========================================================================
     # ChatSession Methods
@@ -355,7 +384,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 """,
                 (
                     session.chat_id,
-                    session.title,
+                    self._protect_text(session.title),
                     session.created_at.isoformat() if isinstance(session.created_at, datetime) else str(session.created_at),
                     session.updated_at.isoformat() if isinstance(session.updated_at, datetime) else str(session.updated_at),
                     session.status,
@@ -441,7 +470,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
 
         if title is not None:
             updates.append("title = ?")
-            params.append(title)
+            params.append(self._protect_text(title))
         if archived is not None:
             updates.append("archived = ?")
             params.append(1 if archived else 0)
@@ -636,7 +665,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
 
         return ChatSession(
             chat_id=row["chat_id"],
-            title=row["title"],
+            title=self._unprotect_text(row["title"]) or "",
             created_at=created_dt,
             updated_at=updated_dt,
             status=row["status"],
