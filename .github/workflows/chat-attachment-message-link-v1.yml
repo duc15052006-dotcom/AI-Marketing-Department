@@ -50,7 +50,9 @@ jobs:
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
           python -m pip check
 
-      - name: Run attachment ownership adversarial regression
+      - name: Run attachment ownership and parent chat persistence regressions
         shell: bash
         run: |
-          python -m unittest -v tests.test_chat_attachment_message_link_adversarial_v1
+          python -m unittest -v \
+            tests.test_chat_attachment_message_link_adversarial_v1 \
+            tests.test_chat_persistence_v1
