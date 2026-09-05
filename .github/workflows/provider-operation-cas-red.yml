@@ -1,4 +1,4 @@
-name: Provider Operation CAS RED
+name: Provider Operation CAS Validation
 
 # Temporary branch-local harness used only to capture RED/GREEN evidence for PR #172.
 on:
@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  red-regression:
+  regression:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -32,6 +32,22 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
-      - name: Run targeted adversarial regression
+      - name: Compile Python sources
         shell: pwsh
-        run: python -m unittest -v tests.test_provider_operation_tracker_concurrency_adversarial_v1
+        run: |
+          python -m compileall -q app_api chat config connections connectors creative_engine governance integrations knowledge memory observability runtime schemas scripts tools workspace tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run provider operation regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_provider_operation_tracker_v1 `
+            tests.test_provider_operation_tracker_adversarial_v1 `
+            tests.test_provider_operation_tracker_concurrency_adversarial_v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
