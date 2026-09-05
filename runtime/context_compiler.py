@@ -19,8 +19,68 @@ from memory.models import MemoryItem, PromotionState
 from memory.promotion import MemoryPromotionEngine
 from memory.repository import LocalMemoryRepository, MemoryRepository
 from runtime.context import EpistemicTier, EvidenceItem, GroundedContextPackage, RuntimeContext
+from runtime.scope_bridge import build_runtime_canonical_scope_plan
 from tools.capabilities import CapabilityRegistry, EvidenceRole
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
+
+
+_INACTIVE_KNOWLEDGE_STATES = {"SUPERSEDED", "RETIRED", "DELETED"}
+_KNOWLEDGE_AUTHORITY_RANK = {
+    AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH: 0,
+    AuthorityLevel.TIER_2_VERIFIED_RESEARCH: 1,
+    AuthorityLevel.TIER_3_SECONDARY_INDUSTRY_DATA: 2,
+    AuthorityLevel.TIER_4_UNVERIFIED_OBSERVATION: 3,
+}
+_DEFAULT_BUSINESS_RECEIPT_SCOPE_IDS = {"", "GLOBAL", "BIZ_DEFAULT"}
+_GLOBAL_PROJECT_RECEIPT_SCOPE_IDS = {"", "GLOBAL"}
+
+
+def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
+    """Rank higher-authority knowledge first while leaving unknown future tiers last."""
+    return _KNOWLEDGE_AUTHORITY_RANK.get(
+        document.authority_level,
+        len(_KNOWLEDGE_AUTHORITY_RANK),
+    )
+
+
+def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
+    """Match the governed repository lifecycle contract without blocking STALE."""
+    freshness = getattr(document, "freshness", "")
+    lifecycle_state = str(getattr(freshness, "value", freshness)).strip().upper()
+    return lifecycle_state not in _INACTIVE_KNOWLEDGE_STATES
+
+
+def _clean_scope_value(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_business_receipt_scope(value: object) -> str:
+    key = _clean_scope_value(value)
+    return "" if key.upper() in _DEFAULT_BUSINESS_RECEIPT_SCOPE_IDS else key
+
+
+def _normalize_project_receipt_scope(value: object) -> str:
+    key = _clean_scope_value(value)
+    return "" if key.upper() in _GLOBAL_PROJECT_RECEIPT_SCOPE_IDS else key
+
+
+def _receipt_matches_runtime_scope(receipt: ExecutionReceipt, ctx: RuntimeContext) -> bool:
+    """Fail closed unless a receipt belongs to the immutable runtime authority.
+
+    Default/global business and project sentinels are normalized to the same
+    unscoped compatibility value used by the canonical runtime scope planner.
+    Private business/project/chat dimensions must otherwise match exactly.
+    """
+    authority = ctx.scope
+    if _clean_scope_value(receipt.run_id) != _clean_scope_value(authority.run_id):
+        return False
+    if _normalize_business_receipt_scope(receipt.business_id) != _normalize_business_receipt_scope(authority.business_id):
+        return False
+    if _normalize_project_receipt_scope(receipt.project_id) != _normalize_project_receipt_scope(authority.project_id):
+        return False
+    if _clean_scope_value(receipt.chat_id) != _clean_scope_value(authority.chat_id):
+        return False
+    return True
 
 
 @dataclass
@@ -77,6 +137,7 @@ class ContextCompiler:
         run_prefix = ctx.run_id[:8] if ctx.run_id else "RUN000"
         evidence_items: List[EvidenceItem] = []
         item_counter = 1
+        scope_plan = build_runtime_canonical_scope_plan(ctx)
 
         # ---------------------------------------------------------------------
         # 1. Ephemeral Session Knowledge (Attachments) — Strictly scoped to chat_id
@@ -111,20 +172,32 @@ class ContextCompiler:
             prof = AgentAccessMatrix.get_profile(aid)
             allowed_sources = prof.allowed_knowledge_sources if prof else [SourceType.CANONICAL_FACT, SourceType.VERIFIED_EVIDENCE]
 
-            # Build strictly permitted scopes (Never retrieve un-scoped / wildcard)
-            scopes = ["GLOBAL"]
-            if ctx.business_id and ctx.business_id not in ("GLOBAL", "BIZ_DEFAULT"):
-                scopes.append(f"SCOPE_{ctx.business_id}")
-            elif ctx.business_id == "BIZ_DEFAULT":
-                scopes.append("SCOPE_BIZ_DEFAULT")
-
-            if ctx.project_id:
-                scopes.append(f"SCOPE_PROJ_{ctx.project_id}")
+            # Canonical exact scopes come from immutable RuntimeContext authority.
+            # Legacy exact scopes remain as migration compatibility only; no unscoped wildcard reads.
+            knowledge_scopes = list(scope_plan.knowledge_scope_keys)
+            project_id = scope_plan.project_id
+            business_id = scope_plan.business_id
+            if project_id and project_id.upper() != "GLOBAL":
+                knowledge_scopes.append(f"SCOPE_PROJ_{project_id}")
+            if business_id and business_id.upper() not in ("GLOBAL", "BIZ_DEFAULT"):
+                knowledge_scopes.append(f"SCOPE_{business_id}")
+            elif business_id.upper() == "BIZ_DEFAULT":
+                knowledge_scopes.append("SCOPE_BIZ_DEFAULT")
+            if scope_plan.include_global:
+                knowledge_scopes.append("GLOBAL")
+            knowledge_scopes = list(dict.fromkeys(knowledge_scopes))
 
             seen_knowledge_ids: set = set()
-            for s in scopes:
+            for s in knowledge_scopes:
                 scoped_docs = self.knowledge_repo.list_documents(scope=s)
-                valid_docs = [d for d in scoped_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
+                valid_docs = [
+                    d
+                    for d in scoped_docs
+                    if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
+                ]
+                # Apply a stable authority sort before the per-scope evidence cap.
+                # Same-tier repository order is preserved by Python's stable sort.
+                valid_docs = sorted(valid_docs, key=_knowledge_authority_rank)
                 for doc in valid_docs[:4]:
                     if doc.knowledge_id in seen_knowledge_ids:
                         continue
@@ -160,12 +233,18 @@ class ContextCompiler:
             allowed_types = prof.allowed_memory_types if prof else []
             min_conf = ctx.memory_policy.get("min_confidence", 0.60) if ctx.memory_policy else 0.60
 
-            # Bounded memory scope
-            scope_target = f"SCOPE_{ctx.business_id}" if ctx.business_id and ctx.business_id != "BIZ_DEFAULT" else "GLOBAL"
+            # Canonical project/business scopes plus legacy business scope during migration.
+            memory_scopes = list(scope_plan.memory_scope_keys)
+            business_id = scope_plan.business_id
+            if business_id and business_id.upper() not in ("GLOBAL", "BIZ_DEFAULT"):
+                memory_scopes.append(f"SCOPE_{business_id}")
+            if scope_plan.include_global:
+                memory_scopes.append("GLOBAL")
+            allowed_memory_scopes = set(memory_scopes)
             all_mems = self.memory_repo.list_memories()
 
             for m in all_mems:
-                if getattr(m, "scope", "GLOBAL") not in (scope_target, "GLOBAL"):
+                if getattr(m, "scope", "GLOBAL") not in allowed_memory_scopes:
                     continue
                 if m.memory_type not in allowed_types:
                     continue
@@ -203,6 +282,10 @@ class ContextCompiler:
             for receipt in tool_receipts:
                 if receipt.status != ExecutionStatus.SUCCESS:
                     # Failed / blocked / timeout tool execution does NOT produce factual evidence
+                    continue
+                if not _receipt_matches_runtime_scope(receipt, ctx):
+                    # GroundedContextPackage is a model-input authority boundary.
+                    # Foreign or ambiguously-scoped receipts never become evidence.
                     continue
 
                 mode = getattr(receipt, "execution_mode", ExecutionMode.MOCK)
@@ -251,7 +334,7 @@ class ContextCompiler:
                         source_id=sid,
                         epistemic_tier=tier,
                         source_type="TOOL_RECEIPT",
-                        scope=f"SCOPE_{ctx.business_id}" if ctx.business_id else "GLOBAL",
+                        scope=scope_plan.knowledge_scope_keys[0] if scope_plan.project_id and scope_plan.project_id.upper() != "GLOBAL" else (f"SCOPE_{ctx.business_id}" if ctx.business_id else "GLOBAL"),
                         title_or_reference=f"{title_prefix} [Receipt: {receipt.execution_id} | Cap: {receipt.capability_id}]",
                         content=formatted_content,
                         original_length=len(formatted_content),
@@ -390,4 +473,3 @@ class ContextCompiler:
             constraints=ctx.constraints,
             raw_prompt_payload=pkg.render_prompt_section(),
         )
-

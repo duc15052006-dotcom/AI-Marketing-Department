@@ -7,6 +7,7 @@ across the Five-Agent Department:
 - Human Approval Gate for high-risk / publishing / financial actions
 - Side-effect-safe retry, timeout handling, and error normalization
 - Generates immutable ExecutionReceipts for every invocation
+- Journals consequential execution intent before adapter dispatch
 """
 
 from __future__ import annotations
@@ -18,8 +19,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from schemas.base import BaseModel, Field
 
+from schemas.base import BaseModel, Field
 from tools.adapters import (
     AnalyticsAdapter,
     BaseCapabilityAdapter,
@@ -30,15 +31,32 @@ from tools.adapters import (
     PublishingAdapter,
     SearchAdapter,
 )
-from tools.capabilities import CapabilityCategory, CapabilityDescriptor, CapabilityRegistry, PermissionLevel, RiskLevel
-from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
-from tools.security import PolicyDecision, PolicyEngine
+from tools.capabilities import (
+    CapabilityCategory,
+    CapabilityDescriptor,
+    CapabilityRegistry,
+    PermissionLevel,
+    RiskLevel,
+)
+from tools.idempotency import (
+    IdempotencyConflictError,
+    IdempotencyLedger,
+    IdempotencyStoreError,
+)
+from tools.receipts import (
+    ExecutionMode,
+    ExecutionReceipt,
+    ExecutionReceiptRepository,
+    ExecutionStatus,
+)
+from tools.security import PolicyEngine
 
 logger = logging.getLogger("tool_gateway")
 
 
 class ToolRequest(BaseModel):
     """Standardized tool invocation envelope passed into the Tool Gateway."""
+
     request_id: str = Field(default_factory=lambda: f"REQ-{uuid.uuid4().hex[:12].upper()}")
     run_id: str = Field(default="RUN-DEFAULT-001", description="Campaign or workflow execution run ID")
     agent_id: str = Field(..., description="Requesting agent: 'cmo' | 'intelligence' | 'strategist' | 'creative' | 'performance'")
@@ -48,16 +66,33 @@ class ToolRequest(BaseModel):
     timeout_seconds: Optional[float] = Field(default=None, description="Optional override for execution timeout")
     business_id: Optional[str] = Field(default=None, description="Tenant/business scope")
     project_id: Optional[str] = Field(default=None, description="Associated workspace project ID")
+    brand_id: Optional[str] = Field(default=None, description="Trusted brand scope for account-bound operations")
     chat_id: Optional[str] = Field(default=None, description="Associated chat session ID")
 
-    def calculate_request_hash(self) -> str:
-        """Compute SHA-256 hash of the request parameters."""
-        raw = f"{self.run_id}:{self.agent_id}:{self.capability_id}:{json.dumps(self.parameters, sort_keys=True, ensure_ascii=False)}"
+    def calculate_request_hash(
+        self,
+        *,
+        business_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        brand_id: Optional[str] = None,
+    ) -> str:
+        """Compute SHA-256 hash of parameters plus trusted execution scope."""
+        effective_business_id = self.business_id if business_id is None else business_id
+        effective_project_id = self.project_id if project_id is None else project_id
+        effective_brand_id = self.brand_id if brand_id is None else brand_id
+        payload = json.dumps(self.parameters, sort_keys=True, ensure_ascii=False)
+        if effective_business_id is None and effective_project_id is None and effective_brand_id is None:
+            raw = f"{self.run_id}:{self.agent_id}:{self.capability_id}:{payload}"
+        else:
+            raw = (
+                f"v2:{self.run_id}:{self.agent_id}:{self.capability_id}:"
+                f"{effective_business_id or ''}:{effective_project_id or ''}:{effective_brand_id or ''}:{payload}"
+            )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 class ToolGateway:
-    """Central gateway orchestrating all capability executions with policy, safety, and receipts."""
+    """Central gateway orchestrating capability executions with policy and receipts."""
 
     def __init__(
         self,
@@ -66,25 +101,39 @@ class ToolGateway:
         receipt_repository: Optional[ExecutionReceiptRepository] = None,
     ) -> None:
         if capability_registry is None:
-            raise ValueError("ToolGateway requires an explicit CapabilityRegistry instance. Pass capability_registry= to the constructor.")
+            raise ValueError(
+                "ToolGateway requires an explicit CapabilityRegistry instance. "
+                "Pass capability_registry= to the constructor."
+            )
         self.registry = capability_registry
         self.policy_engine = policy_engine or PolicyEngine()
         self.receipt_repository = receipt_repository or ExecutionReceiptRepository()
+        self.idempotency_ledger = IdempotencyLedger(
+            database_path=self.receipt_repository.database_path
+        )
         self._adapters: Dict[str, BaseCapabilityAdapter] = {}
         self._register_default_adapters()
 
-    def register_adapter(self, adapter: BaseCapabilityAdapter, aliases: Optional[List[str]] = None) -> None:
+    def register_adapter(
+        self,
+        adapter: BaseCapabilityAdapter,
+        aliases: Optional[List[str]] = None,
+    ) -> None:
         """Register a provider adapter and optional capability provider aliases."""
         self._adapters[adapter.adapter_name.lower()] = adapter
         if aliases:
             for alias in aliases:
                 self._adapters[alias.lower()] = adapter
-        logger.info(f"Registered tool adapter: {adapter.adapter_name} (aliases: {aliases or []})")
+        logger.info(
+            "Registered tool adapter: %s (aliases: %s)",
+            adapter.adapter_name,
+            aliases or [],
+        )
 
     def bind_adapter_alias(self, alias: str, adapter: BaseCapabilityAdapter) -> None:
         """Explicitly bind a capability provider alias to an adapter instance."""
         self._adapters[alias.lower()] = adapter
-        logger.info(f"Bound tool adapter alias '{alias}' to adapter: {adapter.adapter_name}")
+        logger.info("Bound tool adapter alias '%s' to adapter: %s", alias, adapter.adapter_name)
 
     def get_adapter(self, adapter_name: str) -> Optional[BaseCapabilityAdapter]:
         """Retrieve registered adapter by name."""
@@ -109,25 +158,23 @@ class ToolGateway:
         self.register_adapter(FileStorageAdapter())
         self.register_adapter(AnalyticsAdapter(name="data_retrieval_adapter"))
         self.register_adapter(FileStorageAdapter())  # file_io_adapter
-        # Alias for db_storage_adapter and export_adapter
+
         class DBAdapter(FileStorageAdapter):
             @property
             def adapter_name(self) -> str:
                 return "db_storage_adapter"
+
         class ExportAdapter(FileStorageAdapter):
             @property
             def adapter_name(self) -> str:
                 return "export_adapter"
+
         self.register_adapter(DBAdapter())
         self.register_adapter(ExportAdapter())
 
     @staticmethod
     def _is_consequential_capability(cap: CapabilityDescriptor) -> bool:
-        """Return whether dispatch can produce externally consequential side effects.
-
-        Retry safety is a property of the capability itself, not of whether an
-        approval token happened to be supplied on this specific request.
-        """
+        """Return whether dispatch can produce externally consequential side effects."""
         return bool(
             cap.human_approval_required
             or cap.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
@@ -139,11 +186,7 @@ class ToolGateway:
 
     @staticmethod
     def _classify_retryable_exception(exc: BaseException) -> Optional[str]:
-        """Map only clearly transient built-in exception classes to retry codes.
-
-        Unknown adapter exceptions fail closed. They are never made implicitly
-        retryable merely because a capability has retries configured.
-        """
+        """Map only clearly transient built-in exception classes to retry codes."""
         if isinstance(exc, TimeoutError):
             return "TIMEOUT"
         if isinstance(exc, ConnectionError):
@@ -156,14 +199,7 @@ class ToolGateway:
         capability_id: str,
         adapter_result: Optional[Any] = None,
     ) -> ExecutionMode:
-        """Resolve truthful execution provenance for both success and failure receipts.
-
-        Adapters that multiplex REAL/MOCK/SANDBOX capabilities may expose
-        ``execution_mode_for(capability_id)``. That capability-level authority
-        takes precedence over an AdapterResult default so failed REAL calls are
-        never mislabeled MOCK. Unknown/legacy adapters fail closed to the result's
-        explicit mode, then MOCK.
-        """
+        """Resolve truthful execution provenance for success and failure receipts."""
         resolver = getattr(adapter, "execution_mode_for", None)
         if callable(resolver):
             try:
@@ -187,31 +223,93 @@ class ToolGateway:
 
         return ExecutionMode.MOCK
 
+    @staticmethod
+    def _safe_approval_reference(value: Optional[str]) -> Optional[str]:
+        """Return an audit reference that cannot be replayed as approval authority."""
+        if not value:
+            return None
+        if value.startswith("pending_appr_") or value.startswith("approval_ref_"):
+            return value
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
+        return f"approval_ref_{digest}"
+
+    def _error_receipt(
+        self,
+        request: ToolRequest,
+        *,
+        provider: str,
+        request_hash: str,
+        started_at: datetime,
+        status: ExecutionStatus,
+        error_class: str,
+        error_message: str,
+        business_id: Optional[str],
+        project_id: Optional[str],
+        approval_reference: Optional[str] = None,
+        execution_mode: ExecutionMode = ExecutionMode.MOCK,
+    ) -> ExecutionReceipt:
+        return ExecutionReceipt(
+            run_id=request.run_id,
+            agent_id=request.agent_id,
+            capability_id=request.capability_id,
+            provider=provider,
+            request_hash=request_hash,
+            started_at=started_at,
+            completed_at=datetime.now(timezone.utc),
+            status=status,
+            execution_mode=execution_mode,
+            error_class=error_class,
+            error_message=error_message,
+            approval_reference=approval_reference,
+            business_id=business_id,
+            project_id=project_id,
+            chat_id=request.chat_id,
+        )
+
     def execute(self, request: ToolRequest) -> ExecutionReceipt:
-        """Execute a tool capability with complete governance, permissions, and receipt creation."""
+        """Execute a tool capability with governance, durable intent, and receipts."""
         start_time = datetime.now(timezone.utc)
-        req_hash = request.calculate_request_hash()
+
+        # Approval authority may restore omitted trusted scope, but model-controlled
+        # parameters are never used to infer business/project/brand context.
+        effective_business_id = request.business_id
+        effective_project_id = request.project_id
+        effective_brand_id = request.brand_id
+        if request.approval_token:
+            approval_record = self.policy_engine.get_approval(request.approval_token)
+            if approval_record is not None:
+                if not effective_business_id and approval_record.business_id:
+                    effective_business_id = approval_record.business_id
+                if not effective_project_id and approval_record.project_id:
+                    effective_project_id = approval_record.project_id
+                if not effective_brand_id and approval_record.brand_id:
+                    effective_brand_id = approval_record.brand_id
+
+        req_hash = request.calculate_request_hash(
+            business_id=effective_business_id,
+            project_id=effective_project_id,
+            brand_id=effective_brand_id,
+        )
 
         # 1. Capability Discovery
         cap = self.registry.get_capability(request.capability_id)
         if not cap:
-            completed_time = datetime.now(timezone.utc)
-            receipt = ExecutionReceipt(
-                run_id=request.run_id,
-                agent_id=request.agent_id,
-                capability_id=request.capability_id,
-                provider="gateway",
-                request_hash=req_hash,
-                started_at=start_time,
-                completed_at=completed_time,
-                status=ExecutionStatus.ERROR,
-                error_class="CAPABILITY_NOT_FOUND",
-                error_message=f"Capability '{request.capability_id}' is not registered in CapabilityRegistry.",
-                business_id=request.business_id,
-                project_id=request.project_id,
-                chat_id=request.chat_id,
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider="gateway",
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.ERROR,
+                    error_class="CAPABILITY_NOT_FOUND",
+                    error_message=(
+                        f"Capability '{request.capability_id}' is not registered "
+                        "in CapabilityRegistry."
+                    ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
             )
-            return self.receipt_repository.save_receipt(receipt)
 
         # 2. Permission & Safety Policy Gate
         decision = self.policy_engine.evaluate(
@@ -219,62 +317,70 @@ class ToolGateway:
             capability=cap,
             approval_token=request.approval_token,
             run_id=request.run_id,
+            business_id=effective_business_id,
             parameters=request.parameters,
+            project_id=effective_project_id,
+            brand_id=effective_brand_id,
         )
         if not decision.allowed:
-            completed_time = datetime.now(timezone.utc)
-            status = ExecutionStatus.APPROVAL_REQUIRED if decision.requires_human_approval else ExecutionStatus.BLOCKED
-            err_class = decision.error_code or ("HUMAN_APPROVAL_REQUIRED" if decision.requires_human_approval else "PERMISSION_DENIED")
-            appr_ref = request.approval_token
-            if decision.requires_human_approval and not appr_ref:
+            status = (
+                ExecutionStatus.APPROVAL_REQUIRED
+                if decision.requires_human_approval
+                else ExecutionStatus.BLOCKED
+            )
+            err_class = decision.error_code or (
+                "HUMAN_APPROVAL_REQUIRED"
+                if decision.requires_human_approval
+                else "PERMISSION_DENIED"
+            )
+            appr_ref = self._safe_approval_reference(request.approval_token)
+            if decision.requires_human_approval and not request.approval_token:
                 pending_rec = self.policy_engine.create_pending_approval(
                     capability_id=request.capability_id,
                     parameters=request.parameters,
                     run_id=request.run_id,
-                    business_id=request.business_id,
+                    business_id=effective_business_id,
                     scope="",
                     risk_level=cap.risk_level,
+                    project_id=effective_project_id,
+                    brand_id=effective_brand_id,
                 )
                 appr_ref = pending_rec.pending_approval_id
 
-            receipt = ExecutionReceipt(
-                run_id=request.run_id,
-                agent_id=request.agent_id,
-                capability_id=request.capability_id,
-                provider=cap.provider,
-                request_hash=req_hash,
-                started_at=start_time,
-                completed_at=completed_time,
-                status=status,
-                error_class=err_class,
-                error_message=decision.reason,
-                approval_reference=appr_ref,
-                business_id=request.business_id,
-                project_id=request.project_id,
-                chat_id=request.chat_id,
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=status,
+                    error_class=err_class,
+                    error_message=decision.reason,
+                    approval_reference=appr_ref,
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
             )
-            return self.receipt_repository.save_receipt(receipt)
 
         # 3. Retrieve Provider Adapter
         adapter = self.get_adapter(cap.provider)
         if adapter is None:
-            completed_time = datetime.now(timezone.utc)
-            receipt = ExecutionReceipt(
-                run_id=request.run_id,
-                agent_id=request.agent_id,
-                capability_id=request.capability_id,
-                provider=cap.provider,
-                request_hash=req_hash,
-                started_at=start_time,
-                completed_at=completed_time,
-                status=ExecutionStatus.ERROR,
-                error_class="PROVIDER_NOT_CONFIGURED",
-                error_message=f"Provider adapter '{cap.provider}' is not registered with ToolGateway.",
-                business_id=request.business_id,
-                project_id=request.project_id,
-                chat_id=request.chat_id,
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.ERROR,
+                    error_class="PROVIDER_NOT_CONFIGURED",
+                    error_message=(
+                        f"Provider adapter '{cap.provider}' is not registered "
+                        "with ToolGateway."
+                    ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
             )
-            return self.receipt_repository.save_receipt(receipt)
 
         # 4. Atomic One-Shot Approval Claim for Consequential Actions
         cap_is_consequential = self._is_consequential_capability(cap)
@@ -283,24 +389,25 @@ class ToolGateway:
         if is_consequential:
             claimed = self.policy_engine.claim_approval(request.approval_token)
             if not claimed:
-                completed_time = datetime.now(timezone.utc)
-                receipt = ExecutionReceipt(
-                    run_id=request.run_id,
-                    agent_id=request.agent_id,
-                    capability_id=request.capability_id,
-                    provider=adapter.adapter_name,
-                    request_hash=req_hash,
-                    started_at=start_time,
-                    completed_at=completed_time,
-                    status=ExecutionStatus.APPROVAL_REQUIRED,
-                    error_class="APPROVAL_ALREADY_CLAIMED",
-                    error_message="APPROVAL_ALREADY_CLAIMED: Approval token has already been claimed or consumed for execution.",
-                    approval_reference=request.approval_token,
-                    business_id=request.business_id,
-                    project_id=request.project_id,
-                    chat_id=request.chat_id,
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=adapter.adapter_name,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.APPROVAL_REQUIRED,
+                        error_class="APPROVAL_ALREADY_CLAIMED",
+                        error_message=(
+                            "APPROVAL_ALREADY_CLAIMED: Approval authority is unavailable, "
+                            "expired, or has already been spent."
+                        ),
+                        approval_reference=self._safe_approval_reference(
+                            request.approval_token
+                        ),
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                    )
                 )
-                return self.receipt_repository.save_receipt(receipt)
 
         # 5. Execute Invocation with Side-Effect-Safe Timeout & Retries
         timeout = request.timeout_seconds or cap.timeout_policy
@@ -316,18 +423,201 @@ class ToolGateway:
         last_exc: Optional[BaseException] = None
         exception_error_code: Optional[str] = None
         ambiguous_external_outcome = False
+        execution_intent = None
+        idempotency_record = None
 
         try:
+            # Durable idempotency authority is only engaged for REAL consequential
+            # actions carrying an explicit key. Run/agent/request ids are excluded
+            # from its namespace so a newly-approved replay still collides.
+            raw_idempotency_key = request.parameters.get("idempotency_key")
+            if (
+                cap_is_consequential
+                and self._resolve_execution_mode(adapter, cap.capability_id) == ExecutionMode.REAL
+                and isinstance(raw_idempotency_key, str)
+                and raw_idempotency_key.strip()
+            ):
+                try:
+                    resolved_provider = str(adapter.adapter_name or "").strip()
+                    resolved_provider_key = resolved_provider.lower()
+
+                    # Pre-fix versions persisted the capability alias as provider
+                    # authority. Probe aliases still bound to this exact adapter so
+                    # durable historical reservations remain fail-closed after the
+                    # canonical authority switches to adapter.adapter_name.
+                    for legacy_provider in sorted(
+                        name
+                        for name, bound_adapter in self._adapters.items()
+                        if bound_adapter is adapter and name != resolved_provider_key
+                    ):
+                        legacy_reservation_id, _, _ = self.idempotency_ledger.reservation_identity(
+                            capability_id=request.capability_id,
+                            provider=legacy_provider,
+                            idempotency_key=raw_idempotency_key,
+                            connection_id=request.parameters.get("connection_id"),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            brand_id=effective_brand_id,
+                        )
+                        legacy_record = self.idempotency_ledger.get(legacy_reservation_id)
+                        if legacy_record is None:
+                            continue
+                        legacy_fingerprint = self.idempotency_ledger.semantic_fingerprint(
+                            capability_id=request.capability_id,
+                            provider=legacy_provider,
+                            parameters=request.parameters,
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            brand_id=effective_brand_id,
+                        )
+                        if legacy_record.request_fingerprint == legacy_fingerprint:
+                            conflict_code = "IDEMPOTENCY_REPLAY_BLOCKED"
+                            conflict_message = (
+                                "This idempotency key is already reserved for the same governed "
+                                "action under a legacy provider alias; automatic replay is forbidden."
+                            )
+                        else:
+                            conflict_code = "IDEMPOTENCY_KEY_CONFLICT"
+                            conflict_message = (
+                                "This idempotency key is already reserved for a different governed "
+                                "action under a legacy provider alias."
+                            )
+                        return self.receipt_repository.save_receipt(
+                            self._error_receipt(
+                                request,
+                                provider=adapter.adapter_name,
+                                request_hash=req_hash,
+                                started_at=start_time,
+                                status=ExecutionStatus.BLOCKED,
+                                error_class=conflict_code,
+                                error_message=f"{conflict_code}: {conflict_message}",
+                                approval_reference=self._safe_approval_reference(
+                                    request.approval_token
+                                ),
+                                business_id=effective_business_id,
+                                project_id=effective_project_id,
+                                execution_mode=ExecutionMode.REAL,
+                            )
+                        )
+
+                    idempotency_record = self.idempotency_ledger.reserve(
+                        capability_id=request.capability_id,
+                        provider=resolved_provider,
+                        idempotency_key=raw_idempotency_key,
+                        connection_id=request.parameters.get("connection_id"),
+                        parameters=request.parameters,
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                        brand_id=effective_brand_id,
+                    )
+                except IdempotencyConflictError as exc:
+                    return self.receipt_repository.save_receipt(
+                        self._error_receipt(
+                            request,
+                            provider=adapter.adapter_name,
+                            request_hash=req_hash,
+                            started_at=start_time,
+                            status=ExecutionStatus.BLOCKED,
+                            error_class=exc.code,
+                            error_message=str(exc),
+                            approval_reference=self._safe_approval_reference(
+                                request.approval_token
+                            ),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            execution_mode=ExecutionMode.REAL,
+                        )
+                    )
+                except IdempotencyStoreError as exc:
+                    return self.receipt_repository.save_receipt(
+                        self._error_receipt(
+                            request,
+                            provider=adapter.adapter_name,
+                            request_hash=req_hash,
+                            started_at=start_time,
+                            status=ExecutionStatus.ERROR,
+                            error_class="IDEMPOTENCY_STORE_UNAVAILABLE",
+                            error_message=str(exc),
+                            approval_reference=self._safe_approval_reference(
+                                request.approval_token
+                            ),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            execution_mode=ExecutionMode.REAL,
+                        )
+                    )
+
+            # Critical ordering invariant:
+            # PREPARED -> DISPATCHING is durably committed before adapter execution.
+            # Any crash after DISPATCHING and before finalization is ambiguous and
+            # must never be interpreted as proof that the side effect did not run.
+            if cap_is_consequential:
+                execution_intent = self.receipt_repository.prepare_execution_intent(
+                    request_id=request.request_id,
+                    run_id=request.run_id,
+                    agent_id=request.agent_id,
+                    capability_id=request.capability_id,
+                    provider=adapter.adapter_name,
+                    request_hash=req_hash,
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                    chat_id=request.chat_id,
+                    approval_reference=self._safe_approval_reference(
+                        request.approval_token
+                    ),
+                )
+                self.receipt_repository.mark_execution_intent_dispatching(
+                    execution_intent.intent_id
+                )
+                if idempotency_record is not None:
+                    try:
+                        idempotency_record = self.idempotency_ledger.mark_dispatching(
+                            idempotency_record.reservation_id
+                        )
+                    except IdempotencyStoreError as exc:
+                        predispatch_receipt = self._error_receipt(
+                            request,
+                            provider=adapter.adapter_name,
+                            request_hash=req_hash,
+                            started_at=start_time,
+                            status=ExecutionStatus.ERROR,
+                            error_class="IDEMPOTENCY_STORE_UNAVAILABLE",
+                            error_message=str(exc),
+                            approval_reference=self._safe_approval_reference(
+                                request.approval_token
+                            ),
+                            business_id=effective_business_id,
+                            project_id=effective_project_id,
+                            execution_mode=ExecutionMode.REAL,
+                        )
+                        return self.receipt_repository.finalize_execution_intent(
+                            execution_intent.intent_id,
+                            predispatch_receipt,
+                            ambiguous=False,
+                        )
+
             for attempt in range(max_retries + 1):
                 try:
-                    adapter_res = adapter.execute(
-                        capability_id=cap.capability_id,
-                        parameters=request.parameters,
-                        timeout_seconds=timeout,
-                        run_id=request.run_id,
-                        business_id=request.business_id or "",
-                        project_id=request.project_id or "",
-                    )
+                    scoped_execute = getattr(adapter, "execute_with_trusted_scope", None)
+                    if callable(scoped_execute):
+                        adapter_res = scoped_execute(
+                            capability_id=cap.capability_id,
+                            parameters=request.parameters,
+                            timeout_seconds=timeout,
+                            run_id=request.run_id,
+                            business_id=effective_business_id or "",
+                            project_id=effective_project_id or "",
+                            brand_id=effective_brand_id or "",
+                        )
+                    else:
+                        adapter_res = adapter.execute(
+                            capability_id=cap.capability_id,
+                            parameters=request.parameters,
+                            timeout_seconds=timeout,
+                            run_id=request.run_id,
+                            business_id=effective_business_id or "",
+                            project_id=effective_project_id or "",
+                        )
                     last_exc = None
                     exception_error_code = None
                 except Exception as exc:
@@ -335,15 +625,10 @@ class ToolGateway:
                     last_exc = exc
                     exception_error_code = self._classify_retryable_exception(exc)
 
-                    # Once a consequential dispatch begins, a thrown exception
-                    # leaves remote acceptance ambiguous. Re-dispatching could
-                    # duplicate publishing, scheduling, or financial side effects.
                     if cap_is_consequential:
                         ambiguous_external_outcome = True
                         break
 
-                    # Safe/read-only operations retry only explicitly classified
-                    # transient exception types and only when policy permits it.
                     if exception_error_code not in retryable_errors:
                         break
                     if attempt >= max_retries:
@@ -355,14 +640,9 @@ class ToolGateway:
                 if adapter_res.success:
                     break
 
-                # Consequential capabilities are one-dispatch per gateway call.
-                # Even a structured transient error can be ambiguous if the
-                # provider reports failure after an external action was accepted.
                 if cap_is_consequential:
                     break
 
-                # Structured failures are retryable only when the adapter's
-                # normalized error code is explicitly declared by the capability.
                 if adapter_res.error_code not in retryable_errors:
                     break
                 if attempt >= max_retries:
@@ -376,6 +656,7 @@ class ToolGateway:
         completed_time = datetime.now(timezone.utc)
 
         # 6. Assemble Receipt
+        safe_approval_ref = self._safe_approval_reference(request.approval_token)
         if adapter_res and adapter_res.success:
             mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
             receipt = ExecutionReceipt(
@@ -391,9 +672,9 @@ class ToolGateway:
                 data=adapter_res.data,
                 cost_or_token_usage=adapter_res.cost_or_tokens,
                 artifact_references=adapter_res.artifact_refs,
-                approval_reference=request.approval_token,
-                business_id=request.business_id,
-                project_id=request.project_id,
+                approval_reference=safe_approval_ref,
+                business_id=effective_business_id,
+                project_id=effective_project_id,
                 chat_id=request.chat_id,
                 observation_record=adapter_res.observation_record,
             )
@@ -401,18 +682,26 @@ class ToolGateway:
             if ambiguous_external_outcome:
                 err_code = "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME"
                 err_msg = (
-                    "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME: The external action may have been accepted "
-                    "before execution raised an exception; automatic retry was suppressed to prevent "
-                    "duplicate side effects."
+                    "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME: The external action may have "
+                    "been accepted before execution raised an exception; automatic "
+                    "retry was suppressed to prevent duplicate side effects."
                 )
             elif adapter_res is not None:
                 err_code = adapter_res.error_code or "EXECUTION_ERROR"
                 err_msg = adapter_res.error_message or "Tool adapter execution failed."
             else:
                 err_code = exception_error_code or "EXECUTION_EXCEPTION"
-                err_msg = str(last_exc) if last_exc is not None else "Tool adapter execution failed."
+                err_msg = (
+                    str(last_exc)
+                    if last_exc is not None
+                    else "Tool adapter execution failed."
+                )
 
-            status = ExecutionStatus.TIMEOUT if err_code == "TIMEOUT" else ExecutionStatus.ERROR
+            status = (
+                ExecutionStatus.TIMEOUT
+                if err_code == "TIMEOUT"
+                else ExecutionStatus.ERROR
+            )
             mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
             receipt = ExecutionReceipt(
                 run_id=request.run_id,
@@ -428,10 +717,35 @@ class ToolGateway:
                 error_message=err_msg,
                 cost_or_token_usage=adapter_res.cost_or_tokens if adapter_res else {},
                 artifact_references=adapter_res.artifact_refs if adapter_res else [],
-                approval_reference=request.approval_token,
-                business_id=request.business_id,
-                project_id=request.project_id,
+                approval_reference=safe_approval_ref,
+                business_id=effective_business_id,
+                project_id=effective_project_id,
                 chat_id=request.chat_id,
             )
 
-        return self.receipt_repository.save_receipt(receipt)
+        if execution_intent is not None:
+            stored_receipt = self.receipt_repository.finalize_execution_intent(
+                execution_intent.intent_id,
+                receipt,
+                ambiguous=ambiguous_external_outcome,
+            )
+        else:
+            stored_receipt = self.receipt_repository.save_receipt(receipt)
+
+        if idempotency_record is not None:
+            try:
+                self.idempotency_ledger.settle(
+                    idempotency_record.reservation_id,
+                    ambiguous=ambiguous_external_outcome,
+                )
+            except IdempotencyStoreError as exc:
+                # Do not transform a completed external action into a retryable
+                # client failure. A DISPATCHING reservation remains fail-closed
+                # and therefore still prevents duplicate replay.
+                logger.error(
+                    "Failed to settle idempotency reservation %s: %s",
+                    idempotency_record.reservation_id,
+                    exc,
+                )
+
+        return stored_receipt

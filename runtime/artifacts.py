@@ -72,6 +72,12 @@ class MemoryWriteCandidate(BaseModel):
         description="Must be RAW_OBSERVATION or CANDIDATE_MEMORY; automatic PROMOTED_LEARNING is strictly prohibited.",
     )
 
+    scope: str = Field(
+        default="GLOBAL",
+        min_length=1,
+        description="Exact trusted memory scope preserved with the candidate and persisted MemoryItem.",
+    )
+
     def to_memory_item(self, run_id: str) -> MemoryItem:
         """Convert write candidate into a formal MemoryItem."""
         # Enforce non-automatic promotion rule
@@ -84,6 +90,7 @@ class MemoryWriteCandidate(BaseModel):
             memory_type=self.memory_type,
             agent_source=self.agent_source,
             run_id=run_id,
+            scope=self.scope,
             content=self.content,
             context=self.context,
             evidence_refs=self.evidence_refs,
