@@ -8,11 +8,12 @@ providers remain Body concerns.
 
 from __future__ import annotations
 
+import copy
 from enum import Enum
 from typing import List, Type, TypeVar
 
 from brain.contracts import BrainAgentId
-from brain.evidence import ClaimVerdict
+from brain.evidence import ClaimEvidenceRequest, ClaimVerdict, assess_claim_evidence
 from schemas.base import BaseModel, Field, ValidationError
 
 
@@ -94,7 +95,13 @@ _SCOPE_RANK = {
 
 
 class MemoryCandidate(BaseModel):
-    """Semantic proposal to retain a lesson, event, decision, or preference."""
+    """Semantic proposal to retain a lesson, event, decision, or preference.
+
+    ``run_evidence_requests`` is the authority-bearing raw semantic provenance
+    for non-preference institutional learning. The summary fields remain useful
+    for audit and backwards-compatible classification, but they cannot by
+    themselves authorize ``PROMOTED``.
+    """
 
     candidate_id: str
     goal_id: str
@@ -107,6 +114,7 @@ class MemoryCandidate(BaseModel):
     evidence_verdict: ClaimVerdict
     evidence_refs: List[str] = Field(default_factory=list)
     independent_run_count: int = Field(default=1, ge=1)
+    run_evidence_requests: List[ClaimEvidenceRequest] = Field(default_factory=list)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -130,6 +138,13 @@ class MemoryCandidate(BaseModel):
             or self.independent_run_count < 1
         ):
             raise ValidationError("independent_run_count must be an integer >= 1")
+        if not isinstance(self.run_evidence_requests, list):
+            raise ValidationError("run_evidence_requests must be a list")
+        for request in self.run_evidence_requests:
+            if not isinstance(request, ClaimEvidenceRequest):
+                raise ValidationError(
+                    "run_evidence_requests must contain only ClaimEvidenceRequest items"
+                )
 
 
 class MemoryDecision(BaseModel):
@@ -163,6 +178,60 @@ class MemoryDecision(BaseModel):
 
 def _would_broaden_scope(candidate: MemoryCandidate) -> bool:
     return _SCOPE_RANK[candidate.requested_scope] < _SCOPE_RANK[candidate.origin_scope]
+
+
+def _canonical_supported_run_refs(candidate: MemoryCandidate) -> List[str]:
+    """Recompute authoritative supported-run provenance at the Memory boundary."""
+
+    assessment_ids = set()
+    supporting_refs: List[str] = []
+    seen_refs = set()
+
+    for raw_request in candidate.run_evidence_requests:
+        request = copy.deepcopy(raw_request)
+        if request.goal_id != candidate.goal_id:
+            raise ValidationError("run evidence goal_id must match memory candidate goal_id")
+        if request.claim_id != candidate.claim_id:
+            raise ValidationError("run evidence claim_id must match memory candidate claim_id")
+        if request.agent_id != candidate.agent_id:
+            raise ValidationError("run evidence agent_id must match memory candidate agent_id")
+        if request.assessment_id in assessment_ids:
+            raise ValidationError("duplicate run evidence assessment_id is ambiguous")
+        assessment_ids.add(request.assessment_id)
+
+        assessment = assess_claim_evidence(request)
+        if assessment.verdict != ClaimVerdict.SUPPORTED:
+            return []
+        for ref in assessment.supporting_evidence_refs:
+            if ref not in seen_refs:
+                seen_refs.add(ref)
+                supporting_refs.append(ref)
+
+    return supporting_refs
+
+
+def _promotion_has_authoritative_provenance(candidate: MemoryCandidate) -> bool:
+    """Return whether institutional promotion is backed by canonical raw runs."""
+
+    if len(candidate.run_evidence_requests) < 3:
+        return False
+    if candidate.independent_run_count != len(candidate.run_evidence_requests):
+        raise ValidationError(
+            "independent_run_count must match authoritative run_evidence_requests"
+        )
+
+    canonical_refs = _canonical_supported_run_refs(candidate)
+    if not canonical_refs:
+        return False
+    if candidate.evidence_verdict != ClaimVerdict.SUPPORTED:
+        raise ValidationError(
+            "evidence_verdict must match canonical supported run provenance"
+        )
+    if set(candidate.evidence_refs) != set(canonical_refs):
+        raise ValidationError(
+            "evidence_refs must match canonical supporting evidence references"
+        )
+    return True
 
 
 def evaluate_memory_candidate(candidate: MemoryCandidate) -> MemoryDecision:
@@ -261,8 +330,16 @@ def evaluate_memory_candidate(candidate: MemoryCandidate) -> MemoryDecision:
         MemoryKind.EXPERIMENT,
         MemoryKind.SUCCESS_FAILURE,
     }:
-        disposition = MemoryDisposition.PROMOTED
-        reason = "repeated independent supported runs justify scoped institutional learning"
+        if _promotion_has_authoritative_provenance(candidate):
+            disposition = MemoryDisposition.PROMOTED
+            reason = (
+                "repeated canonically supported raw runs justify scoped institutional learning"
+            )
+        else:
+            disposition = MemoryDisposition.CANDIDATE
+            reason = (
+                "institutional promotion requires at least three authoritative canonically supported raw runs"
+            )
     else:
         disposition = MemoryDisposition.VERIFIED
         reason = "the memory is verified but its kind is not an institutional learning class"

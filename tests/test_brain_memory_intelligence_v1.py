@@ -7,7 +7,14 @@ import inspect
 import unittest
 
 import brain.memory_policy as memory_policy
-from brain.evidence import ClaimVerdict
+from brain.evidence import (
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    EvidenceOrigin,
+    EvidenceRelation,
+    EvidenceSignal,
+    EvidenceStrength,
+)
 from brain.memory_policy import (
     MemoryAuthority,
     MemoryCandidate,
@@ -20,6 +27,35 @@ from schemas.base import ValidationError
 
 
 class BrainMemoryIntelligenceV1Tests(unittest.TestCase):
+    @staticmethod
+    def _supported_runs(
+        count: int,
+        *,
+        goal_id: str = "G-1",
+        claim_id: str = "C-1",
+        agent_id: str = "PERFORMANCE",
+    ) -> list[ClaimEvidenceRequest]:
+        return [
+            ClaimEvidenceRequest(
+                assessment_id=f"RUN-{index}",
+                goal_id=goal_id,
+                claim_id=claim_id,
+                agent_id=agent_id,
+                evidence=[
+                    EvidenceSignal(
+                        evidence_id=f"E-RUN-{index}",
+                        goal_id=goal_id,
+                        claim_id=claim_id,
+                        source_id=f"SOURCE-RUN-{index}",
+                        relation=EvidenceRelation.SUPPORTS,
+                        strength=EvidenceStrength.STRONG,
+                        origin=EvidenceOrigin.OBSERVED,
+                    )
+                ],
+            )
+            for index in range(1, count + 1)
+        ]
+
     @staticmethod
     def _candidate(**updates) -> MemoryCandidate:
         values = {
@@ -44,7 +80,13 @@ class BrainMemoryIntelligenceV1Tests(unittest.TestCase):
 
     def test_repeated_supported_observation_can_be_verified_then_promoted(self) -> None:
         verified = evaluate_memory_candidate(self._candidate(independent_run_count=2))
-        promoted = evaluate_memory_candidate(self._candidate(independent_run_count=3))
+        promoted = evaluate_memory_candidate(
+            self._candidate(
+                independent_run_count=3,
+                evidence_refs=["E-RUN-1", "E-RUN-2", "E-RUN-3"],
+                run_evidence_requests=self._supported_runs(3),
+            )
+        )
         self.assertEqual(verified.disposition, MemoryDisposition.VERIFIED)
         self.assertEqual(promoted.disposition, MemoryDisposition.PROMOTED)
 
@@ -82,11 +124,15 @@ class BrainMemoryIntelligenceV1Tests(unittest.TestCase):
         self.assertEqual(decision.effective_scope, MemoryScopeLevel.CAMPAIGN)
 
     def test_same_or_narrower_scope_is_allowed(self) -> None:
+        provenance = self._supported_runs(3)
+        refs = ["E-RUN-1", "E-RUN-2", "E-RUN-3"]
         same = evaluate_memory_candidate(
             self._candidate(
                 origin_scope=MemoryScopeLevel.BRAND,
                 requested_scope=MemoryScopeLevel.BRAND,
                 independent_run_count=3,
+                evidence_refs=refs,
+                run_evidence_requests=provenance,
             )
         )
         narrower = evaluate_memory_candidate(
@@ -94,6 +140,8 @@ class BrainMemoryIntelligenceV1Tests(unittest.TestCase):
                 origin_scope=MemoryScopeLevel.BRAND,
                 requested_scope=MemoryScopeLevel.PRODUCT,
                 independent_run_count=3,
+                evidence_refs=refs,
+                run_evidence_requests=provenance,
             )
         )
         self.assertEqual(same.disposition, MemoryDisposition.PROMOTED)
