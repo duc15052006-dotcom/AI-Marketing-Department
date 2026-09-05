@@ -1,8 +1,13 @@
 """Provider-neutral decision authorization policy for the Brain layer.
 
 A ``DecisionRecord`` is a proposal made by an agent, not authority to proceed.
-This module evaluates that proposal against exact evidence lineage, semantic
+This module evaluates that proposal against exact raw evidence lineage, semantic
 risk/reversibility, and (when risk warrants it) independent peer review.
+
+Caller-supplied evidence assessments are audit material only. Autonomous
+authorization is derived again from the raw ``ClaimEvidenceRequest`` through
+the canonical Brain evidence evaluator so a fabricated verdict cannot grant
+``PROCEED`` authority.
 
 It intentionally owns no runtime execution, tools, providers, connectors,
 approvals, persistence, or goal-completion authority.
@@ -18,7 +23,12 @@ from brain.collaboration import (
     evaluate_collaboration,
 )
 from brain.contracts import DecisionDisposition, DecisionRecord
-from brain.evidence import ClaimEvidenceAssessment, ClaimVerdict
+from brain.evidence import (
+    ClaimEvidenceAssessment,
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    assess_claim_evidence,
+)
 from brain.reasoning import ReasoningAssessment, Reversibility, SignalLevel
 from schemas.base import BaseModel, Field, ValidationError
 
@@ -42,12 +52,35 @@ def _unique_text_list(value: object, field_name: str) -> List[str]:
     return result
 
 
+def _assessment_signature(assessment: ClaimEvidenceAssessment) -> tuple:
+    """Canonical semantic identity of an evidence assessment for audit checks."""
+
+    return (
+        assessment.assessment_id,
+        assessment.goal_id,
+        assessment.claim_id,
+        assessment.agent_id,
+        assessment.verdict,
+        tuple(assessment.supporting_evidence_refs),
+        tuple(assessment.contradicting_evidence_refs),
+        tuple(assessment.ignored_evidence_refs),
+        tuple(assessment.reasons),
+    )
+
+
 class DecisionEvaluationRequest(BaseModel):
-    """Exact semantic inputs required to authorize one proposed decision."""
+    """Exact semantic inputs required to authorize one proposed decision.
+
+    ``evidence_request`` is the authority-bearing raw evidence input. An optional
+    ``evidence_assessment`` may be supplied as an audit snapshot, but when raw
+    evidence is present it must exactly match the canonical recomputation and it
+    never substitutes for raw provenance.
+    """
 
     evaluation_id: str
     decision: DecisionRecord
     reasoning_assessment: ReasoningAssessment
+    evidence_request: Optional[ClaimEvidenceRequest] = None
     evidence_assessment: Optional[ClaimEvidenceAssessment] = None
     collaboration_assessment: Optional[CollaborationAssessment] = None
 
@@ -80,6 +113,25 @@ class DecisionEvaluationRequest(BaseModel):
                 "reasoning_assessment agent_id must match the decision owner"
             )
 
+        if self.evidence_request is not None:
+            if not isinstance(self.evidence_request, ClaimEvidenceRequest):
+                if isinstance(self.evidence_request, dict):
+                    self.evidence_request = ClaimEvidenceRequest(
+                        **self.evidence_request
+                    )
+                else:
+                    raise ValidationError(
+                        "evidence_request must be a ClaimEvidenceRequest or None"
+                    )
+            if self.evidence_request.goal_id != self.decision.goal_id:
+                raise ValidationError(
+                    "evidence_request goal_id must match the decision goal_id"
+                )
+            if self.evidence_request.claim_id != self.decision.decision_id:
+                raise ValidationError(
+                    "evidence_request claim_id must match the decision_id"
+                )
+
         if self.evidence_assessment is not None:
             if not isinstance(self.evidence_assessment, ClaimEvidenceAssessment):
                 if isinstance(self.evidence_assessment, dict):
@@ -97,6 +149,16 @@ class DecisionEvaluationRequest(BaseModel):
             if self.evidence_assessment.claim_id != self.decision.decision_id:
                 raise ValidationError(
                     "evidence_assessment claim_id must match the decision_id"
+                )
+
+        authoritative_evidence: Optional[ClaimEvidenceAssessment] = None
+        if self.evidence_request is not None:
+            authoritative_evidence = assess_claim_evidence(self.evidence_request)
+            if self.evidence_assessment is not None and _assessment_signature(
+                self.evidence_assessment
+            ) != _assessment_signature(authoritative_evidence):
+                raise ValidationError(
+                    "evidence_assessment must exactly match the canonical assessment recomputed from evidence_request"
                 )
 
         if self.collaboration_assessment is not None:
@@ -124,19 +186,19 @@ class DecisionEvaluationRequest(BaseModel):
                 raise ValidationError(
                     "collaboration_assessment author_agent must match the decision owner"
                 )
-            if self.evidence_assessment is None:
+            if authoritative_evidence is None:
                 raise ValidationError(
-                    "collaboration cannot substitute for a primary evidence assessment"
+                    "collaboration cannot substitute for raw primary evidence provenance"
                 )
-            if collaboration.proposal_verdict != self.evidence_assessment.verdict:
+            if collaboration.proposal_verdict != authoritative_evidence.verdict:
                 raise ValidationError(
-                    "collaboration proposal_verdict must match the primary evidence verdict"
+                    "collaboration proposal_verdict must match the canonical primary evidence verdict"
                 )
             if set(collaboration.proposal_evidence_refs) != set(
-                self.evidence_assessment.supporting_evidence_refs
+                authoritative_evidence.supporting_evidence_refs
             ):
                 raise ValidationError(
-                    "collaboration proposal_evidence_refs must match verified primary supporting evidence"
+                    "collaboration proposal_evidence_refs must match canonical primary supporting evidence"
                 )
 
 
@@ -193,18 +255,39 @@ def _peer_review_required(assessment: ReasoningAssessment) -> bool:
 def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
     """Conservatively authorize one semantic decision proposal.
 
-    Confidence never grants authority. Primary evidence must be exact and retain
-    supporting lineage. High-risk decisions additionally require an exact,
-    independent collaboration assessment. Conservative agent dispositions are
-    respected, while ``STOP`` is escalated because BRAIN-8 Outcome Intelligence
-    owns proof of goal completion.
+    Confidence never grants authority. Primary evidence is recomputed from raw
+    evidence provenance and must retain exact supporting lineage. High-risk
+    decisions additionally require an exact, independent collaboration
+    assessment. Conservative agent dispositions are respected, while ``STOP``
+    is escalated because BRAIN-8 Outcome Intelligence owns proof of goal
+    completion.
     """
 
     if not isinstance(request, DecisionEvaluationRequest):
         raise ValidationError("request must be a DecisionEvaluationRequest")
 
     decision = request.decision
-    evidence = request.evidence_assessment
+    evidence_request = request.evidence_request
+    evidence: Optional[ClaimEvidenceAssessment] = None
+    if evidence_request is not None:
+        if evidence_request.goal_id != decision.goal_id:
+            raise ValidationError(
+                "evidence_request goal_id must match the decision goal_id at evaluation time"
+            )
+        if evidence_request.claim_id != decision.decision_id:
+            raise ValidationError(
+                "evidence_request claim_id must match the decision_id at evaluation time"
+            )
+        evidence = assess_claim_evidence(evidence_request)
+
+    if request.evidence_assessment is not None and evidence is not None:
+        if _assessment_signature(request.evidence_assessment) != _assessment_signature(
+            evidence
+        ):
+            raise ValidationError(
+                "evidence_assessment no longer matches canonical raw evidence provenance"
+            )
+
     peer_required = _peer_review_required(request.reasoning_assessment)
     reasons: List[str] = []
 
@@ -252,23 +335,23 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
     if evidence is None:
         return result(
             DecisionDisposition.REVISE,
-            "PROCEED requires an exact primary evidence assessment; confidence alone has no authority.",
+            "PROCEED requires raw primary evidence provenance evaluated by the canonical evidence policy; confidence or a supplied assessment alone has no authority.",
         )
 
     if evidence.verdict == ClaimVerdict.REFUTED:
         return result(
             DecisionDisposition.REVISE,
-            "Primary evidence REFUTED the exact decision claim.",
+            "Canonical primary evidence REFUTED the exact decision claim.",
         )
     if evidence.verdict == ClaimVerdict.CONTESTED:
         return result(
             DecisionDisposition.ESCALATE,
-            "Primary evidence is CONTESTED and must be resolved explicitly.",
+            "Canonical primary evidence is CONTESTED and must be resolved explicitly.",
         )
     if evidence.verdict == ClaimVerdict.INSUFFICIENT:
         return result(
             DecisionDisposition.REVISE,
-            "Primary evidence is INSUFFICIENT for PROCEED.",
+            "Canonical primary evidence is INSUFFICIENT for PROCEED.",
         )
 
     if not supporting_refs:
@@ -279,7 +362,7 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
     if unverified:
         return result(
             DecisionDisposition.REVISE,
-            "DecisionRecord contains evidence references not verified by the exact primary assessment.",
+            "DecisionRecord contains evidence references not verified from raw primary evidence provenance.",
         )
     if not verified:
         return result(
@@ -290,7 +373,7 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
     if not peer_required:
         return result(
             DecisionDisposition.PROCEED,
-            "Exact supporting evidence is retained and semantic risk does not require independent peer review.",
+            "Canonical supporting evidence is retained and semantic risk does not require independent peer review.",
         )
 
     collaboration = request.collaboration_assessment
@@ -300,12 +383,19 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
             "Semantic risk requires independent peer review before PROCEED.",
         )
 
+    if collaboration.proposal_verdict != evidence.verdict or set(
+        collaboration.proposal_evidence_refs
+    ) != set(evidence.supporting_evidence_refs):
+        raise ValidationError(
+            "collaboration assessment no longer matches canonical raw evidence provenance"
+        )
+
     collaboration_decision = evaluate_collaboration(collaboration)
     collaboration_id = collaboration.assessment_id
     if collaboration_decision.disposition == CollaborationDisposition.ACCEPT:
         return result(
             DecisionDisposition.PROCEED,
-            "High-risk decision retained exact evidence and passed independent peer review.",
+            "High-risk decision retained canonical evidence and passed independent peer review.",
             collaboration_id,
         )
     if collaboration_decision.disposition == CollaborationDisposition.REVISE:
