@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from chat.repository import ChatPayloadProtector, SQLiteChatRepository
@@ -37,7 +38,7 @@ class ChatTitleAtRestAdversarialV1(unittest.TestCase):
             session = ChatSession(title=initial_title)
             repo.save_session(session)
 
-            with sqlite3.connect(str(db_path)) as conn:
+            with closing(sqlite3.connect(str(db_path))) as conn:
                 raw_title = conn.execute(
                     "SELECT title FROM chat_sessions WHERE chat_id = ?",
                     (session.chat_id,),
@@ -56,7 +57,7 @@ class ChatTitleAtRestAdversarialV1(unittest.TestCase):
             self.assertEqual(loaded.title, initial_title)
 
             fresh.update_session_metadata(session.chat_id, title=renamed_title)
-            with sqlite3.connect(str(db_path)) as conn:
+            with closing(sqlite3.connect(str(db_path))) as conn:
                 raw_renamed = conn.execute(
                     "SELECT title FROM chat_sessions WHERE chat_id = ?",
                     (session.chat_id,),
@@ -88,7 +89,7 @@ class ChatTitleAtRestAdversarialV1(unittest.TestCase):
             # Force the exact persisted state produced by #153: at_rest_v1 is
             # complete, no title-specific migration marker exists, and title is
             # plaintext. This remains valid after the production fix lands.
-            with sqlite3.connect(str(db_path)) as conn:
+            with closing(sqlite3.connect(str(db_path))) as conn:
                 conn.execute(
                     "DELETE FROM chat_payload_migrations WHERE migration_key = ?",
                     ("title_at_rest_v1",),
@@ -112,7 +113,7 @@ class ChatTitleAtRestAdversarialV1(unittest.TestCase):
 
             reopened = SQLiteChatRepository(db_path=str(db_path), payload_protector=protector)
 
-            with sqlite3.connect(str(db_path)) as conn:
+            with closing(sqlite3.connect(str(db_path))) as conn:
                 raw_after = conn.execute(
                     "SELECT title FROM chat_sessions WHERE chat_id = ?",
                     (session.chat_id,),
