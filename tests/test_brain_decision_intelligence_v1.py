@@ -172,10 +172,10 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
             )
         return DecisionEvaluationRequest(**values)
 
-    def test_low_risk_supported_decision_can_proceed_without_peer_review(self) -> None:
+    def test_low_risk_supported_decision_without_raw_risk_requires_peer_review(self) -> None:
         result = evaluate_decision(self._request())
-        self.assertEqual(result.disposition, DecisionDisposition.PROCEED)
-        self.assertFalse(result.peer_review_required)
+        self.assertEqual(result.disposition, DecisionDisposition.ESCALATE)
+        self.assertTrue(result.peer_review_required)
         self.assertEqual(result.verified_evidence_refs, ["E-1"])
 
     def test_confidence_one_without_raw_evidence_cannot_self_authorize(self) -> None:
