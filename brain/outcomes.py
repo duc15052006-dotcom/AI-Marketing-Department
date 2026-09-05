@@ -84,7 +84,7 @@ def _unique_text_list(value: object, field_name: str) -> List[str]:
 
 def _claim_evidence_request(value: object, field_name: str) -> ClaimEvidenceRequest:
     if isinstance(value, ClaimEvidenceRequest):
-        return value.model_copy(deep=True)
+        return copy.deepcopy(value)
     if not isinstance(value, dict):
         raise ValidationError(
             f"{field_name} must contain only ClaimEvidenceRequest objects"
@@ -97,7 +97,7 @@ def _claim_evidence_request(value: object, field_name: str) -> ClaimEvidenceRequ
     normalized_evidence: List[EvidenceSignal] = []
     for raw_signal in raw_evidence:
         if isinstance(raw_signal, EvidenceSignal):
-            normalized_evidence.append(raw_signal.model_copy(deep=True))
+            normalized_evidence.append(copy.deepcopy(raw_signal))
         elif isinstance(raw_signal, dict):
             normalized_evidence.append(EvidenceSignal(**raw_signal))
         else:
