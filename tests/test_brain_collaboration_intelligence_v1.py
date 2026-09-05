@@ -13,7 +13,14 @@ from brain.collaboration import (
     PeerReview,
     evaluate_collaboration,
 )
-from brain.evidence import ClaimVerdict
+from brain.evidence import (
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    EvidenceOrigin,
+    EvidenceRelation,
+    EvidenceSignal,
+    EvidenceStrength,
+)
 from schemas.base import ValidationError
 
 
@@ -29,7 +36,69 @@ class BrainCollaborationIntelligenceV1Tests(unittest.TestCase):
             "rationale": "The proposal is consistent with the cited evidence.",
             "evidence_refs": ["E-R1"],
         }
+        explicit_evidence_request = "evidence_request" in updates
         values.update(updates)
+
+        if not explicit_evidence_request:
+            verdict = values["verdict"]
+            if isinstance(verdict, str):
+                verdict = ClaimVerdict(verdict.upper())
+            refs = list(values["evidence_refs"])
+            raw_signals = []
+            if verdict == ClaimVerdict.SUPPORTED:
+                raw_signals = [
+                    EvidenceSignal(
+                        evidence_id=evidence_id,
+                        goal_id=values["goal_id"],
+                        claim_id=values["proposal_id"],
+                        source_id=f"SRC-{values['review_id']}-{index}",
+                        relation=EvidenceRelation.SUPPORTS,
+                        strength=EvidenceStrength.STRONG,
+                        origin=EvidenceOrigin.OBSERVED,
+                    )
+                    for index, evidence_id in enumerate(refs)
+                ]
+            elif verdict == ClaimVerdict.REFUTED and refs:
+                raw_signals = [
+                    EvidenceSignal(
+                        evidence_id=evidence_id,
+                        goal_id=values["goal_id"],
+                        claim_id=values["proposal_id"],
+                        source_id=f"SRC-{values['review_id']}-{index}",
+                        relation=EvidenceRelation.CONTRADICTS,
+                        strength=EvidenceStrength.STRONG,
+                        origin=EvidenceOrigin.OBSERVED,
+                    )
+                    for index, evidence_id in enumerate(refs)
+                ]
+            elif verdict == ClaimVerdict.CONTESTED and refs:
+                raw_signals = [
+                    EvidenceSignal(
+                        evidence_id=evidence_id,
+                        goal_id=values["goal_id"],
+                        claim_id=values["proposal_id"],
+                        source_id=f"SRC-{values['review_id']}-{index}",
+                        relation=(
+                            EvidenceRelation.SUPPORTS
+                            if index == 0
+                            else EvidenceRelation.CONTRADICTS
+                        ),
+                        strength=EvidenceStrength.STRONG,
+                        origin=EvidenceOrigin.OBSERVED,
+                    )
+                    for index, evidence_id in enumerate(refs)
+                ]
+
+            if verdict == ClaimVerdict.REFUTED and not refs:
+                values["evidence_request"] = None
+            else:
+                values["evidence_request"] = ClaimEvidenceRequest(
+                    assessment_id=f"EA-{values['review_id']}",
+                    goal_id=values["goal_id"],
+                    claim_id=values["proposal_id"],
+                    agent_id=values["reviewer_agent"],
+                    evidence=raw_signals,
+                )
         return PeerReview(**values)
 
     @staticmethod

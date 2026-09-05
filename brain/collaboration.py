@@ -9,6 +9,7 @@ Core invariants:
 - peer agreement never upgrades a proposal whose own evidence verdict is weak;
 - self-review never counts as independent review;
 - reviews are bound to one exact goal and proposal;
+- supporting peer evidence must be re-derived from raw evidence, never trusted from refs alone;
 - duplicate reviewer identities cannot manufacture quorum or erase dissent;
 - contradictions and refutations are preserved rather than averaged away;
 - exactly five permanent Brain agents remain authoritative.
@@ -16,11 +17,18 @@ Core invariants:
 
 from __future__ import annotations
 
+import copy
 from enum import Enum
-from typing import Dict, List, Type, TypeVar
+from typing import Dict, List, Optional, Type, TypeVar
 
 from brain.contracts import BrainAgentId
-from brain.evidence import ClaimVerdict
+from brain.evidence import (
+    ClaimEvidenceAssessment,
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    EvidenceSignal,
+    assess_claim_evidence,
+)
 from schemas.base import BaseModel, Field, ValidationError
 
 
@@ -76,8 +84,85 @@ def _review_quorum(value: object) -> int:
     return value
 
 
+def _claim_evidence_request(
+    value: object, field_name: str
+) -> Optional[ClaimEvidenceRequest]:
+    if value is None:
+        return None
+    if isinstance(value, ClaimEvidenceRequest):
+        return copy.deepcopy(value)
+    if not isinstance(value, dict):
+        raise ValidationError(
+            f"{field_name} must be a ClaimEvidenceRequest, mapping, or None"
+        )
+
+    data = copy.deepcopy(value)
+    raw_evidence = data.get("evidence", [])
+    if not isinstance(raw_evidence, list):
+        raise ValidationError(f"{field_name}.evidence must be a list")
+    normalized_evidence: List[EvidenceSignal] = []
+    for raw_signal in raw_evidence:
+        if isinstance(raw_signal, EvidenceSignal):
+            normalized_evidence.append(copy.deepcopy(raw_signal))
+        elif isinstance(raw_signal, dict):
+            normalized_evidence.append(EvidenceSignal(**raw_signal))
+        else:
+            raise ValidationError(
+                f"{field_name}.evidence must contain only EvidenceSignal objects"
+            )
+    data["evidence"] = normalized_evidence
+    return ClaimEvidenceRequest(**data)
+
+
+def _canonical_review_refs(assessment: ClaimEvidenceAssessment) -> List[str]:
+    if assessment.verdict == ClaimVerdict.SUPPORTED:
+        return list(assessment.supporting_evidence_refs)
+    if assessment.verdict == ClaimVerdict.REFUTED:
+        return list(assessment.contradicting_evidence_refs)
+    if assessment.verdict == ClaimVerdict.CONTESTED:
+        return list(assessment.supporting_evidence_refs) + list(
+            assessment.contradicting_evidence_refs
+        )
+    return list(assessment.supporting_evidence_refs) + list(
+        assessment.contradicting_evidence_refs
+    )
+
+
+def _canonical_review_assessment(
+    review: "PeerReview",
+) -> Optional[ClaimEvidenceAssessment]:
+    """Re-evaluate raw peer evidence at the use boundary.
+
+    PeerReview records are mutable BaseModel objects, so construction-time checks
+    alone are insufficient authority. Recompute from raw evidence every time a
+    review could influence collaboration disposition and fail closed on any drift.
+    """
+
+    if review.evidence_request is None:
+        return None
+    request = review.evidence_request
+    if (
+        request.goal_id != review.goal_id
+        or request.claim_id != review.proposal_id
+        or request.agent_id != review.reviewer_agent
+    ):
+        return None
+    canonical = assess_claim_evidence(request)
+    if canonical.verdict != review.verdict:
+        return None
+    if _canonical_review_refs(canonical) != review.evidence_refs:
+        return None
+    return canonical
+
+
 class PeerReview(BaseModel):
-    """One semantic review of one exact proposal by a permanent peer agent."""
+    """One semantic review of one exact proposal by a permanent peer agent.
+
+    `evidence_refs` are audit output only. A review can count as evidence-backed
+    support/refutation only when `evidence_request` is present, exactly bound to
+    the reviewer/goal/proposal, and independently re-evaluates to the declared
+    verdict and references.
+    """
 
     review_id: str
     goal_id: str
@@ -86,6 +171,7 @@ class PeerReview(BaseModel):
     verdict: ClaimVerdict
     rationale: str
     evidence_refs: List[str] = Field(default_factory=list)
+    evidence_request: Optional[ClaimEvidenceRequest] = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -98,6 +184,34 @@ class PeerReview(BaseModel):
         self.verdict = _enum(self.verdict, ClaimVerdict, "verdict")
         self.rationale = _required_text(self.rationale, "rationale")
         self.evidence_refs = _unique_text_list(self.evidence_refs, "evidence_refs")
+        self.evidence_request = _claim_evidence_request(
+            self.evidence_request, "evidence_request"
+        )
+
+        if self.evidence_request is None:
+            return
+        if self.evidence_request.goal_id != self.goal_id:
+            raise ValidationError(
+                "peer evidence_request goal_id must match review goal_id"
+            )
+        if self.evidence_request.claim_id != self.proposal_id:
+            raise ValidationError(
+                "peer evidence_request claim_id must match review proposal_id"
+            )
+        if self.evidence_request.agent_id != self.reviewer_agent:
+            raise ValidationError(
+                "peer evidence_request agent_id must match reviewer_agent"
+            )
+
+        canonical = assess_claim_evidence(self.evidence_request)
+        if canonical.verdict != self.verdict:
+            raise ValidationError(
+                "peer review verdict must match canonical raw evidence assessment"
+            )
+        if _canonical_review_refs(canonical) != self.evidence_refs:
+            raise ValidationError(
+                "peer review evidence_refs must exactly match canonical raw evidence references"
+            )
 
 
 class CollaborationAssessment(BaseModel):
@@ -134,7 +248,7 @@ class CollaborationAssessment(BaseModel):
         seen_review_ids = set()
         for raw in self.reviews:
             if isinstance(raw, PeerReview):
-                review = raw.model_copy(deep=True)
+                review = copy.deepcopy(raw)
             elif isinstance(raw, dict):
                 review = PeerReview(**raw)
             else:
@@ -186,9 +300,10 @@ def evaluate_collaboration(
     Review independence is established by permanent reviewer identity, not by the
     number of review records. Structurally invalid reviews are ignored. A
     supported proposal can be accepted only when its own evidence lineage is
-    retained and the configured number of distinct peers provide evidence-backed
-    support. Any credible refutation dominates supportive votes; unresolved
-    contradiction is escalated instead of being averaged into a majority result.
+    retained and the configured number of distinct peers provide support that is
+    canonically re-derived from raw peer evidence. Any credible refutation
+    dominates supportive votes; unresolved contradiction is escalated instead of
+    being averaged into a majority result.
     """
 
     if not isinstance(assessment, CollaborationAssessment):
@@ -238,10 +353,14 @@ def evaluate_collaboration(
         else:
             eligible.append(review)
 
+    canonical_by_review_id = {
+        review.review_id: _canonical_review_assessment(review) for review in eligible
+    }
     supporting = [
         review
         for review in eligible
-        if review.verdict == ClaimVerdict.SUPPORTED and bool(review.evidence_refs)
+        if review.verdict == ClaimVerdict.SUPPORTED
+        and canonical_by_review_id[review.review_id] is not None
     ]
     dissenting = [
         review
@@ -251,12 +370,14 @@ def evaluate_collaboration(
     evidence_backed_refutations = [
         review
         for review in dissenting
-        if review.verdict == ClaimVerdict.REFUTED and bool(review.evidence_refs)
+        if review.verdict == ClaimVerdict.REFUTED
+        and canonical_by_review_id[review.review_id] is not None
     ]
     unsubstantiated_refutations = [
         review
         for review in dissenting
-        if review.verdict == ClaimVerdict.REFUTED and not review.evidence_refs
+        if review.verdict == ClaimVerdict.REFUTED
+        and canonical_by_review_id[review.review_id] is None
     ]
     contested_reviews = [
         review for review in dissenting if review.verdict == ClaimVerdict.CONTESTED
@@ -292,7 +413,7 @@ def evaluate_collaboration(
         disposition = CollaborationDisposition.INCONCLUSIVE
     elif evidence_backed_refutations:
         reasons.append(
-            "at least one independent evidence-backed peer review REFUTED the proposal"
+            "at least one independent canonically evidence-backed peer review REFUTED the proposal"
         )
         disposition = CollaborationDisposition.REVISE
     elif contested_reviews:
@@ -302,17 +423,17 @@ def evaluate_collaboration(
         disposition = CollaborationDisposition.ESCALATE
     elif unsubstantiated_refutations:
         reasons.append(
-            "an independent peer raised a refutation without evidence references; acceptance is blocked until the challenge is resolved"
+            "an independent peer raised a refutation without canonical raw evidence provenance; acceptance is blocked until the challenge is resolved"
         )
         disposition = CollaborationDisposition.ESCALATE
     elif len(supporting) >= assessment.minimum_supporting_reviewers:
         reasons.append(
-            f"proposal is evidence-supported and has {len(supporting)} distinct evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}"
+            f"proposal is evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}"
         )
         disposition = CollaborationDisposition.ACCEPT
     else:
         reasons.append(
-            f"independent evidence-backed peer support {len(supporting)} is below required quorum {assessment.minimum_supporting_reviewers}"
+            f"independent raw-evidence-backed peer support {len(supporting)} is below required quorum {assessment.minimum_supporting_reviewers}"
         )
         disposition = CollaborationDisposition.INCONCLUSIVE
 

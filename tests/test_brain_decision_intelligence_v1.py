@@ -112,8 +112,21 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         values.update(updates)
         return ReasoningAssessment(**values)
 
-    @staticmethod
-    def _collaboration(**updates) -> CollaborationAssessment:
+    @classmethod
+    def _collaboration(cls, **updates) -> CollaborationAssessment:
+        peer_raw = ClaimEvidenceRequest(
+            assessment_id="EA-R1",
+            goal_id="G-1",
+            claim_id="D-1",
+            agent_id=BrainAgentId.INTELLIGENCE,
+            evidence=[
+                cls._signal(
+                    "E-R1",
+                    EvidenceRelation.SUPPORTS,
+                    source_id="SRC-R1",
+                )
+            ],
+        )
         values = {
             "assessment_id": "CA-1",
             "goal_id": "G-1",
@@ -130,6 +143,7 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
                     verdict=ClaimVerdict.SUPPORTED,
                     rationale="Independent evidence-backed review supports the proposal.",
                     evidence_refs=["E-R1"],
+                    evidence_request=peer_raw,
                 )
             ],
             "minimum_supporting_reviewers": 1,
@@ -370,6 +384,19 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
             )
 
     def test_peer_refutation_on_high_risk_decision_forces_revision(self) -> None:
+        peer_raw = ClaimEvidenceRequest(
+            assessment_id="EA-R-D",
+            goal_id="G-1",
+            claim_id="D-1",
+            agent_id=BrainAgentId.INTELLIGENCE,
+            evidence=[
+                self._signal(
+                    "E-DISSENT",
+                    EvidenceRelation.CONTRADICTS,
+                    source_id="SRC-DISSENT",
+                )
+            ],
+        )
         refuting_review = PeerReview(
             review_id="R-D",
             goal_id="G-1",
@@ -378,6 +405,7 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
             verdict=ClaimVerdict.REFUTED,
             rationale="Independent observed evidence contradicts the proposal.",
             evidence_refs=["E-DISSENT"],
+            evidence_request=peer_raw,
         )
         result = evaluate_decision(
             self._request(
