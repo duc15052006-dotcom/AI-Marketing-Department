@@ -25,7 +25,7 @@ from governance.access_matrix import AgentAccessMatrix
 from governance.claim_safety import FinalClaimAuditGateResult, ValidationDecision
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
 from integrations.models.gateway import UniversalModelGateway
-from knowledge.models import KnowledgeCitation
+from knowledge.models import AuthorityLevel, KnowledgeCitation
 from knowledge.repository import KnowledgeRepository, LocalKnowledgeRepository
 from memory.learning import LearningEvent, LearningRepository, LocalLearningRepository
 from memory.models import MemoryItem, MemoryType, PromotionState
@@ -71,9 +71,10 @@ from runtime.handoff import (
     render_handoff_sections,
     strip_handoff_block,
 )
-from runtime.knowledge_builder import KnowledgeContextBuilder
+from runtime.knowledge_builder import KnowledgeContextBuilder, KnowledgeRetrievalResult
 from runtime.lineage import LineageInspector
-from runtime.memory_builder import MemoryContextBuilder
+from runtime.memory_builder import MemoryContextBuilder, MemoryRetrievalResult
+from runtime.scope_bridge import build_runtime_canonical_scope_plan
 from tools.capabilities import CapabilityRegistry
 from tools.evidence import EvidenceBuilder, EvidenceBundleSemanticValidator, GroundingContextBuilder, SubjectIdentity, SemanticCoherenceStatus
 from tools.observation.models import ObservationRecord
@@ -261,6 +262,215 @@ class FiveAgentDepartmentRuntime:
                 )
             except Exception:
                 pass
+
+
+    @staticmethod
+    def _ordered_unique_scope_keys(values: List[str]) -> List[str]:
+        """Return non-blank exact scope keys in stable priority order."""
+        seen: Set[str] = set()
+        ordered: List[str] = []
+        for value in values:
+            key = str(value or "").strip()
+            if key and key not in seen:
+                seen.add(key)
+                ordered.append(key)
+        return ordered
+
+    def _stage_lineage_scope_keys(self, context: RuntimeContext) -> Tuple[List[str], List[str]]:
+        """Build exact builder scopes from immutable runtime authority only.
+
+        Canonical project/business keys are authoritative. Exact legacy keys are
+        derived from the same immutable IDs for migration compatibility; mutable
+        working_state scope hints are deliberately ignored. GLOBAL remains an
+        explicit exact fallback and never becomes an unscoped repository read.
+        """
+        plan = build_runtime_canonical_scope_plan(context)
+        knowledge_scopes = list(plan.knowledge_scope_keys)
+        memory_scopes = list(plan.memory_scope_keys)
+
+        project_id = str(plan.project_id or "").strip()
+        business_id = str(plan.business_id or "").strip()
+
+        if project_id and project_id.upper() != "GLOBAL":
+            legacy_project = f"SCOPE_PROJ_{project_id}"
+            knowledge_scopes.append(legacy_project)
+            memory_scopes.append(legacy_project)
+
+        if business_id and business_id.upper() not in ("GLOBAL", "BIZ_DEFAULT"):
+            # Both historical business encodings exist in workspace data. They
+            # are safe here because both are derived from immutable business_id.
+            legacy_business_keys = (
+                f"SCOPE_{business_id}",
+                f"SCOPE_BIZ_{business_id}",
+            )
+            knowledge_scopes.extend(legacy_business_keys)
+            memory_scopes.extend(legacy_business_keys)
+        elif business_id.upper() == "BIZ_DEFAULT":
+            # Historical default-business knowledge had a dedicated exact key;
+            # memory historically fell back directly to GLOBAL.
+            knowledge_scopes.append("SCOPE_BIZ_DEFAULT")
+
+        if plan.include_global:
+            knowledge_scopes.append("GLOBAL")
+            memory_scopes.append("GLOBAL")
+
+        return (
+            self._ordered_unique_scope_keys(knowledge_scopes),
+            self._ordered_unique_scope_keys(memory_scopes),
+        )
+
+    def _build_stage_lineage_context(
+        self,
+        agent_id: str,
+        context: RuntimeContext,
+        *,
+        include_memory: bool,
+    ) -> Tuple[KnowledgeRetrievalResult, MemoryRetrievalResult]:
+        """Aggregate bounded exact-scope builder results for stage lineage."""
+        knowledge_scopes, memory_scopes = self._stage_lineage_scope_keys(context)
+
+        documents = []
+        citations = []
+        knowledge_sections: List[str] = []
+        seen_knowledge_ids: Set[str] = set()
+        for scope in knowledge_scopes:
+            result = self.knowledge_builder.build_context_for_agent(
+                agent_id,
+                query_text=context.objective,
+                scope=scope,
+            )
+            if result.context_text:
+                knowledge_sections.append(result.context_text)
+            citation_by_knowledge_id = {
+                citation.knowledge_id: citation for citation in result.citations
+            }
+            for document in result.documents:
+                if document.knowledge_id in seen_knowledge_ids:
+                    continue
+                citation = citation_by_knowledge_id.get(document.knowledge_id)
+                if citation is None:
+                    continue
+                seen_knowledge_ids.add(document.knowledge_id)
+                documents.append(document)
+                citations.append(citation)
+                if len(documents) >= 6:
+                    break
+            if len(documents) >= 6:
+                break
+
+        knowledge_result = KnowledgeRetrievalResult(
+            agent_id=agent_id.lower(),
+            documents=documents,
+            citations=citations,
+            context_text=chr(10).join(knowledge_sections),
+            retrieved_count=len(documents),
+        )
+
+        memories = []
+        memory_sections: List[str] = []
+        seen_memory_ids: Set[str] = set()
+        if include_memory:
+            for scope in memory_scopes:
+                result = self.memory_builder.build_context_for_agent(
+                    agent_id,
+                    query_text=context.objective,
+                    scope=scope,
+                )
+                if result.context_text:
+                    memory_sections.append(result.context_text)
+                for memory in result.memories:
+                    if memory.memory_id in seen_memory_ids:
+                        continue
+                    seen_memory_ids.add(memory.memory_id)
+                    memories.append(memory)
+                    if len(memories) >= 5:
+                        break
+                if len(memories) >= 5:
+                    break
+
+        memory_result = MemoryRetrievalResult(
+            agent_id=agent_id.lower(),
+            memories=memories,
+            context_text=chr(10).join(memory_sections),
+            retrieved_count=len(memories),
+        )
+        return knowledge_result, memory_result
+
+    def _reconcile_grounded_stage_provenance(
+        self,
+        context: RuntimeContext,
+        grounded_pkg: GroundedContextPackage,
+        knowledge_result: Optional[KnowledgeRetrievalResult] = None,
+        memory_result: Optional[MemoryRetrievalResult] = None,
+    ) -> None:
+        """Make stage audit refs exactly match persistent evidence accepted by ContextCompiler.
+
+        Legacy builders remain useful for backward-compatible stage result objects,
+        but they are not an evidence authority. GroundedContextPackage is the
+        authoritative model-input boundary, so RuntimeContext refs, LineageInspector,
+        and stage citation lists must be rebuilt from its accepted knowledge/memory IDs.
+        """
+        grounded_knowledge_ids: List[str] = []
+        grounded_memory_ids: List[str] = []
+        seen_knowledge_ids: Set[str] = set()
+        seen_memory_ids: Set[str] = set()
+
+        for item in grounded_pkg.evidence_items:
+            metadata = item.metadata if isinstance(item.metadata, dict) else {}
+            knowledge_id = str(metadata.get("knowledge_id") or "").strip()
+            memory_id = str(metadata.get("memory_id") or "").strip()
+            if knowledge_id and knowledge_id not in seen_knowledge_ids:
+                seen_knowledge_ids.add(knowledge_id)
+                grounded_knowledge_ids.append(knowledge_id)
+            if memory_id and memory_id not in seen_memory_ids:
+                seen_memory_ids.add(memory_id)
+                grounded_memory_ids.append(memory_id)
+
+        if knowledge_result is not None:
+            existing_citations = {
+                citation.knowledge_id: citation for citation in knowledge_result.citations
+            }
+            grounded_documents = []
+            grounded_citations = []
+            for knowledge_id in grounded_knowledge_ids:
+                document = self.knowledge_repo.get_document(knowledge_id) if self.knowledge_repo else None
+                if document is None:
+                    continue
+                citation = existing_citations.get(knowledge_id)
+                if citation is None:
+                    chunk = document.chunks[0] if document.chunks else None
+                    citation = KnowledgeCitation(
+                        knowledge_id=document.knowledge_id,
+                        chunk_id=chunk.chunk_id if chunk else None,
+                        source_id=document.source_id,
+                        claim_ref=document.title,
+                        confidence=(
+                            1.0
+                            if document.authority_level == AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH
+                            else 0.85
+                        ),
+                    )
+                grounded_documents.append(document)
+                grounded_citations.append(citation)
+
+            knowledge_result.documents = grounded_documents
+            knowledge_result.citations = grounded_citations
+            knowledge_result.retrieved_count = len(grounded_documents)
+            for citation in grounded_citations:
+                context.knowledge_refs.append(citation.citation_id)
+                self.lineage_inspector.add_citation(citation)
+
+        if memory_result is not None:
+            grounded_memories = []
+            for memory_id in grounded_memory_ids:
+                memory = self.memory_repo.get_memory(memory_id) if self.memory_repo else None
+                if memory is not None:
+                    grounded_memories.append(memory)
+
+            memory_result.memories = grounded_memories
+            memory_result.retrieved_count = len(grounded_memories)
+            for memory in grounded_memories:
+                context.memory_refs.append(memory.memory_id)
 
     def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:
         """Retrieve active ProgressEmitter for run."""
@@ -543,6 +753,8 @@ class FiveAgentDepartmentRuntime:
         trusted_run_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         project_id: Optional[str] = None,
+        trusted_knowledge_scope: Optional[str] = None,
+        trusted_memory_scope: Optional[str] = None,
         progress_sink: Optional[ProgressSink] = None,
         mode: str = ProgressMode.FULL_WORKFLOW.value,
     ) -> RuntimeContext:
@@ -585,6 +797,8 @@ class FiveAgentDepartmentRuntime:
                 user_id=user_id,
                 chat_id=chat_id,
                 project_id=project_id,
+                trusted_knowledge_scope=trusted_knowledge_scope,
+                trusted_memory_scope=trusted_memory_scope,
                 status=RuntimeStatus.RUNNING,
                 current_stage=RuntimeStage.INIT,
                 model_policy=pol_dict,
@@ -612,17 +826,11 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn CMO Initial (Strategic Framing)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("cmo", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("cmo", query_text=context.objective)
+        k_res, m_res = self._build_stage_lineage_context("cmo", context, include_memory=True)
 
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
-        for m in m_res.memories:
-            context.memory_refs.append(m.memory_id)
-
-        # Grounded Context Compilation
+        # Grounded Context Compilation is the authoritative model-input boundary.
         grounded_pkg = self.context_compiler.compile_grounded_package("cmo", context)
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res, m_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -712,10 +920,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("intelligence", query_text=context.objective)
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
+        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)
 
         # Invoke ToolGateway for search observation
         if emitter:
@@ -755,8 +960,9 @@ class FiveAgentDepartmentRuntime:
                 metadata={"execution_id": search_receipt.execution_id, "status": search_receipt.status.value},
             )
 
-        # Grounded Context Compilation with actual Tool Receipt content
+        # Grounded Context Compilation with actual Tool Receipt content.
         grounded_pkg = self.context_compiler.compile_grounded_package("intelligence", context, tool_receipts=[search_receipt])
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -963,17 +1169,11 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Strategist (Positioning & Value Architecture)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("strategist", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("strategist", query_text=context.objective)
+        k_res, m_res = self._build_stage_lineage_context("strategist", context, include_memory=True)
 
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
-        for m in m_res.memories:
-            context.memory_refs.append(m.memory_id)
-
-        # Grounded Context Compilation
+        # Grounded Context Compilation is the authoritative model-input boundary.
         grounded_pkg = self.context_compiler.compile_grounded_package("strategist", context)
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res, m_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1082,10 +1282,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Creative (Hooks & Asset Synthesis)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("creative", query_text=context.objective)
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
+        k_res, _ = self._build_stage_lineage_context("creative", context, include_memory=False)
 
         # Invoke ToolGateway for local image generation / asset preparation
         idem_key = f"{context.run_id}:creative:image_generation:hero"
@@ -1109,8 +1306,9 @@ class FiveAgentDepartmentRuntime:
         if img_receipt.artifact_references:
             context.artifact_refs.extend(img_receipt.artifact_references)
 
-        # Grounded Context Compilation with image tool receipt
+        # Grounded Context Compilation with image tool receipt.
         grounded_pkg = self.context_compiler.compile_grounded_package("creative", context, tool_receipts=[img_receipt])
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -1226,14 +1424,7 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",
             )
 
-        k_res = self.knowledge_builder.build_context_for_agent("performance", query_text=context.objective)
-        m_res = self.memory_builder.build_context_for_agent("performance", query_text=context.objective)
-
-        for c in k_res.citations:
-            context.knowledge_refs.append(c.citation_id)
-            self.lineage_inspector.add_citation(c)
-        for m in m_res.memories:
-            context.memory_refs.append(m.memory_id)
+        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)
 
         # Retrieve observed campaign telemetry through ToolGateway. A REAL
         # analytics receipt may enter grounded evidence; NO_DATA and legacy
@@ -1274,6 +1465,7 @@ class FiveAgentDepartmentRuntime:
         grounded_pkg = self.context_compiler.compile_grounded_package(
             "performance", context, tool_receipts=grounded_receipts
         )
+        self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res, m_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
@@ -2426,6 +2618,25 @@ class FiveAgentDepartmentRuntime:
                 context.status = RuntimeStatus.COMPLETED
         completed_at = datetime.now(timezone.utc)
 
+        # Decision-memory write scope is derived from immutable RuntimeContext
+        # authority, never mutable working_state hints. Prefer the most-specific
+        # exact project/business/trusted migration scope; GLOBAL is the explicit
+        # fallback only when the run has no private memory scope.
+        memory_scope_plan = build_runtime_canonical_scope_plan(context)
+        trusted_memory_scope = str(context.scope.trusted_memory_scope or "").strip()
+        if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":
+            memory_write_scope = trusted_memory_scope
+        else:
+            memory_write_scope = next(
+                (
+                    str(scope).strip()
+                    for scope in memory_scope_plan.memory_scope_keys
+                    if str(scope).strip()
+                    and str(scope).strip().upper() != "GLOBAL"
+                ),
+                "GLOBAL",
+            )
+
         # 1. Propose Memory Candidates only if run completed successfully.
         # COLLAB-04: template memories removed. Exactly ONE factual
         # decision-bookkeeping record is written, and ONLY when the run truly
@@ -2439,6 +2650,7 @@ class FiveAgentDepartmentRuntime:
                     MemoryWriteCandidate(
                         memory_type=MemoryType.DECISION_MEMORY,
                         agent_source="cmo",
+                        scope=memory_write_scope,
                         content=(
                             f"GTM plan reached deployment-ready state for objective: {context.objective}"
                         ),

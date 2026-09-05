@@ -302,7 +302,9 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
         mock_receipt = ExecutionReceipt(
             run_id=ctx.run_id, agent_id="intelligence", capability_id="web_search",
             provider="mock_provider", request_hash="h", status=ExecutionStatus.SUCCESS,
-            execution_mode=ExecutionMode.MOCK, output={"results": ["simulated snippet"]},
+            execution_mode=ExecutionMode.MOCK, business_id=ctx.business_id,
+            project_id=ctx.project_id, chat_id=ctx.chat_id,
+            output={"results": ["simulated snippet"]},
         )
         pkg = compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[mock_receipt])
         tool_items = [i for i in pkg.evidence_items if i.source_type == "TOOL_RECEIPT"]

@@ -178,6 +178,8 @@ class AuthoritativeScope:
     chat_id: Optional[str] = None
     campaign_id: Optional[str] = None
     user_id: Optional[str] = None
+    trusted_knowledge_scope: Optional[str] = None
+    trusted_memory_scope: Optional[str] = None
 
 
 class RuntimeContext(BaseModel):
@@ -189,6 +191,8 @@ class RuntimeContext(BaseModel):
     user_id: str = Field(default="USER_DEFAULT")
     chat_id: Optional[str] = Field(default=None, description="Optional associated chat session ID")
     project_id: Optional[str] = Field(default=None, description="Optional associated workspace project ID")
+    trusted_knowledge_scope: Optional[str] = Field(default=None, description="Trusted legacy knowledge scope bound at run creation")
+    trusted_memory_scope: Optional[str] = Field(default=None, description="Trusted legacy memory scope bound at run creation")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     current_stage: RuntimeStage = Field(default=RuntimeStage.INIT)
     status: RuntimeStatus = Field(default=RuntimeStatus.CREATED)
@@ -223,6 +227,8 @@ class RuntimeContext(BaseModel):
             "chat_id",
             "campaign_id",
             "user_id",
+            "trusted_knowledge_scope",
+            "trusted_memory_scope",
         ):
             raise AttributeError(
                 f"Cannot mutate authoritative scope field '{name}' on active RuntimeContext. "
@@ -240,6 +246,8 @@ class RuntimeContext(BaseModel):
             chat_id=self.chat_id,
             campaign_id=self.campaign_id,
             user_id=self.user_id,
+            trusted_knowledge_scope=self.trusted_knowledge_scope,
+            trusted_memory_scope=self.trusted_memory_scope,
         )
 
     def create_checkpoint(self, pending_approval_id: Optional[str] = None) -> ExecutionCheckpoint:

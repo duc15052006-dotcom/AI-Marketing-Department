@@ -257,13 +257,16 @@ class TestPhase1BGroundContext(unittest.TestCase):
             def execute(self, req: ToolRequest) -> ExecutionReceipt:
                 return ExecutionReceipt(
                     execution_id="EXEC-SEARCH-9182",
-                    run_id="RUN-TEST-F",
+                    run_id=req.run_id,
                     agent_id="intelligence",
                     capability_id="web_search",
                     provider="mock_search",
                     request_hash="mock_hash_f",
                     status=ExecutionStatus.SUCCESS,
                     execution_mode=ExecutionMode.MOCK,
+                    business_id=req.business_id,
+                    project_id=req.project_id,
+                    chat_id=req.chat_id,
                     output={"query": req.parameters.get("query"), "result": "Competitor landscape: TOOL_EVIDENCE_MARKER_9182"},
                 )
 
@@ -291,18 +294,21 @@ class TestPhase1BGroundContext(unittest.TestCase):
     # -------------------------------------------------------------------------
     def test_g_tool_receipt_alone_is_insufficient(self) -> None:
         """Empty tool output produces zero synthetic marketing claims."""
+        ctx = self.runtime.start_run(objective="Explore market")
         receipt = ExecutionReceipt(
             execution_id="EXEC-EMPTY-001",
-            run_id="RUN-TEST-G",
+            run_id=ctx.run_id,
             agent_id="intelligence",
             capability_id="web_search",
             provider="mock_search",
             request_hash="mock_hash_g",
             status=ExecutionStatus.SUCCESS,
             execution_mode=ExecutionMode.MOCK,
+            business_id=ctx.business_id,
+            project_id=ctx.project_id,
+            chat_id=ctx.chat_id,
             output="",
         )
-        ctx = self.runtime.start_run(objective="Explore market")
         pkg = self.context_compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[receipt])
 
         tool_items = [it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT"]
@@ -480,18 +486,21 @@ class TestPhase1BGroundContext(unittest.TestCase):
     # -------------------------------------------------------------------------
     def test_successful_mock_tool_result_is_not_verified_evidence(self) -> None:
         """Successful MOCK tool execution is labeled MOCK_OR_SANDBOX, never VERIFIED."""
+        ctx = self.runtime.start_run(objective="Assess market share")
         mock_receipt = ExecutionReceipt(
             execution_id="EXEC-MOCK-SUCCESS",
-            run_id="RUN-TEST-MOCK",
+            run_id=ctx.run_id,
             agent_id="intelligence",
             capability_id="web_search",
             provider="mock_search",
             request_hash="mock_hash_success",
             status=ExecutionStatus.SUCCESS,
             execution_mode=ExecutionMode.MOCK,
+            business_id=ctx.business_id,
+            project_id=ctx.project_id,
+            chat_id=ctx.chat_id,
             output={"claim": "MARKET_SHARE_IS_92_PERCENT"},
         )
-        ctx = self.runtime.start_run(objective="Assess market share")
         pkg = self.context_compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[mock_receipt])
 
         tool_item = next(it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT")
@@ -655,17 +664,20 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
     def test_real_tool_success_not_automatically_verified_source(self) -> None:
         """REAL successful tool execution produces SOURCE_BACKED_OBSERVATION, never VERIFIED_SOURCE."""
+        ctx = RuntimeContext(objective="Find market share for CRM", business_id="BIZ_TEST")
         receipt = ExecutionReceipt(
-            run_id="RUN-REAL-TOOL",
+            run_id=ctx.run_id,
             agent_id="intelligence",
             capability_id="web_search",
             provider="google_search",
             request_hash="hash123",
             status=ExecutionStatus.SUCCESS,
             execution_mode=ExecutionMode.REAL,
+            business_id=ctx.business_id,
+            project_id=ctx.project_id,
+            chat_id=ctx.chat_id,
             output={"content": "MARKET_SHARE_IS_92_PERCENT"},
         )
-        ctx = RuntimeContext(objective="Find market share for CRM", business_id="BIZ_TEST")
         pkg = self.context_compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[receipt])
 
         tool_items = [it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT"]
