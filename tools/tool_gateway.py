@@ -35,6 +35,7 @@ from tools.capabilities import (
     CapabilityCategory,
     CapabilityDescriptor,
     CapabilityRegistry,
+    CostPolicy,
     PermissionLevel,
     RiskLevel,
 )
@@ -384,6 +385,12 @@ class ToolGateway:
 
         # 4. Atomic One-Shot Approval Claim for Consequential Actions
         cap_is_consequential = self._is_consequential_capability(cap)
+        adapter_execution_mode = self._resolve_execution_mode(adapter, cap.capability_id)
+        cap_is_metered_real = bool(
+            adapter_execution_mode == ExecutionMode.REAL
+            and cap.cost_policy in (CostPolicy.FREE_TIER_METERED, CostPolicy.PAID_METERED)
+        )
+        duplicate_sensitive = cap_is_consequential or cap_is_metered_real
         is_consequential = bool(request.approval_token and cap_is_consequential)
 
         if is_consequential:
@@ -427,13 +434,13 @@ class ToolGateway:
         idempotency_record = None
 
         try:
-            # Durable idempotency authority is only engaged for REAL consequential
+            # Durable idempotency authority is engaged for REAL duplicate-sensitive
             # actions carrying an explicit key. Run/agent/request ids are excluded
-            # from its namespace so a newly-approved replay still collides.
+            # from its namespace so replay from a new run still collides.
             raw_idempotency_key = request.parameters.get("idempotency_key")
             if (
-                cap_is_consequential
-                and self._resolve_execution_mode(adapter, cap.capability_id) == ExecutionMode.REAL
+                duplicate_sensitive
+                and adapter_execution_mode == ExecutionMode.REAL
                 and isinstance(raw_idempotency_key, str)
                 and raw_idempotency_key.strip()
             ):
@@ -489,7 +496,7 @@ class ToolGateway:
             # PREPARED -> DISPATCHING is durably committed before adapter execution.
             # Any crash after DISPATCHING and before finalization is ambiguous and
             # must never be interpreted as proof that the side effect did not run.
-            if cap_is_consequential:
+            if duplicate_sensitive:
                 execution_intent = self.receipt_repository.prepare_execution_intent(
                     request_id=request.request_id,
                     run_id=request.run_id,
@@ -563,7 +570,7 @@ class ToolGateway:
                     last_exc = exc
                     exception_error_code = self._classify_retryable_exception(exc)
 
-                    if cap_is_consequential:
+                    if duplicate_sensitive:
                         ambiguous_external_outcome = True
                         break
 
@@ -578,7 +585,7 @@ class ToolGateway:
                 if adapter_res.success:
                     break
 
-                if cap_is_consequential:
+                if duplicate_sensitive:
                     break
 
                 if adapter_res.error_code not in retryable_errors:
