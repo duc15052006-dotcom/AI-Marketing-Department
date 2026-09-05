@@ -94,7 +94,7 @@ class ChatAttachmentRepository(abc.ABC):
 class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepository):
     """Production SQLite storage implementation with migration versioning and WAL mode."""
 
-    CURRENT_SCHEMA_VERSION = 1
+    CURRENT_SCHEMA_VERSION = 2
 
     def __init__(self, db_path: Optional[str] = None) -> None:
         if db_path is None:
@@ -194,8 +194,31 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                     """
                 )
                 conn.execute(
-                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                    "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)",
                     (1, datetime.now(timezone.utc).isoformat()),
+                )
+                conn.commit()
+
+            if current_ver < 2:
+                # Schema version 2: persist exact attachment -> message ownership.
+                # Existing V1 rows cannot be associated safely after the fact, so
+                # they remain valid session-level attachments with message_id NULL.
+                columns = {
+                    str(r["name"])
+                    for r in conn.execute("PRAGMA table_info(chat_attachments)").fetchall()
+                }
+                if "message_id" not in columns:
+                    conn.execute(
+                        "ALTER TABLE chat_attachments "
+                        "ADD COLUMN message_id TEXT REFERENCES chat_messages(message_id) ON DELETE SET NULL"
+                    )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_chat_attachments_message_id "
+                    "ON chat_attachments(message_id)"
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                    (2, datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
 
@@ -234,12 +257,14 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 ),
             )
 
-            # Persist any messages that might not yet be in DB
+            # Persist messages before the session-wide attachment inventory so
+            # message-owned attachments receive their durable ownership link.
             for idx, msg in enumerate(session.messages):
                 msg.sequence_number = idx
                 self._save_message_with_conn(conn, msg)
 
-            # Persist attachments
+            # Persist the session attachment inventory. A NULL message_id here
+            # must not erase a link already established while saving a message.
             for att in session.attachments:
                 self._save_attachment_with_conn(conn, att)
 
@@ -400,11 +425,12 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             ),
         )
 
-        # Save any attachments attached directly to this message
+        # Save attachments with the exact owning message identity. This link is
+        # persistence metadata; the ChatAttachment public model stays unchanged.
         for att in getattr(message, "attachments", []):
             if not att.chat_id:
                 att.chat_id = message.chat_id
-            self._save_attachment_with_conn(conn, att)
+            self._save_attachment_with_conn(conn, att, message_id=message.message_id)
 
     def list_messages(self, chat_id: str) -> List[ChatMessage]:
         with self._get_connection() as conn:
@@ -417,12 +443,26 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
         )
         rows = cur.fetchall()
         messages = [self._row_to_message(r) for r in rows]
-        attachments = self._list_attachments_with_conn(conn, chat_id)
-        if attachments and messages:
-            # Associate attachments to messages in this chat
-            for msg in messages:
-                if msg.role == ChatRole.USER:
-                    msg.attachments = [a for a in attachments if a.chat_id == chat_id]
+
+        # Hydrate ownership in one bounded query instead of assigning the whole
+        # chat attachment inventory to every user message.
+        att_rows = conn.execute(
+            """
+            SELECT * FROM chat_attachments
+            WHERE chat_id = ? AND message_id IS NOT NULL
+            ORDER BY created_at ASC
+            """,
+            (chat_id,),
+        ).fetchall()
+        by_message: Dict[str, List[ChatAttachment]] = {}
+        for row in att_rows:
+            owner = row["message_id"]
+            if owner:
+                by_message.setdefault(str(owner), []).append(self._row_to_attachment(row))
+
+        for msg in messages:
+            if msg.role == ChatRole.USER:
+                msg.attachments = by_message.get(msg.message_id, [])
         return messages
 
     def get_message(self, message_id: str) -> Optional[ChatMessage]:
@@ -432,9 +472,16 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             if not row:
                 return None
             msg = self._row_to_message(row)
-            attachments = self._list_attachments_with_conn(conn, msg.chat_id)
-            if attachments and msg.role == ChatRole.USER:
-                msg.attachments = attachments
+            if msg.role == ChatRole.USER:
+                att_rows = conn.execute(
+                    """
+                    SELECT * FROM chat_attachments
+                    WHERE message_id = ? AND chat_id = ?
+                    ORDER BY created_at ASC
+                    """,
+                    (msg.message_id, msg.chat_id),
+                ).fetchall()
+                msg.attachments = [self._row_to_attachment(r) for r in att_rows]
             return msg
 
     # =========================================================================
@@ -446,24 +493,31 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             conn.commit()
         return attachment
 
-    def _save_attachment_with_conn(self, conn: sqlite3.Connection, attachment: ChatAttachment) -> None:
+    def _save_attachment_with_conn(
+        self,
+        conn: sqlite3.Connection,
+        attachment: ChatAttachment,
+        message_id: Optional[str] = None,
+    ) -> None:
         type_str = attachment.attachment_type.value if hasattr(attachment.attachment_type, "value") else str(attachment.attachment_type)
         conn.execute(
             """
             INSERT INTO chat_attachments (
-                attachment_id, chat_id, filename, media_type, content,
+                attachment_id, chat_id, message_id, filename, media_type, content,
                 content_hash, source_type, local_storage_ref, created_at,
                 parser_status, content_size_bytes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(attachment_id) DO UPDATE SET
                 content = excluded.content,
                 content_hash = excluded.content_hash,
                 parser_status = excluded.parser_status,
-                content_size_bytes = excluded.content_size_bytes;
+                content_size_bytes = excluded.content_size_bytes,
+                message_id = COALESCE(excluded.message_id, chat_attachments.message_id);
             """,
             (
                 attachment.attachment_id,
                 attachment.chat_id,
+                message_id,
                 attachment.filename_or_url,
                 type_str,
                 attachment.content,
