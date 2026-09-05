@@ -410,25 +410,56 @@ class ProviderOperationRepository:
         except sqlite3.Error as exc:
             raise ProviderOperationStoreError("PROVIDER_OPERATION_INSERT_FAILED") from exc
 
-    def _replace_locked(self, record: ProviderOperationRecord) -> None:
+    def _replace_locked(
+        self,
+        record: ProviderOperationRecord,
+        *,
+        expected_record_hash: Optional[str] = None,
+    ) -> None:
         if self._conn is None:
-            if record.operation_id not in self._records:
-                raise ProviderOperationNotFoundError(record.operation_id)
+            try:
+                existing = self._records[record.operation_id]
+            except KeyError as exc:
+                raise ProviderOperationNotFoundError(record.operation_id) from exc
+            if expected_record_hash is not None and existing.record_hash != expected_record_hash:
+                raise ProviderOperationConflictError("PROVIDER_OPERATION_CONCURRENT_UPDATE")
             self._records[record.operation_id] = copy.deepcopy(record)
             return
         try:
             with self._conn:
-                cursor = self._conn.execute(
-                    """
-                    UPDATE provider_operations
-                    SET payload_json = ?, record_hash = ?
-                    WHERE operation_id = ?
-                    """,
-                    (self._serialize(record), record.record_hash, record.operation_id),
-                )
+                if expected_record_hash is None:
+                    cursor = self._conn.execute(
+                        """
+                        UPDATE provider_operations
+                        SET payload_json = ?, record_hash = ?
+                        WHERE operation_id = ?
+                        """,
+                        (self._serialize(record), record.record_hash, record.operation_id),
+                    )
+                else:
+                    cursor = self._conn.execute(
+                        """
+                        UPDATE provider_operations
+                        SET payload_json = ?, record_hash = ?
+                        WHERE operation_id = ? AND record_hash = ?
+                        """,
+                        (
+                            self._serialize(record),
+                            record.record_hash,
+                            record.operation_id,
+                            expected_record_hash,
+                        ),
+                    )
                 if cursor.rowcount != 1:
+                    if expected_record_hash is not None:
+                        exists = self._conn.execute(
+                            "SELECT 1 FROM provider_operations WHERE operation_id = ?",
+                            (record.operation_id,),
+                        ).fetchone()
+                        if exists is not None:
+                            raise ProviderOperationConflictError("PROVIDER_OPERATION_CONCURRENT_UPDATE")
                     raise ProviderOperationNotFoundError(record.operation_id)
-        except ProviderOperationNotFoundError:
+        except (ProviderOperationNotFoundError, ProviderOperationConflictError):
             raise
         except sqlite3.Error as exc:
             raise ProviderOperationStoreError("PROVIDER_OPERATION_UPDATE_FAILED") from exc
@@ -612,7 +643,7 @@ class ProviderOperationRepository:
             latest = self.get(operation_id)
             if latest.record_hash != current.record_hash:
                 raise ProviderOperationConflictError("PROVIDER_OPERATION_CONCURRENT_UPDATE")
-            self._replace_locked(updated)
+            self._replace_locked(updated, expected_record_hash=current.record_hash)
         return copy.deepcopy(updated)
 
     def list_scope(
