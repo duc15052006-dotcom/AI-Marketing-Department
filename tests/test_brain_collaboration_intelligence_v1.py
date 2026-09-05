@@ -89,6 +89,39 @@ class BrainCollaborationIntelligenceV1Tests(unittest.TestCase):
         self.assertEqual(decision.supporting_review_ids, [])
         self.assertEqual(set(decision.ignored_review_ids), {"R-1", "R-2"})
 
+    def test_duplicate_reviewer_identity_cannot_erase_dissent_and_enable_acceptance(self) -> None:
+        independent_support = self._review(
+            review_id="R-S",
+            reviewer_agent="INTELLIGENCE",
+        )
+        evidence_backed_dissent = self._review(
+            review_id="R-D",
+            reviewer_agent="CREATIVE",
+            verdict=ClaimVerdict.REFUTED,
+            rationale="Observed results contradict the proposal.",
+            evidence_refs=["E-DISSENT"],
+        )
+        duplicate_same_reviewer = self._review(
+            review_id="R-D2",
+            reviewer_agent="CREATIVE",
+            verdict=ClaimVerdict.SUPPORTED,
+            rationale="A conflicting replay from the same reviewer must not erase dissent.",
+            evidence_refs=["E-DUPLICATE"],
+        )
+
+        decision = evaluate_collaboration(
+            self._assessment(
+                [independent_support, evidence_backed_dissent, duplicate_same_reviewer],
+                minimum_supporting_reviewers=1,
+            )
+        )
+
+        self.assertNotEqual(
+            decision.disposition,
+            CollaborationDisposition.ACCEPT,
+            "Conflicting duplicate reviewer records must fail closed instead of laundering dissent.",
+        )
+
     def test_majority_support_cannot_override_refuted_proposal(self) -> None:
         reviews = [
             self._review(review_id="R-1", reviewer_agent="INTELLIGENCE"),
