@@ -53,8 +53,10 @@ Các mục tiêu chính:
 - Hạn chế việc model tự bịa dữ liệu hoặc nâng mức chắc chắn của một claim không có bằng chứng.
 - Cho phép thay provider/model mà không phải viết lại logic của từng agent.
 - Lưu knowledge và memory theo scope để hạn chế lẫn dữ liệu giữa business/project/session.
+- Hướng tới một **Unified Marketing Knowledge Platform** để người dùng có thể bổ sung, thay đổi và tái sử dụng kiến thức Content, Strategy, Ads, SEO, Social, Brand, Product, Image, Video, Design và Analytics mà không phải sửa Brain.
+- Hướng tới một **provider-neutral creative capability layer** để agent có thể lập kế hoạch, viết prompt và gọi các model/API chuyên tạo ảnh, edit ảnh, tạo video, edit video, audio hoặc các tác vụ thiết kế khác.
 - Giữ Human-in-the-Loop cho các hành động có ảnh hưởng thật như publishing, external writes hoặc ngân sách.
-- Xây một nền tảng có thể tiếp tục mở rộng thêm skills, tools, plugins và providers trong tương lai.
+- Xây một nền tảng có thể tiếp tục mở rộng thêm skills, tools, plugins, knowledge packs và providers trong tương lai.
 
 ---
 
@@ -104,9 +106,12 @@ Local Backend
       ├─ Knowledge & Memory
       ├─ Evidence / Provenance
       ├─ Tool Gateway
+      ├─ Capability Registry
       ├─ Provider Registry
       └─ Universal Model Gateway
 ```
+
+> Các service như Knowledge Router, Prompt Composer, Media Gateway, Artifact Manager hoặc Provider Adapter là **hạ tầng dùng chung**, không phải agent thứ 6. Kiến trúc logic của dự án vẫn giữ đúng **5 agent cố định**.
 
 ---
 
@@ -138,6 +143,55 @@ Thiết kế này giúp hệ thống có thể:
 - giữ lựa chọn provider ổn định trong suốt một run;
 - tránh để credential xuất hiện trong response công khai hoặc log không an toàn.
 
+### Target architecture — Universal Capability / AI Provider Gateway
+
+> **Planned / being hardened:** phần dưới mô tả hướng kiến trúc mục tiêu, không phải tuyên bố rằng toàn bộ capability và provider đã được triển khai production-ready ở commit hiện tại.
+
+Mục tiêu dài hạn là mở rộng provider routing từ LLM sang nhiều loại AI capability, nhưng vẫn giữ Brain và 5 agent độc lập với vendor cụ thể.
+
+```text
+Five Agents
+    │
+    ▼
+Capability / Tool Layer
+    │
+    ▼
+Universal Capability Gateway
+    │
+    ├─ LLM Gateway
+    ├─ Image Gateway
+    ├─ Video Gateway
+    ├─ Audio Gateway
+    └─ Other AI / Design Capabilities
+          │
+          ▼
+   Provider Registry + Adapters
+```
+
+Agent nên yêu cầu **capability**, không gọi tên vendor trực tiếp. Ví dụ:
+
+```text
+LLM_REASONING
+IMAGE_GENERATE
+IMAGE_EDIT
+IMAGE_INPAINT
+IMAGE_OUTPAINT
+IMAGE_UPSCALE
+BACKGROUND_REMOVE
+VIDEO_GENERATE
+VIDEO_EDIT
+IMAGE_TO_VIDEO
+VIDEO_EXTEND
+VIDEO_UPSCALE
+VIDEO_RESTYLE
+LIP_SYNC
+AUDIO_GENERATE
+TEXT_TO_SPEECH
+SPEECH_TO_TEXT
+```
+
+Provider Router / Adapter Layer sẽ chịu trách nhiệm chọn provider/model phù hợp, chuẩn hóa request/response, xử lý fallback, quota, retry và policy. Nhờ đó việc thêm một provider ảnh/video mới không nên buộc phải sửa logic cốt lõi của từng agent.
+
 ---
 
 ## Evidence, Knowledge & Memory
@@ -152,6 +206,202 @@ Một số nguyên tắc đang được áp dụng trong codebase:
 - tool failure không được biến thành positive evidence;
 - scope được dùng để hạn chế cross-session / cross-business / cross-project leakage;
 - secret/token được redaction trước khi đi vào nhiều loại receipt/event công khai.
+
+### Target architecture — Unified Marketing Knowledge Platform
+
+> **Planned / incremental implementation:** Knowledge Platform dưới đây là hướng mở rộng của knowledge hiện có. Mọi trạng thái IMPLEMENTED / TESTED / RUNTIME_VERIFIED phải tiếp tục được xác nhận bằng code, test và `STATUS_MATRIX.md`.
+
+Knowledge được định hướng thành một nền tảng dùng chung cho toàn bộ phòng Marketing, thay vì nhúng cứng kiến thức vào Brain hoặc nhân bản knowledge cho từng agent.
+
+```text
+Knowledge Platform
+│
+├─ Marketing Strategy
+│  ├─ STP
+│  ├─ 4P / 7P
+│  ├─ Funnel
+│  ├─ Positioning
+│  ├─ Customer Journey
+│  └─ Campaign Planning
+│
+├─ Content
+│  ├─ Copywriting
+│  ├─ Hooks
+│  ├─ Storytelling
+│  ├─ CTA
+│  ├─ AIDA / PAS / BAB
+│  ├─ Short-form / Long-form
+│  └─ Brand Voice
+│
+├─ Paid Ads
+│  ├─ Facebook Ads
+│  ├─ Google Ads
+│  ├─ TikTok Ads
+│  ├─ Creative Strategy
+│  ├─ Targeting
+│  └─ Optimization
+│
+├─ SEO
+├─ Social Media
+├─ Creative
+│  ├─ Image
+│  ├─ Video
+│  ├─ Design
+│  └─ Audio
+│
+├─ Brand
+├─ Product
+├─ Customer
+├─ Analytics
+└─ Provider / Model Prompt Knowledge
+```
+
+Knowledge nên được chia theo **3 scope chính**:
+
+1. **System Knowledge** — kiến thức Marketing/Creative tái sử dụng chung.
+2. **Workspace / Brand Knowledge** — kiến thức riêng của doanh nghiệp, thương hiệu, sản phẩm hoặc workspace.
+3. **Task / Campaign Knowledge** — file/context tạm thời dành cho campaign hoặc nhiệm vụ hiện tại.
+
+Tại runtime, agent chỉ nên nhận knowledge liên quan đến task và capability hiện tại. Ví dụ:
+
+```text
+VIDEO_GENERATE
+  → video knowledge
+  → platform knowledge
+  → brand knowledge
+  → product knowledge
+  → campaign knowledge
+
+COPYWRITING
+  → content knowledge
+  → platform knowledge
+  → brand knowledge
+  → product knowledge
+  → campaign knowledge
+```
+
+Cách này nhằm giảm context không liên quan, hạn chế tiêu thụ token và giảm nguy cơ knowledge leakage giữa scope.
+
+### Knowledge Manager — target UX
+
+Mục tiêu UI là cho phép người dùng quản lý knowledge mà không cần sửa source code:
+
+```text
+Knowledge Manager
+│
+├─ General Marketing
+├─ Strategy
+├─ Content
+├─ Paid Ads
+├─ SEO
+├─ Social Media
+├─ Image
+├─ Video
+├─ Design
+├─ Analytics
+├─ Brand
+├─ Products
+└─ Customers
+```
+
+Các thao tác mục tiêu:
+
+- Add Knowledge;
+- Upload File;
+- Create Note;
+- Edit;
+- Enable / Disable;
+- Delete;
+- Version History;
+- Assign to Agent;
+- Assign to Capability.
+
+Các định dạng ingest dự kiến ưu tiên gồm Markdown, text, PDF, DOCX và JSON khi phù hợp với parser/indexing pipeline.
+
+Knowledge dùng chung sẽ được **scope theo agent/capability**, không copy thành nhiều bản riêng. Ví dụ một `brand/foxtech` knowledge source có thể được Creative, Strategist, Performance hoặc CMO tái sử dụng tùy task và permission.
+
+---
+
+## Creative / Media generation architecture
+
+> **Target architecture / planned capability expansion.** Đây là workflow mục tiêu để biến kiến thức Marketing/Creative thành prompt và sau đó gọi model chuyên dụng. Nó không thay đổi nguyên tắc 5-agent cố định.
+
+LLM/Brain chịu trách nhiệm suy luận, lập kế hoạch và chọn capability. Model chuyên ảnh/video/audio chịu trách nhiệm render media thực tế.
+
+```text
+User Request
+    │
+    ▼
+Responsible Agent
+    │
+    ▼
+Intent / Capability Selection
+    │
+    ▼
+Knowledge Retriever
+    │
+    ├─ Marketing Knowledge
+    ├─ Content / Creative Knowledge
+    ├─ Platform Knowledge
+    ├─ Brand Knowledge
+    ├─ Product Knowledge
+    └─ Campaign Knowledge
+    │
+    ▼
+Creative / Content Planner
+    │
+    ▼
+Prompt Composer
+    │
+    ▼
+Capability Router
+    │
+    ▼
+Provider Selection
+    │
+    ▼
+Provider-specific Prompt Adapter
+    │
+    ▼
+Image / Video / Audio API
+    │
+    ▼
+Artifact Manager
+    │
+    ▼
+Quality Evaluator
+    │
+    └─ revise / retry when policy allows
+```
+
+Provider-specific prompting rules nên được lưu ngoài Brain, ví dụ theo hướng:
+
+```text
+knowledge/providers/
+├─ image-provider-a/
+│  └─ prompting.md
+├─ video-provider-a/
+│  └─ prompting.md
+├─ video-provider-b/
+│  └─ prompting.md
+└─ audio-provider-a/
+   └─ prompting.md
+```
+
+Không nên nhúng các nhánh kiểu `if provider == ...` vào Brain. Việc khác biệt giữa API, model capability, input schema, polling job, output artifact hoặc prompt convention nên nằm ở Provider Adapter / Prompt Adapter / Capability Layer.
+
+Các service hạ tầng mục tiêu cho media gồm:
+
+- **Capability Registry** — biết hệ thống hiện có thể làm gì;
+- **Provider Registry** — biết provider/model nào hỗ trợ capability nào;
+- **Capability Router** — chọn đường thực thi phù hợp;
+- **Adapter Layer** — chuẩn hóa API khác nhau;
+- **Credential Manager** — quản lý API key/secret an toàn;
+- **Media Artifact Manager** — quản lý ảnh/video/audio input-output và metadata;
+- **Job Manager** — theo dõi các API render bất đồng bộ;
+- **Fallback / Retry / Cost / Quota Policy** — quyết định khi nào đổi provider hoặc dừng an toàn.
+
+Brain không cần biết chi tiết provider fallback nếu hạ tầng có thể xử lý minh bạch. Brain chủ yếu cần: **xác định capability → lấy đúng knowledge → lập kế hoạch → gọi tool → đánh giá kết quả → tiếp tục workflow**.
 
 ---
 
@@ -177,6 +427,16 @@ Các tool có thể thay đổi theo quá trình hardening, vì vậy code và t
 Ứng dụng hiện có frontend bằng **React + TypeScript + Vite**, backend local bằng **Python**, cùng desktop shell **Tauri/Rust**.
 
 Mục tiêu UI là giữ trải nghiệm giống một AI workspace đơn giản: chat trước, các cấu hình nâng cao nằm trong Settings, và người dùng có thể quản lý model/provider mà không sửa code agent.
+
+Trong roadmap, Settings/management UI cũng được định hướng để quản lý:
+
+- LLM providers;
+- Image providers;
+- Video providers;
+- Audio providers;
+- API credentials;
+- per-capability primary/fallback provider;
+- Knowledge Manager và scope assignment.
 
 ---
 
@@ -260,6 +520,8 @@ Credential nên được lưu ở local secure storage / environment phù hợp 
 
 Các file như `.env`, private key, database runtime và log local đã được đưa vào `.gitignore`.
 
+> Image/video/audio provider configuration được mô tả ở phần target architecture phía trên và chỉ nên được coi là available khi code/test tại commit tương ứng xác nhận.
+
 ---
 
 ## Chạy test
@@ -300,7 +562,7 @@ AI-Marketing-Department/
 ├─ frontend/             # React / TypeScript UI
 ├─ governance/           # Safety, claim and approval governance
 ├─ integrations/models/  # Model adapters, gateway, registry, settings
-├─ knowledge/            # Knowledge system
+├─ knowledge/            # Knowledge system / future unified knowledge platform
 ├─ memory/               # Memory system
 ├─ runtime/              # Five-agent runtime / orchestration
 ├─ schemas/              # Typed domain contracts
@@ -310,6 +572,8 @@ AI-Marketing-Department/
 ├─ workspace/            # Business / project workspace scope
 └─ run_app.ps1           # Local Windows launcher
 ```
+
+Các module cụ thể cho media gateway, artifact/job management hoặc provider-specific prompt adapters có thể được bổ sung trong quá trình triển khai; README không giả định trước tên thư mục cuối cùng trước khi code được chốt.
 
 ---
 
@@ -323,7 +587,10 @@ Dự án đã có lượng code và test đáng kể, nhưng tôi vẫn đang ti
 - sửa regression;
 - cải thiện agent intelligence;
 - cải thiện memory/knowledge;
+- xây dần Unified Marketing Knowledge Platform;
 - hoàn thiện provider interoperability;
+- mở rộng capability routing cho image/video/audio/design;
+- phát triển workflow knowledge → planning → prompt → provider → artifact → evaluation;
 - cải thiện UI/UX;
 - thêm skills/plugins;
 - cải thiện khả năng research thực tế;
