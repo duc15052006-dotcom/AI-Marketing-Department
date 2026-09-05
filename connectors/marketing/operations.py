@@ -630,23 +630,30 @@ class ProviderOperationRepository:
         provider_n = _required_identifier("provider", provider).lower() if provider else None
         with self._lock:
             if self._conn is None:
-                records = [copy.deepcopy(self._verify(item)) for item in self._records.values()]
+                records = [
+                    copy.deepcopy(self._verify(item))
+                    for item in self._records.values()
+                    if item.business_id == business_n
+                    and item.project_id == project_n
+                    and item.brand_id == brand_n
+                    and (provider_n is None or item.provider == provider_n)
+                ]
             else:
                 try:
-                    rows = self._conn.execute(
-                        "SELECT * FROM provider_operations ORDER BY rowid"
-                    ).fetchall()
+                    query = (
+                        "SELECT * FROM provider_operations "
+                        "WHERE business_id = ? AND project_id IS ? AND brand_id IS ?"
+                    )
+                    params: List[Any] = [business_n, project_n, brand_n]
+                    if provider_n is not None:
+                        query += " AND provider = ?"
+                        params.append(provider_n)
+                    query += " ORDER BY rowid"
+                    rows = self._conn.execute(query, tuple(params)).fetchall()
                 except sqlite3.Error as exc:
                     raise ProviderOperationStoreError("PROVIDER_OPERATION_LIST_FAILED") from exc
                 records = [self._row_record(row) for row in rows]
-        return [
-            copy.deepcopy(item)
-            for item in records
-            if item.business_id == business_n
-            and item.project_id == project_n
-            and item.brand_id == brand_n
-            and (provider_n is None or item.provider == provider_n)
-        ]
+        return [copy.deepcopy(item) for item in records]
 
     def close(self) -> None:
         with self._lock:
