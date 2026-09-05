@@ -8,7 +8,15 @@ import unittest
 
 import brain.outcomes as outcomes
 from brain.contracts import BrainAgentId, GoalSpec, GoalStatus
-from brain.evidence import ClaimEvidenceAssessment, ClaimVerdict
+from brain.evidence import (
+    ClaimEvidenceAssessment,
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    EvidenceOrigin,
+    EvidenceRelation,
+    EvidenceSignal,
+    EvidenceStrength,
+)
 from brain.outcomes import (
     OutcomeVerdict,
     TrajectoryDisposition,
@@ -77,16 +85,60 @@ class BrainOutcomeIntelligenceV1Tests(unittest.TestCase):
             verdict=verdict,
             supporting_evidence_refs=list(supporting_refs),
             contradicting_evidence_refs=list(contradicting_refs),
-            reasons=["Evidence assessment supplied by the evidence intelligence layer."],
+            reasons=["Fixture intent; Outcome must recompute authority from raw evidence."],
+        )
+
+    @staticmethod
+    def _raw_request_from_fixture(
+        assessment: ClaimEvidenceAssessment,
+    ) -> ClaimEvidenceRequest:
+        signals = []
+        for index, evidence_id in enumerate(assessment.supporting_evidence_refs):
+            signals.append(
+                EvidenceSignal(
+                    evidence_id=evidence_id,
+                    goal_id=assessment.goal_id,
+                    claim_id=assessment.claim_id,
+                    source_id=f"SRC-S-{assessment.assessment_id}-{index}",
+                    relation=EvidenceRelation.SUPPORTS,
+                    strength=EvidenceStrength.STRONG,
+                    origin=EvidenceOrigin.OBSERVED,
+                )
+            )
+        for index, evidence_id in enumerate(assessment.contradicting_evidence_refs):
+            signals.append(
+                EvidenceSignal(
+                    evidence_id=evidence_id,
+                    goal_id=assessment.goal_id,
+                    claim_id=assessment.claim_id,
+                    source_id=f"SRC-X-{assessment.assessment_id}-{index}",
+                    relation=EvidenceRelation.CONTRADICTS,
+                    strength=EvidenceStrength.STRONG,
+                    origin=EvidenceOrigin.OBSERVED,
+                )
+            )
+        return ClaimEvidenceRequest(
+            assessment_id=assessment.assessment_id,
+            goal_id=assessment.goal_id,
+            claim_id=assessment.claim_id,
+            agent_id=assessment.agent_id,
+            evidence=signals,
         )
 
     @classmethod
     def _request(cls, assessments, **updates) -> TrajectoryEvaluationRequest:
+        fixture_assessments = list(assessments)
         values = {
             "evaluation_id": "TE-1",
             "goal": cls._goal(),
             "plan": cls._plan(),
-            "criterion_assessments": list(assessments),
+            # Fixture assessments describe test intent only. Raw requests below
+            # are the actual authority consumed by Outcome.
+            "criterion_assessments": [],
+            "criterion_evidence_requests": [
+                cls._raw_request_from_fixture(assessment)
+                for assessment in fixture_assessments
+            ],
         }
         values.update(updates)
         return TrajectoryEvaluationRequest(**values)

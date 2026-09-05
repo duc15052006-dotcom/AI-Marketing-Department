@@ -2,22 +2,33 @@
 
 Planning progress is not evidence of goal success. A plan may finish every step
 while the semantic goal remains unproven, contradicted, or contested. This
-module therefore evaluates GoalSpec.success_criteria against exact, already
-assessed evidence from ``brain.evidence`` and decides whether the cognitive
-trajectory should stop, continue, revise, or escalate.
+module therefore evaluates GoalSpec.success_criteria against raw semantic
+evidence from ``brain.evidence`` and decides whether the cognitive trajectory
+should stop, continue, revise, or escalate.
 
 This layer is semantic only. It never executes plans, dispatches tools, reads
 runtime receipts, selects providers/models, persists state, or mutates a goal or
 plan. Existing snapshots remain immutable inputs to an auditable evaluation.
+
+Core invariant: caller-constructed evidence assessments are audit material only.
+Autonomous goal success must be re-derived from the raw criterion evidence at
+the Outcome use boundary.
 """
 
 from __future__ import annotations
 
+import copy
 from enum import Enum
 from typing import Dict, List, Type, TypeVar
 
 from brain.contracts import GoalSpec
-from brain.evidence import ClaimEvidenceAssessment, ClaimVerdict
+from brain.evidence import (
+    ClaimEvidenceAssessment,
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    EvidenceSignal,
+    assess_claim_evidence,
+)
 from brain.planning import PlanSnapshot, PlanStatus, PlanStepState
 from schemas.base import BaseModel, Field, ValidationError
 
@@ -71,13 +82,51 @@ def _unique_text_list(value: object, field_name: str) -> List[str]:
     return result
 
 
+def _claim_evidence_request(value: object, field_name: str) -> ClaimEvidenceRequest:
+    if isinstance(value, ClaimEvidenceRequest):
+        return copy.deepcopy(value)
+    if not isinstance(value, dict):
+        raise ValidationError(
+            f"{field_name} must contain only ClaimEvidenceRequest objects"
+        )
+
+    data = copy.deepcopy(value)
+    raw_evidence = data.get("evidence", [])
+    if not isinstance(raw_evidence, list):
+        raise ValidationError(f"{field_name}.evidence must be a list")
+    normalized_evidence: List[EvidenceSignal] = []
+    for raw_signal in raw_evidence:
+        if isinstance(raw_signal, EvidenceSignal):
+            normalized_evidence.append(copy.deepcopy(raw_signal))
+        elif isinstance(raw_signal, dict):
+            normalized_evidence.append(EvidenceSignal(**raw_signal))
+        else:
+            raise ValidationError(
+                f"{field_name}.evidence must contain only EvidenceSignal objects"
+            )
+    data["evidence"] = normalized_evidence
+    return ClaimEvidenceRequest(**data)
+
+
+def _assessment_matches(
+    supplied: ClaimEvidenceAssessment, canonical: ClaimEvidenceAssessment
+) -> bool:
+    return supplied.model_dump() == canonical.model_dump()
+
+
 class TrajectoryEvaluationRequest(BaseModel):
-    """Exact semantic inputs for deciding whether one goal is actually met."""
+    """Exact semantic inputs for deciding whether one goal is actually met.
+
+    ``criterion_evidence_requests`` are authority-bearing raw evidence inputs.
+    ``criterion_assessments`` are optional audit snapshots and never substitute
+    for a matching raw request.
+    """
 
     evaluation_id: str
     goal: GoalSpec
     plan: PlanSnapshot
     criterion_assessments: List[ClaimEvidenceAssessment] = Field(default_factory=list)
+    criterion_evidence_requests: List[ClaimEvidenceRequest] = Field(default_factory=list)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -106,7 +155,7 @@ class TrajectoryEvaluationRequest(BaseModel):
             raise ValidationError(
                 "criterion_assessments must be a list of ClaimEvidenceAssessment objects"
             )
-        normalized: List[ClaimEvidenceAssessment] = []
+        normalized_assessments: List[ClaimEvidenceAssessment] = []
         seen_assessment_ids = set()
         for raw in self.criterion_assessments:
             if isinstance(raw, ClaimEvidenceAssessment):
@@ -122,8 +171,26 @@ class TrajectoryEvaluationRequest(BaseModel):
                     f"duplicate criterion assessment_id: {assessment.assessment_id}"
                 )
             seen_assessment_ids.add(assessment.assessment_id)
-            normalized.append(assessment)
-        self.criterion_assessments = normalized
+            normalized_assessments.append(assessment)
+        self.criterion_assessments = normalized_assessments
+
+        if not isinstance(self.criterion_evidence_requests, list):
+            raise ValidationError(
+                "criterion_evidence_requests must be a list of ClaimEvidenceRequest objects"
+            )
+        normalized_requests: List[ClaimEvidenceRequest] = []
+        seen_request_ids = set()
+        for raw in self.criterion_evidence_requests:
+            evidence_request = _claim_evidence_request(
+                raw, "criterion_evidence_requests"
+            )
+            if evidence_request.assessment_id in seen_request_ids:
+                raise ValidationError(
+                    f"duplicate criterion evidence assessment_id: {evidence_request.assessment_id}"
+                )
+            seen_request_ids.add(evidence_request.assessment_id)
+            normalized_requests.append(evidence_request)
+        self.criterion_evidence_requests = normalized_requests
 
 
 class TrajectoryEvaluation(BaseModel):
@@ -182,12 +249,11 @@ class TrajectoryEvaluation(BaseModel):
 def evaluate_trajectory(request: TrajectoryEvaluationRequest) -> TrajectoryEvaluation:
     """Evaluate actual goal success independently from plan/task completion.
 
-    ``ClaimEvidenceAssessment`` is reused as the evidence authority rather than
-    inventing a second evidence system. Its ``claim_id`` must exactly equal one
-    declared success criterion and its ``goal_id`` must exactly equal the goal.
-    Multiple assessments for the same criterion are treated as ambiguous here;
-    callers must resolve them through evidence/collaboration intelligence rather
-    than cherry-picking the most convenient verdict.
+    Raw ``ClaimEvidenceRequest`` objects are the evidence authority. Each one is
+    re-evaluated canonically at this use boundary. Optional supplied assessments
+    are only accepted as audit snapshots when they exactly equal the canonical
+    result for the same assessment ID. Multiple raw assessments for one criterion
+    remain ambiguous rather than allowing callers to cherry-pick a verdict.
     """
 
     if not isinstance(request, TrajectoryEvaluationRequest):
@@ -216,21 +282,38 @@ def evaluate_trajectory(request: TrajectoryEvaluationRequest) -> TrajectoryEvalu
         criterion: [] for criterion in criteria
     }
     criterion_set = set(criteria)
+    canonical_by_assessment_id: Dict[str, ClaimEvidenceAssessment] = {}
+
+    for evidence_request in request.criterion_evidence_requests:
+        if evidence_request.goal_id != goal.goal_id:
+            ignored_assessment_ids.append(evidence_request.assessment_id)
+            reasons.append(
+                f"raw evidence {evidence_request.assessment_id} ignored: goal_id does not match the evaluated goal"
+            )
+            continue
+        if evidence_request.claim_id not in criterion_set:
+            ignored_assessment_ids.append(evidence_request.assessment_id)
+            reasons.append(
+                f"raw evidence {evidence_request.assessment_id} ignored: claim_id is not an exact declared success criterion"
+            )
+            continue
+
+        canonical = assess_claim_evidence(evidence_request)
+        canonical_by_assessment_id[evidence_request.assessment_id] = canonical
+        grouped[evidence_request.claim_id].append(canonical)
 
     for assessment in request.criterion_assessments:
-        if assessment.goal_id != goal.goal_id:
+        canonical = canonical_by_assessment_id.get(assessment.assessment_id)
+        if canonical is None:
             ignored_assessment_ids.append(assessment.assessment_id)
             reasons.append(
-                f"assessment {assessment.assessment_id} ignored: goal_id does not match the evaluated goal"
+                f"assessment {assessment.assessment_id} ignored: no matching raw criterion evidence request exists"
             )
             continue
-        if assessment.claim_id not in criterion_set:
-            ignored_assessment_ids.append(assessment.assessment_id)
-            reasons.append(
-                f"assessment {assessment.assessment_id} ignored: claim_id is not an exact declared success criterion"
+        if not _assessment_matches(assessment, canonical):
+            raise ValidationError(
+                f"criterion assessment {assessment.assessment_id} must exactly match canonical raw evidence evaluation"
             )
-            continue
-        grouped[assessment.claim_id].append(assessment)
 
     supported: List[str] = []
     refuted: List[str] = []
@@ -252,7 +335,7 @@ def evaluate_trajectory(request: TrajectoryEvaluationRequest) -> TrajectoryEvalu
                 assessment.assessment_id for assessment in assessments
             )
             reasons.append(
-                f"success criterion ambiguous: multiple assessments exist for exact criterion '{criterion}'"
+                f"success criterion ambiguous: multiple canonical raw evidence assessments exist for exact criterion '{criterion}'"
             )
             continue
 
@@ -283,7 +366,7 @@ def evaluate_trajectory(request: TrajectoryEvaluationRequest) -> TrajectoryEvalu
                 )
         else:
             unresolved.append(criterion)
-            reasons.append(f"success criterion has insufficient evidence: {criterion}")
+            reasons.append(f"success criterion has insufficient raw evidence: {criterion}")
 
     # Contradiction outranks ordinary refutation because it explicitly requires
     # unresolved competing evidence to be surfaced rather than silently revised.
@@ -297,7 +380,7 @@ def evaluate_trajectory(request: TrajectoryEvaluationRequest) -> TrajectoryEvalu
         outcome_verdict = OutcomeVerdict.REFUTED
         disposition = TrajectoryDisposition.REVISE
         reasons.append(
-            "at least one success criterion is evidence-backed REFUTED; the trajectory requires revision"
+            "at least one success criterion is canonically evidence-backed REFUTED; the trajectory requires revision"
         )
     elif unresolved:
         outcome_verdict = OutcomeVerdict.INCONCLUSIVE
@@ -323,7 +406,7 @@ def evaluate_trajectory(request: TrajectoryEvaluationRequest) -> TrajectoryEvalu
         outcome_verdict = OutcomeVerdict.SATISFIED
         disposition = TrajectoryDisposition.STOP
         reasons.append(
-            "every declared success criterion has an exact evidence-backed SUPPORTED assessment"
+            "every declared success criterion has a canonical raw-evidence-backed SUPPORTED assessment"
         )
 
     return TrajectoryEvaluation(
