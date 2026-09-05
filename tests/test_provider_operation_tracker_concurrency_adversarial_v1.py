@@ -44,15 +44,8 @@ class ProviderOperationCrossInstanceConcurrencyAdversarialV1Tests(unittest.TestC
                 business_id="BUS-1",
                 project_id="PROJ-1",
                 brand_id="BRAND-1",
-                provider_status="PROCESSING_UPLOAD",
+                provider_status="SUBMITTED",
             )
-            repo_a.record_status(
-                record.operation_id,
-                state=ProviderOperationState.PROCESSING,
-                provider_status="PROCESSING_UPLOAD",
-            )
-            # Reset the call counter because the setup transition performs two reads.
-            repo_a._get_calls = 0
             repo_b = _SecondReadBarrierRepository(database_path, barrier)
 
             errors: list[BaseException] = []
