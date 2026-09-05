@@ -1,12 +1,13 @@
 """Provider-neutral decision authorization policy for the Brain layer.
 
 A ``DecisionRecord`` is a proposal made by an agent, not authority to proceed.
-This module evaluates that proposal against exact raw evidence lineage, canonical
-decision-risk provenance, and (when risk warrants it) independent peer review.
+This module evaluates that proposal against exact raw evidence lineage, submitted
+semantic risk observations, and independent peer review when authorizing PROCEED.
 
-Caller-supplied evidence and reasoning assessments are audit material only.
-Autonomous authorization is derived again from authority-bearing raw inputs so
-fabricated semantic summaries cannot grant ``PROCEED`` authority.
+Caller-supplied reasoning and decision-risk data are cognitive/audit inputs, not
+local authorization authority. They may increase scrutiny, but they cannot lower
+the peer-review floor. A future trusted local policy boundary may explicitly add
+such authority; arbitrary source labels must never create it implicitly.
 
 It intentionally owns no runtime execution, tools, providers, connectors,
 approvals, persistence, or goal-completion authority.
@@ -120,11 +121,11 @@ def _assessment_signature(assessment: ClaimEvidenceAssessment) -> tuple:
 
 
 class DecisionRiskSignal(BaseModel):
-    """One authority-bearing raw risk observation for decision authorization.
+    """One caller-supplied semantic risk observation bound to a goal and agent.
 
-    The signal retains source identity and exact goal/agent binding. Multiple raw
-    signals are aggregated conservatively; a low-risk summary cannot erase a
-    stronger source signal.
+    Multiple submitted observations are aggregated conservatively so a weaker
+    summary cannot erase a stronger signal. The observation remains advisory:
+    ``source_id`` is provenance metadata, not proof of trusted local authority.
     """
 
     signal_id: str
@@ -149,7 +150,7 @@ class DecisionRiskSignal(BaseModel):
 
 
 class DecisionRiskRequest(BaseModel):
-    """Raw provenance used to derive the risk fields that can waive peer review."""
+    """Submitted risk observations for conservative aggregation and audit."""
 
     assessment_id: str
     goal_id: str
@@ -163,7 +164,7 @@ class DecisionRiskRequest(BaseModel):
         self.agent_id = _brain_agent(self.agent_id, "agent_id")
         if not isinstance(self.signals, list) or not self.signals:
             raise ValidationError(
-                "signals must contain at least one authority-bearing decision risk signal"
+                "signals must contain at least one decision risk signal"
             )
 
         normalized: List[DecisionRiskSignal] = []
@@ -195,7 +196,7 @@ class DecisionRiskRequest(BaseModel):
 
 
 class DecisionRiskAssessment(BaseModel):
-    """Canonical risk summary derived only from raw DecisionRiskSignal lineage."""
+    """Conservative aggregate of submitted DecisionRiskSignal observations."""
 
     assessment_id: str
     goal_id: str
@@ -217,11 +218,11 @@ class DecisionRiskAssessment(BaseModel):
         self.reversibility = _reversibility(self.reversibility, "reversibility")
         self.source_ids = _unique_text_list(self.source_ids, "source_ids")
         if not self.source_ids:
-            raise ValidationError("source_ids must retain raw decision risk provenance")
+            raise ValidationError("source_ids must retain decision risk provenance")
 
 
 def assess_decision_risk(request: DecisionRiskRequest) -> DecisionRiskAssessment:
-    """Aggregate raw risk signals monotonically using the most conservative value."""
+    """Aggregate submitted risk signals monotonically using the worst value."""
 
     if not isinstance(request, DecisionRiskRequest):
         raise ValidationError("request must be a DecisionRiskRequest")
@@ -281,11 +282,11 @@ def _risk_signature(assessment: DecisionRiskAssessment) -> tuple:
 class DecisionEvaluationRequest(BaseModel):
     """Exact semantic inputs required to authorize one proposed decision.
 
-    ``evidence_request`` is authority-bearing raw evidence. ``risk_request`` is
-    authority-bearing raw provenance for the consequence/conflict/reversibility
-    fields that can waive independent peer review. ``evidence_assessment`` and
-    ``reasoning_assessment`` are audit/cognitive summaries only and must match
-    canonical recomputation whenever their corresponding raw provenance exists.
+    ``evidence_request`` is the raw evidence input evaluated by the canonical
+    evidence policy. ``risk_request`` is caller-supplied semantic risk telemetry:
+    it is aggregated conservatively and must match the reasoning summary, but it
+    cannot waive the local peer-review floor. ``evidence_assessment`` and
+    ``reasoning_assessment`` remain audit/cognitive summaries.
     """
 
     evaluation_id: str
@@ -343,12 +344,12 @@ class DecisionEvaluationRequest(BaseModel):
                 raise ValidationError(
                     "risk_request agent_id must match the decision owner"
                 )
-            authoritative_risk = assess_decision_risk(self.risk_request)
+            aggregated_risk = assess_decision_risk(self.risk_request)
             if _reasoning_risk_signature(
                 self.reasoning_assessment
-            ) != _risk_signature(authoritative_risk):
+            ) != _risk_signature(aggregated_risk):
                 raise ValidationError(
-                    "reasoning_assessment risk fields must exactly match the canonical assessment recomputed from risk_request"
+                    "reasoning_assessment risk fields must exactly match the conservative aggregate recomputed from risk_request"
                 )
 
         if self.evidence_request is not None:
@@ -493,9 +494,10 @@ def _peer_review_required(assessment: DecisionRiskAssessment) -> bool:
 def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
     """Conservatively authorize one semantic decision proposal.
 
-    Confidence never grants authority. Primary evidence and the risk fields that
-    can waive peer review are recomputed from raw provenance. Missing decision
-    risk provenance fails closed to peer review. Conservative dispositions are
+    Confidence never grants authority. Primary evidence is recomputed from its
+    submitted raw lineage. Caller-supplied semantic risk may raise scrutiny, but
+    it cannot waive independent peer review because no trusted local risk-policy
+    authority is wired into this boundary yet. Conservative dispositions are
     respected, while ``STOP`` is escalated because Outcome Intelligence owns
     proof of goal completion.
     """
@@ -540,14 +542,25 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
             risk
         ):
             raise ValidationError(
-                "reasoning_assessment no longer matches canonical decision risk provenance"
+                "reasoning_assessment no longer matches the conservative submitted decision risk aggregate"
             )
 
-    peer_required = True if risk is None else _peer_review_required(risk)
+    # The request boundary is caller-controlled. Until a separately trusted local
+    # risk-policy authority is wired here, submitted LOW/REVERSIBLE values cannot
+    # lower the authorization floor. They may only confirm or increase scrutiny.
+    peer_required = True
     reasons: List[str] = []
     if risk is None:
         reasons.append(
-            "No authority-bearing decision risk provenance was supplied; peer review is required fail closed."
+            "No decision risk observations were supplied; independent peer review is required fail closed."
+        )
+    elif _peer_review_required(risk):
+        reasons.append(
+            "Submitted decision risk observations require independent peer review."
+        )
+    else:
+        reasons.append(
+            "Caller-supplied LOW decision risk has no authority to lower the local independent peer-review floor."
         )
 
     supporting_refs = (
@@ -629,17 +642,11 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
             "DecisionRecord did not retain any verified supporting evidence lineage.",
         )
 
-    if not peer_required:
-        return result(
-            DecisionDisposition.PROCEED,
-            "Canonical supporting evidence is retained and canonical decision risk provenance does not require independent peer review.",
-        )
-
     collaboration = request.collaboration_assessment
     if collaboration is None:
         return result(
             DecisionDisposition.ESCALATE,
-            "Canonical decision risk or missing risk provenance requires independent peer review before PROCEED.",
+            "Local authorization policy requires independent peer review before PROCEED; caller-supplied risk cannot waive that requirement.",
         )
 
     if collaboration.proposal_verdict != evidence.verdict or set(
