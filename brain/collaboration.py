@@ -9,7 +9,7 @@ Core invariants:
 - peer agreement never upgrades a proposal whose own evidence verdict is weak;
 - self-review never counts as independent review;
 - reviews are bound to one exact goal and proposal;
-- duplicate reviewer identities cannot manufacture quorum;
+- duplicate reviewer identities cannot manufacture quorum or erase dissent;
 - contradictions and refutations are preserved rather than averaged away;
 - exactly five permanent Brain agents remain authoritative.
 """
@@ -283,6 +283,11 @@ def evaluate_collaboration(
     elif not assessment.proposal_evidence_refs:
         reasons.append(
             "SUPPORTED proposal did not retain evidence references and therefore fails closed"
+        )
+        disposition = CollaborationDisposition.INCONCLUSIVE
+    elif duplicated_reviewers:
+        reasons.append(
+            "duplicate reviewer identity makes peer evidence ambiguous; acceptance is blocked until duplicate reviews are resolved"
         )
         disposition = CollaborationDisposition.INCONCLUSIVE
     elif evidence_backed_refutations:
