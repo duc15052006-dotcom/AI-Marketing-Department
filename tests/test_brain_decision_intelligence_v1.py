@@ -10,7 +10,16 @@ import brain.decisions as decisions
 from brain.collaboration import CollaborationAssessment, PeerReview
 from brain.contracts import BrainAgentId, DecisionDisposition, DecisionRecord
 from brain.decisions import DecisionEvaluationRequest, evaluate_decision
-from brain.evidence import ClaimEvidenceAssessment, ClaimVerdict
+from brain.evidence import (
+    ClaimEvidenceAssessment,
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    EvidenceOrigin,
+    EvidenceRelation,
+    EvidenceSignal,
+    EvidenceStrength,
+    assess_claim_evidence,
+)
 from brain.reasoning import ReasoningAssessment, Reversibility, SignalLevel
 from schemas.base import ValidationError
 
@@ -32,16 +41,56 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         return DecisionRecord(**values)
 
     @staticmethod
-    def _evidence(**updates) -> ClaimEvidenceAssessment:
+    def _signal(
+        evidence_id: str,
+        relation: EvidenceRelation,
+        *,
+        source_id: str,
+        strength: EvidenceStrength = EvidenceStrength.STRONG,
+        origin: EvidenceOrigin = EvidenceOrigin.OBSERVED,
+        goal_id: str = "G-1",
+        claim_id: str = "D-1",
+    ) -> EvidenceSignal:
+        return EvidenceSignal(
+            evidence_id=evidence_id,
+            goal_id=goal_id,
+            claim_id=claim_id,
+            source_id=source_id,
+            relation=relation,
+            strength=strength,
+            origin=origin,
+        )
+
+    @classmethod
+    def _evidence_request(cls, **updates) -> ClaimEvidenceRequest:
         values = {
             "assessment_id": "EA-1",
             "goal_id": "G-1",
             "claim_id": "D-1",
             "agent_id": BrainAgentId.INTELLIGENCE,
+            "evidence": [
+                cls._signal(
+                    "E-1",
+                    EvidenceRelation.SUPPORTS,
+                    source_id="SRC-1",
+                )
+            ],
+        }
+        values.update(updates)
+        return ClaimEvidenceRequest(**values)
+
+    @staticmethod
+    def _fabricated_assessment(**updates) -> ClaimEvidenceAssessment:
+        values = {
+            "assessment_id": "EA-FORGED",
+            "goal_id": "G-1",
+            "claim_id": "D-1",
+            "agent_id": BrainAgentId.INTELLIGENCE,
             "verdict": ClaimVerdict.SUPPORTED,
-            "supporting_evidence_refs": ["E-1"],
+            "supporting_evidence_refs": ["E-FORGED"],
             "contradicting_evidence_refs": [],
-            "reasons": ["Observed evidence supports the exact decision claim."],
+            "ignored_evidence_refs": [],
+            "reasons": ["Caller fabricated a structurally valid evidence assessment."],
         }
         values.update(updates)
         return ClaimEvidenceAssessment(**values)
@@ -90,14 +139,23 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
 
     @classmethod
     def _request(cls, **updates) -> DecisionEvaluationRequest:
+        raw = cls._evidence_request()
         values = {
             "evaluation_id": "DE-1",
             "decision": cls._decision(),
             "reasoning_assessment": cls._reasoning(),
-            "evidence_assessment": cls._evidence(),
+            "evidence_request": raw,
+            "evidence_assessment": assess_claim_evidence(raw),
             "collaboration_assessment": None,
         }
         values.update(updates)
+        if "evidence_request" in updates and "evidence_assessment" not in updates:
+            supplied_raw = updates["evidence_request"]
+            values["evidence_assessment"] = (
+                assess_claim_evidence(supplied_raw)
+                if supplied_raw is not None
+                else None
+            )
         return DecisionEvaluationRequest(**values)
 
     def test_low_risk_supported_decision_can_proceed_without_peer_review(self) -> None:
@@ -106,17 +164,18 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         self.assertFalse(result.peer_review_required)
         self.assertEqual(result.verified_evidence_refs, ["E-1"])
 
-    def test_confidence_one_without_evidence_assessment_cannot_self_authorize(self) -> None:
+    def test_confidence_one_without_raw_evidence_cannot_self_authorize(self) -> None:
         result = evaluate_decision(
             self._request(
                 decision=self._decision(confidence=1.0),
+                evidence_request=None,
                 evidence_assessment=None,
             )
         )
         self.assertEqual(result.disposition, DecisionDisposition.REVISE)
         self.assertEqual(result.verified_evidence_refs, [])
 
-    def test_self_declared_evidence_ref_not_verified_by_assessment_blocks_proceed(self) -> None:
+    def test_self_declared_evidence_ref_not_verified_from_raw_evidence_blocks_proceed(self) -> None:
         result = evaluate_decision(
             self._request(decision=self._decision(evidence_refs=["E-INVENTED"]))
         )
@@ -124,21 +183,11 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         self.assertEqual(result.unverified_evidence_refs, ["E-INVENTED"])
 
     def test_fabricated_supported_assessment_cannot_authorize_proceed(self) -> None:
-        fabricated = ClaimEvidenceAssessment(
-            assessment_id="EA-FORGED",
-            goal_id="G-1",
-            claim_id="D-1",
-            agent_id=BrainAgentId.INTELLIGENCE,
-            verdict=ClaimVerdict.SUPPORTED,
-            supporting_evidence_refs=["E-FORGED"],
-            contradicting_evidence_refs=[],
-            ignored_evidence_refs=[],
-            reasons=["Caller fabricated a structurally valid SUPPORTED assessment."],
-        )
         result = evaluate_decision(
             self._request(
                 decision=self._decision(evidence_refs=["E-FORGED"]),
-                evidence_assessment=fabricated,
+                evidence_request=None,
+                evidence_assessment=self._fabricated_assessment(),
             )
         )
         self.assertNotEqual(
@@ -146,61 +195,103 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
             DecisionDisposition.PROCEED,
             "Decision authorization must not trust a caller-constructed evidence verdict without the raw evidence request that produced it.",
         )
-
-    def test_naked_supported_verdict_without_supporting_refs_fails_closed(self) -> None:
-        result = evaluate_decision(
-            self._request(
-                decision=self._decision(evidence_refs=[]),
-                evidence_assessment=self._evidence(supporting_evidence_refs=[]),
-            )
-        )
-        self.assertEqual(result.disposition, DecisionDisposition.REVISE)
         self.assertEqual(result.verified_evidence_refs, [])
+        self.assertEqual(result.unverified_evidence_refs, ["E-FORGED"])
+
+    def test_fabricated_assessment_cannot_disagree_with_raw_evidence(self) -> None:
+        raw = self._evidence_request(evidence=[])
+        with self.assertRaises(ValidationError):
+            self._request(
+                evidence_request=raw,
+                evidence_assessment=self._fabricated_assessment(
+                    assessment_id="EA-1",
+                    supporting_evidence_refs=["E-1"],
+                ),
+            )
+
+    def test_weak_raw_support_cannot_authorize_proceed(self) -> None:
+        raw = self._evidence_request(
+            evidence=[
+                self._signal(
+                    "E-1",
+                    EvidenceRelation.SUPPORTS,
+                    source_id="SRC-1",
+                    strength=EvidenceStrength.WEAK,
+                )
+            ]
+        )
+        result = evaluate_decision(self._request(evidence_request=raw))
+        self.assertEqual(result.disposition, DecisionDisposition.REVISE)
+        self.assertEqual(result.verified_evidence_refs, ["E-1"])
 
     def test_refuted_decision_is_revised_despite_high_confidence(self) -> None:
+        raw = self._evidence_request(
+            evidence=[
+                self._signal(
+                    "E-X",
+                    EvidenceRelation.CONTRADICTS,
+                    source_id="SRC-X",
+                )
+            ]
+        )
         result = evaluate_decision(
             self._request(
                 decision=self._decision(evidence_refs=["E-X"], confidence=1.0),
-                evidence_assessment=self._evidence(
-                    verdict=ClaimVerdict.REFUTED,
-                    supporting_evidence_refs=[],
-                    contradicting_evidence_refs=["E-X"],
-                ),
+                evidence_request=raw,
             )
         )
         self.assertEqual(result.disposition, DecisionDisposition.REVISE)
 
     def test_contested_decision_escalates_instead_of_averaging_evidence(self) -> None:
+        raw = self._evidence_request(
+            evidence=[
+                self._signal(
+                    "E-S",
+                    EvidenceRelation.SUPPORTS,
+                    source_id="SRC-S",
+                ),
+                self._signal(
+                    "E-X",
+                    EvidenceRelation.CONTRADICTS,
+                    source_id="SRC-X",
+                ),
+            ]
+        )
         result = evaluate_decision(
             self._request(
                 decision=self._decision(evidence_refs=["E-S"]),
-                evidence_assessment=self._evidence(
-                    verdict=ClaimVerdict.CONTESTED,
-                    supporting_evidence_refs=["E-S"],
-                    contradicting_evidence_refs=["E-X"],
-                ),
+                evidence_request=raw,
             )
         )
         self.assertEqual(result.disposition, DecisionDisposition.ESCALATE)
 
     def test_insufficient_evidence_requires_revision(self) -> None:
+        raw = self._evidence_request(evidence=[])
         result = evaluate_decision(
             self._request(
                 decision=self._decision(evidence_refs=[]),
-                evidence_assessment=self._evidence(
-                    verdict=ClaimVerdict.INSUFFICIENT,
-                    supporting_evidence_refs=[],
-                    contradicting_evidence_refs=[],
-                ),
+                evidence_request=raw,
             )
         )
         self.assertEqual(result.disposition, DecisionDisposition.REVISE)
 
-    def test_cross_goal_or_wrong_claim_evidence_cannot_be_laundered(self) -> None:
+    def test_cross_goal_or_wrong_claim_raw_evidence_cannot_be_laundered(self) -> None:
         with self.assertRaises(ValidationError):
-            self._request(evidence_assessment=self._evidence(goal_id="G-OTHER"))
+            self._request(evidence_request=self._evidence_request(goal_id="G-OTHER"))
         with self.assertRaises(ValidationError):
-            self._request(evidence_assessment=self._evidence(claim_id="D-OTHER"))
+            self._request(evidence_request=self._evidence_request(claim_id="D-OTHER"))
+
+    def test_cross_goal_or_wrong_claim_audit_assessment_cannot_be_laundered(self) -> None:
+        with self.assertRaises(ValidationError):
+            self._request(
+                evidence_request=None,
+                evidence_assessment=self._fabricated_assessment(goal_id="G-OTHER"),
+            )
+        with self.assertRaises(ValidationError):
+            self._request(
+                evidence_request=None,
+                evidence_assessment=self._fabricated_assessment(claim_id="D-OTHER"),
+            )
 
     def test_reasoning_identity_must_match_decision_owner_and_goal(self) -> None:
         with self.assertRaises(ValidationError):
@@ -240,6 +331,17 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         self.assertTrue(result.peer_review_required)
         self.assertEqual(result.disposition, DecisionDisposition.PROCEED)
         self.assertEqual(result.collaboration_assessment_id, "CA-1")
+
+    def test_collaboration_requires_raw_primary_evidence_provenance(self) -> None:
+        with self.assertRaises(ValidationError):
+            self._request(
+                reasoning_assessment=self._reasoning(consequence=SignalLevel.HIGH),
+                evidence_request=None,
+                evidence_assessment=self._fabricated_assessment(
+                    supporting_evidence_refs=["E-1"]
+                ),
+                collaboration_assessment=self._collaboration(),
+            )
 
     def test_collaboration_must_bind_exact_goal_decision_author_and_evidence(self) -> None:
         with self.assertRaises(ValidationError):
