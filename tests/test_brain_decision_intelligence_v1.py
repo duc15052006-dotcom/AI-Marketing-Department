@@ -123,6 +123,30 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         self.assertEqual(result.disposition, DecisionDisposition.REVISE)
         self.assertEqual(result.unverified_evidence_refs, ["E-INVENTED"])
 
+    def test_fabricated_supported_assessment_cannot_authorize_proceed(self) -> None:
+        fabricated = ClaimEvidenceAssessment(
+            assessment_id="EA-FORGED",
+            goal_id="G-1",
+            claim_id="D-1",
+            agent_id=BrainAgentId.INTELLIGENCE,
+            verdict=ClaimVerdict.SUPPORTED,
+            supporting_evidence_refs=["E-FORGED"],
+            contradicting_evidence_refs=[],
+            ignored_evidence_refs=[],
+            reasons=["Caller fabricated a structurally valid SUPPORTED assessment."],
+        )
+        result = evaluate_decision(
+            self._request(
+                decision=self._decision(evidence_refs=["E-FORGED"]),
+                evidence_assessment=fabricated,
+            )
+        )
+        self.assertNotEqual(
+            result.disposition,
+            DecisionDisposition.PROCEED,
+            "Decision authorization must not trust a caller-constructed evidence verdict without the raw evidence request that produced it.",
+        )
+
     def test_naked_supported_verdict_without_supporting_refs_fails_closed(self) -> None:
         result = evaluate_decision(
             self._request(
