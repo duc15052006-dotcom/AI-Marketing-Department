@@ -303,7 +303,9 @@ class ToolGateway:
                 return self.receipt_repository.save_receipt(receipt)
 
         # 5. Execute Invocation with Side-Effect-Safe Timeout & Retries
-        timeout = request.timeout_seconds or cap.timeout_policy
+        timeout = cap.timeout_policy
+        if request.timeout_seconds is not None:
+            timeout = min(request.timeout_seconds, cap.timeout_policy)
         max_retries = max(0, int(cap.retry_policy.get("max_retries", 0) or 0))
         retryable_errors = set(cap.retry_policy.get("retryable_errors", []))
         try:
