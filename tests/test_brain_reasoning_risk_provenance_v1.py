@@ -129,13 +129,25 @@ class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
             "canonical evidence must not combine with self-attested LOW risk to self-authorize PROCEED",
         )
 
-    def test_canonical_low_risk_provenance_can_waive_peer_review(self) -> None:
+    def test_caller_fabricated_low_risk_signal_cannot_waive_peer_review(self) -> None:
+        """A caller-controlled source label is not local authorization authority."""
+
+        attacker_risk = self._risk_request(
+            [self._risk_signal(source_id="ATTACKER-CONTROLLED")]
+        )
         result = evaluate_decision(
-            self._request(self._reasoning(), risk_request=self._risk_request())
+            self._request(self._reasoning(), risk_request=attacker_risk)
         )
 
-        self.assertFalse(result.peer_review_required)
-        self.assertEqual(result.disposition, DecisionDisposition.PROCEED)
+        self.assertTrue(
+            result.peer_review_required,
+            "caller-fabricated raw LOW risk must not lower the local peer-review floor",
+        )
+        self.assertNotEqual(
+            result.disposition,
+            DecisionDisposition.PROCEED,
+            "an arbitrary source_id must not become authority to self-authorize PROCEED",
+        )
 
     def test_raw_high_risk_cannot_be_downgraded_by_low_reasoning_summary(self) -> None:
         raw_high = self._risk_request(
