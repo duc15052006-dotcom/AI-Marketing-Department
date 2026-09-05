@@ -1,11 +1,17 @@
-"""RED-only adversarial regression for Brain reasoning/risk provenance."""
+"""Adversarial regression for Brain reasoning/risk provenance."""
 
 from __future__ import annotations
 
 import unittest
 
 from brain.contracts import BrainAgentId, DecisionDisposition, DecisionRecord
-from brain.decisions import DecisionEvaluationRequest, evaluate_decision
+from brain.decisions import (
+    DecisionEvaluationRequest,
+    DecisionRiskRequest,
+    DecisionRiskSignal,
+    assess_decision_risk,
+    evaluate_decision,
+)
 from brain.evidence import (
     ClaimEvidenceRequest,
     EvidenceOrigin,
@@ -14,6 +20,7 @@ from brain.evidence import (
     EvidenceStrength,
 )
 from brain.reasoning import ReasoningAssessment, Reversibility, SignalLevel
+from schemas.base import ValidationError
 
 
 class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
@@ -67,19 +74,48 @@ class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
         values.update(updates)
         return ReasoningAssessment(**values)
 
+    @staticmethod
+    def _risk_signal(**updates) -> DecisionRiskSignal:
+        values = {
+            "signal_id": "RS-RISK-1",
+            "goal_id": "G-RISK-1",
+            "agent_id": BrainAgentId.STRATEGIST,
+            "source_id": "POLICY-RISK-1",
+            "consequence": SignalLevel.LOW,
+            "evidence_conflict": SignalLevel.LOW,
+            "reversibility": Reversibility.REVERSIBLE,
+        }
+        values.update(updates)
+        return DecisionRiskSignal(**values)
+
     @classmethod
-    def _request(cls, reasoning: ReasoningAssessment) -> DecisionEvaluationRequest:
+    def _risk_request(cls, signals=None) -> DecisionRiskRequest:
+        return DecisionRiskRequest(
+            assessment_id="RA-RISK-1",
+            goal_id="G-RISK-1",
+            agent_id=BrainAgentId.STRATEGIST,
+            signals=list(signals) if signals is not None else [cls._risk_signal()],
+        )
+
+    @classmethod
+    def _request(
+        cls,
+        reasoning: ReasoningAssessment,
+        *,
+        risk_request: DecisionRiskRequest | None = None,
+    ) -> DecisionEvaluationRequest:
         return DecisionEvaluationRequest(
             evaluation_id="DE-RISK-1",
             decision=cls._decision(),
             reasoning_assessment=reasoning,
+            risk_request=risk_request,
             evidence_request=cls._evidence_request(),
             evidence_assessment=None,
             collaboration_assessment=None,
         )
 
     def test_self_attested_low_risk_cannot_waive_peer_review_authority(self) -> None:
-        """Caller-authored LOW risk must not be authority to skip independent review."""
+        """Caller-authored LOW risk without raw provenance must fail closed."""
 
         result = evaluate_decision(self._request(self._reasoning()))
 
@@ -93,11 +129,52 @@ class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
             "canonical evidence must not combine with self-attested LOW risk to self-authorize PROCEED",
         )
 
-    def test_high_risk_self_attestation_is_already_conservative(self) -> None:
-        """Control: the existing policy already blocks an explicitly HIGH consequence."""
-
+    def test_canonical_low_risk_provenance_can_waive_peer_review(self) -> None:
         result = evaluate_decision(
-            self._request(self._reasoning(consequence=SignalLevel.HIGH))
+            self._request(self._reasoning(), risk_request=self._risk_request())
+        )
+
+        self.assertFalse(result.peer_review_required)
+        self.assertEqual(result.disposition, DecisionDisposition.PROCEED)
+
+    def test_raw_high_risk_cannot_be_downgraded_by_low_reasoning_summary(self) -> None:
+        raw_high = self._risk_request(
+            [self._risk_signal(consequence=SignalLevel.HIGH)]
+        )
+
+        with self.assertRaises(ValidationError):
+            self._request(self._reasoning(consequence=SignalLevel.LOW), risk_request=raw_high)
+
+    def test_multiple_raw_risk_signals_aggregate_worst_case_monotonically(self) -> None:
+        request = self._risk_request(
+            [
+                self._risk_signal(signal_id="RS-LOW", source_id="POLICY-LOW"),
+                self._risk_signal(
+                    signal_id="RS-HIGH",
+                    source_id="POLICY-HIGH",
+                    consequence=SignalLevel.HIGH,
+                    evidence_conflict=SignalLevel.CRITICAL,
+                    reversibility=Reversibility.IRREVERSIBLE,
+                ),
+            ]
+        )
+
+        assessment = assess_decision_risk(request)
+
+        self.assertEqual(assessment.consequence, SignalLevel.HIGH)
+        self.assertEqual(assessment.evidence_conflict, SignalLevel.CRITICAL)
+        self.assertEqual(assessment.reversibility, Reversibility.IRREVERSIBLE)
+        self.assertEqual(assessment.source_ids, ["POLICY-LOW", "POLICY-HIGH"])
+
+    def test_canonical_high_risk_requires_independent_peer_review(self) -> None:
+        raw_high = self._risk_request(
+            [self._risk_signal(consequence=SignalLevel.HIGH)]
+        )
+        result = evaluate_decision(
+            self._request(
+                self._reasoning(consequence=SignalLevel.HIGH),
+                risk_request=raw_high,
+            )
         )
 
         self.assertTrue(result.peer_review_required)
