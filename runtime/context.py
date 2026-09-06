@@ -79,7 +79,14 @@ class ExecutionCheckpoint(BaseModel):
 
     def calculate_checkpoint_hash(self) -> str:
         """Compute cryptographic hash of checkpoint state."""
-        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}"
+        working_state_json = json.dumps(
+            self._serialize_val(self.working_state_snapshot),
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=str,
+        )
+        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{working_state_json}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
