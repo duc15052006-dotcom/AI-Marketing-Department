@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -88,9 +87,10 @@ jobs:
           git diff --check
           python - <<'PY'
           import subprocess
-          changed = sorted(subprocess.check_output(
-              ["git", "diff", "--name-only"], text=True
-          ).splitlines())
+
+          changed = sorted(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          )
           if changed != ["tools/tool_gateway.py"]:
               raise SystemExit(f"unexpected production scope: {changed!r}")
           PY
