@@ -1,0 +1,43 @@
+name: Runtime Tool Idempotency Stack Replay
+
+on:
+  push:
+    branches:
+      - fix/runtime-tool-idempotency-cache-concurrency-v1
+
+permissions:
+  contents: write
+
+jobs:
+  replay-clean-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout clean parent head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-tool-idempotency-cache-concurrency-v1
+          fetch-depth: 0
+
+      - name: Replay qualified production and test commits only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for sha in \
+            a9c978a4641ecb948209f23e03075e58de37f3ca \
+            b67f609b263e3129feababfe54e39e1f36945af4 \
+            38d0bed713fe1816e82f8b6b1e36645fb4e6e976 \
+            5388480ad83c92db8f91e3159bb1ce5fe060c44e
+          do
+            git fetch origin "$sha"
+            git cherry-pick "$sha"
+          done
+
+      - name: Remove replay harness and push clean branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/runtime-tool-idempotency-stack-replay.yml
+          git commit -m "chore(runtime): remove temporary stack replay workflow"
+          git push origin HEAD:fix/runtime-tool-idempotency-cache-concurrency-v1
