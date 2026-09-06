@@ -6,6 +6,7 @@ from brain.action_policy import (
     authorize_action_intent_capability,
 )
 from brain.contracts import ActionIntent, BrainAgentId
+from tools.capabilities import CapabilityRegistry
 
 
 class TestBrainActionIntentCapabilityBindingV1(unittest.TestCase):
@@ -69,6 +70,18 @@ class TestBrainActionIntentCapabilityBindingV1(unittest.TestCase):
                     "supported_agents": ["INTELLIGENCE"],
                 },
             )
+
+    def test_registry_declares_market_research_semantics_for_web_search(self):
+        capability = CapabilityRegistry().get_capability("web_search")
+        self.assertIsNotNone(capability)
+        self.assertIn("MARKET_RESEARCH", capability.semantic_needs)
+
+    def test_semantic_mapping_is_bound_into_capability_fingerprint(self):
+        capability = CapabilityRegistry().get_capability("web_search")
+        self.assertIsNotNone(capability)
+        original = capability.fingerprint()
+        capability.semantic_needs = ["IMAGE_GENERATE"]
+        self.assertNotEqual(original, capability.fingerprint())
 
 
 if __name__ == "__main__":
