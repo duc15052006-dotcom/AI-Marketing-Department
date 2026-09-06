@@ -1,0 +1,58 @@
+name: Runtime TypeError Stage Retry RED
+
+on:
+  push:
+    branches:
+      - fix/runtime-typeerror-stage-retry-v1
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Record exact identity
+        run: |
+          mkdir -p .ci-results
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.sha }}"
+          printf 'expected_sha=%s\nactual_sha=%s\n' "$expected" "$actual" | tee .ci-results/identity.txt
+          python --version 2>&1 | tee -a .ci-results/identity.txt
+          test "$actual" = "$expected"
+      - name: Run intended RED regression
+        shell: bash
+        run: |
+          set +e
+          python -m unittest -v tests.test_runtime_typeerror_stage_retry_v1 2>&1 | tee .ci-results/red.log
+          status=${PIPESTATUS[0]}
+          echo "test_exit=$status" | tee -a .ci-results/identity.txt
+          test "$status" -ne 0
+      - name: Upload RED evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-typeerror-stage-retry-red-${{ github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
