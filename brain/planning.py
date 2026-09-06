@@ -14,7 +14,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Dict, List, Optional, Set, Type, TypeVar
 
-from brain.contracts import BrainAgentId
+from brain.contracts import ActionIntent, BrainAgentId
 from schemas.base import BaseModel, Field, ValidationError
 
 
@@ -296,6 +296,48 @@ class PlanRevision(BaseModel):
             raise ValidationError(
                 "A plan revision must invalidate or add at least one step"
             )
+
+
+def validate_plan_action_intent_bindings(
+    plan: PlanSnapshot,
+    action_intents: List[ActionIntent],
+) -> None:
+    """Fail closed unless every plan action reference resolves canonically.
+
+    The plan remains a provider-neutral cognitive artifact. This validator binds
+    its Brain-owned action intent references to canonical ActionIntent objects
+    without introducing runtime/tool/provider execution concerns.
+    """
+
+    if not isinstance(plan, PlanSnapshot):
+        raise ValidationError("plan must be a PlanSnapshot")
+    if not isinstance(action_intents, list):
+        raise ValidationError("action_intents must be a list of ActionIntent objects")
+
+    by_id: Dict[str, ActionIntent] = {}
+    for raw in action_intents:
+        if not isinstance(raw, ActionIntent):
+            raise ValidationError("action_intents must contain ActionIntent objects")
+        intent = raw.model_copy(deep=True)
+        if intent.intent_id in by_id:
+            raise ValidationError(f"duplicate action intent id: {intent.intent_id}")
+        by_id[intent.intent_id] = intent
+
+    for step in plan.steps:
+        for intent_id in step.action_intent_ids:
+            intent = by_id.get(intent_id)
+            if intent is None:
+                raise ValidationError(
+                    f"step '{step.step_id}' references unknown action intent '{intent_id}'"
+                )
+            if intent.goal_id != plan.goal_id or intent.goal_id != step.goal_id:
+                raise ValidationError(
+                    f"action intent '{intent_id}' goal_id must match plan/step goal_id"
+                )
+            if intent.owner_agent != step.owner_agent:
+                raise ValidationError(
+                    f"action intent '{intent_id}' owner_agent must match step owner_agent"
+                )
 
 
 def ready_step_ids(plan: PlanSnapshot) -> List[str]:
