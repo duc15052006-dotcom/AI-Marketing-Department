@@ -44,10 +44,13 @@ jobs:
 
           path = Path("runtime/engine.py")
           text = path.read_text(encoding="utf-8")
+          stage_start = text.index("    def execute_stage_final_cmo(")
+          stage_end = text.index("\n    def request_publish_action(", stage_start)
+          stage = text[stage_start:stage_end]
 
           compile_line = '        grounded_pkg = self.context_compiler.compile_grounded_package("cmo", context)\n'
-          if text.count(compile_line) != 1:
-              raise SystemExit(f"Final CMO compile line count={text.count(compile_line)}")
+          if stage.count(compile_line) != 1:
+              raise SystemExit(f"Final CMO stage compile line count={stage.count(compile_line)}")
 
           insertion = (
               '        # Adaptive CMO proposal consumption for Final CMO remains\n'
@@ -84,7 +87,7 @@ jobs:
               '            else ""\n'
               '        )\n\n'
           )
-          text = text.replace(compile_line, insertion + compile_line, 1)
+          stage = stage.replace(compile_line, insertion + compile_line, 1)
 
           prompt_anchor = (
               '            f"- Performance Plan: {perf_out.get(\'funnel_kpi\', \'\')}\\n\\n"\n'
@@ -94,11 +97,12 @@ jobs:
               '            f"- Performance Plan: {perf_out.get(\'funnel_kpi\', \'\')}\\n\\n"\n'
               '            f"{evidence_section}\\n{final_cmo_focus_line}"\n'
           )
-          if text.count(prompt_anchor) != 1:
-              raise SystemExit(f"Final CMO prompt anchor count={text.count(prompt_anchor)}")
-          text = text.replace(prompt_anchor, prompt_replacement, 1)
+          if stage.count(prompt_anchor) != 1:
+              raise SystemExit(f"Final CMO stage prompt anchor count={stage.count(prompt_anchor)}")
+          stage = stage.replace(prompt_anchor, prompt_replacement, 1)
 
-          path.write_text(text, encoding="utf-8")
+          patched = text[:stage_start] + stage + text[stage_end:]
+          path.write_text(patched, encoding="utf-8")
           PY
 
       - name: Verify production patch scope
