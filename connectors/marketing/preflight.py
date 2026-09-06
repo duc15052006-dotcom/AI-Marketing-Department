@@ -515,8 +515,31 @@ class ProviderPreflightRepository:
             revoked = replace(record, state=ProviderPreflightState.REVOKED, record_hash="")
             if self._conn is None:
                 return self._store_replace(revoked)
+            normalized, encoded, encoded_hash = self._serialize(revoked)
             with self._conn:
-                return self._store_replace(revoked)
+                cur = self._conn.execute(
+                    "UPDATE provider_preflights SET state=?,expires_at=?,payload_json=?,payload_hash=? "
+                    "WHERE preflight_id=? AND state=?",
+                    (
+                        normalized.state.value,
+                        normalized.expires_at,
+                        encoded,
+                        encoded_hash,
+                        normalized.preflight_id,
+                        ProviderPreflightState.ACTIVE.value,
+                    ),
+                )
+                if cur.rowcount != 1:
+                    row = self._conn.execute(
+                        "SELECT state FROM provider_preflights WHERE preflight_id=?",
+                        (normalized.preflight_id,),
+                    ).fetchone()
+                    if row is None:
+                        raise ProviderPreflightConflictError("PROVIDER_PREFLIGHT_NOT_FOUND")
+                    raise ProviderPreflightConflictError(
+                        f"PROVIDER_PREFLIGHT_NOT_REVOCABLE: state={row['state']}"
+                    )
+            return copy.deepcopy(normalized)
 
     def close(self) -> None:
         with self._lock:
