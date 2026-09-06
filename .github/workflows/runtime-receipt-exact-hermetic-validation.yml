@@ -1,0 +1,110 @@
+name: Runtime Receipt Exact Hermetic Validation
+
+on:
+  pull_request:
+    paths:
+      - "tools/receipts.py"
+      - "tests/test_runtime_receipt_repository_concurrency_v1.py"
+      - ".github/workflows/runtime-receipt-repository-concurrency-v1.yml"
+      - ".github/workflows/runtime-receipt-exact-hermetic-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  current-head:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Record exact head identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected_sha=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual_sha=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "HEAD_MISMATCH: expected=$expected actual=$actual" }
+      - name: Run targeted receipt regression
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_receipt_repository_concurrency_v1 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run exact full hermetic discovery
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath .ci-results/full.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload current evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-receipt-current-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  literal-base:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b64cc11136ab883dfcae71fb8ab4fb26f5a85d96
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Record literal base identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = git rev-parse HEAD
+          $expected = "b64cc11136ab883dfcae71fb8ab4fb26f5a85d96"
+          "expected_sha=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual_sha=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "BASE_HEAD_MISMATCH: expected=$expected actual=$actual" }
+      - name: Run exact baseline full hermetic discovery
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath .ci-results/full.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload literal-base evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-receipt-literal-base-b64cc111
+          path: .ci-results/
+          if-no-files-found: error
+          retention-days: 14
