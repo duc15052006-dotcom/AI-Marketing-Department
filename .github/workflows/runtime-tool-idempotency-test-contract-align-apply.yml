@@ -1,0 +1,90 @@
+name: Align Runtime Tool Idempotency Test Contract
+
+on:
+  push:
+    branches:
+      - fix/runtime-tool-idempotency-cache-concurrency-v1
+    paths:
+      - ".github/workflows/runtime-tool-idempotency-test-contract-align-apply.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  align-test-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-tool-idempotency-cache-concurrency-v1
+          fetch-depth: 0
+
+      - name: Verify exact source blobs
+        shell: bash
+        run: |
+          test "$(git hash-object tests/test_prod_research_grounding_01b.py)" = "5ca60d4dd50b9bc92f3b0b1a69812209516d3a00"
+          test "$(git hash-object tests/test_prod_research_quality_01b.py)" = "a2e183d732728acd0b3998891cf3f90924e320e7"
+          grep -Fq 'def _execute_tool_singleflight' runtime/engine.py
+          grep -Fq 'self.tool_gateway.execute(request)' runtime/engine.py
+
+      - name: Replace stale source-literal assertions
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              Path("tests/test_prod_research_grounding_01b.py"): (
+                  '''    def test_single_tool_execution_in_intelligence(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertIn("tool_gateway.execute(search_req)", src)\n        self.assertIn("idem_key", src)\n\n    def test_no_second_search(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        execute_count = src.count("tool_gateway.execute(")\n        self.assertEqual(execute_count, 1)\n''',
+                  '''    def test_single_tool_execution_in_intelligence(self) -> None:\n        stage_src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        helper_src = inspect.getsource(FiveAgentDepartmentRuntime._execute_tool_singleflight)\n        self.assertEqual(stage_src.count("_execute_tool_singleflight(idem_key, search_req)"), 1)\n        self.assertEqual(helper_src.count("self.tool_gateway.execute(request)"), 1)\n        self.assertIn("idem_key", stage_src)\n\n    def test_no_second_search(self) -> None:\n        stage_src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertEqual(stage_src.count("_execute_tool_singleflight("), 1)\n        self.assertNotIn("self.tool_gateway.execute(", stage_src)\n''',
+              ),
+              Path("tests/test_prod_research_quality_01b.py"): (
+                  '''    def test_single_tool_execution(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertIn("tool_gateway.execute(search_req)", src)\n\n    def test_no_second_search(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        execute_count = src.count("tool_gateway.execute(")\n        self.assertEqual(execute_count, 1)\n''',
+                  '''    def test_single_tool_execution(self) -> None:\n        stage_src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        helper_src = inspect.getsource(FiveAgentDepartmentRuntime._execute_tool_singleflight)\n        self.assertEqual(stage_src.count("_execute_tool_singleflight(idem_key, search_req)"), 1)\n        self.assertEqual(helper_src.count("self.tool_gateway.execute(request)"), 1)\n\n    def test_no_second_search(self) -> None:\n        stage_src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertEqual(stage_src.count("_execute_tool_singleflight("), 1)\n        self.assertNotIn("self.tool_gateway.execute(", stage_src)\n''',
+              ),
+          }
+
+          for path, (old, new) in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"PATCH_ANCHOR_MISMATCH {path}: {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Verify patch scope
+        shell: bash
+        run: |
+          git diff --check
+          CHANGED="$(git diff --name-only | sort | tr '\n' ' ')"
+          test "$CHANGED" = "tests/test_prod_research_grounding_01b.py tests/test_prod_research_quality_01b.py "
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run focused regression set before commit
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_tool_idempotency_cache_concurrency_v1 \
+            tests.test_prod_research_grounding_01b.TestSingleExecution \
+            tests.test_prod_research_quality_01b.TestOneResearchExecution
+
+      - name: Commit aligned tests and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/runtime-tool-idempotency-test-contract-align-apply.yml
+          git add tests/test_prod_research_grounding_01b.py tests/test_prod_research_quality_01b.py
+          git diff --cached --check
+          git commit -m "test(runtime): align single-execution assertions with single-flight"
+          git push origin HEAD:fix/runtime-tool-idempotency-cache-concurrency-v1
