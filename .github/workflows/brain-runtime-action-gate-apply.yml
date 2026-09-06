@@ -34,15 +34,16 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          from textwrap import indent
 
           action_policy = '''"""Provider-neutral Brain action authorization seam.
 
           This module owns only the semantic pre-dispatch authorization contract used
-          by the Body-side ToolGateway.  It deliberately imports no runtime, tools,
+          by the Body-side ToolGateway. It deliberately imports no runtime, tools,
           provider, connector, persistence, or adapter code.
 
           V1 establishes a fail-closed Brain veto point on every registered tool
-          dispatch.  It does not yet claim that Decision provenance is bound to an
+          dispatch. It does not yet claim that Decision provenance is bound to an
           action; that stronger lineage contract is a separate hardening slice.
           """
 
@@ -75,12 +76,7 @@ jobs:
 
           @dataclass(frozen=True)
           class RuntimeActionIntent:
-              """Trusted runtime metadata presented to the Brain authorization seam.
-
-              These fields describe the already-resolved capability policy snapshot.
-              Caller parameters are intentionally absent so a model/request cannot
-              self-attest a lower category, risk level, or consequential status.
-              """
+              """Trusted registry metadata presented to the Brain authorization seam."""
 
               intent_id: str
               run_id: str
@@ -104,12 +100,16 @@ jobs:
                   try:
                       canonical_agent = BrainAgentId(agent_id)
                   except ValueError as exc:
-                      raise ValueError("agent_id must identify one of the five permanent agents") from exc
+                      raise ValueError(
+                          "agent_id must identify one of the five permanent agents"
+                      ) from exc
 
                   if capability_category not in {
                       "OBSERVE", "CREATE", "PUBLISH", "ANALYZE", "FILE_DATA"
                   }:
-                      raise ValueError("capability_category is not a recognized trusted category")
+                      raise ValueError(
+                          "capability_category is not a recognized trusted category"
+                      )
                   if risk_level not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}:
                       raise ValueError("risk_level is not a recognized trusted risk level")
 
@@ -122,7 +122,9 @@ jobs:
                   object.__setattr__(
                       self,
                       "human_approval_required",
-                      _strict_bool(self.human_approval_required, "human_approval_required"),
+                      _strict_bool(
+                          self.human_approval_required, "human_approval_required"
+                      ),
                   )
                   object.__setattr__(
                       self,
@@ -154,12 +156,11 @@ jobs:
 
 
           def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:
-              """Default V1 policy: preserve behavior after structural trust validation.
+              """Default V1 policy after structural trusted-metadata validation.
 
-              Construction of ``RuntimeActionIntent`` already fails closed for unknown
-              agents/category/risk metadata.  V1 therefore allows structurally valid
-              trusted capability requests while making the Brain veto seam mandatory.
-              Decision/Plan provenance will tighten this default in the next slice.
+              V1 preserves current valid execution behavior while making this Brain
+              authorization seam mandatory. Decision/Plan provenance will tighten
+              this default in the next isolated hardening slice.
               """
 
               if not isinstance(intent, RuntimeActionIntent):
@@ -170,7 +171,6 @@ jobs:
                   reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",
               )
           '''
-          action_policy = "\n".join(line[10:] if line.startswith("          ") else line for line in action_policy.splitlines()) + "\n"
           Path("brain/action_policy.py").write_text(action_policy, encoding="utf-8")
 
           path = Path("tools/tool_gateway.py")
@@ -217,7 +217,7 @@ jobs:
           if text.count(marker) != 1:
               raise SystemExit("permission gate marker mismatch")
 
-          gate = '''        # 2. Brain Action Authorization Gate
+          gate_body = '''# 2. Brain Action Authorization Gate
           # Capability policy metadata comes only from the trusted registry snapshot;
           # request.parameters is deliberately excluded from Brain authorization.
           try:
@@ -273,7 +273,7 @@ jobs:
               )
 
           '''
-          gate = "\n".join(line[10:] if line.startswith("          ") else line for line in gate.splitlines()) + "\n"
+          gate = indent(gate_body, "        ")
           text = text.replace(marker, gate + marker, 1)
           path.write_text(text, encoding="utf-8")
           PY
