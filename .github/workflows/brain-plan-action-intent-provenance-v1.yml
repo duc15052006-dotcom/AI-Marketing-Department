@@ -3,7 +3,7 @@ name: Brain Plan Action Intent Provenance V1
 on:
   pull_request:
     branches:
-      - fix/brain-runtime-action-gate-v1
+      - fix/brain-action-intent-decision-provenance-v1
     paths:
       - "brain/planning.py"
       - "brain/contracts.py"
