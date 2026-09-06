@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from concurrent.futures import Future
 import hashlib
+import inspect
 import json
 import logging
 import re
@@ -264,6 +265,28 @@ class FiveAgentDepartmentRuntime:
                 )
             except Exception:
                 pass
+
+    @staticmethod
+    def _stage_supports_text_delta_sink(stage_callable: Any) -> bool:
+        """Return whether a stage callable can accept ``text_delta_sink``.
+
+        Compatibility is resolved *before* stage execution. We never probe by
+        calling a stage and catching TypeError because the stage may already
+        have performed provider/tool side effects before raising it.
+        """
+        try:
+            params = inspect.signature(stage_callable).parameters
+        except (TypeError, ValueError):
+            # Opaque callables fail closed to the legacy one-argument form.
+            return False
+
+        explicit = params.get("text_delta_sink")
+        if explicit is not None and explicit.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            return True
+        return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in params.values())
 
     def _execute_tool_singleflight(self, idem_key: str, request: ToolRequest) -> ExecutionReceipt:
         """Execute one ToolGateway request per in-flight runtime idempotency key.
@@ -2705,16 +2728,11 @@ class FiveAgentDepartmentRuntime:
 
             # Stage 6: Final CMO (Governed Synthesis & Master GTM Plan)
             if context.status != RuntimeStatus.FAILED:
-                if text_delta_sink is not None:
-                    try:
-                        cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=text_delta_sink)
-                    except TypeError:
-                        cmo_final = self.execute_stage_final_cmo(context)
+                final_stage = self.execute_stage_final_cmo
+                if text_delta_sink is not None and self._stage_supports_text_delta_sink(final_stage):
+                    cmo_final = final_stage(context, text_delta_sink=text_delta_sink)
                 else:
-                    try:
-                        cmo_final = self.execute_stage_final_cmo(context)
-                    except TypeError:
-                        cmo_final = self.execute_stage_final_cmo(context, text_delta_sink=None)
+                    cmo_final = final_stage(context)
             else:
                 # Early stage failed -> Final CMO is NOT executed.
                 # Preserve the first failing stage's error information honestly.
@@ -2889,17 +2907,14 @@ class FiveAgentDepartmentRuntime:
                 )
 
         try:
-            # Execute Intelligence stage only — search, evidence, grounding, synthesis
-            if text_delta_sink is not None:
-                try:
-                    intel_out = self.execute_stage_intelligence(context, text_delta_sink=text_delta_sink)
-                except TypeError:
-                    intel_out = self.execute_stage_intelligence(context)
+            # Execute Intelligence stage only — search, evidence, grounding, synthesis.
+            # Signature compatibility is resolved before execution so an internal
+            # TypeError can never trigger a duplicate stage/provider invocation.
+            intelligence_stage = self.execute_stage_intelligence
+            if text_delta_sink is not None and self._stage_supports_text_delta_sink(intelligence_stage):
+                intel_out = intelligence_stage(context, text_delta_sink=text_delta_sink)
             else:
-                try:
-                    intel_out = self.execute_stage_intelligence(context)
-                except TypeError:
-                    intel_out = self.execute_stage_intelligence(context, text_delta_sink=None)
+                intel_out = intelligence_stage(context)
 
             # Set terminal status based on Intelligence outcome
             if intel_out.get("status") == "FAILED" or context.status == RuntimeStatus.FAILED:
