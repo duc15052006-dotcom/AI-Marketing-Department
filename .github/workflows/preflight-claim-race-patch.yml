@@ -1,0 +1,79 @@
+name: Apply Provider Preflight Claim Race Fix
+
+on:
+  push:
+    branches:
+      - fix/provider-preflight-claim-race-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply atomic ACTIVE-to-CLAIMED compare-and-swap
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("connectors/marketing/preflight.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''            try:
+              if self._conn is None:
+                  return self._store_replace(claimed)
+              with self._conn:
+                  return self._store_replace(claimed)
+          except sqlite3.Error as exc:
+'''
+          new = '''            try:
+              if self._conn is None:
+                  return self._store_replace(claimed)
+              normalized, encoded, encoded_hash = self._serialize(claimed)
+              with self._conn:
+                  cur = self._conn.execute(
+                      "UPDATE provider_preflights SET state=?,expires_at=?,payload_json=?,payload_hash=? "
+                      "WHERE preflight_id=? AND state=?",
+                      (
+                          normalized.state.value,
+                          normalized.expires_at,
+                          encoded,
+                          encoded_hash,
+                          normalized.preflight_id,
+                          ProviderPreflightState.ACTIVE.value,
+                      ),
+                  )
+                  if cur.rowcount != 1:
+                      row = self._conn.execute(
+                          "SELECT state FROM provider_preflights WHERE preflight_id=?",
+                          (normalized.preflight_id,),
+                      ).fetchone()
+                      if row is None:
+                          raise ProviderPreflightConflictError("PROVIDER_PREFLIGHT_NOT_FOUND")
+                      raise ProviderPreflightConflictError(
+                          f"PROVIDER_PREFLIGHT_NOT_ACTIVE: state={row['state']}"
+                      )
+              return copy.deepcopy(normalized)
+          except sqlite3.Error as exc:
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f"expected claim persistence block exactly once, found {text.count(old)}")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          '@ | python -
+
+      - name: Commit production fix
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add connectors/marketing/preflight.py
+          git diff --cached --check
+          git commit -m "fix(platform): make provider preflight claim atomic"
+          git push origin HEAD:fix/provider-preflight-claim-race-v1
