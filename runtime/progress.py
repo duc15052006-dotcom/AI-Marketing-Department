@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from enum import Enum
+from threading import RLock
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from schemas.base import BaseModel, Field, ValidationError
 
@@ -174,23 +175,28 @@ class ProgressEmitter:
         self._sequence = 0
         self._events: List[RuntimeProgressEvent] = []
         self._closed = False
+        self._lock = RLock()
 
     @property
     def current_sequence(self) -> int:
-        return self._sequence
+        with self._lock:
+            return self._sequence
 
     @property
     def events(self) -> List[RuntimeProgressEvent]:
-        return list(self._events)
+        with self._lock:
+            return list(self._events)
 
     @property
     def is_closed(self) -> bool:
-        return self._closed
+        with self._lock:
+            return self._closed
 
     def finalize(self) -> None:
-        """Terminalize emitter, releasing sink callback reference."""
-        self._closed = True
-        self.sink = None
+        """Terminalize emitter after all earlier state commits are complete."""
+        with self._lock:
+            self._closed = True
+            self.sink = None
 
     def emit(
         self,
@@ -206,31 +212,39 @@ class ProgressEmitter:
         Late emit guard: if emitter has been finalized, do not advance sequence,
         do not append to event history, and do not invoke sink.
         """
-        if self._closed:
-            logger.warning(
-                f"Attempted to emit progress event on finalized emitter for run {self.run_id} (ignored)."
+        # Sequence reservation, event construction, history commit, and
+        # finalization form one per-emitter critical section. This preserves
+        # strictly monotonic history even when multiple runtime workers emit
+        # concurrently. The external sink callback is deliberately invoked
+        # after releasing the lock.
+        with self._lock:
+            if self._closed:
+                logger.warning(
+                    f"Attempted to emit progress event on finalized emitter for run {self.run_id} (ignored)."
+                )
+                return None
+
+            self._sequence += 1
+            sequence = self._sequence
+            meta = dict(metadata) if metadata else {}
+            event_mode = mode or self.mode
+
+            event = RuntimeProgressEvent(
+                event_type=event_type if isinstance(event_type, ProgressEventType) else ProgressEventType(event_type),
+                run_id=self.run_id,
+                sequence=sequence,
+                mode=event_mode if isinstance(event_mode, ProgressMode) else ProgressMode(event_mode),
+                stage=stage if (stage is None or isinstance(stage, ProgressStage)) else ProgressStage(stage),
+                agent=agent if (agent is None or isinstance(agent, ProgressAgent)) else ProgressAgent(agent),
+                message=message,
+                metadata=meta,
             )
-            return None
+            self._events.append(event)
+            sink = self.sink
 
-        self._sequence += 1
-        meta = dict(metadata) if metadata else {}
-        event_mode = mode or self.mode
-
-        event = RuntimeProgressEvent(
-            event_type=event_type if isinstance(event_type, ProgressEventType) else ProgressEventType(event_type),
-            run_id=self.run_id,
-            sequence=self._sequence,
-            mode=event_mode if isinstance(event_mode, ProgressMode) else ProgressMode(event_mode),
-            stage=stage if (stage is None or isinstance(stage, ProgressStage)) else ProgressStage(stage),
-            agent=agent if (agent is None or isinstance(agent, ProgressAgent)) else ProgressAgent(agent),
-            message=message,
-            metadata=meta,
-        )
-        self._events.append(event)
-
-        if self.sink is not None:
+        if sink is not None:
             try:
-                self.sink(event)
+                sink(event)
             except Exception as exc:
                 # Event sink failure policy: isolated & logged, never crashes business run
                 logger.warning(
