@@ -148,12 +148,21 @@ if text.count(old) != 1:
     raise SystemExit(f"INTELLIGENCE_SEARCH_ANCHOR_MISMATCH: {text.count(old)}")
 text = text.replace(old, new, 1)
 
-receipt_anchor = '                "search_receipt_id": search_receipt.execution_id,\n'
-if text.count(receipt_anchor) != 3:
-    raise SystemExit(f"RECEIPT_OUTPUT_ANCHOR_MISMATCH: {text.count(receipt_anchor)}")
+failure_receipt_anchor = '                "search_receipt_id": search_receipt.execution_id,\n'
+if text.count(failure_receipt_anchor) != 2:
+    raise SystemExit(f"FAILED_RECEIPT_OUTPUT_ANCHOR_MISMATCH: {text.count(failure_receipt_anchor)}")
 text = text.replace(
-    receipt_anchor,
-    receipt_anchor + '                "search_receipt_ids": [receipt.execution_id for receipt in research_receipts],\n',
+    failure_receipt_anchor,
+    failure_receipt_anchor + '                "search_receipt_ids": [receipt.execution_id for receipt in research_receipts],\n',
+)
+
+completed_receipt_anchor = '            "search_receipt_id": search_receipt.execution_id,\n'
+if text.count(completed_receipt_anchor) != 1:
+    raise SystemExit(f"COMPLETED_RECEIPT_OUTPUT_ANCHOR_MISMATCH: {text.count(completed_receipt_anchor)}")
+text = text.replace(
+    completed_receipt_anchor,
+    completed_receipt_anchor + '            "search_receipt_ids": [receipt.execution_id for receipt in research_receipts],\n',
+    1,
 )
 
 path.write_text(text, encoding="utf-8")
