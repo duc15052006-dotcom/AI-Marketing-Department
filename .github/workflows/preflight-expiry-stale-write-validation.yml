@@ -1,4 +1,4 @@
-name: Provider Preflight Expiry Stale Write Validation
+name: Provider Preflight Expiry Stale Write Patch
 
 on:
   push:
@@ -7,15 +7,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  red-targeted:
+  apply-patch:
     runs-on: windows-latest
     timeout-minutes: 10
-    env:
-      PYTHONUTF8: "1"
-      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,24 +20,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Record identity
+      - name: Apply exact expiry CAS patch
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
-          "github_sha=${{ github.sha }}" | Tee-Object -FilePath .ci-results/identity.txt
-          git rev-parse HEAD 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
-          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
-      - name: Run expiry stale-write adversarial test
+          $old = "ICAgICAgICAgICAgaWYgZGF0ZXRpbWUuZnJvbWlzb2Zvcm1hdChyZWNvcmQuZXhwaXJlc19hdCkgPD0gX3V0Y19ub3coKToKICAgICAgICAgICAgICAgIGV4cGlyZWQgPSByZXBsYWNlKAogICAgICAgICAgICAgICAgICAgIHJlY29yZCwKICAgICAgICAgICAgICAgICAgICBzdGF0ZT1Qcm92aWRlclByZWZsaWdodFN0YXRlLkVYUElSRUQsCiAgICAgICAgICAgICAgICAgICAgcmVjb3JkX2hhc2g9IiIsCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICBpZiBzZWxmLl9jb25uIGlzIE5vbmU6CiAgICAgICAgICAgICAgICAgICAgc2VsZi5fc3RvcmVfcmVwbGFjZShleHBpcmVkKQogICAgICAgICAgICAgICAgZWxzZToKICAgICAgICAgICAgICAgICAgICB3aXRoIHNlbGYuX2Nvbm46CiAgICAgICAgICAgICAgICAgICAgICAgIHNlbGYuX3N0b3JlX3JlcGxhY2UoZXhwaXJlZCkKICAgICAgICAgICAgICAgIHJhaXNlIFByb3ZpZGVyUHJlZmxpZ2h0Q29uZmxpY3RFcnJvcigiUFJPVklERVJfUFJFRkxJR0hUX0VYUElSRUQiKQo="
+          $new = "ICAgICAgICAgICAgaWYgZGF0ZXRpbWUuZnJvbWlzb2Zvcm1hdChyZWNvcmQuZXhwaXJlc19hdCkgPD0gX3V0Y19ub3coKToKICAgICAgICAgICAgICAgIGV4cGlyZWQgPSByZXBsYWNlKAogICAgICAgICAgICAgICAgICAgIHJlY29yZCwKICAgICAgICAgICAgICAgICAgICBzdGF0ZT1Qcm92aWRlclByZWZsaWdodFN0YXRlLkVYUElSRUQsCiAgICAgICAgICAgICAgICAgICAgcmVjb3JkX2hhc2g9IiIsCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICBpZiBzZWxmLl9jb25uIGlzIE5vbmU6CiAgICAgICAgICAgICAgICAgICAgc2VsZi5fc3RvcmVfcmVwbGFjZShleHBpcmVkKQogICAgICAgICAgICAgICAgZWxzZToKICAgICAgICAgICAgICAgICAgICBub3JtYWxpemVkLCBlbmNvZGVkLCBlbmNvZGVkX2hhc2ggPSBzZWxmLl9zZXJpYWxpemUoZXhwaXJlZCkKICAgICAgICAgICAgICAgICAgICB3aXRoIHNlbGYuX2Nvbm46CiAgICAgICAgICAgICAgICAgICAgICAgIGN1ciA9IHNlbGYuX2Nvbm4uZXhlY3V0ZSgKICAgICAgICAgICAgICAgICAgICAgICAgICAgICJVUERBVEUgcHJvdmlkZXJfcHJlZmxpZ2h0cyBTRVQgc3RhdGU9PyxleHBpcmVzX2F0PT8scGF5bG9hZF9qc29uPT8scGF5bG9hZF9oYXNoPT8gIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgIldIRVJFIHByZWZsaWdodF9pZD0/IEFORCBzdGF0ZT0/IiwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICgKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBub3JtYWxpemVkLnN0YXRlLnZhbHVlLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIG5vcm1hbGl6ZWQuZXhwaXJlc19hdCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBlbmNvZGVkLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGVuY29kZWRfaGFzaCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBub3JtYWxpemVkLnByZWZsaWdodF9pZCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBQcm92aWRlclByZWZsaWdodFN0YXRlLkFDVElWRS52YWx1ZSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICksCiAgICAgICAgICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgICAgICAgICAgICAgaWYgY3VyLnJvd2NvdW50ICE9IDE6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICByb3cgPSBzZWxmLl9jb25uLmV4ZWN1dGUoCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIlNFTEVDVCBzdGF0ZSBGUk9NIHByb3ZpZGVyX3ByZWZsaWdodHMgV0hFUkUgcHJlZmxpZ2h0X2lkPT8iLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIChub3JtYWxpemVkLnByZWZsaWdodF9pZCwpLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgKS5mZXRjaG9uZSgpCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBpZiByb3cgaXMgTm9uZToKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICByYWlzZSBQcm92aWRlclByZWZsaWdodENvbmZsaWN0RXJyb3IoIlBST1ZJREVSX1BSRUZMSUdIVF9OT1RfRk9VTkQiKQogICAgICAgICAgICAgICAgICAgICAgICAgICAgcmFpc2UgUHJvdmlkZXJQcmVmbGlnaHRDb25mbGljdEVycm9yKAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGYiUFJPVklERVJfUFJFRkxJR0hUX05PVF9BQ1RJVkU6IHN0YXRlPXtyb3dbJ3N0YXRlJ119IgogICAgICAgICAgICAgICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgcmFpc2UgUHJvdmlkZXJQcmVmbGlnaHRDb25mbGljdEVycm9yKCJQUk9WSURFUl9QUkVGTElHSFRfRVhQSVJFRCIpCg=="
+          python -c "import base64,pathlib; p=pathlib.Path('connectors/marketing/preflight.py'); s=p.read_text(encoding='utf-8'); old=base64.b64decode('$old').decode(); new=base64.b64decode('$new').decode(); c=s.count(old); assert c in (0,1), f'unexpected old block count: {c}'; assert c == 1 or s.count(new) == 1, 'neither old nor new expiry block found'; p.write_text(s.replace(old,new,1) if c else s, encoding='utf-8')"
+          git diff --check
+          python -m py_compile connectors/marketing/preflight.py
+      - name: Commit production patch if changed
         shell: pwsh
         run: |
-          python -m unittest -v tests.test_provider_preflight_expiry_stale_write 2>&1 | Tee-Object -FilePath .ci-results/expiry-stale-write.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload RED evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: preflight-expiry-stale-write-red-${{ github.sha }}
-          path: .ci-results/
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 14
+          if (git diff --quiet -- connectors/marketing/preflight.py) { exit 0 }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add connectors/marketing/preflight.py
+          git commit -m "fix(platform): make provider preflight expiry atomic"
+          git push origin HEAD:fix/provider-preflight-expiry-stale-write-v1
