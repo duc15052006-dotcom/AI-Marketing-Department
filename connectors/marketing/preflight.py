@@ -495,8 +495,31 @@ class ProviderPreflightRepository:
             try:
                 if self._conn is None:
                     return self._store_replace(consumed)
+                normalized, encoded, encoded_hash = self._serialize(consumed)
                 with self._conn:
-                    return self._store_replace(consumed)
+                    cur = self._conn.execute(
+                        "UPDATE provider_preflights SET state=?,expires_at=?,payload_json=?,payload_hash=? "
+                        "WHERE preflight_id=? AND state=?",
+                        (
+                            normalized.state.value,
+                            normalized.expires_at,
+                            encoded,
+                            encoded_hash,
+                            normalized.preflight_id,
+                            ProviderPreflightState.CLAIMED.value,
+                        ),
+                    )
+                    if cur.rowcount != 1:
+                        row = self._conn.execute(
+                            "SELECT state FROM provider_preflights WHERE preflight_id=?",
+                            (normalized.preflight_id,),
+                        ).fetchone()
+                        if row is None:
+                            raise ProviderPreflightConflictError("PROVIDER_PREFLIGHT_NOT_FOUND")
+                        raise ProviderPreflightConflictError(
+                            f"PROVIDER_PREFLIGHT_NOT_CLAIMED: state={row['state']}"
+                        )
+                return copy.deepcopy(normalized)
             except sqlite3.Error as exc:
                 raise ProviderPreflightError(
                     "PROVIDER_PREFLIGHT_CONSUME_FAILED: " + sanitize_sensitive_text(str(exc))
