@@ -20,6 +20,16 @@ Thay vì để một chatbot duy nhất làm mọi việc, dự án chia công v
 
 Dự án được xây theo hướng **local-first**, ưu tiên khả năng kiểm soát dữ liệu, provider/model có thể thay đổi, bằng chứng có provenance, và các hành động quan trọng vẫn cần **Human Approval**.
 
+### Cập nhật nhanh — 07/09/2026
+
+Dự án hiện đang ở giai đoạn **Active Development / Architecture Hardening**. Từ baseline công khai trên `main`, nhiều nhánh Draft đã được dùng để kiểm chứng các thay đổi lớn về adaptive runtime, concurrency, provider/tool safety và Brain provenance.
+
+Điểm tiến triển lớn nhất trên **latest validated Draft runtime stack** là luồng proposal thích ứng đã được nối xuyên suốt **đúng 5 agent** đến Final CMO: CMO có thể đề xuất trusted task kinds, runtime/compiler giữ quyền kiểm soát scheduling/dependencies, và Intelligence → Strategist → Creative → Performance → Final CMO lần lượt tiêu thụ proposal phù hợp. PR #194 đã có targeted + full hermetic CI xanh tại exact head của nhánh đó.
+
+Tuy vậy, dự án **chưa production-ready** và các thay đổi trên Draft PR **chưa nằm trên `main`**. Generalized cross-stage parallel execution vẫn `PARTIAL ⚠️`; Brain runtime action gate ở PR #192 đang `REGRESSION 🔴` do lỗi tương thích thứ tự authorization; và hạng mục mới nhất PR #195 đang ở trạng thái `UNVERIFIED 🔎 / RED-ONLY` cho lỗi checkpoint nested snapshot.
+
+> **Quan trọng:** README phân biệt rõ trạng thái của `main` và trạng thái đã được kiểm chứng trên các Draft branch. Một thay đổi chỉ được xem là production baseline sau khi được review/merge theo quy trình của repo.
+
 > **Lưu ý:** dự án vẫn đang được phát triển và hardening. Một số tài liệu trong repo là lịch sử nghiên cứu/đánh giá của từng giai đoạn và không nên được hiểu là cam kết rằng mọi tính năng đã hoàn thiện ở trạng thái production.
 
 ---
@@ -38,7 +48,13 @@ The system has **exactly five permanent logical agents**:
 
 The project is designed around a **local-first application**, provider-agnostic model routing, evidence-aware workflows, scoped memory/knowledge, and human approval for consequential actions.
 
-This repository is an active work in progress. Historical benchmark and evaluation files should be interpreted only in the context of the commit and environment that produced them.
+### Current snapshot — 2026-09-07
+
+The project is in **Active Development / Architecture Hardening**. A validated Draft runtime stack now carries compiler-authorized adaptive task proposals across the full five-agent path through Final CMO while keeping scheduling, dependency, side-effect and deployment authority in deterministic runtime/governance layers.
+
+These Draft changes are **not merged into `main`**. Broader fully adaptive execution remains partial, the Brain runtime action-gate branch currently has a full-suite compatibility regression, and the newest checkpoint deep-snapshot hardening slice is still RED-only.
+
+This repository is therefore **not production-ready**. Historical benchmark and evaluation files should be interpreted only in the context of the exact commit and environment that produced them.
 
 ---
 
@@ -53,8 +69,10 @@ Các mục tiêu chính:
 - Hạn chế việc model tự bịa dữ liệu hoặc nâng mức chắc chắn của một claim không có bằng chứng.
 - Cho phép thay provider/model mà không phải viết lại logic của từng agent.
 - Lưu knowledge và memory theo scope để hạn chế lẫn dữ liệu giữa business/project/session.
+- Hướng tới một **Unified Marketing Knowledge Platform** để người dùng có thể bổ sung, thay đổi và tái sử dụng kiến thức Content, Strategy, Ads, SEO, Social, Brand, Product, Image, Video, Design và Analytics mà không phải sửa Brain.
+- Hướng tới một **provider-neutral creative capability layer** để agent có thể lập kế hoạch, viết prompt và gọi các model/API chuyên tạo ảnh, edit ảnh, tạo video, edit video, audio hoặc các tác vụ thiết kế khác.
 - Giữ Human-in-the-Loop cho các hành động có ảnh hưởng thật như publishing, external writes hoặc ngân sách.
-- Xây một nền tảng có thể tiếp tục mở rộng thêm skills, tools, plugins và providers trong tương lai.
+- Xây một nền tảng có thể tiếp tục mở rộng thêm skills, tools, plugins, knowledge packs và providers trong tương lai.
 
 ---
 
@@ -104,9 +122,12 @@ Local Backend
       ├─ Knowledge & Memory
       ├─ Evidence / Provenance
       ├─ Tool Gateway
+      ├─ Capability Registry
       ├─ Provider Registry
       └─ Universal Model Gateway
 ```
+
+> Các service như Knowledge Router, Prompt Composer, Media Gateway, Artifact Manager hoặc Provider Adapter là **hạ tầng dùng chung**, không phải agent thứ 6. Kiến trúc logic của dự án vẫn giữ đúng **5 agent cố định**.
 
 ---
 
@@ -138,6 +159,55 @@ Thiết kế này giúp hệ thống có thể:
 - giữ lựa chọn provider ổn định trong suốt một run;
 - tránh để credential xuất hiện trong response công khai hoặc log không an toàn.
 
+### Target architecture — Universal Capability / AI Provider Gateway
+
+> **Planned / being hardened:** phần dưới mô tả hướng kiến trúc mục tiêu, không phải tuyên bố rằng toàn bộ capability và provider đã được triển khai production-ready ở commit hiện tại.
+
+Mục tiêu dài hạn là mở rộng provider routing từ LLM sang nhiều loại AI capability, nhưng vẫn giữ Brain và 5 agent độc lập với vendor cụ thể.
+
+```text
+Five Agents
+    │
+    ▼
+Capability / Tool Layer
+    │
+    ▼
+Universal Capability Gateway
+    │
+    ├─ LLM Gateway
+    ├─ Image Gateway
+    ├─ Video Gateway
+    ├─ Audio Gateway
+    └─ Other AI / Design Capabilities
+          │
+          ▼
+   Provider Registry + Adapters
+```
+
+Agent nên yêu cầu **capability**, không gọi tên vendor trực tiếp. Ví dụ:
+
+```text
+LLM_REASONING
+IMAGE_GENERATE
+IMAGE_EDIT
+IMAGE_INPAINT
+IMAGE_OUTPAINT
+IMAGE_UPSCALE
+BACKGROUND_REMOVE
+VIDEO_GENERATE
+VIDEO_EDIT
+IMAGE_TO_VIDEO
+VIDEO_EXTEND
+VIDEO_UPSCALE
+VIDEO_RESTYLE
+LIP_SYNC
+AUDIO_GENERATE
+TEXT_TO_SPEECH
+SPEECH_TO_TEXT
+```
+
+Provider Router / Adapter Layer sẽ chịu trách nhiệm chọn provider/model phù hợp, chuẩn hóa request/response, xử lý fallback, quota, retry và policy. Nhờ đó việc thêm một provider ảnh/video mới không nên buộc phải sửa logic cốt lõi của từng agent.
+
 ---
 
 ## Evidence, Knowledge & Memory
@@ -152,6 +222,202 @@ Một số nguyên tắc đang được áp dụng trong codebase:
 - tool failure không được biến thành positive evidence;
 - scope được dùng để hạn chế cross-session / cross-business / cross-project leakage;
 - secret/token được redaction trước khi đi vào nhiều loại receipt/event công khai.
+
+### Target architecture — Unified Marketing Knowledge Platform
+
+> **Planned / incremental implementation:** Knowledge Platform dưới đây là hướng mở rộng của knowledge hiện có. Mọi trạng thái IMPLEMENTED / TESTED / RUNTIME_VERIFIED phải tiếp tục được xác nhận bằng code, test và `STATUS_MATRIX.md`.
+
+Knowledge được định hướng thành một nền tảng dùng chung cho toàn bộ phòng Marketing, thay vì nhúng cứng kiến thức vào Brain hoặc nhân bản knowledge cho từng agent.
+
+```text
+Knowledge Platform
+│
+├─ Marketing Strategy
+│  ├─ STP
+│  ├─ 4P / 7P
+│  ├─ Funnel
+│  ├─ Positioning
+│  ├─ Customer Journey
+│  └─ Campaign Planning
+│
+├─ Content
+│  ├─ Copywriting
+│  ├─ Hooks
+│  ├─ Storytelling
+│  ├─ CTA
+│  ├─ AIDA / PAS / BAB
+│  ├─ Short-form / Long-form
+│  └─ Brand Voice
+│
+├─ Paid Ads
+│  ├─ Facebook Ads
+│  ├─ Google Ads
+│  ├─ TikTok Ads
+│  ├─ Creative Strategy
+│  ├─ Targeting
+│  └─ Optimization
+│
+├─ SEO
+├─ Social Media
+├─ Creative
+│  ├─ Image
+│  ├─ Video
+│  ├─ Design
+│  └─ Audio
+│
+├─ Brand
+├─ Product
+├─ Customer
+├─ Analytics
+└─ Provider / Model Prompt Knowledge
+```
+
+Knowledge nên được chia theo **3 scope chính**:
+
+1. **System Knowledge** — kiến thức Marketing/Creative tái sử dụng chung.
+2. **Workspace / Brand Knowledge** — kiến thức riêng của doanh nghiệp, thương hiệu, sản phẩm hoặc workspace.
+3. **Task / Campaign Knowledge** — file/context tạm thời dành cho campaign hoặc nhiệm vụ hiện tại.
+
+Tại runtime, agent chỉ nên nhận knowledge liên quan đến task và capability hiện tại. Ví dụ:
+
+```text
+VIDEO_GENERATE
+  → video knowledge
+  → platform knowledge
+  → brand knowledge
+  → product knowledge
+  → campaign knowledge
+
+COPYWRITING
+  → content knowledge
+  → platform knowledge
+  → brand knowledge
+  → product knowledge
+  → campaign knowledge
+```
+
+Cách này nhằm giảm context không liên quan, hạn chế tiêu thụ token và giảm nguy cơ knowledge leakage giữa scope.
+
+### Knowledge Manager — target UX
+
+Mục tiêu UI là cho phép người dùng quản lý knowledge mà không cần sửa source code:
+
+```text
+Knowledge Manager
+│
+├─ General Marketing
+├─ Strategy
+├─ Content
+├─ Paid Ads
+├─ SEO
+├─ Social Media
+├─ Image
+├─ Video
+├─ Design
+├─ Analytics
+├─ Brand
+├─ Products
+└─ Customers
+```
+
+Các thao tác mục tiêu:
+
+- Add Knowledge;
+- Upload File;
+- Create Note;
+- Edit;
+- Enable / Disable;
+- Delete;
+- Version History;
+- Assign to Agent;
+- Assign to Capability.
+
+Các định dạng ingest dự kiến ưu tiên gồm Markdown, text, PDF, DOCX và JSON khi phù hợp với parser/indexing pipeline.
+
+Knowledge dùng chung sẽ được **scope theo agent/capability**, không copy thành nhiều bản riêng. Ví dụ một `brand/foxtech` knowledge source có thể được Creative, Strategist, Performance hoặc CMO tái sử dụng tùy task và permission.
+
+---
+
+## Creative / Media generation architecture
+
+> **Target architecture / planned capability expansion.** Đây là workflow mục tiêu để biến kiến thức Marketing/Creative thành prompt và sau đó gọi model chuyên dụng. Nó không thay đổi nguyên tắc 5-agent cố định.
+
+LLM/Brain chịu trách nhiệm suy luận, lập kế hoạch và chọn capability. Model chuyên ảnh/video/audio chịu trách nhiệm render media thực tế.
+
+```text
+User Request
+    │
+    ▼
+Responsible Agent
+    │
+    ▼
+Intent / Capability Selection
+    │
+    ▼
+Knowledge Retriever
+    │
+    ├─ Marketing Knowledge
+    ├─ Content / Creative Knowledge
+    ├─ Platform Knowledge
+    ├─ Brand Knowledge
+    ├─ Product Knowledge
+    └─ Campaign Knowledge
+    │
+    ▼
+Creative / Content Planner
+    │
+    ▼
+Prompt Composer
+    │
+    ▼
+Capability Router
+    │
+    ▼
+Provider Selection
+    │
+    ▼
+Provider-specific Prompt Adapter
+    │
+    ▼
+Image / Video / Audio API
+    │
+    ▼
+Artifact Manager
+    │
+    ▼
+Quality Evaluator
+    │
+    └─ revise / retry when policy allows
+```
+
+Provider-specific prompting rules nên được lưu ngoài Brain, ví dụ theo hướng:
+
+```text
+knowledge/providers/
+├─ image-provider-a/
+│  └─ prompting.md
+├─ video-provider-a/
+│  └─ prompting.md
+├─ video-provider-b/
+│  └─ prompting.md
+└─ audio-provider-a/
+   └─ prompting.md
+```
+
+Không nên nhúng các nhánh kiểu `if provider == ...` vào Brain. Việc khác biệt giữa API, model capability, input schema, polling job, output artifact hoặc prompt convention nên nằm ở Provider Adapter / Prompt Adapter / Capability Layer.
+
+Các service hạ tầng mục tiêu cho media gồm:
+
+- **Capability Registry** — biết hệ thống hiện có thể làm gì;
+- **Provider Registry** — biết provider/model nào hỗ trợ capability nào;
+- **Capability Router** — chọn đường thực thi phù hợp;
+- **Adapter Layer** — chuẩn hóa API khác nhau;
+- **Credential Manager** — quản lý API key/secret an toàn;
+- **Media Artifact Manager** — quản lý ảnh/video/audio input-output và metadata;
+- **Job Manager** — theo dõi các API render bất đồng bộ;
+- **Fallback / Retry / Cost / Quota Policy** — quyết định khi nào đổi provider hoặc dừng an toàn.
+
+Brain không cần biết chi tiết provider fallback nếu hạ tầng có thể xử lý minh bạch. Brain chủ yếu cần: **xác định capability → lấy đúng knowledge → lập kế hoạch → gọi tool → đánh giá kết quả → tiếp tục workflow**.
 
 ---
 
@@ -177,6 +443,16 @@ Các tool có thể thay đổi theo quá trình hardening, vì vậy code và t
 Ứng dụng hiện có frontend bằng **React + TypeScript + Vite**, backend local bằng **Python**, cùng desktop shell **Tauri/Rust**.
 
 Mục tiêu UI là giữ trải nghiệm giống một AI workspace đơn giản: chat trước, các cấu hình nâng cao nằm trong Settings, và người dùng có thể quản lý model/provider mà không sửa code agent.
+
+Trong roadmap, Settings/management UI cũng được định hướng để quản lý:
+
+- LLM providers;
+- Image providers;
+- Video providers;
+- Audio providers;
+- API credentials;
+- per-capability primary/fallback provider;
+- Knowledge Manager và scope assignment.
 
 ---
 
@@ -260,6 +536,8 @@ Credential nên được lưu ở local secure storage / environment phù hợp 
 
 Các file như `.env`, private key, database runtime và log local đã được đưa vào `.gitignore`.
 
+> Image/video/audio provider configuration được mô tả ở phần target architecture phía trên và chỉ nên được coi là available khi code/test tại commit tương ứng xác nhận.
+
 ---
 
 ## Chạy test
@@ -300,7 +578,7 @@ AI-Marketing-Department/
 ├─ frontend/             # React / TypeScript UI
 ├─ governance/           # Safety, claim and approval governance
 ├─ integrations/models/  # Model adapters, gateway, registry, settings
-├─ knowledge/            # Knowledge system
+├─ knowledge/            # Knowledge system / future unified knowledge platform
 ├─ memory/               # Memory system
 ├─ runtime/              # Five-agent runtime / orchestration
 ├─ schemas/              # Typed domain contracts
@@ -311,25 +589,44 @@ AI-Marketing-Department/
 └─ run_app.ps1           # Local Windows launcher
 ```
 
+Các module cụ thể cho media gateway, artifact/job management hoặc provider-specific prompt adapters có thể được bổ sung trong quá trình triển khai; README không giả định trước tên thư mục cuối cùng trước khi code được chốt.
+
 ---
 
 ## Trạng thái dự án
 
-**Status: Active Development / Hardening**
+**Status: Active Development / Architecture Hardening — NOT production-ready**  
+**Snapshot date:** 07/09/2026
 
-Dự án đã có lượng code và test đáng kể, nhưng tôi vẫn đang tiếp tục:
+### Baseline và Draft stack
 
-- hardening kiến trúc;
-- sửa regression;
-- cải thiện agent intelligence;
-- cải thiện memory/knowledge;
-- hoàn thiện provider interoperability;
-- cải thiện UI/UX;
-- thêm skills/plugins;
-- cải thiện khả năng research thực tế;
-- đánh giá lại chất lượng multi-agent bằng benchmark công bằng hơn.
+- `main` hiện vẫn là baseline công khai tại commit `3fed5e1e3b07fa45cd657cd4e4350740dac6b181` (README/public baseline ngày 04/09/2026).
+- Các thay đổi hardening mới hơn được giữ trong **Draft/Open PRs** và **chưa merge vào `main`**.
+- Vì vậy, khi đọc trạng thái dưới đây cần phân biệt giữa **main baseline** và **validated Draft branch behavior**.
 
-Tôi cố gắng không dùng README để tuyên bố một tính năng “hoàn thành” nếu code/test hiện tại chưa chứng minh điều đó.
+### Những phần đã có bằng chứng FIXED ✅ trên Draft branches
+
+- **Dependency-aware scheduler core** — PR #176: scheduler/compiler có thể nhóm task độc lập an toàn, serialize dependency/conflict/side-effect và fail closed với task không đủ authority. Live integration ban đầu vẫn được đánh dấu `PARTIAL ⚠️`.
+- **Runtime concurrency hardening** — PR #177, #178, #180, #183: receipt repository, lineage inspector, ToolGateway idempotency single-flight và ProgressEmitter đã có adversarial regression + full hermetic GREEN trên các exact head tương ứng.
+- **Adaptive Intelligence fan-out** — PR #185: Intelligence có thể fan-out market/competitor/customer research độc lập bằng nhiều worker của cùng logical agent, không tạo Agent 6.
+- **Adaptive proposal authority** — PR #186: CMO/model chỉ transport proposal data, còn `AdaptiveTaskCompiler` giữ quyền dependencies/resources/side-effect/scheduling.
+- **Full five-agent proposal consumption path** — PR #187, #188, #193, #194: Strategist, Creative, Performance và Final CMO lần lượt tiêu thụ compiler-authorized proposal phù hợp. PR #194 kết thúc chuỗi này với targeted + full hermetic GREEN tại exact head `1088d227f6b9c4cfab51ec0aa57354b6d1c15ba6`.
+- **Fail-closed stage boundaries** — PR #190 và #191: downstream stage không được dispatch tool hoặc mutate receipt/lineage khi upstream stage đã FAILED.
+- **Provider/tool safety** — các PR #168, #170, #172, #175, #179, #181, #182, #184 đã harden availability gating, duplicate-sensitive metered dispatch, provider-operation concurrency/fault isolation và atomic provider-preflight transitions trên các branch riêng.
+- **Brain provenance hardening** — các PR #166 và #169 đã thêm authoritative trajectory/memory promotion provenance checks trên Draft branches.
+
+### Những phần vẫn còn PARTIAL / REGRESSION / UNVERIFIED
+
+- **Fully adaptive live execution:** `PARTIAL ⚠️`. Việc consume proposal xuyên đủ 5 agent không tự động chứng minh generalized cross-stage parallel execution hoặc trusted isolated-worker merge boundary cho mọi stage.
+- **Brain runtime action gate — PR #192:** `REGRESSION 🔴`. Targeted invariant đã xanh, nhưng full hermetic suite phát hiện 2 compatibility failures vì Brain gate chạy trước permanent five-agent identity recognition và làm thay đổi expected `UNRECOGNIZED_AGENT` contract thành `BRAIN_ACTION_DENIED`.
+- **Runtime checkpoint deep snapshot — PR #195:** `UNVERIFIED 🔎 / RED-ONLY`. Test mới đang chứng minh `create_checkpoint()` chỉ shallow-copy `working_state`, khiến nested structures có nguy cơ alias với live runtime state. Production fix chưa được áp dụng ở trạng thái RED-only này.
+- Một số provider/media/knowledge capability trong README vẫn là **Target Architecture / Planned**, không phải production claim.
+
+### Cách hiểu trạng thái của dự án
+
+Hiện tại dự án đã vượt qua giai đoạn prototype đơn giản và có lượng regression/adversarial testing đáng kể trên nhiều hardening branch. Tuy nhiên, repo vẫn đang trong quá trình hợp nhất các nhánh đã kiểm chứng, xử lý regression còn mở, hoàn thiện generalized adaptive execution, Brain/tool authority boundaries, provider interoperability, knowledge platform, media capability layer và UI/UX.
+
+Tôi cố gắng không dùng README để tuyên bố một tính năng “hoàn thành” nếu code/test tại exact commit chưa chứng minh điều đó.
 
 ---
 
