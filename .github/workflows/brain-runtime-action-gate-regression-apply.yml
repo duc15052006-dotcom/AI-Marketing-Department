@@ -1,0 +1,107 @@
+name: Brain Runtime Action Gate Regression Apply
+
+on:
+  push:
+    branches:
+      - fix/brain-runtime-action-gate-v1
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/brain-runtime-action-gate-v1
+
+      - name: Verify guarded preimage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git hash-object tools/tool_gateway.py)" = "5c9414813b0f3736994b363ed39c1549a3270721"
+
+      - name: Apply identity ordering repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tools/tool_gateway.py")
+          text = path.read_text(encoding="utf-8")
+
+          import_old = "from brain.action_policy import (\n"
+          import_new = "from brain.contracts import BrainAgentId\nfrom brain.action_policy import (\n"
+          if text.count(import_old) != 1:
+              raise SystemExit("Brain action-policy import preimage mismatch")
+          text = text.replace(import_old, import_new, 1)
+
+          marker = "        # 2. Brain Action Authorization Gate\n"
+          if text.count(marker) != 1:
+              raise SystemExit("Brain action gate marker mismatch")
+
+          identity_gate = '''        # 2. Permanent Five-Agent Identity Gate
+        # Preserve the established ToolGateway identity contract before asking
+        # the Brain to authorize an action. Unknown identities never reach the
+        # Brain authorizer and remain auditable as UNRECOGNIZED_AGENT.
+        try:
+            BrainAgentId(str(request.agent_id or "").strip().upper())
+        except ValueError:
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.BLOCKED,
+                    error_class="UNRECOGNIZED_AGENT",
+                    error_message=(
+                        f"UNRECOGNIZED_AGENT: Agent '{request.agent_id}' is not an "
+                        "authorized member of the Five-Agent Department."
+                    ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
+            )
+
+'''
+          text = text.replace(marker, identity_gate + marker, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify repair and regression scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/tool_gateway.py
+          python -m unittest -v \
+            tests.test_brain_runtime_action_gate_v1 \
+            tests.test_phase5_1_foundation.TestPhase51CapabilityGatewayAndFoundation.test_direct_tool_bypass_blocked_for_unregistered_agent \
+            tests.test_phase5_2_runtime_integration.TestPhase52RuntimeIntegration.test_adv_19_agent_6_registration_attempt_strictly_blocked
+          git diff --check
+          python - <<'PY'
+          import subprocess
+          changed = sorted(subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True
+          ).splitlines())
+          if changed != ["tools/tool_gateway.py"]:
+              raise SystemExit(f"unexpected production scope: {changed!r}")
+          PY
+
+      - name: Commit repair and self-clean workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/brain-runtime-action-gate-regression-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/tool_gateway.py .github/workflows/brain-runtime-action-gate-regression-apply.yml
+          git commit -m "fix(brain): preserve five-agent identity gate ordering"
+          git push origin HEAD:fix/brain-runtime-action-gate-v1
