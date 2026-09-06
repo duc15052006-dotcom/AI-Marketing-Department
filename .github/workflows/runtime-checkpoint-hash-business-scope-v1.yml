@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   RUN_LIVE_PROVIDER_TESTS: "0"
@@ -20,6 +20,74 @@ env:
   PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
+  guarded-production-apply:
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' && github.event.pull_request.head.ref == 'fix/runtime-checkpoint-hash-business-scope-v1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Guard exact production preimage
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git hash-object runtime/context.py)"
+          EXPECTED="fb9263d5ff1e027523ee3245375e0fb05efdd4fa"
+          echo "expected_context_blob=$EXPECTED"
+          echo "actual_context_blob=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+          test -z "$(git status --porcelain)"
+
+      - name: Apply business-scope hash patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("runtime/context.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''        pending_approval_id = self.pending_approval_id or ""\n        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{pending_approval_id}:{working_state_json}"\n'''
+          new = '''        pending_approval_id = self.pending_approval_id or ""\n        business_id = self.business_id or ""\n        raw = f"{self.run_id}:{business_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{pending_approval_id}:{working_state_json}"\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f"PATCH_GUARD_FAILED: expected one exact hash anchor, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          test "$(git diff --name-only | tr -d '\r')" = "runtime/context.py"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile touched production source
+        run: python -m py_compile runtime/context.py
+
+      - name: Run guarded targeted regressions
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_checkpoint_hash_business_scope_v1 \
+            tests.test_runtime_checkpoint_hash_pending_approval_v1 \
+            tests.test_runtime_checkpoint_hash_working_state_v1 \
+            tests.test_runtime_checkpoint_deep_snapshot_v1 \
+            tests.test_structure
+
+      - name: Commit production fix and remove unused apply workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/runtime-checkpoint-hash-business-scope-apply.yml
+          git add runtime/context.py
+          echo "staged files:"
+          git diff --cached --name-only
+          test "$(git diff --cached --name-only | sort | tr '\n' ' ')" = ".github/workflows/runtime-checkpoint-hash-business-scope-apply.yml runtime/context.py "
+          git commit -m "fix(runtime): bind checkpoint hash to business scope"
+          git push origin HEAD:fix/runtime-checkpoint-hash-business-scope-v1
+
   checkpoint-hash-business-scope-regression:
     runs-on: ubuntu-latest
     steps:
