@@ -87,7 +87,8 @@ class ExecutionCheckpoint(BaseModel):
             default=str,
         )
         pending_approval_id = self.pending_approval_id or ""
-        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{pending_approval_id}:{working_state_json}"
+        business_id = self.business_id or ""
+        raw = f"{self.run_id}:{business_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{pending_approval_id}:{working_state_json}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
