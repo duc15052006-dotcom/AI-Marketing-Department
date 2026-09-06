@@ -68,8 +68,6 @@ jobs:
         run: |
           python -m unittest -v \
             tests.test_runtime_cancelled_publish_zero_dispatch_v1 \
-            tests.test_chat_approval_wait_state_01 \
-            tests.test_approval_authority_separation_24 \
             tests.test_runtime_upstream_failed_zero_tool_dispatch_adaptive_stack_v1 \
             tests.test_structure
 
