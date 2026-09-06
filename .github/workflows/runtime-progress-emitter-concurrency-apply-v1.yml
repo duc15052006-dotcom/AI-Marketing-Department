@@ -1,0 +1,93 @@
+name: Apply Runtime Progress Emitter Concurrency Fix V1
+
+on:
+  push:
+    branches:
+      - fix/runtime-progress-emitter-concurrency-v1
+    paths:
+      - ".github/workflows/runtime-progress-emitter-concurrency-apply-v1.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-production-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-progress-emitter-concurrency-v1
+          fetch-depth: 0
+
+      - name: Verify exact production source blob
+        shell: bash
+        run: |
+          ACTUAL="$(git hash-object runtime/progress.py)"
+          EXPECTED="3a8e5cf8fec7e14b41d1867dbb05ebe7f499dd3a"
+          echo "expected_progress_blob=$EXPECTED"
+          echo "actual_progress_blob=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Apply exact per-emitter synchronization patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("runtime/progress.py")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  "from enum import Enum\nfrom typing import Any, Callable, Dict, List, Optional, Tuple, Union\n",
+                  "from enum import Enum\nfrom threading import RLock\nfrom typing import Any, Callable, Dict, List, Optional, Tuple, Union\n",
+              ),
+              (
+                  "        self._sequence = 0\n        self._events: List[RuntimeProgressEvent] = []\n        self._closed = False\n",
+                  "        self._sequence = 0\n        self._events: List[RuntimeProgressEvent] = []\n        self._closed = False\n        self._lock = RLock()\n",
+              ),
+              (
+                  '''    @property\n    def current_sequence(self) -> int:\n        return self._sequence\n\n    @property\n    def events(self) -> List[RuntimeProgressEvent]:\n        return list(self._events)\n\n    @property\n    def is_closed(self) -> bool:\n        return self._closed\n\n    def finalize(self) -> None:\n        """Terminalize emitter, releasing sink callback reference."""\n        self._closed = True\n        self.sink = None\n''',
+                  '''    @property\n    def current_sequence(self) -> int:\n        with self._lock:\n            return self._sequence\n\n    @property\n    def events(self) -> List[RuntimeProgressEvent]:\n        with self._lock:\n            return list(self._events)\n\n    @property\n    def is_closed(self) -> bool:\n        with self._lock:\n            return self._closed\n\n    def finalize(self) -> None:\n        """Terminalize emitter after all earlier state commits are complete."""\n        with self._lock:\n            self._closed = True\n            self.sink = None\n''',
+              ),
+              (
+                  '''        if self._closed:\n            logger.warning(\n                f"Attempted to emit progress event on finalized emitter for run {self.run_id} (ignored)."\n            )\n            return None\n\n        self._sequence += 1\n        meta = dict(metadata) if metadata else {}\n        event_mode = mode or self.mode\n\n        event = RuntimeProgressEvent(\n            event_type=event_type if isinstance(event_type, ProgressEventType) else ProgressEventType(event_type),\n            run_id=self.run_id,\n            sequence=self._sequence,\n            mode=event_mode if isinstance(event_mode, ProgressMode) else ProgressMode(event_mode),\n            stage=stage if (stage is None or isinstance(stage, ProgressStage)) else ProgressStage(stage),\n            agent=agent if (agent is None or isinstance(agent, ProgressAgent)) else ProgressAgent(agent),\n            message=message,\n            metadata=meta,\n        )\n        self._events.append(event)\n\n        if self.sink is not None:\n            try:\n                self.sink(event)\n            except Exception as exc:\n                # Event sink failure policy: isolated & logged, never crashes business run\n                logger.warning(\n                    f"Progress sink error on event {event.event_type.value} for run {self.run_id}: {exc}"\n                )\n\n        return event\n''',
+                  '''        # Sequence reservation, event construction, history commit, and\n        # finalization form one per-emitter critical section. This preserves\n        # strictly monotonic history even when multiple runtime workers emit\n        # concurrently. The external sink callback is deliberately invoked\n        # after releasing the lock.\n        with self._lock:\n            if self._closed:\n                logger.warning(\n                    f"Attempted to emit progress event on finalized emitter for run {self.run_id} (ignored)."\n                )\n                return None\n\n            self._sequence += 1\n            sequence = self._sequence\n            meta = dict(metadata) if metadata else {}\n            event_mode = mode or self.mode\n\n            event = RuntimeProgressEvent(\n                event_type=event_type if isinstance(event_type, ProgressEventType) else ProgressEventType(event_type),\n                run_id=self.run_id,\n                sequence=sequence,\n                mode=event_mode if isinstance(event_mode, ProgressMode) else ProgressMode(event_mode),\n                stage=stage if (stage is None or isinstance(stage, ProgressStage)) else ProgressStage(stage),\n                agent=agent if (agent is None or isinstance(agent, ProgressAgent)) else ProgressAgent(agent),\n                message=message,\n                metadata=meta,\n            )\n            self._events.append(event)\n            sink = self.sink\n\n        if sink is not None:\n            try:\n                sink(event)\n            except Exception as exc:\n                # Event sink failure policy: isolated & logged, never crashes business run\n                logger.warning(\n                    f"Progress sink error on event {event.event_type.value} for run {self.run_id}: {exc}"\n                )\n\n        return event\n''',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"PATCH_ANCHOR_MISMATCH: expected 1, got {count}: {old[:90]!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify patch scope
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only | tr -d '\r')" = "runtime/progress.py"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run targeted regressions before commit
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_progress_emitter_concurrency_v1 \
+            tests.test_prod_runtime_progress_01
+
+      - name: Commit production fix and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/runtime-progress-emitter-concurrency-apply-v1.yml
+          git add runtime/progress.py
+          git diff --cached --check
+          git commit -m "fix(runtime): synchronize progress emitter state"
+          git push origin HEAD:fix/runtime-progress-emitter-concurrency-v1
