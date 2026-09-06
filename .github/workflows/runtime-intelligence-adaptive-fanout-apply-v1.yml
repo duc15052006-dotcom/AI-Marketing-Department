@@ -15,15 +15,16 @@ jobs:
   apply-production-integration:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch head
+      - name: Checkout exact triggering head
         uses: actions/checkout@v4
         with:
-          ref: feat/runtime-intelligence-adaptive-fanout-v1
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Verify exact production source blob
+      - name: Verify exact branch and production source
         shell: bash
         run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           ACTUAL="$(git hash-object runtime/engine.py)"
           EXPECTED="2c787800cc0291ba08e70b6d7152c5a3e93d94cd"
           echo "expected_engine_blob=$EXPECTED"
