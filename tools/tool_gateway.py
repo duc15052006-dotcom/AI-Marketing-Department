@@ -18,8 +18,15 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from brain.contracts import BrainAgentId
+from brain.action_policy import (
+    ActionAuthorization,
+    ActionDisposition,
+    RuntimeActionIntent,
+    authorize_action,
+)
 from schemas.base import BaseModel, Field
 from tools.adapters import (
     AnalyticsAdapter,
@@ -99,6 +106,9 @@ class ToolGateway:
         capability_registry: Optional[CapabilityRegistry] = None,
         policy_engine: Optional[PolicyEngine] = None,
         receipt_repository: Optional[ExecutionReceiptRepository] = None,
+        action_authorizer: Optional[
+            Callable[[RuntimeActionIntent], ActionAuthorization]
+        ] = None,
     ) -> None:
         if capability_registry is None:
             raise ValueError(
@@ -108,6 +118,7 @@ class ToolGateway:
         self.registry = capability_registry
         self.policy_engine = policy_engine or PolicyEngine()
         self.receipt_repository = receipt_repository or ExecutionReceiptRepository()
+        self.action_authorizer = action_authorizer or authorize_action
         self.idempotency_ledger = IdempotencyLedger(
             database_path=self.receipt_repository.database_path
         )
@@ -306,6 +317,85 @@ class ToolGateway:
                         f"Capability '{request.capability_id}' is not registered "
                         "in CapabilityRegistry."
                     ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
+            )
+
+        # 2. Permanent Five-Agent Identity Gate
+        # Preserve the established ToolGateway identity contract before asking
+        # the Brain to authorize an action. Unknown identities never reach the
+        # Brain authorizer and remain auditable as UNRECOGNIZED_AGENT.
+        try:
+            BrainAgentId(str(request.agent_id or '').strip().upper())
+        except ValueError:
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.BLOCKED,
+                    error_class='UNRECOGNIZED_AGENT',
+                    error_message=(
+                        f"UNRECOGNIZED_AGENT: Agent '{request.agent_id}' is not an "
+                        'authorized member of the Five-Agent Department.'
+                    ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
+            )
+
+        # 2. Brain Action Authorization Gate
+        # Capability policy metadata comes only from the trusted registry snapshot;
+        # request.parameters is deliberately excluded from Brain authorization.
+        try:
+            brain_intent = RuntimeActionIntent(
+                intent_id=f"BRAIN-ACTION-{request.request_id}",
+                run_id=request.run_id,
+                agent_id=request.agent_id,
+                capability_id=cap.capability_id,
+                capability_category=cap.category.value,
+                risk_level=cap.risk_level.value,
+                human_approval_required=bool(cap.human_approval_required),
+                consequential=self._is_consequential_capability(cap),
+            )
+            authorization = self.action_authorizer(brain_intent)
+        except Exception as exc:
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.BLOCKED,
+                    error_class="BRAIN_ACTION_DENIED",
+                    error_message=f"BRAIN_ACTION_POLICY_ERROR: {exc}",
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
+            )
+
+        if (
+            not isinstance(authorization, ActionAuthorization)
+            or authorization.intent_id != brain_intent.intent_id
+            or authorization.disposition != ActionDisposition.ALLOW
+        ):
+            if isinstance(authorization, ActionAuthorization):
+                denial_reason = authorization.reason
+                if authorization.intent_id != brain_intent.intent_id:
+                    denial_reason = f"BRAIN_ACTION_INTENT_MISMATCH: {denial_reason}"
+            else:
+                denial_reason = "BRAIN_ACTION_AUTHORIZATION_INVALID"
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.BLOCKED,
+                    error_class="BRAIN_ACTION_DENIED",
+                    error_message=denial_reason,
                     business_id=effective_business_id,
                     project_id=effective_project_id,
                 )
