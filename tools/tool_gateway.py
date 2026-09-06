@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
+from brain.contracts import BrainAgentId
 from brain.action_policy import (
     ActionAuthorization,
     ActionDisposition,
@@ -315,6 +316,30 @@ class ToolGateway:
                     error_message=(
                         f"Capability '{request.capability_id}' is not registered "
                         "in CapabilityRegistry."
+                    ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
+            )
+
+        # 2. Permanent Five-Agent Identity Gate
+        # Preserve the established ToolGateway identity contract before asking
+        # the Brain to authorize an action. Unknown identities never reach the
+        # Brain authorizer and remain auditable as UNRECOGNIZED_AGENT.
+        try:
+            BrainAgentId(str(request.agent_id or '').strip().upper())
+        except ValueError:
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.BLOCKED,
+                    error_class='UNRECOGNIZED_AGENT',
+                    error_message=(
+                        f"UNRECOGNIZED_AGENT: Agent '{request.agent_id}' is not an "
+                        'authorized member of the Five-Agent Department.'
                     ),
                     business_id=effective_business_id,
                     project_id=effective_project_id,
