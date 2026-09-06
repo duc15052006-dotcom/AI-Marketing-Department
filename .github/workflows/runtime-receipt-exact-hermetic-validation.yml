@@ -65,6 +65,7 @@ jobs:
           name: runtime-receipt-current-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
 
   literal-base:
@@ -107,4 +108,5 @@ jobs:
           name: runtime-receipt-literal-base-b64cc111
           path: .ci-results/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 14
