@@ -1,0 +1,38 @@
+name: Runtime Lineage Inspector Concurrency V1
+
+on:
+  pull_request:
+    paths:
+      - "runtime/lineage.py"
+      - "tests/test_runtime_lineage_inspector_concurrency_v1.py"
+      - ".github/workflows/runtime-lineage-inspector-concurrency-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lineage-concurrency-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "expected=$EXPECTED"
+          echo "actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Run lineage inspector concurrency regression
+        run: python -m unittest -v tests.test_runtime_lineage_inspector_concurrency_v1
