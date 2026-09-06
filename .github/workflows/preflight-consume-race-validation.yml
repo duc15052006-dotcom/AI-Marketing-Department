@@ -1,4 +1,4 @@
-name: Provider Preflight Consume Race Patch
+name: Provider Preflight Consume Race Validation
 
 on:
   push:
@@ -7,14 +7,20 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-patch:
+  full-hermetic-validation:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - name: Checkout branch
+      - name: Checkout exact head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -23,22 +29,48 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-      - name: Apply exact consume CAS patch
-        shell: pwsh
-        run: python -c "import base64; exec(base64.b64decode('ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgiY29ubmVjdG9ycy9tYXJrZXRpbmcvcHJlZmxpZ2h0LnB5IikKdGV4dCA9IHBhdGgucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCm9sZCA9ICIiIiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIGlmIHNlbGYuX2Nvbm4gaXMgTm9uZToKICAgICAgICAgICAgICAgICAgICByZXR1cm4gc2VsZi5fc3RvcmVfcmVwbGFjZShjb25zdW1lZCkKICAgICAgICAgICAgICAgIHdpdGggc2VsZi5fY29ubjoKICAgICAgICAgICAgICAgICAgICByZXR1cm4gc2VsZi5fc3RvcmVfcmVwbGFjZShjb25zdW1lZCkKICAgICAgICAgICAgZXhjZXB0IHNxbGl0ZTMuRXJyb3IgYXMgZXhjOgogICAgICAgICAgICAgICAgcmFpc2UgUHJvdmlkZXJQcmVmbGlnaHRFcnJvcigKICAgICAgICAgICAgICAgICAgICAiUFJPVklERVJfUFJFRkxJR0hUX0NPTlNVTUVfRkFJTEVEOiAiICsgc2FuaXRpemVfc2Vuc2l0aXZlX3RleHQoc3RyKGV4YykpCiAgICAgICAgICAgICAgICApIGZyb20gZXhjCiIiIgpuZXcgPSAiIiIgICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBpZiBzZWxmLl9jb25uIGlzIE5vbmU6CiAgICAgICAgICAgICAgICAgICAgcmV0dXJuIHNlbGYuX3N0b3JlX3JlcGxhY2UoY29uc3VtZWQpCiAgICAgICAgICAgICAgICBub3JtYWxpemVkLCBlbmNvZGVkLCBlbmNvZGVkX2hhc2ggPSBzZWxmLl9zZXJpYWxpemUoY29uc3VtZWQpCiAgICAgICAgICAgICAgICB3aXRoIHNlbGYuX2Nvbm46CiAgICAgICAgICAgICAgICAgICAgY3VyID0gc2VsZi5fY29ubi5leGVjdXRlKAogICAgICAgICAgICAgICAgICAgICAgICAiVVBEQVRFIHByb3ZpZGVyX3ByZWZsaWdodHMgU0VUIHN0YXRlPT8sZXhwaXJlc19hdD0/LHBheWxvYWRfanNvbj0/LHBheWxvYWRfaGFzaD0/ICIKICAgICAgICAgICAgICAgICAgICAgICAgIldIRVJFIHByZWZsaWdodF9pZD0/IEFORCBzdGF0ZT0/IiwKICAgICAgICAgICAgICAgICAgICAgICAgKAogICAgICAgICAgICAgICAgICAgICAgICAgICAgbm9ybWFsaXplZC5zdGF0ZS52YWx1ZSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIG5vcm1hbGl6ZWQuZXhwaXJlc19hdCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGVuY29kZWQsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBlbmNvZGVkX2hhc2gsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBub3JtYWxpemVkLnByZWZsaWdodF9pZCwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIFByb3ZpZGVyUHJlZmxpZ2h0U3RhdGUuQ0xBSU1FRC52YWx1ZSwKICAgICAgICAgICAgICAgICAgICAgICAgKSwKICAgICAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICAgICAgaWYgY3VyLnJvd2NvdW50ICE9IDE6CiAgICAgICAgICAgICAgICAgICAgICAgIHJvdyA9IHNlbGYuX2Nvbm4uZXhlY3V0ZSgKICAgICAgICAgICAgICAgICAgICAgICAgICAgICJTRUxFQ1Qgc3RhdGUgRlJPTSBwcm92aWRlcl9wcmVmbGlnaHRzIFdIRVJFIHByZWZsaWdodF9pZD0/IiwKICAgICAgICAgICAgICAgICAgICAgICAgICAgIChub3JtYWxpemVkLnByZWZsaWdodF9pZCwpLAogICAgICAgICAgICAgICAgICAgICAgICApLmZldGNob25lKCkKICAgICAgICAgICAgICAgICAgICAgICAgaWYgcm93IGlzIE5vbmU6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICByYWlzZSBQcm92aWRlclByZWZsaWdodENvbmZsaWN0RXJyb3IoIlBST1ZJREVSX1BSRUZMSUdIVF9OT1RfRk9VTkQiKQogICAgICAgICAgICAgICAgICAgICAgICByYWlzZSBQcm92aWRlclByZWZsaWdodENvbmZsaWN0RXJyb3IoCiAgICAgICAgICAgICAgICAgICAgICAgICAgICBmIlBST1ZJREVSX1BSRUZMSUdIVF9OT1RfQ0xBSU1FRDogc3RhdGU9e3Jvd1snc3RhdGUnXX0iCiAgICAgICAgICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgICAgIHJldHVybiBjb3B5LmRlZXBjb3B5KG5vcm1hbGl6ZWQpCiAgICAgICAgICAgIGV4Y2VwdCBzcWxpdGUzLkVycm9yIGFzIGV4YzoKICAgICAgICAgICAgICAgIHJhaXNlIFByb3ZpZGVyUHJlZmxpZ2h0RXJyb3IoCiAgICAgICAgICAgICAgICAgICAgIlBST1ZJREVSX1BSRUZMSUdIVF9DT05TVU1FX0ZBSUxFRDogIiArIHNhbml0aXplX3NlbnNpdGl2ZV90ZXh0KHN0cihleGMpKQogICAgICAgICAgICAgICAgKSBmcm9tIGV4YwoiIiIKaWYgb2xkIGluIHRleHQ6CiAgICBwYXRoLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKSwgZW5jb2Rpbmc9InV0Zi04IikKICAgIHByaW50KCJjb25zdW1lIENBUyBwYXRjaCBhcHBsaWVkIikKZWxpZiAiUHJvdmlkZXJQcmVmbGlnaHRTdGF0ZS5DTEFJTUVELnZhbHVlIiBpbiB0ZXh0IGFuZCAicmV0dXJuIGNvcHkuZGVlcGNvcHkobm9ybWFsaXplZCkiIGluIHRleHQ6CiAgICBwcmludCgiY29uc3VtZSBDQVMgcGF0Y2ggYWxyZWFkeSBwcmVzZW50IikKZWxzZToKICAgIHJhaXNlIFN5c3RlbUV4aXQoImV4cGVjdGVkIGNvbnN1bWUgYmxvY2sgbm90IGZvdW5kOyByZWZ1c2luZyBicm9hZCBlZGl0IikK'))"
-
-      - name: Commit production patch if changed
+      - name: Install dependencies
         shell: pwsh
         run: |
-          if (git diff --quiet -- connectors/marketing/preflight.py) {
-            Write-Host "No production diff to commit"
-            exit 0
-          }
-          git diff --check
-          git diff -- connectors/marketing/preflight.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add connectors/marketing/preflight.py
-          git commit -m "fix(platform): make provider preflight consume atomic"
-          git push origin HEAD:fix/provider-preflight-consume-race-v1
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Record identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          "github_sha=${{ github.sha }}" | Tee-Object -FilePath .ci-results/identity.txt
+          git rev-parse HEAD 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+
+      - name: Compile relevant sources
+        shell: pwsh
+        run: |
+          python -m py_compile connectors/marketing/preflight.py tests/test_provider_preflight_consent_v1.py tests/test_provider_preflight_consume_race.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run provider preflight regression suite
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_provider_preflight_consent_v1 tests.test_provider_preflight_consume_race 2>&1 | Tee-Object -FilePath .ci-results/preflight-suite.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath .ci-results/full-hermetic-unittest.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-consume-race-full-${{ github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
