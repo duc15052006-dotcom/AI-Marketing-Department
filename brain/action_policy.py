@@ -6,13 +6,18 @@ no runtime, tools, provider, connector, persistence, or adapter code.
 V1 keeps the validated structural runtime veto used by ToolGateway. The semantic
 ActionIntent path separately binds Brain intent to canonical decision authority;
 runtime wiring of that stronger provenance remains a later isolated slice.
+
+Capability binding is deliberately modeled as a non-execution assessment. A
+successful semantic binding only proves that trusted capability metadata can
+satisfy an ActionIntent; it does not by itself authorize execution.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 from brain.contracts import (
     ActionIntent,
@@ -24,11 +29,21 @@ if TYPE_CHECKING:
     from brain.decisions import DecisionEvaluationRequest
 
 
+_SEMANTIC_NEED_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,95}$")
+
+
 class ActionDisposition(str, Enum):
     """Brain authorization result for one action request."""
 
     ALLOW = "ALLOW"
     BLOCK = "BLOCK"
+
+
+class CapabilityBindingDisposition(str, Enum):
+    """Non-execution result for semantic ActionIntent/capability matching."""
+
+    BOUND = "BOUND"
+    REJECTED = "REJECTED"
 
 
 def _required_text(value: object, field_name: str) -> str:
@@ -41,6 +56,140 @@ def _strict_bool(value: object, field_name: str) -> bool:
     if type(value) is not bool:
         raise ValueError(f"{field_name} must be a boolean")
     return value
+
+
+def _semantic_need(value: object) -> str:
+    normalized = _required_text(value, "semantic_need").upper()
+    if not _SEMANTIC_NEED_RE.fullmatch(normalized):
+        raise ValueError(
+            "semantic_need must be provider-neutral UPPER_SNAKE_CASE"
+        )
+    return normalized
+
+
+@dataclass(frozen=True)
+class TrustedCapabilityBinding:
+    """Brain-neutral projection of trusted capability-registry authority.
+
+    Runtime/body layers may construct this value only from a trusted capability
+    snapshot. Brain never imports CapabilityDescriptor or any tools/runtime code.
+    """
+
+    capability_id: str
+    semantic_needs: Tuple[str, ...]
+    supported_agents: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        capability_id = _required_text(self.capability_id, "capability_id")
+        if not isinstance(self.semantic_needs, (list, tuple)):
+            raise ValueError("semantic_needs must be a list or tuple")
+        if not isinstance(self.supported_agents, (list, tuple)):
+            raise ValueError("supported_agents must be a list or tuple")
+
+        semantic_needs = []
+        for value in self.semantic_needs:
+            need = _semantic_need(value)
+            if need not in semantic_needs:
+                semantic_needs.append(need)
+
+        supported_agents = []
+        for value in self.supported_agents:
+            agent = _required_text(value, "supported_agent").upper()
+            if agent != "ALL":
+                try:
+                    agent = BrainAgentId(agent).value
+                except ValueError as exc:
+                    raise ValueError(
+                        "supported_agents must contain permanent Brain agents or ALL"
+                    ) from exc
+            if agent not in supported_agents:
+                supported_agents.append(agent)
+
+        object.__setattr__(self, "capability_id", capability_id)
+        object.__setattr__(self, "semantic_needs", tuple(semantic_needs))
+        object.__setattr__(self, "supported_agents", tuple(supported_agents))
+
+
+@dataclass(frozen=True)
+class CapabilityBindingAssessment:
+    """Auditable semantic binding result; never execution authority."""
+
+    intent_id: str
+    capability_id: str
+    semantic_need: str
+    disposition: CapabilityBindingDisposition
+    reason: str
+
+    def __post_init__(self) -> None:
+        intent_id = _required_text(self.intent_id, "intent_id")
+        capability_id = _required_text(self.capability_id, "capability_id")
+        semantic_need = _semantic_need(self.semantic_need)
+        reason = _required_text(self.reason, "reason")
+        disposition = self.disposition
+        if not isinstance(disposition, CapabilityBindingDisposition):
+            try:
+                disposition = CapabilityBindingDisposition(
+                    str(disposition).strip().upper()
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "disposition must be BOUND or REJECTED"
+                ) from exc
+        object.__setattr__(self, "intent_id", intent_id)
+        object.__setattr__(self, "capability_id", capability_id)
+        object.__setattr__(self, "semantic_need", semantic_need)
+        object.__setattr__(self, "disposition", disposition)
+        object.__setattr__(self, "reason", reason)
+
+
+def evaluate_action_intent_capability_binding(
+    intent: ActionIntent,
+    binding: TrustedCapabilityBinding,
+) -> CapabilityBindingAssessment:
+    """Evaluate semantic ActionIntent/capability compatibility fail-closed.
+
+    This function is intentionally not an execution authorizer. A BOUND result
+    must still be combined with canonical Decision provenance and runtime policy
+    before any dispatch may occur.
+    """
+
+    if not isinstance(intent, ActionIntent):
+        raise ValueError("intent must be ActionIntent")
+    if not isinstance(binding, TrustedCapabilityBinding):
+        raise ValueError("binding must be TrustedCapabilityBinding")
+
+    def assessment(
+        disposition: CapabilityBindingDisposition,
+        reason: str,
+    ) -> CapabilityBindingAssessment:
+        return CapabilityBindingAssessment(
+            intent_id=intent.intent_id,
+            capability_id=binding.capability_id,
+            semantic_need=intent.capability_need,
+            disposition=disposition,
+            reason=reason,
+        )
+
+    if intent.capability_need not in binding.semantic_needs:
+        return assessment(
+            CapabilityBindingDisposition.REJECTED,
+            "CAPABILITY_NEED_MISMATCH: trusted capability metadata does not "
+            "declare the ActionIntent semantic need.",
+        )
+
+    owner = intent.owner_agent.value
+    if "ALL" not in binding.supported_agents and owner not in binding.supported_agents:
+        return assessment(
+            CapabilityBindingDisposition.REJECTED,
+            "CAPABILITY_AGENT_MISMATCH: trusted capability metadata does not "
+            "permit the ActionIntent owner agent.",
+        )
+
+    return assessment(
+        CapabilityBindingDisposition.BOUND,
+        "TRUSTED_CAPABILITY_BOUND: semantic need and permanent-agent owner "
+        "match trusted capability metadata.",
+    )
 
 
 @dataclass(frozen=True)
