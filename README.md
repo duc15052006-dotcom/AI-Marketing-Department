@@ -20,6 +20,16 @@ Thay vì để một chatbot duy nhất làm mọi việc, dự án chia công v
 
 Dự án được xây theo hướng **local-first**, ưu tiên khả năng kiểm soát dữ liệu, provider/model có thể thay đổi, bằng chứng có provenance, và các hành động quan trọng vẫn cần **Human Approval**.
 
+### Cập nhật nhanh — 07/09/2026
+
+Dự án hiện đang ở giai đoạn **Active Development / Architecture Hardening**. Từ baseline công khai trên `main`, nhiều nhánh Draft đã được dùng để kiểm chứng các thay đổi lớn về adaptive runtime, concurrency, provider/tool safety và Brain provenance.
+
+Điểm tiến triển lớn nhất trên **latest validated Draft runtime stack** là luồng proposal thích ứng đã được nối xuyên suốt **đúng 5 agent** đến Final CMO: CMO có thể đề xuất trusted task kinds, runtime/compiler giữ quyền kiểm soát scheduling/dependencies, và Intelligence → Strategist → Creative → Performance → Final CMO lần lượt tiêu thụ proposal phù hợp. PR #194 đã có targeted + full hermetic CI xanh tại exact head của nhánh đó.
+
+Tuy vậy, dự án **chưa production-ready** và các thay đổi trên Draft PR **chưa nằm trên `main`**. Generalized cross-stage parallel execution vẫn `PARTIAL ⚠️`; Brain runtime action gate ở PR #192 đang `REGRESSION 🔴` do lỗi tương thích thứ tự authorization; và hạng mục mới nhất PR #195 đang ở trạng thái `UNVERIFIED 🔎 / RED-ONLY` cho lỗi checkpoint nested snapshot.
+
+> **Quan trọng:** README phân biệt rõ trạng thái của `main` và trạng thái đã được kiểm chứng trên các Draft branch. Một thay đổi chỉ được xem là production baseline sau khi được review/merge theo quy trình của repo.
+
 > **Lưu ý:** dự án vẫn đang được phát triển và hardening. Một số tài liệu trong repo là lịch sử nghiên cứu/đánh giá của từng giai đoạn và không nên được hiểu là cam kết rằng mọi tính năng đã hoàn thiện ở trạng thái production.
 
 ---
@@ -38,7 +48,13 @@ The system has **exactly five permanent logical agents**:
 
 The project is designed around a **local-first application**, provider-agnostic model routing, evidence-aware workflows, scoped memory/knowledge, and human approval for consequential actions.
 
-This repository is an active work in progress. Historical benchmark and evaluation files should be interpreted only in the context of the commit and environment that produced them.
+### Current snapshot — 2026-09-07
+
+The project is in **Active Development / Architecture Hardening**. A validated Draft runtime stack now carries compiler-authorized adaptive task proposals across the full five-agent path through Final CMO while keeping scheduling, dependency, side-effect and deployment authority in deterministic runtime/governance layers.
+
+These Draft changes are **not merged into `main`**. Broader fully adaptive execution remains partial, the Brain runtime action-gate branch currently has a full-suite compatibility regression, and the newest checkpoint deep-snapshot hardening slice is still RED-only.
+
+This repository is therefore **not production-ready**. Historical benchmark and evaluation files should be interpreted only in the context of the exact commit and environment that produced them.
 
 ---
 
@@ -579,24 +595,38 @@ Các module cụ thể cho media gateway, artifact/job management hoặc provide
 
 ## Trạng thái dự án
 
-**Status: Active Development / Hardening**
+**Status: Active Development / Architecture Hardening — NOT production-ready**  
+**Snapshot date:** 07/09/2026
 
-Dự án đã có lượng code và test đáng kể, nhưng tôi vẫn đang tiếp tục:
+### Baseline và Draft stack
 
-- hardening kiến trúc;
-- sửa regression;
-- cải thiện agent intelligence;
-- cải thiện memory/knowledge;
-- xây dần Unified Marketing Knowledge Platform;
-- hoàn thiện provider interoperability;
-- mở rộng capability routing cho image/video/audio/design;
-- phát triển workflow knowledge → planning → prompt → provider → artifact → evaluation;
-- cải thiện UI/UX;
-- thêm skills/plugins;
-- cải thiện khả năng research thực tế;
-- đánh giá lại chất lượng multi-agent bằng benchmark công bằng hơn.
+- `main` hiện vẫn là baseline công khai tại commit `3fed5e1e3b07fa45cd657cd4e4350740dac6b181` (README/public baseline ngày 04/09/2026).
+- Các thay đổi hardening mới hơn được giữ trong **Draft/Open PRs** và **chưa merge vào `main`**.
+- Vì vậy, khi đọc trạng thái dưới đây cần phân biệt giữa **main baseline** và **validated Draft branch behavior**.
 
-Tôi cố gắng không dùng README để tuyên bố một tính năng “hoàn thành” nếu code/test hiện tại chưa chứng minh điều đó.
+### Những phần đã có bằng chứng FIXED ✅ trên Draft branches
+
+- **Dependency-aware scheduler core** — PR #176: scheduler/compiler có thể nhóm task độc lập an toàn, serialize dependency/conflict/side-effect và fail closed với task không đủ authority. Live integration ban đầu vẫn được đánh dấu `PARTIAL ⚠️`.
+- **Runtime concurrency hardening** — PR #177, #178, #180, #183: receipt repository, lineage inspector, ToolGateway idempotency single-flight và ProgressEmitter đã có adversarial regression + full hermetic GREEN trên các exact head tương ứng.
+- **Adaptive Intelligence fan-out** — PR #185: Intelligence có thể fan-out market/competitor/customer research độc lập bằng nhiều worker của cùng logical agent, không tạo Agent 6.
+- **Adaptive proposal authority** — PR #186: CMO/model chỉ transport proposal data, còn `AdaptiveTaskCompiler` giữ quyền dependencies/resources/side-effect/scheduling.
+- **Full five-agent proposal consumption path** — PR #187, #188, #193, #194: Strategist, Creative, Performance và Final CMO lần lượt tiêu thụ compiler-authorized proposal phù hợp. PR #194 kết thúc chuỗi này với targeted + full hermetic GREEN tại exact head `1088d227f6b9c4cfab51ec0aa57354b6d1c15ba6`.
+- **Fail-closed stage boundaries** — PR #190 và #191: downstream stage không được dispatch tool hoặc mutate receipt/lineage khi upstream stage đã FAILED.
+- **Provider/tool safety** — các PR #168, #170, #172, #175, #179, #181, #182, #184 đã harden availability gating, duplicate-sensitive metered dispatch, provider-operation concurrency/fault isolation và atomic provider-preflight transitions trên các branch riêng.
+- **Brain provenance hardening** — các PR #166 và #169 đã thêm authoritative trajectory/memory promotion provenance checks trên Draft branches.
+
+### Những phần vẫn còn PARTIAL / REGRESSION / UNVERIFIED
+
+- **Fully adaptive live execution:** `PARTIAL ⚠️`. Việc consume proposal xuyên đủ 5 agent không tự động chứng minh generalized cross-stage parallel execution hoặc trusted isolated-worker merge boundary cho mọi stage.
+- **Brain runtime action gate — PR #192:** `REGRESSION 🔴`. Targeted invariant đã xanh, nhưng full hermetic suite phát hiện 2 compatibility failures vì Brain gate chạy trước permanent five-agent identity recognition và làm thay đổi expected `UNRECOGNIZED_AGENT` contract thành `BRAIN_ACTION_DENIED`.
+- **Runtime checkpoint deep snapshot — PR #195:** `UNVERIFIED 🔎 / RED-ONLY`. Test mới đang chứng minh `create_checkpoint()` chỉ shallow-copy `working_state`, khiến nested structures có nguy cơ alias với live runtime state. Production fix chưa được áp dụng ở trạng thái RED-only này.
+- Một số provider/media/knowledge capability trong README vẫn là **Target Architecture / Planned**, không phải production claim.
+
+### Cách hiểu trạng thái của dự án
+
+Hiện tại dự án đã vượt qua giai đoạn prototype đơn giản và có lượng regression/adversarial testing đáng kể trên nhiều hardening branch. Tuy nhiên, repo vẫn đang trong quá trình hợp nhất các nhánh đã kiểm chứng, xử lý regression còn mở, hoàn thiện generalized adaptive execution, Brain/tool authority boundaries, provider interoperability, knowledge platform, media capability layer và UI/UX.
+
+Tôi cố gắng không dùng README để tuyên bố một tính năng “hoàn thành” nếu code/test tại exact commit chưa chứng minh điều đó.
 
 ---
 
