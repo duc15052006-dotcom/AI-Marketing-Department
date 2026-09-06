@@ -18,7 +18,14 @@
 │   PHASE 9    │ ──> │   PHASE 10   │
 │   Learning   │     │  Standalone  │
 │  Evaluation  │     │ Application  │
-└──────────────┘     └──────────────┘
+└──────────────┘     └──────┬───────┘
+                            │
+                            ▼
+                     ┌──────────────┐
+                     │   PHASE 11   │
+                     │  Continuity  │
+                     │    Runtime   │
+                     └──────────────┘
 ```
 
 ---
@@ -110,3 +117,69 @@
 - Full-stack multi-brand dashboard (FastAPI backend + modern reactive frontend).
 - Visual campaign timeline builder, live creative previewer, and experiment visualizer.
 - Real-time agent collaboration chat and interactive Ask-Mentor cockpit.
+
+---
+
+### PHASE 11 — Persistent Worker / Continuity Runtime
+
+**Goal:** turn the five-agent department from a session-bound workflow into a durable workforce that can own long-lived missions, sleep, wake, resume after restart, reconcile external reality, and execute consequential actions only through runtime-enforced authority.
+
+**Boundary:** this phase is runtime/infrastructure hardening. It does not implement hypothesis generation, causal reasoning, strategy invention, replanning intelligence, or outcome interpretation inside the Brain.
+
+#### 11.1 — Shared Contracts + Mission / Commitment Domain Model
+- Add stable Brain ↔ Runtime contracts for `MissionContext`, `Observation`, `ActionResult`, `BudgetSnapshot`, `AuthoritySnapshot`, `ReconciliationFinding`, and `WakeEvent`.
+- Add runtime contracts for `MissionRecord`, `CommitmentRecord`, `WakeRecord`, `TaskEnvelope`, `AuthorityDecision`, `BudgetReservation`, `ExternalEffectRecord`, `CheckpointState`, `RetryRecord`, and `ReconciliationRecord`.
+- Make Mission and Commitment identity/scope immutable once activated.
+- Fail closed: a mission cannot become executable without a canonical commitment bound to the same mission and authoritative scope.
+
+#### 11.2 — Mission Control Plane
+- Implement `MissionStore`, `MissionService`, `MissionStateMachine`, and mission leases.
+- Durable lifecycle: `CREATED`, `READY`, `ACTIVE`, waiting/sleep states, then `COMPLETED`, `CANCELLED`, `FAILED`, or `EXPIRED`.
+- Keep mission lifetime independent of chat session, model/provider process, and individual runtime runs.
+
+#### 11.3 — Durable Wake Infrastructure
+- Implement separate `DurableScheduler`, `EventBus`, `ConditionWatcher`, `WakeDispatcher`, and wake deduplication.
+- Supported wake sources: time, external/internal event, condition threshold, manual wake, retry, reconciliation.
+- Preserve the current dependency scheduler for intra-wake task ordering; do not conflate it with long-lived mission scheduling.
+
+#### 11.4 — Mission Task Runtime
+- Implement durable `MissionTaskQueue` with priority, dependency, lease, cancellation, retry metadata, and poison-task handling.
+- Bridge mission tasks into the existing Five-Agent orchestrator and dependency-aware scheduler.
+- Preserve exactly five specialist agents; Continuity Runtime is a control plane, not a sixth agent.
+
+#### 11.5 — Checkpoint, Resume & Reconciliation
+- Persist mission checkpoints independently of process memory.
+- Validate checkpoint integrity and authoritative scope before resume.
+- Implement deterministic recovery selection and missed-work detection.
+- Reconcile internal state with external reality before retrying uncertain consequential actions.
+
+#### 11.6 — Action Authority Fabric
+- Route every consequential `ActionIntent` through cancellation, permission, approval, budget, idempotency, and execution-safety checks before `ToolGateway`.
+- Runtime owns enforcement; the LLM/Brain cannot self-grant authority.
+- Add durable budget reservation/commit/release semantics for money, token, API, and time limits.
+
+#### 11.7 — Durable External Effect Safety
+- Upgrade in-process/single-flight idempotency to cross-restart durable idempotency.
+- Implement `ExternalEffectLedger` with intent identity, provider/tool request identity, receipt, outcome, reconciliation status, and retry eligibility.
+- On ambiguous crash/restart outcomes, query external reality before deciding whether a retry is safe.
+
+#### 11.8 — Durable Cognitive-State Infrastructure
+- Runtime stores and versions `WorldModel`, `Plan`, `DecisionJournal`, `Experiment`, and `Experience` records with provenance and lineage.
+- Brain owns semantic interpretation, beliefs, hypotheses, causal reasoning, experiment design, and replanning decisions.
+- Reflection scheduling belongs to runtime; reflection reasoning belongs to Brain.
+
+#### 11.9 — Reliability & Mission Observability
+- Add timeout, bounded retry/backoff, leases, locks, dead-letter queue, recovery counters, and deterministic failure classes.
+- Add mission timeline, wake history, task/action receipts, budget history, approval history, checkpoint lineage, reconciliation findings, and failure trail.
+- Every wake and external effect must be traceable back to mission, commitment, authoritative scope, and originating decision/action intent.
+
+#### Implementation order / hardening gates
+1. Shared contracts + Mission/Commitment domain model.
+2. Mission Store + lifecycle/state machine.
+3. Durable wake system.
+4. Mission task queue + existing scheduler integration.
+5. Persistent checkpoint + resume + reconciliation.
+6. Action Authority Fabric + durable external-effect safety.
+7. Cognitive-state persistence + observability + reliability hardening.
+
+Each runtime invariant is implemented as a small branch/PR with adversarial RED evidence before production code, targeted regression tests, then full hermetic CI. No Continuity Runtime PR may bypass existing cancellation, approval, provider, ToolGateway, lineage, checkpoint, or scope guarantees.
