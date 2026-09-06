@@ -1,0 +1,56 @@
+name: Runtime Strategist Adaptive Proposal V1
+
+on:
+  pull_request:
+    paths:
+      - "runtime/engine.py"
+      - "tests/test_runtime_strategist_adaptive_proposal_v1.py"
+      - ".github/workflows/runtime-strategist-adaptive-proposal-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  strategist-adaptive-proposal-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "expected=$EXPECTED"
+          echo "actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run strategist adaptive proposal regressions
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_strategist_adaptive_proposal_v1 \
+            tests.test_runtime_cmo_adaptive_task_proposals_v1 \
+            tests.test_runtime_dependency_scheduler_v1
