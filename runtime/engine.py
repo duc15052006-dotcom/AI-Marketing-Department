@@ -1345,6 +1345,31 @@ class FiveAgentDepartmentRuntime:
             context.knowledge_refs.append(c.citation_id)
             self.lineage_inspector.add_citation(c)
 
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="CREATIVE",
+                    agent="CREATIVE",
+                    message="Giai đoạn Creative thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "CREATIVE",
+                "agent": "creative",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "concept_name": "",
+                "visual_asset_receipt": None,
+                "creative_synthesis": "",
+                "copy_headlines": [],
+                "citations": [c.citation_id for c in k_res.citations],
+            }
+            context.stage_outputs["creative"] = output
+            context.create_checkpoint()
+            return output
+
         # Invoke ToolGateway for local image generation / asset preparation
         idem_key = f"{context.run_id}:creative:image_generation:hero"
         img_req = ToolRequest(
@@ -1368,31 +1393,6 @@ class FiveAgentDepartmentRuntime:
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
-
-        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
-            context.status = RuntimeStatus.FAILED
-            if emitter:
-                emitter.emit(
-                    ProgressEventType.RUN_FAILED,
-                    stage="CREATIVE",
-                    agent="CREATIVE",
-                    message="Giai đoạn Creative thất bại do giai đoạn trước gặp sự cố",
-                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
-                )
-            output = {
-                "stage": "CREATIVE",
-                "agent": "creative",
-                "status": "FAILED",
-                "error": "PREVIOUS_STAGE_FAILED",
-                "concept_name": "",
-                "visual_asset_receipt": img_receipt.execution_id,
-                "creative_synthesis": "",
-                "copy_headlines": [],
-                "citations": [c.citation_id for c in k_res.citations],
-            }
-            context.stage_outputs["creative"] = output
-            context.create_checkpoint()
-            return output
 
         # Adaptive CMO proposal consumption for Creative remains recommendation-only.
         # The failed-Strategist gate above is authoritative and is evaluated before
