@@ -1,24 +1,31 @@
-"""Provider-neutral Brain action authorization seam.
+"""Provider-neutral Brain action authorization seams.
 
-This module owns only the semantic pre-dispatch authorization contract used
-by the Body-side ToolGateway. It deliberately imports no runtime, tools,
-provider, connector, persistence, or adapter code.
+This module owns semantic authorization contracts only. It deliberately imports
+no runtime, tools, provider, connector, persistence, or adapter code.
 
-V1 establishes a fail-closed Brain veto point on every registered tool
-dispatch. It does not yet claim that Decision provenance is bound to an
-action; that stronger lineage contract is a separate hardening slice.
+V1 keeps the validated structural runtime veto used by ToolGateway. The semantic
+ActionIntent path separately binds Brain intent to canonical decision authority;
+runtime wiring of that stronger provenance remains a later isolated slice.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
-from brain.contracts import BrainAgentId
+from brain.contracts import (
+    ActionIntent,
+    BrainAgentId,
+    DecisionDisposition,
+)
+
+if TYPE_CHECKING:
+    from brain.decisions import DecisionEvaluationRequest
 
 
 class ActionDisposition(str, Enum):
-    """Brain authorization result for one runtime action request."""
+    """Brain authorization result for one action request."""
 
     ALLOW = "ALLOW"
     BLOCK = "BLOCK"
@@ -38,7 +45,7 @@ def _strict_bool(value: object, field_name: str) -> bool:
 
 @dataclass(frozen=True)
 class RuntimeActionIntent:
-    """Trusted registry metadata presented to the Brain authorization seam."""
+    """Trusted registry metadata presented to the runtime Brain veto seam."""
 
     intent_id: str
     run_id: str
@@ -97,7 +104,7 @@ class RuntimeActionIntent:
 
 @dataclass(frozen=True)
 class ActionAuthorization:
-    """Auditable Brain decision at the runtime action boundary."""
+    """Auditable Brain authorization result at an action boundary."""
 
     intent_id: str
     disposition: ActionDisposition
@@ -118,11 +125,11 @@ class ActionAuthorization:
 
 
 def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:
-    """Default V1 policy after structural trusted-metadata validation.
+    """Validated V1 structural runtime veto policy.
 
-    V1 preserves current valid execution behavior while making this Brain
-    authorization seam mandatory. Decision/Plan provenance will tighten
-    this default in the next isolated hardening slice.
+    This function intentionally preserves the already-qualified ToolGateway V1
+    behavior. Semantic Decision provenance is enforced by
+    :func:`authorize_action_intent` and will be wired into runtime separately.
     """
 
     if not isinstance(intent, RuntimeActionIntent):
@@ -131,4 +138,70 @@ def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:
         intent_id=intent.intent_id,
         disposition=ActionDisposition.ALLOW,
         reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",
+    )
+
+
+def authorize_action_intent(
+    intent: ActionIntent,
+    decision_request: "DecisionEvaluationRequest",
+) -> ActionAuthorization:
+    """Authorize a semantic ActionIntent from canonical Decision provenance.
+
+    The raw ``DecisionEvaluationRequest`` is the authority input. This function
+    recomputes the canonical DecisionEvaluation with ``evaluate_decision``;
+    caller-created evaluation summaries are never accepted as authority.
+    """
+
+    from brain.decisions import DecisionEvaluationRequest, evaluate_decision
+
+    if not isinstance(intent, ActionIntent):
+        raise ValueError("intent must be ActionIntent")
+    if not isinstance(decision_request, DecisionEvaluationRequest):
+        raise ValueError("decision_request must be DecisionEvaluationRequest")
+
+    def block(reason: str) -> ActionAuthorization:
+        return ActionAuthorization(
+            intent_id=intent.intent_id,
+            disposition=ActionDisposition.BLOCK,
+            reason=reason,
+        )
+
+    decision = decision_request.decision
+
+    if intent.decision_id is None:
+        return block(
+            "DECISION_PROVENANCE_REQUIRED: ActionIntent has no bound decision_id."
+        )
+
+    if intent.decision_id != decision.decision_id:
+        return block(
+            "DECISION_ID_MISMATCH: ActionIntent decision_id does not match the canonical decision request."
+        )
+
+    if (
+        intent.goal_id != decision.goal_id
+        or intent.owner_agent != decision.agent_id
+    ):
+        return block(
+            "DECISION_CONTEXT_MISMATCH: ActionIntent goal/owner does not match the bound canonical decision."
+        )
+
+    evaluation = evaluate_decision(decision_request)
+    if (
+        evaluation.decision_id != decision.decision_id
+        or evaluation.goal_id != decision.goal_id
+    ):
+        return block(
+            "DECISION_CONTEXT_MISMATCH: canonical decision evaluation identity changed during recomputation."
+        )
+
+    if evaluation.disposition != DecisionDisposition.PROCEED:
+        return block(
+            "DECISION_NOT_AUTHORIZED: canonical decision evaluation did not authorize PROCEED."
+        )
+
+    return ActionAuthorization(
+        intent_id=intent.intent_id,
+        disposition=ActionDisposition.ALLOW,
+        reason="CANONICAL_DECISION_PROCEED: ActionIntent is bound to an exact canonical PROCEED decision.",
     )
