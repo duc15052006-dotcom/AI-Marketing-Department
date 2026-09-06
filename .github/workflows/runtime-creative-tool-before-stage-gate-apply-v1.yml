@@ -1,0 +1,107 @@
+name: Apply Runtime Creative Tool Before Stage Gate V1
+
+on:
+  push:
+    branches:
+      - fix/runtime-creative-tool-before-stage-gate-v1
+    paths:
+      - ".github/workflows/runtime-creative-tool-before-stage-gate-apply-v1.yml"
+
+permissions:
+  contents: write
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  apply-production-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact triggering head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD:runtime/engine.py)" = "30a2d9967a0fa8a8b58e1acb631a63592eddaf6e"
+
+      - name: Move Creative fail-closed gate before tool dispatch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("runtime/engine.py")
+          text = path.read_text(encoding="utf-8")
+          creative_start = text.index("    def execute_stage_creative(")
+          tool_anchor = "        # Invoke ToolGateway for local image generation / asset preparation\n"
+          adaptive_anchor = "        # Adaptive CMO proposal consumption for Creative remains recommendation-only.\n"
+          tool_pos = text.index(tool_anchor, creative_start)
+          gate_start = text.index(
+              '        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":\n',
+              tool_pos,
+          )
+          gate_end = text.index(adaptive_anchor, gate_start)
+          gate_block = text[gate_start:gate_end]
+          if '"visual_asset_receipt": img_receipt.execution_id,' not in gate_block:
+              raise SystemExit("expected Creative failed-output receipt anchor missing")
+          gate_block = gate_block.replace(
+              '"visual_asset_receipt": img_receipt.execution_id,',
+              '"visual_asset_receipt": None,',
+              1,
+          )
+
+          # Remove the late gate, then insert the same fail-closed behavior before
+          # any Creative tool dispatch. Knowledge lookup remains unchanged.
+          text = text[:gate_start] + text[gate_end:]
+          creative_start = text.index("    def execute_stage_creative(")
+          tool_pos = text.index(tool_anchor, creative_start)
+          text = text[:tool_pos] + gate_block + text[tool_pos:]
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify production patch scope
+        shell: bash
+        run: |
+          git diff --check
+          CHANGED="$(git diff --name-only)"
+          test "$CHANGED" = "runtime/engine.py"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile patched engine
+        run: python -m py_compile runtime/engine.py
+
+      - name: Run targeted regressions before commit
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_creative_tool_before_stage_gate_v1 \
+            tests.test_runtime_creative_adaptive_proposal_v1 \
+            tests.test_creative_performance_true_handoff
+
+      - name: Commit production fix and remove temporary apply workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py
+          git rm .github/workflows/runtime-creative-tool-before-stage-gate-apply-v1.yml
+          git commit -m "fix(runtime): gate Creative tools on upstream success"
+          git push origin HEAD:fix/runtime-creative-tool-before-stage-gate-v1
