@@ -749,6 +749,28 @@ class FiveAgentDepartmentRuntime:
         context.current_stage = RuntimeStage.INTELLIGENCE
         emitter = self._get_emitter(context)
         is_research_mode = bool(emitter and emitter.mode == ProgressMode.RESEARCH_INQUIRY.value)
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "INTELLIGENCE",
+                "agent": "intelligence",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "market_findings": "",
+                "search_receipt_id": None,
+                "citations": [],
+            }
+            context.stage_outputs["intelligence"] = output
+            context.create_checkpoint()
+            return output
         if emitter and not is_research_mode:
             emitter.emit(
                 ProgressEventType.STAGE_STARTED,
@@ -955,29 +977,6 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu tổng hợp nghiên cứu thị trường (Intelligence)",
             )
 
-        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":
-            context.status = RuntimeStatus.FAILED
-            if emitter:
-                emitter.emit(
-                    ProgressEventType.RUN_FAILED,
-                    stage="INTELLIGENCE",
-                    agent="INTELLIGENCE",
-                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",
-                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
-                )
-            output = {
-                "stage": "INTELLIGENCE",
-                "agent": "intelligence",
-                "status": "FAILED",
-                "error": "PREVIOUS_STAGE_FAILED",
-                "market_findings": "",
-                "search_receipt_id": search_receipt.execution_id,
-                "citations": [c.citation_id for c in k_res.citations],
-            }
-            context.stage_outputs["intelligence"] = output
-            context.create_checkpoint()
-            return output
-
         # Dynamic LLM Intelligence Analysis
         sys_prompt = (
             "You are the Intelligence Specialist in the Five-Agent AI Marketing Department.\n"
@@ -1170,6 +1169,30 @@ class FiveAgentDepartmentRuntime:
         """Stage 4: Creative Generation & Asset Synthesis."""
         context.current_stage = RuntimeStage.CREATIVE
         emitter = self._get_emitter(context)
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="CREATIVE",
+                    agent="CREATIVE",
+                    message="Giai đoạn Creative thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "CREATIVE",
+                "agent": "creative",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "concept_name": "",
+                "visual_asset_receipt": None,
+                "creative_synthesis": "",
+                "copy_headlines": [],
+                "citations": [],
+            }
+            context.stage_outputs["creative"] = output
+            context.create_checkpoint()
+            return output
         if emitter:
             emitter.emit(
                 ProgressEventType.STAGE_STARTED,
@@ -1206,31 +1229,6 @@ class FiveAgentDepartmentRuntime:
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
-
-        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
-            context.status = RuntimeStatus.FAILED
-            if emitter:
-                emitter.emit(
-                    ProgressEventType.RUN_FAILED,
-                    stage="CREATIVE",
-                    agent="CREATIVE",
-                    message="Giai đoạn Creative thất bại do giai đoạn trước gặp sự cố",
-                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
-                )
-            output = {
-                "stage": "CREATIVE",
-                "agent": "creative",
-                "status": "FAILED",
-                "error": "PREVIOUS_STAGE_FAILED",
-                "concept_name": "",
-                "visual_asset_receipt": img_receipt.execution_id,
-                "creative_synthesis": "",
-                "copy_headlines": [],
-                "citations": [c.citation_id for c in k_res.citations],
-            }
-            context.stage_outputs["creative"] = output
-            context.create_checkpoint()
-            return output
 
         # Dynamic LLM Creative Synthesis
         sys_prompt = (
@@ -1310,6 +1308,31 @@ class FiveAgentDepartmentRuntime:
         """Stage 5: Performance Analytics, Attribution & Experiment Portfolio."""
         context.current_stage = RuntimeStage.PERFORMANCE
         emitter = self._get_emitter(context)
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("creative", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="PERFORMANCE",
+                    agent="PERFORMANCE",
+                    message="Giai đoạn Performance thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "PERFORMANCE",
+                "agent": "performance",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "funnel_kpi": "",
+                "experiment_blueprint": {},
+                "analytics_receipt_id": None,
+                "analytics_data_status": "NOT_ATTEMPTED:PREVIOUS_STAGE_FAILED",
+                "calc_receipt_id": None,
+                "citations": [],
+            }
+            context.stage_outputs["performance"] = output
+            context.create_checkpoint()
+            return output
         if emitter:
             emitter.emit(
                 ProgressEventType.STAGE_STARTED,
@@ -1365,32 +1388,6 @@ class FiveAgentDepartmentRuntime:
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
-
-        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("creative", {}).get("status") == "FAILED":
-            context.status = RuntimeStatus.FAILED
-            if emitter:
-                emitter.emit(
-                    ProgressEventType.RUN_FAILED,
-                    stage="PERFORMANCE",
-                    agent="PERFORMANCE",
-                    message="Giai đoạn Performance thất bại do giai đoạn trước gặp sự cố",
-                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
-                )
-            output = {
-                "stage": "PERFORMANCE",
-                "agent": "performance",
-                "status": "FAILED",
-                "error": "PREVIOUS_STAGE_FAILED",
-                "funnel_kpi": "",
-                "experiment_blueprint": {},
-                "analytics_receipt_id": analytics_receipt.execution_id,
-                "analytics_data_status": telemetry_status,
-                "calc_receipt_id": None,
-                "citations": [c.citation_id for c in k_res.citations],
-            }
-            context.stage_outputs["performance"] = output
-            context.create_checkpoint()
-            return output
 
         # RC3 mandatory internal Performance two-pass micro-workflow.
         # Both invocations use the SAME permanent logical agent (performance):
