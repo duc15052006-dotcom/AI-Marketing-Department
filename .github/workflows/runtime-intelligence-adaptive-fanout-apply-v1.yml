@@ -6,6 +6,7 @@ on:
       - feat/runtime-intelligence-adaptive-fanout-v1
     paths:
       - ".github/workflows/runtime-intelligence-adaptive-fanout-apply-v1.yml"
+      - ".github/scripts/apply_intelligence_fanout_v1.py"
 
 permissions:
   contents: write
