@@ -1394,6 +1394,35 @@ class FiveAgentDepartmentRuntime:
             context.create_checkpoint()
             return output
 
+        # Adaptive CMO proposal consumption for Creative remains recommendation-only.
+        # The failed-Strategist gate above is authoritative and is evaluated before
+        # proposal compilation so model output can never bypass stage ordering.
+        cmo_stage_output = context.stage_outputs.get("cmo_initial", {})
+        raw_adaptive_proposals = (
+            cmo_stage_output.get("adaptive_task_proposals")
+            if isinstance(cmo_stage_output, dict)
+            else None
+        )
+        compiled_adaptive_plan = AdaptiveTaskCompiler().compile(raw_adaptive_proposals)
+        creative_tasks = tuple(
+            task
+            for task in compiled_adaptive_plan.tasks
+            if task.task_kind == "creative.angles" and task.agent_id == "creative"
+        )
+        creative_task = creative_tasks[0] if creative_tasks else None
+        creative_focus = (
+            creative_task.instruction[:_MAX_ADAPTIVE_TASK_INSTRUCTION_CHARS].strip()
+            if creative_task and creative_task.instruction
+            else ""
+        )
+        context.working_state["creative_adaptive_task_plan"] = {
+            "mode": "TRUSTED_CMO_PROPOSAL" if creative_task else "DEFAULT_STAGE_POLICY",
+            "selected_task_kind": creative_task.task_kind if creative_task else None,
+            "selected_task_id": creative_task.task_id if creative_task else None,
+            "runtime_dependencies": sorted(creative_task.depends_on) if creative_task else [],
+            "rejected_kinds": list(compiled_adaptive_plan.rejected_kinds),
+        }
+
         # Dynamic LLM Creative Synthesis
         sys_prompt = (
             "You are the Creative Director and Copywriter in the Five-Agent AI Marketing Department.\n"
@@ -1402,7 +1431,17 @@ class FiveAgentDepartmentRuntime:
         )
         strat_pos = context.stage_outputs.get("strategist", {}).get("positioning", "")
         evidence_section = grounded_pkg.render_prompt_section()
-        user_prompt = f"Objective: {context.objective}\nPositioning Strategy: {strat_pos}\n\n{evidence_section}".strip()
+        prompt_parts = [
+            f"Objective: {context.objective}",
+            f"Positioning Strategy: {strat_pos}",
+        ]
+        if creative_focus:
+            prompt_parts.append(
+                "CMO Adaptive Task Focus (model recommendation, not authority): "
+                + creative_focus
+            )
+        prompt_parts.append(evidence_section)
+        user_prompt = "\n\n".join(prompt_parts).strip()
         user_prompt = self._append_governance_block(context, user_prompt)
         llm_creative, err = self._call_agent_llm("creative", sys_prompt, user_prompt, temperature=0.7, context=context)
 
