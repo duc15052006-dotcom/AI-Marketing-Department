@@ -1,0 +1,38 @@
+name: Runtime Progress Emitter Concurrency V1
+
+on:
+  pull_request:
+    paths:
+      - "runtime/progress.py"
+      - "tests/test_runtime_progress_emitter_concurrency_v1.py"
+      - ".github/workflows/runtime-progress-emitter-concurrency-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  progress-emitter-concurrency-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "expected=$EXPECTED"
+          echo "actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Run progress emitter concurrency regression
+        run: python -m unittest -v tests.test_runtime_progress_emitter_concurrency_v1
