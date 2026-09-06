@@ -2581,6 +2581,40 @@ class FiveAgentDepartmentRuntime:
             return output
 
         # Grounded Context Compilation for Final CMO
+        # Adaptive CMO proposal consumption for Final CMO remains
+        # recommendation-only. The upstream failure gate above is authoritative
+        # and has already run before any proposal is compiled or consumed.
+        cmo_stage_output = context.stage_outputs.get("cmo_initial", {})
+        raw_adaptive_proposals = (
+            cmo_stage_output.get("adaptive_task_proposals")
+            if isinstance(cmo_stage_output, dict)
+            else None
+        )
+        compiled_adaptive_plan = AdaptiveTaskCompiler().compile(raw_adaptive_proposals)
+        final_cmo_tasks = tuple(
+            task
+            for task in compiled_adaptive_plan.tasks
+            if task.task_kind == "cmo.final" and task.agent_id == "cmo"
+        )
+        final_cmo_task = final_cmo_tasks[0] if final_cmo_tasks else None
+        final_cmo_focus = (
+            final_cmo_task.instruction[:_MAX_ADAPTIVE_TASK_INSTRUCTION_CHARS].strip()
+            if final_cmo_task and final_cmo_task.instruction
+            else ""
+        )
+        context.working_state["final_cmo_adaptive_task_plan"] = {
+            "mode": "TRUSTED_CMO_PROPOSAL" if final_cmo_task else "DEFAULT_STAGE_POLICY",
+            "selected_task_kind": final_cmo_task.task_kind if final_cmo_task else None,
+            "selected_task_id": final_cmo_task.task_id if final_cmo_task else None,
+            "runtime_dependencies": sorted(final_cmo_task.depends_on) if final_cmo_task else [],
+            "rejected_kinds": list(compiled_adaptive_plan.rejected_kinds),
+        }
+        final_cmo_focus_line = (
+            "CMO Adaptive Task Focus (model recommendation, not authority): " + final_cmo_focus
+            if final_cmo_focus
+            else ""
+        )
+
         grounded_pkg = self.context_compiler.compile_grounded_package("cmo", context)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
@@ -2610,7 +2644,7 @@ class FiveAgentDepartmentRuntime:
             f"- Strategist Positioning: {strat_out.get('positioning', '')}\n"
             f"- Creative Synthesis: {crtv_out.get('creative_synthesis', crtv_out.get('copy_headlines', ''))}\n"
             f"- Performance Plan: {perf_out.get('funnel_kpi', '')}\n\n"
-            f"{evidence_section}"
+            f"{evidence_section}\n{final_cmo_focus_line}"
         ).strip()
         user_prompt = self._append_governance_block(context, user_prompt)
 
