@@ -45,56 +45,55 @@ jobs:
           path = Path("runtime/engine.py")
           text = path.read_text(encoding="utf-8")
 
-          anchor = '''        # Grounded Context Compilation for Final CMO
-          grounded_pkg = self.context_compiler.compile_grounded_package("cmo", context)
-          '''
-          replacement = '''        # Adaptive CMO proposal consumption for Final CMO remains
-          # recommendation-only. The upstream failure gate above is authoritative
-          # and has already run before any proposal is compiled or consumed.
-          cmo_stage_output = context.stage_outputs.get("cmo_initial", {})
-          raw_adaptive_proposals = (
-              cmo_stage_output.get("adaptive_task_proposals")
-              if isinstance(cmo_stage_output, dict)
-              else None
-          )
-          compiled_adaptive_plan = AdaptiveTaskCompiler().compile(raw_adaptive_proposals)
-          final_cmo_tasks = tuple(
-              task
-              for task in compiled_adaptive_plan.tasks
-              if task.task_kind == "cmo.final" and task.agent_id == "cmo"
-          )
-          final_cmo_task = final_cmo_tasks[0] if final_cmo_tasks else None
-          final_cmo_focus = (
-              final_cmo_task.instruction[:_MAX_ADAPTIVE_TASK_INSTRUCTION_CHARS].strip()
-              if final_cmo_task and final_cmo_task.instruction
-              else ""
-          )
-          context.working_state["final_cmo_adaptive_task_plan"] = {
-              "mode": "TRUSTED_CMO_PROPOSAL" if final_cmo_task else "DEFAULT_STAGE_POLICY",
-              "selected_task_kind": final_cmo_task.task_kind if final_cmo_task else None,
-              "selected_task_id": final_cmo_task.task_id if final_cmo_task else None,
-              "runtime_dependencies": sorted(final_cmo_task.depends_on) if final_cmo_task else [],
-              "rejected_kinds": list(compiled_adaptive_plan.rejected_kinds),
-          }
-          final_cmo_focus_line = (
-              "CMO Adaptive Task Focus (model recommendation, not authority): " + final_cmo_focus
-              if final_cmo_focus
-              else ""
-          )
+          compile_line = '        grounded_pkg = self.context_compiler.compile_grounded_package("cmo", context)\n'
+          if text.count(compile_line) != 1:
+              raise SystemExit(f"Final CMO compile line count={text.count(compile_line)}")
 
-          # Grounded Context Compilation for Final CMO
-          grounded_pkg = self.context_compiler.compile_grounded_package("cmo", context)
-          '''
-          if text.count(anchor) != 1:
-              raise SystemExit(f"Final CMO compile anchor count={text.count(anchor)}")
-          text = text.replace(anchor, replacement, 1)
+          insertion = (
+              '        # Adaptive CMO proposal consumption for Final CMO remains\n'
+              '        # recommendation-only. The upstream failure gate above is authoritative\n'
+              '        # and has already run before any proposal is compiled or consumed.\n'
+              '        cmo_stage_output = context.stage_outputs.get("cmo_initial", {})\n'
+              '        raw_adaptive_proposals = (\n'
+              '            cmo_stage_output.get("adaptive_task_proposals")\n'
+              '            if isinstance(cmo_stage_output, dict)\n'
+              '            else None\n'
+              '        )\n'
+              '        compiled_adaptive_plan = AdaptiveTaskCompiler().compile(raw_adaptive_proposals)\n'
+              '        final_cmo_tasks = tuple(\n'
+              '            task\n'
+              '            for task in compiled_adaptive_plan.tasks\n'
+              '            if task.task_kind == "cmo.final" and task.agent_id == "cmo"\n'
+              '        )\n'
+              '        final_cmo_task = final_cmo_tasks[0] if final_cmo_tasks else None\n'
+              '        final_cmo_focus = (\n'
+              '            final_cmo_task.instruction[:_MAX_ADAPTIVE_TASK_INSTRUCTION_CHARS].strip()\n'
+              '            if final_cmo_task and final_cmo_task.instruction\n'
+              '            else ""\n'
+              '        )\n'
+              '        context.working_state["final_cmo_adaptive_task_plan"] = {\n'
+              '            "mode": "TRUSTED_CMO_PROPOSAL" if final_cmo_task else "DEFAULT_STAGE_POLICY",\n'
+              '            "selected_task_kind": final_cmo_task.task_kind if final_cmo_task else None,\n'
+              '            "selected_task_id": final_cmo_task.task_id if final_cmo_task else None,\n'
+              '            "runtime_dependencies": sorted(final_cmo_task.depends_on) if final_cmo_task else [],\n'
+              '            "rejected_kinds": list(compiled_adaptive_plan.rejected_kinds),\n'
+              '        }\n'
+              '        final_cmo_focus_line = (\n'
+              '            "CMO Adaptive Task Focus (model recommendation, not authority): " + final_cmo_focus\n'
+              '            if final_cmo_focus\n'
+              '            else ""\n'
+              '        )\n\n'
+          )
+          text = text.replace(compile_line, insertion + compile_line, 1)
 
-          prompt_anchor = '''            f"- Performance Plan: {perf_out.get('funnel_kpi', '')}\\n\\n"
-              f"{evidence_section}"
-          '''
-          prompt_replacement = '''            f"- Performance Plan: {perf_out.get('funnel_kpi', '')}\\n\\n"
-              f"{evidence_section}\\n{final_cmo_focus_line}"
-          '''
+          prompt_anchor = (
+              '            f"- Performance Plan: {perf_out.get(\'funnel_kpi\', \'\')}\\n\\n"\n'
+              '            f"{evidence_section}"\n'
+          )
+          prompt_replacement = (
+              '            f"- Performance Plan: {perf_out.get(\'funnel_kpi\', \'\')}\\n\\n"\n'
+              '            f"{evidence_section}\\n{final_cmo_focus_line}"\n'
+          )
           if text.count(prompt_anchor) != 1:
               raise SystemExit(f"Final CMO prompt anchor count={text.count(prompt_anchor)}")
           text = text.replace(prompt_anchor, prompt_replacement, 1)
