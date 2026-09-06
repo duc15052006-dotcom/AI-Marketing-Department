@@ -1,0 +1,38 @@
+name: Runtime Progress Stack Replay
+
+on:
+  push:
+    branches:
+      - fix/runtime-progress-emitter-concurrency-v1
+
+permissions:
+  contents: write
+
+jobs:
+  replay-clean-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-progress-emitter-concurrency-v1
+          fetch-depth: 0
+      - name: Replay qualified production and test commits only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for sha in \
+            7560d29a4ae2156172d94b6d39567a1ecdc6a621 \
+            a33c3cc04e636a8db80901e6f638507f3459e1aa
+          do
+            git fetch origin "$sha"
+            git cherry-pick "$sha"
+          done
+      - name: Remove replay harness and push clean branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/runtime-progress-stack-replay.yml
+          git commit -m "chore(runtime): remove temporary progress stack replay workflow"
+          git push origin HEAD:fix/runtime-progress-emitter-concurrency-v1
