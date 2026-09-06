@@ -71,6 +71,10 @@ class CapabilityDescriptor(BaseModel):
     risk_level: RiskLevel = Field(default=RiskLevel.LOW)
     human_approval_required: bool = Field(default=False)
     supported_agents: List[str] = Field(default_factory=list, description="List of agent roles permitted to request this capability")
+    semantic_needs: List[str] = Field(
+        default_factory=list,
+        description="Provider-neutral Brain ActionIntent semantic needs this capability may satisfy",
+    )
     provider: str = Field(default="system_local", description="Provider adapter name")
     availability: str = Field(default="AVAILABLE", description="AVAILABLE | DEGRADED | UNAVAILABLE | MOCK_ONLY")
     cost_policy: CostPolicy = Field(default=CostPolicy.FREE_LOCAL)
@@ -83,8 +87,32 @@ class CapabilityDescriptor(BaseModel):
     )
 
     def fingerprint(self) -> str:
-        """Cryptographic hash of the capability declaration."""
-        raw = f"{self.capability_id}:{self.category.value}:{self.risk_level.value}:{self.human_approval_required}:{self.provider}"
+        """Cryptographic hash of execution and semantic authority metadata."""
+        authority = json.dumps(
+            {
+                "semantic_needs": sorted(
+                    {
+                        str(value).strip().upper()
+                        for value in self.semantic_needs
+                        if str(value).strip()
+                    }
+                ),
+                "supported_agents": sorted(
+                    {
+                        str(value).strip().lower()
+                        for value in self.supported_agents
+                        if str(value).strip()
+                    }
+                ),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        raw = (
+            f"{self.capability_id}:{self.category.value}:{self.risk_level.value}:"
+            f"{self.human_approval_required}:{self.provider}:{authority}"
+        )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -135,6 +163,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["intelligence", "strategist", "cmo"],
+                semantic_needs=["MARKET_RESEARCH"],
                 provider="search_adapter",
                 timeout_policy=15.0,
             )
@@ -150,6 +179,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["intelligence", "strategist", "cmo"],
+                semantic_needs=["MARKET_RESEARCH"],
                 provider="http_adapter",
                 timeout_policy=20.0,
             )
@@ -165,6 +195,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["intelligence", "performance", "cmo"],
+                semantic_needs=["MARKET_RESEARCH"],
                 provider="data_retrieval_adapter",
                 timeout_policy=15.0,
             )
