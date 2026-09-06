@@ -34,26 +34,30 @@ class BrainRuntimeActionGateV1Tests(unittest.TestCase):
             receipt_repo = ExecutionReceiptRepository(
                 database_path=Path(tmp) / "receipts.sqlite3"
             )
-            gateway = ToolGateway(
-                capability_registry=CapabilityRegistry(),
-                receipt_repository=receipt_repo,
-                action_authorizer=deny,
-            )
-
-            receipt = gateway.execute(
-                ToolRequest(
-                    request_id="REQ-BRAIN-GATE-RED-001",
-                    run_id="RUN-BRAIN-GATE-RED-001",
-                    agent_id="intelligence",
-                    capability_id="web_search",
-                    parameters={
-                        "query": "must never reach an adapter",
-                        # Adversarial caller metadata must not become risk authority.
-                        "risk_level": "LOW",
-                        "capability_category": "READ_ONLY",
-                    },
+            try:
+                gateway = ToolGateway(
+                    capability_registry=CapabilityRegistry(),
+                    receipt_repository=receipt_repo,
+                    action_authorizer=deny,
                 )
-            )
+
+                receipt = gateway.execute(
+                    ToolRequest(
+                        request_id="REQ-BRAIN-GATE-RED-001",
+                        run_id="RUN-BRAIN-GATE-RED-001",
+                        agent_id="intelligence",
+                        capability_id="web_search",
+                        parameters={
+                            "query": "must never reach an adapter",
+                            # Adversarial caller metadata must not become risk authority.
+                            "risk_level": "LOW",
+                            "capability_category": "READ_ONLY",
+                        },
+                    )
+                )
+            finally:
+                # Windows keeps SQLite files locked while the connection is open.
+                receipt_repo.close()
 
         self.assertEqual(len(observed), 1)
         intent = observed[0]
