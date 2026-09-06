@@ -6,6 +6,7 @@ execution receipts, tool outputs, knowledge citations, and origin sources.
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict, List, Optional
 from knowledge.models import KnowledgeCitation
 from schemas.base import BaseModel, Field
@@ -30,7 +31,7 @@ class LineageTrace(BaseModel):
 
 
 class LineageInspector:
-    """Audits and traces runtime lineage across receipts and citations."""
+    """Thread-safe audit/trace registry for receipts and knowledge citations."""
 
     def __init__(
         self,
@@ -39,30 +40,36 @@ class LineageInspector:
     ) -> None:
         self._receipts_by_id = {r.execution_id: r for r in (receipts or [])}
         self._citations_by_id = {c.citation_id: c for c in (citations or [])}
+        self._lock = threading.RLock()
 
     def add_receipt(self, receipt: ExecutionReceipt) -> None:
-        self._receipts_by_id[receipt.execution_id] = receipt
+        with self._lock:
+            self._receipts_by_id[receipt.execution_id] = receipt
 
     def add_citation(self, citation: KnowledgeCitation) -> None:
-        self._citations_by_id[citation.citation_id] = citation
+        with self._lock:
+            self._citations_by_id[citation.citation_id] = citation
 
     def get_all_citations(self) -> List[KnowledgeCitation]:
-        return list(self._citations_by_id.values())
+        with self._lock:
+            return list(self._citations_by_id.values())
 
     def get_all_receipts(self) -> List[ExecutionReceipt]:
-        return list(self._receipts_by_id.values())
+        with self._lock:
+            return list(self._receipts_by_id.values())
 
     def trace_claim_to_receipt(self, claim: str, receipt_id: str) -> LineageTrace:
         """Trace an assertion back to an underlying tool execution receipt."""
-        trace = LineageTrace(target_claim=claim)
-        receipt = self._receipts_by_id.get(receipt_id)
+        with self._lock:
+            receipt = self._receipts_by_id.get(receipt_id)
 
+        trace = LineageTrace(target_claim=claim)
         if not receipt:
             trace.valid = False
             trace.missing_links.append(f"EXECUTION_RECEIPT_NOT_FOUND: {receipt_id}")
             return trace
 
-        # Build lineage chain
+        # Build lineage chain from the stable receipt reference captured above.
         trace.chain.append(
             LineageNode(
                 node_id=f"CLAIM-{hash(claim)}",
