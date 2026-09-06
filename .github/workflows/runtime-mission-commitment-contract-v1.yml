@@ -1,0 +1,177 @@
+# Exact-head qualification for Continuity Runtime Mission/Commitment contract.
+name: Runtime Mission Commitment Contract V1
+
+on:
+  pull_request:
+    paths:
+      - "runtime/mission.py"
+      - "tests/test_runtime_mission_commitment_contract_v1.py"
+      - ".github/workflows/runtime-mission-commitment-contract-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  mission-commitment-contract-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "expected=$EXPECTED"
+          echo "actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile touched production source
+        run: python -m py_compile runtime/mission.py
+
+      - name: Run Mission/Commitment targeted regressions
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_mission_commitment_contract_v1 \
+            tests.test_structure
+
+  full-hermetic-regression:
+    name: Windows Python 3.12 full hermetic regression
+    runs-on: windows-latest
+    timeout-minutes: 60
+    needs: mission-commitment-contract-regression
+    steps:
+      - name: Checkout exact PR head with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Record and verify CI identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected_sha=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual_sha=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          "runner_os=${{ runner.os }}" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "HEAD_MISMATCH: expected=$expected actual=$actual" }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Continuity Mission/Commitment regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_mission_commitment_contract_v1 tests.test_structure 2>&1 | Tee-Object -FilePath .ci-results/mission-commitment-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run repair regressions
+        timeout-minutes: 12
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_structure `
+            tests.test_prod_verifier_02_sidecar_boundary.TestImportFirewall `
+            tests.test_tool_gateway_idempotency_01 `
+            tests.test_free_only_cost_authority_02 `
+            tests.test_secret_sanitization_03 `
+            tests.test_settings_connection_redaction_03b `
+            tests.test_tool_receipt_provenance_04 `
+            tests.test_local_openai_noauth_05 `
+            tests.test_local_noauth_diagnostics_05c `
+            tests.test_sse_parser_06 `
+            tests.test_sse_response_wrapper_06b `
+            tests.test_provider_response_schema_07 `
+            tests.test_governance_import_cycle_11 `
+            tests.test_stream_error_redaction_10 `
+            tests.test_creative_performance_true_handoff `
+            2>&1 | Tee-Object -FilePath .ci-results/repair-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run certified streaming regressions
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          python -m unittest -v `
+            tests.test_prod_model_streaming_01 `
+            tests.test_prod_structured_provider_stream_error_01 `
+            tests.test_prod_python_streaming_endpoint_01 `
+            tests.test_prod_runtime_progress_01 `
+            2>&1 | Tee-Object -FilePath .ci-results/streaming-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run certified model settings regressions
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_prod_model_settings_01 `
+            2>&1 | Tee-Object -FilePath .ci-results/model-settings-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run certified provider registry regressions
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_prod_model_gateway_01_provider_registry `
+            2>&1 | Tee-Object -FilePath .ci-results/provider-registry-regressions.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mission-commitment-contract-full-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
