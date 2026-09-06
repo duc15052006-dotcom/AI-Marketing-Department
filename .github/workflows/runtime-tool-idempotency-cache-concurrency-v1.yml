@@ -1,3 +1,4 @@
+# Exact-head qualification after aligning legacy source-inspection assertions.
 name: Runtime Tool Idempotency Cache Concurrency V1
 
 on:
