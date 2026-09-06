@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  targeted-red-green:
+  full-hermetic-validation:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -45,17 +47,29 @@ jobs:
           git rev-parse HEAD 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
           python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
 
-      - name: Run provider preflight double-claim regression
+      - name: Compile relevant sources
         shell: pwsh
         run: |
-          python -m unittest -v tests.test_provider_preflight_claim_race 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+          python -m py_compile connectors/marketing/preflight.py tests/test_provider_preflight_consent_v1.py tests/test_provider_preflight_claim_race.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run provider preflight regression suite
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_provider_preflight_consent_v1 tests.test_provider_preflight_claim_race 2>&1 | Tee-Object -FilePath .ci-results/preflight-suite.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath .ci-results/full-hermetic-unittest.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: preflight-claim-race-${{ github.sha }}
+          name: preflight-claim-race-full-${{ github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
