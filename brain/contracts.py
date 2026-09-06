@@ -91,7 +91,7 @@ def _enum(value: object, enum_cls: Type[E], field_name: str) -> E:
     if isinstance(value, str):
         try:
             return enum_cls(value.strip().upper())
-        except ValueError as exc:
+        except ValueError:
             pass
     raise ValidationError(
         f"{field_name} must be one of: {', '.join(member.value for member in enum_cls)}"
@@ -182,6 +182,8 @@ class ActionIntent(BaseModel):
 
     ``capability_need`` is semantic (e.g. MARKET_RESEARCH), never a concrete
     tool/provider/connector name. The body is responsible for resolving it.
+    ``decision_id`` is optional at construction for backward-compatible
+    cognition, but execution authority must fail closed when it is absent.
     """
 
     intent_id: str
@@ -190,6 +192,7 @@ class ActionIntent(BaseModel):
     purpose: str
     capability_need: str
     expected_observation: str
+    decision_id: Optional[str] = None
     evidence_required: bool = False
     constraints: List[str] = Field(default_factory=list)
 
@@ -208,6 +211,7 @@ class ActionIntent(BaseModel):
         self.expected_observation = _required_text(
             self.expected_observation, "expected_observation"
         )
+        self.decision_id = _optional_text(self.decision_id, "decision_id")
         self.evidence_required = _strict_bool(
             self.evidence_required, "evidence_required"
         )
