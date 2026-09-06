@@ -1,0 +1,46 @@
+name: Provider Preflight Expiry Stale Write Validation
+
+on:
+  push:
+    branches:
+      - fix/provider-preflight-expiry-stale-write-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  red-targeted:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Record identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          "github_sha=${{ github.sha }}" | Tee-Object -FilePath .ci-results/identity.txt
+          git rev-parse HEAD 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+      - name: Run expiry stale-write adversarial test
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_provider_preflight_expiry_stale_write 2>&1 | Tee-Object -FilePath .ci-results/expiry-stale-write.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload RED evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-expiry-stale-write-red-${{ github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
