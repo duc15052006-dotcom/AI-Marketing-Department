@@ -9,6 +9,7 @@ Permanent Logical Agent Count = 5. Zero Agent 6.
 from __future__ import annotations
 
 from collections import OrderedDict
+from concurrent.futures import Future
 import hashlib
 import json
 import logging
@@ -250,6 +251,7 @@ class FiveAgentDepartmentRuntime:
         self._reserved_run_ids: Set[str] = set()
         self._cancelled_run_ids: Set[str] = set()
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
+        self._inflight_tool_idempotency_keys: Dict[str, Future] = {}
 
         # PROD-MODEL-SETTINGS-01R2 credential lifetime authority:
         # this runtime answers whether an opaque credential_ref is still pinned
@@ -261,6 +263,48 @@ class FiveAgentDepartmentRuntime:
                 )
             except Exception:
                 pass
+
+    def _execute_tool_singleflight(self, idem_key: str, request: ToolRequest) -> ExecutionReceipt:
+        """Execute one ToolGateway request per in-flight runtime idempotency key.
+
+        Cache/in-flight bookkeeping is synchronized, but the runtime lock is never
+        held across ToolGateway/provider I/O. Concurrent callers for the same key
+        wait on the owner Future and receive the same canonical receipt.
+        """
+        with self._lock:
+            cached = self._executed_tool_idempotency_keys.get(idem_key)
+            if cached is not None:
+                return cached
+
+            inflight = getattr(self, "_inflight_tool_idempotency_keys", None)
+            if inflight is None:
+                inflight = {}
+                self._inflight_tool_idempotency_keys = inflight
+
+            future = inflight.get(idem_key)
+            if future is None:
+                future = Future()
+                inflight[idem_key] = future
+                owns_dispatch = True
+            else:
+                owns_dispatch = False
+
+        if not owns_dispatch:
+            return future.result()
+
+        try:
+            receipt = self.tool_gateway.execute(request)
+        except BaseException as exc:
+            with self._lock:
+                future.set_exception(exc)
+                self._inflight_tool_idempotency_keys.pop(idem_key, None)
+            raise
+
+        with self._lock:
+            self._executed_tool_idempotency_keys[idem_key] = receipt
+            future.set_result(receipt)
+            self._inflight_tool_idempotency_keys.pop(idem_key, None)
+        return receipt
 
     def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:
         """Retrieve active ProgressEmitter for run."""
@@ -728,20 +772,16 @@ class FiveAgentDepartmentRuntime:
             )
 
         idem_key = f"{context.run_id}:intelligence:web_search:{context.objective}"
-        if idem_key in self._executed_tool_idempotency_keys:
-            search_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
-            search_req = ToolRequest(
-                run_id=context.run_id,
-                agent_id="intelligence",
-                capability_id="web_search",
-                parameters={"query": context.objective},
-                business_id=context.business_id,
-                project_id=context.project_id,
-                chat_id=context.chat_id,
-            )
-            search_receipt = self.tool_gateway.execute(search_req)
-            self._executed_tool_idempotency_keys[idem_key] = search_receipt
+        search_req = ToolRequest(
+            run_id=context.run_id,
+            agent_id="intelligence",
+            capability_id="web_search",
+            parameters={"query": context.objective},
+            business_id=context.business_id,
+            project_id=context.project_id,
+            chat_id=context.chat_id,
+        )
+        search_receipt = self._execute_tool_singleflight(idem_key, search_req)
 
         context.execution_receipt_refs.append(search_receipt.execution_id)
         self.lineage_inspector.add_receipt(search_receipt)
@@ -1089,20 +1129,16 @@ class FiveAgentDepartmentRuntime:
 
         # Invoke ToolGateway for local image generation / asset preparation
         idem_key = f"{context.run_id}:creative:image_generation:hero"
-        if idem_key in self._executed_tool_idempotency_keys:
-            img_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
-            img_req = ToolRequest(
-                run_id=context.run_id,
-                agent_id="creative",
-                capability_id="image_generation",
-                parameters={"prompt": f"Hero marketing visual concept for {context.objective}"},
-                business_id=context.business_id,
-                project_id=context.project_id,
-                chat_id=context.chat_id,
-            )
-            img_receipt = self.tool_gateway.execute(img_req)
-            self._executed_tool_idempotency_keys[idem_key] = img_receipt
+        img_req = ToolRequest(
+            run_id=context.run_id,
+            agent_id="creative",
+            capability_id="image_generation",
+            parameters={"prompt": f"Hero marketing visual concept for {context.objective}"},
+            business_id=context.business_id,
+            project_id=context.project_id,
+            chat_id=context.chat_id,
+        )
+        img_receipt = self._execute_tool_singleflight(idem_key, img_req)
 
         context.execution_receipt_refs.append(img_receipt.execution_id)
         self.lineage_inspector.add_receipt(img_receipt)
@@ -1240,20 +1276,16 @@ class FiveAgentDepartmentRuntime:
         # MOCK analytics remain auditable receipts but are never promoted as
         # empirical Performance evidence.
         idem_key = f"{context.run_id}:performance:analytics_retrieval:{context.campaign_id}"
-        if idem_key in self._executed_tool_idempotency_keys:
-            analytics_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
-            analytics_req = ToolRequest(
-                run_id=context.run_id,
-                agent_id="performance",
-                capability_id="analytics_retrieval",
-                parameters={"campaign_id": context.campaign_id},
-                business_id=context.business_id,
-                project_id=context.project_id,
-                chat_id=context.chat_id,
-            )
-            analytics_receipt = self.tool_gateway.execute(analytics_req)
-            self._executed_tool_idempotency_keys[idem_key] = analytics_receipt
+        analytics_req = ToolRequest(
+            run_id=context.run_id,
+            agent_id="performance",
+            capability_id="analytics_retrieval",
+            parameters={"campaign_id": context.campaign_id},
+            business_id=context.business_id,
+            project_id=context.project_id,
+            chat_id=context.chat_id,
+        )
+        analytics_receipt = self._execute_tool_singleflight(idem_key, analytics_req)
 
         context.execution_receipt_refs.append(analytics_receipt.execution_id)
         self.lineage_inspector.add_receipt(analytics_receipt)
