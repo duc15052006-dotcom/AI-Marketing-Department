@@ -1,0 +1,213 @@
+name: Apply Runtime Tool Idempotency Cache Fix V1
+
+on:
+  push:
+    branches:
+      - fix/runtime-tool-idempotency-cache-concurrency-v1
+    paths:
+      - ".github/workflows/runtime-tool-idempotency-cache-apply-v1.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-production-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-tool-idempotency-cache-concurrency-v1
+          fetch-depth: 0
+
+      - name: Verify exact production source blob
+        shell: bash
+        run: |
+          ACTUAL_BLOB="$(git hash-object runtime/engine.py)"
+          EXPECTED_BLOB="194925a7dc7bcc259bc3ed30b70e79e1670a50df"
+          echo "expected_engine_blob=$EXPECTED_BLOB"
+          echo "actual_engine_blob=$ACTUAL_BLOB"
+          test "$ACTUAL_BLOB" = "$EXPECTED_BLOB"
+
+      - name: Apply exact single-flight patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("runtime/engine.py")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  "from collections import OrderedDict\n",
+                  "from collections import OrderedDict\nfrom concurrent.futures import Future\n",
+              ),
+              (
+                  "        self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}\n",
+                  "        self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}\n"
+                  "        self._inflight_tool_idempotency_keys: Dict[str, Future] = {}\n",
+              ),
+              (
+                  "    def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:\n",
+                  "    def _execute_tool_singleflight(self, idem_key: str, request: ToolRequest) -> ExecutionReceipt:\n"
+                  "        \"\"\"Execute one ToolGateway request per in-flight runtime idempotency key.\n\n"
+                  "        Cache/in-flight bookkeeping is synchronized, but the runtime lock is never\n"
+                  "        held across ToolGateway/provider I/O. Concurrent callers for the same key\n"
+                  "        wait on the owner Future and receive the same canonical receipt.\n"
+                  "        \"\"\"\n"
+                  "        with self._lock:\n"
+                  "            cached = self._executed_tool_idempotency_keys.get(idem_key)\n"
+                  "            if cached is not None:\n"
+                  "                return cached\n\n"
+                  "            inflight = getattr(self, \"_inflight_tool_idempotency_keys\", None)\n"
+                  "            if inflight is None:\n"
+                  "                inflight = {}\n"
+                  "                self._inflight_tool_idempotency_keys = inflight\n\n"
+                  "            future = inflight.get(idem_key)\n"
+                  "            if future is None:\n"
+                  "                future = Future()\n"
+                  "                inflight[idem_key] = future\n"
+                  "                owns_dispatch = True\n"
+                  "            else:\n"
+                  "                owns_dispatch = False\n\n"
+                  "        if not owns_dispatch:\n"
+                  "            return future.result()\n\n"
+                  "        try:\n"
+                  "            receipt = self.tool_gateway.execute(request)\n"
+                  "        except BaseException as exc:\n"
+                  "            with self._lock:\n"
+                  "                future.set_exception(exc)\n"
+                  "                self._inflight_tool_idempotency_keys.pop(idem_key, None)\n"
+                  "            raise\n\n"
+                  "        with self._lock:\n"
+                  "            self._executed_tool_idempotency_keys[idem_key] = receipt\n"
+                  "            future.set_result(receipt)\n"
+                  "            self._inflight_tool_idempotency_keys.pop(idem_key, None)\n"
+                  "        return receipt\n\n"
+                  "    def _get_emitter(self, context: Optional[RuntimeContext] = None, run_id: Optional[str] = None) -> Optional[ProgressEmitter]:\n",
+              ),
+              (
+                  "        idem_key = f\"{context.run_id}:intelligence:web_search:{context.objective}\"\n"
+                  "        if idem_key in self._executed_tool_idempotency_keys:\n"
+                  "            search_receipt = self._executed_tool_idempotency_keys[idem_key]\n"
+                  "        else:\n"
+                  "            search_req = ToolRequest(\n"
+                  "                run_id=context.run_id,\n"
+                  "                agent_id=\"intelligence\",\n"
+                  "                capability_id=\"web_search\",\n"
+                  "                parameters={\"query\": context.objective},\n"
+                  "                business_id=context.business_id,\n"
+                  "                project_id=context.project_id,\n"
+                  "                chat_id=context.chat_id,\n"
+                  "            )\n"
+                  "            search_receipt = self.tool_gateway.execute(search_req)\n"
+                  "            self._executed_tool_idempotency_keys[idem_key] = search_receipt\n",
+                  "        idem_key = f\"{context.run_id}:intelligence:web_search:{context.objective}\"\n"
+                  "        search_req = ToolRequest(\n"
+                  "            run_id=context.run_id,\n"
+                  "            agent_id=\"intelligence\",\n"
+                  "            capability_id=\"web_search\",\n"
+                  "            parameters={\"query\": context.objective},\n"
+                  "            business_id=context.business_id,\n"
+                  "            project_id=context.project_id,\n"
+                  "            chat_id=context.chat_id,\n"
+                  "        )\n"
+                  "        search_receipt = self._execute_tool_singleflight(idem_key, search_req)\n",
+              ),
+              (
+                  "        idem_key = f\"{context.run_id}:creative:image_generation:hero\"\n"
+                  "        if idem_key in self._executed_tool_idempotency_keys:\n"
+                  "            img_receipt = self._executed_tool_idempotency_keys[idem_key]\n"
+                  "        else:\n"
+                  "            img_req = ToolRequest(\n"
+                  "                run_id=context.run_id,\n"
+                  "                agent_id=\"creative\",\n"
+                  "                capability_id=\"image_generation\",\n"
+                  "                parameters={\"prompt\": f\"Hero marketing visual concept for {context.objective}\"},\n"
+                  "                business_id=context.business_id,\n"
+                  "                project_id=context.project_id,\n"
+                  "                chat_id=context.chat_id,\n"
+                  "            )\n"
+                  "            img_receipt = self.tool_gateway.execute(img_req)\n"
+                  "            self._executed_tool_idempotency_keys[idem_key] = img_receipt\n",
+                  "        idem_key = f\"{context.run_id}:creative:image_generation:hero\"\n"
+                  "        img_req = ToolRequest(\n"
+                  "            run_id=context.run_id,\n"
+                  "            agent_id=\"creative\",\n"
+                  "            capability_id=\"image_generation\",\n"
+                  "            parameters={\"prompt\": f\"Hero marketing visual concept for {context.objective}\"},\n"
+                  "            business_id=context.business_id,\n"
+                  "            project_id=context.project_id,\n"
+                  "            chat_id=context.chat_id,\n"
+                  "        )\n"
+                  "        img_receipt = self._execute_tool_singleflight(idem_key, img_req)\n",
+              ),
+              (
+                  "        idem_key = f\"{context.run_id}:performance:analytics_retrieval:{context.campaign_id}\"\n"
+                  "        if idem_key in self._executed_tool_idempotency_keys:\n"
+                  "            analytics_receipt = self._executed_tool_idempotency_keys[idem_key]\n"
+                  "        else:\n"
+                  "            analytics_req = ToolRequest(\n"
+                  "                run_id=context.run_id,\n"
+                  "                agent_id=\"performance\",\n"
+                  "                capability_id=\"analytics_retrieval\",\n"
+                  "                parameters={\"campaign_id\": context.campaign_id},\n"
+                  "                business_id=context.business_id,\n"
+                  "                project_id=context.project_id,\n"
+                  "                chat_id=context.chat_id,\n"
+                  "            )\n"
+                  "            analytics_receipt = self.tool_gateway.execute(analytics_req)\n"
+                  "            self._executed_tool_idempotency_keys[idem_key] = analytics_receipt\n",
+                  "        idem_key = f\"{context.run_id}:performance:analytics_retrieval:{context.campaign_id}\"\n"
+                  "        analytics_req = ToolRequest(\n"
+                  "            run_id=context.run_id,\n"
+                  "            agent_id=\"performance\",\n"
+                  "            capability_id=\"analytics_retrieval\",\n"
+                  "            parameters={\"campaign_id\": context.campaign_id},\n"
+                  "            business_id=context.business_id,\n"
+                  "            project_id=context.project_id,\n"
+                  "            chat_id=context.chat_id,\n"
+                  "        )\n"
+                  "        analytics_receipt = self._execute_tool_singleflight(idem_key, analytics_req)\n",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"PATCH_ANCHOR_MISMATCH: expected exactly one occurrence, got {count}: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify patch scope
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --name-only | tr -d '\r')" = "runtime/engine.py"
+          git diff -- runtime/engine.py
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run targeted regression before commit
+        run: python -m unittest -v tests.test_runtime_tool_idempotency_cache_concurrency_v1
+
+      - name: Commit production fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py
+          git commit -m "fix(runtime): make tool cache single-flight"
+          git push origin HEAD:fix/runtime-tool-idempotency-cache-concurrency-v1
