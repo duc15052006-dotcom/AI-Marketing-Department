@@ -1,4 +1,4 @@
-name: Provider Preflight Revoke Race Patch
+name: Provider Preflight Revoke Race Validation
 
 on:
   push:
@@ -7,12 +7,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-patch:
+  full-hermetic-validation:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,20 +26,41 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Apply exact revoke CAS patch
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
         shell: pwsh
         run: |
-          $old = "ICAgICAgICAgICAgcmV2b2tlZCA9IHJlcGxhY2UocmVjb3JkLCBzdGF0ZT1Qcm92aWRlclByZWZsaWdodFN0YXRlLlJFVk9LRUQsIHJlY29yZF9oYXNoPSIiKQogICAgICAgICAgICBpZiBzZWxmLl9jb25uIGlzIE5vbmU6CiAgICAgICAgICAgICAgICByZXR1cm4gc2VsZi5fc3RvcmVfcmVwbGFjZShyZXZva2VkKQogICAgICAgICAgICB3aXRoIHNlbGYuX2Nvbm46CiAgICAgICAgICAgICAgICByZXR1cm4gc2VsZi5fc3RvcmVfcmVwbGFjZShyZXZva2VkKQo="
-          $new = "ICAgICAgICAgICAgcmV2b2tlZCA9IHJlcGxhY2UocmVjb3JkLCBzdGF0ZT1Qcm92aWRlclByZWZsaWdodFN0YXRlLlJFVk9LRUQsIHJlY29yZF9oYXNoPSIiKQogICAgICAgICAgICBpZiBzZWxmLl9jb25uIGlzIE5vbmU6CiAgICAgICAgICAgICAgICByZXR1cm4gc2VsZi5fc3RvcmVfcmVwbGFjZShyZXZva2VkKQogICAgICAgICAgICBub3JtYWxpemVkLCBlbmNvZGVkLCBlbmNvZGVkX2hhc2ggPSBzZWxmLl9zZXJpYWxpemUocmV2b2tlZCkKICAgICAgICAgICAgd2l0aCBzZWxmLl9jb25uOgogICAgICAgICAgICAgICAgY3VyID0gc2VsZi5fY29ubi5leGVjdXRlKAogICAgICAgICAgICAgICAgICAgICJVUERBVEUgcHJvdmlkZXJfcHJlZmxpZ2h0cyBTRVQgc3RhdGU9PyxleHBpcmVzX2F0PT8scGF5bG9hZF9qc29uPT8scGF5bG9hZF9oYXNoPT8gIgogICAgICAgICAgICAgICAgICAgICJXSEVSRSBwcmVmbGlnaHRfaWQ9PyBBTkQgc3RhdGU9PyIsCiAgICAgICAgICAgICAgICAgICAgKAogICAgICAgICAgICAgICAgICAgICAgICBub3JtYWxpemVkLnN0YXRlLnZhbHVlLAogICAgICAgICAgICAgICAgICAgICAgICBub3JtYWxpemVkLmV4cGlyZXNfYXQsCiAgICAgICAgICAgICAgICAgICAgICAgIGVuY29kZWQsCiAgICAgICAgICAgICAgICAgICAgICAgIGVuY29kZWRfaGFzaCwKICAgICAgICAgICAgICAgICAgICAgICAgbm9ybWFsaXplZC5wcmVmbGlnaHRfaWQsCiAgICAgICAgICAgICAgICAgICAgICAgIFByb3ZpZGVyUHJlZmxpZ2h0U3RhdGUuQUNUSVZFLnZhbHVlLAogICAgICAgICAgICAgICAgICAgICksCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICBpZiBjdXIucm93Y291bnQgIT0gMToKICAgICAgICAgICAgICAgICAgICByb3cgPSBzZWxmLl9jb25uLmV4ZWN1dGUoCiAgICAgICAgICAgICAgICAgICAgICAgICJTRUxFQ1Qgc3RhdGUgRlJPTSBwcm92aWRlcl9wcmVmbGlnaHRzIFdIRVJFIHByZWZsaWdodF9pZD0/IiwKICAgICAgICAgICAgICAgICAgICAgICAgKG5vcm1hbGl6ZWQucHJlZmxpZ2h0X2lkLCksCiAgICAgICAgICAgICAgICAgICAgKS5mZXRjaG9uZSgpCiAgICAgICAgICAgICAgICAgICAgaWYgcm93IGlzIE5vbmU6CiAgICAgICAgICAgICAgICAgICAgICAgIHJhaXNlIFByb3ZpZGVyUHJlZmxpZ2h0Q29uZmxpY3RFcnJvcigiUFJPVklERVJfUFJFRkxJR0hUX05PVF9GT1VORCIpCiAgICAgICAgICAgICAgICAgICAgcmFpc2UgUHJvdmlkZXJQcmVmbGlnaHRDb25mbGljdEVycm9yKAogICAgICAgICAgICAgICAgICAgICAgICBmIlBST1ZJREVSX1BSRUZMSUdIVF9OT1RfUkVWT0NBQkxFOiBzdGF0ZT17cm93WydzdGF0ZSddfSIKICAgICAgICAgICAgICAgICAgICApCiAgICAgICAgICAgIHJldHVybiBjb3B5LmRlZXBjb3B5KG5vcm1hbGl6ZWQpCg=="
-          python -c "import base64,pathlib; p=pathlib.Path('connectors/marketing/preflight.py'); s=p.read_text(encoding='utf-8'); old=base64.b64decode('$old').decode(); new=base64.b64decode('$new').decode(); c=s.count(old); assert c in (0,1), f'unexpected old block count: {c}'; assert c == 1 or s.count(new) == 1, 'neither old nor new revoke block found'; p.write_text(s.replace(old,new,1) if c else s, encoding='utf-8')"
-          git diff --check
-          python -m py_compile connectors/marketing/preflight.py
-      - name: Commit production patch if changed
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Record identity
         shell: pwsh
         run: |
-          if (git diff --quiet -- connectors/marketing/preflight.py) { exit 0 }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add connectors/marketing/preflight.py
-          git commit -m "fix(platform): make provider preflight revoke atomic"
-          git push origin HEAD:fix/provider-preflight-revoke-race-v1
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          "github_sha=${{ github.sha }}" | Tee-Object -FilePath .ci-results/identity.txt
+          git rev-parse HEAD 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+      - name: Compile relevant sources
+        shell: pwsh
+        run: |
+          python -m py_compile connectors/marketing/preflight.py tests/test_provider_preflight_consent_v1.py tests/test_provider_preflight_revoke_race.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run provider preflight regression suite
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_provider_preflight_consent_v1 tests.test_provider_preflight_revoke_race 2>&1 | Tee-Object -FilePath .ci-results/preflight-suite.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run full hermetic unittest discovery
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath .ci-results/full-hermetic-unittest.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-revoke-race-full-${{ github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
