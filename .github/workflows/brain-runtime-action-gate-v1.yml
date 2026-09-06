@@ -1,6 +1,6 @@
 name: Brain Runtime Action Gate V1
 
-# Qualification trigger after the guarded production apply. Source behavior is unchanged.
+# Qualification trigger after the Five-Agent identity ordering repair. Production source behavior is unchanged.
 on:
   pull_request:
     branches:
