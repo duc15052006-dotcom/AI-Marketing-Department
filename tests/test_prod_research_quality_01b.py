@@ -642,13 +642,15 @@ class TestOneResearchExecution(unittest.TestCase):
     """Single search execution, quality evaluation is local deterministic."""
 
     def test_single_tool_execution(self) -> None:
-        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)
-        self.assertIn("tool_gateway.execute(search_req)", src)
+        stage_src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)
+        helper_src = inspect.getsource(FiveAgentDepartmentRuntime._execute_tool_singleflight)
+        self.assertEqual(stage_src.count("_execute_tool_singleflight(idem_key, search_req)"), 1)
+        self.assertEqual(helper_src.count("self.tool_gateway.execute(request)"), 1)
 
     def test_no_second_search(self) -> None:
-        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)
-        execute_count = src.count("tool_gateway.execute(")
-        self.assertEqual(execute_count, 1)
+        stage_src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)
+        self.assertEqual(stage_src.count("_execute_tool_singleflight("), 1)
+        self.assertNotIn("self.tool_gateway.execute(", stage_src)
 
     def test_quality_evaluation_is_local(self) -> None:
         src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)
