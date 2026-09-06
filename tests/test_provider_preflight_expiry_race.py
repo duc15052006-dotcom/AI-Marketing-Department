@@ -113,23 +113,24 @@ class ProviderPreflightExpiryRaceTests(unittest.TestCase):
                 t_expire.join(timeout=10)
                 t_claim.join(timeout=10)
 
-            self.assertFalse(t_expire.is_alive(), "expire worker deadlocked")
-            self.assertFalse(t_claim.is_alive(), "claim worker deadlocked")
+            expire_alive = t_expire.is_alive()
+            claim_alive = t_claim.is_alive()
+            final = claimer.get(record.preflight_id)
+            final_state = final.state if final is not None else None
+            expirer.close()
+            claimer.close()
+
+            self.assertFalse(expire_alive, "expire worker deadlocked")
+            self.assertFalse(claim_alive, "claim worker deadlocked")
             self.assertNotIn("expire_exception", outcomes, outcomes)
             self.assertNotIn("claim_exception", outcomes, outcomes)
             self.assertEqual(ProviderPreflightState.CLAIMED, outcomes.get("claimed"), outcomes)
             self.assertIn("expire_error", outcomes, outcomes)
-
-            final = claimer.get(record.preflight_id)
-            self.assertIsNotNone(final)
             self.assertEqual(
                 ProviderPreflightState.CLAIMED,
-                final.state,
+                final_state,
                 "stale expiry must not overwrite a claim that already committed",
             )
-
-            expirer.close()
-            claimer.close()
 
 
 if __name__ == "__main__":
