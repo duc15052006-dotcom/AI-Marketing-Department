@@ -4,6 +4,7 @@ import threading
 import unittest
 
 from runtime.dependency_scheduler import (
+    AdaptiveTaskCompiler,
     DependencyAwareScheduler,
     RuntimeTaskSpec,
     ScheduleValidationError,
@@ -236,6 +237,78 @@ class DependencyAwareSchedulerV1Tests(unittest.TestCase):
         self.assertEqual(list(results), ["first", "second"])
         self.assertEqual(results["first"], "finished-first")
         self.assertEqual(results["second"], "finished-second")
+
+    def test_compiler_derives_parallel_and_sequential_waves_from_task_kinds(self) -> None:
+        compiler = AdaptiveTaskCompiler(scheduler=self.scheduler)
+        compiled = compiler.compile([
+            {"kind": "intelligence.market", "instruction": "Study the market"},
+            {"kind": "intelligence.competitors", "instruction": "Study competitors"},
+            {"kind": "intelligence.customers", "instruction": "Study customers"},
+            {"kind": "strategist.positioning", "instruction": "Build positioning"},
+            {"kind": "creative.angles", "instruction": "Create angles"},
+        ])
+
+        self.assertFalse(compiled.fallback_required)
+        self.assertEqual(
+            compiled.execution_plan.waves,
+            (
+                (
+                    "intelligence-market",
+                    "intelligence-competitors",
+                    "intelligence-customers",
+                ),
+                ("strategist-positioning",),
+                ("creative-angles",),
+            ),
+        )
+
+    def test_model_cannot_self_authorize_parallelism_or_remove_dependencies(self) -> None:
+        compiler = AdaptiveTaskCompiler(scheduler=self.scheduler)
+        compiled = compiler.compile([
+            {
+                "kind": "intelligence.market",
+                "instruction": "research",
+                "side_effecting": False,
+                "resource_scope_known": True,
+                "depends_on": [],
+                "writes": [],
+                "parallel": True,
+            },
+            {
+                "kind": "strategist.positioning",
+                "instruction": "strategy",
+                "side_effecting": False,
+                "resource_scope_known": True,
+                "depends_on": [],
+                "writes": [],
+                "parallel": True,
+            },
+        ])
+
+        by_kind = {task.task_kind: task for task in compiled.tasks}
+        strategy = by_kind["strategist.positioning"]
+        self.assertEqual(strategy.depends_on, frozenset({"intelligence-market"}))
+        self.assertEqual(strategy.writes, frozenset({"isolated.strategy.positioning"}))
+        self.assertEqual(
+            compiled.execution_plan.waves,
+            (("intelligence-market",), ("strategist-positioning",)),
+        )
+
+    def test_unknown_planner_kinds_fail_closed_without_gaining_authority(self) -> None:
+        compiler = AdaptiveTaskCompiler(scheduler=self.scheduler)
+        mixed = compiler.compile([
+            {"kind": "attacker.publish-everything", "parallel": True},
+            {"kind": "intelligence.market", "instruction": "valid"},
+        ])
+        self.assertEqual(mixed.rejected_kinds, ("attacker.publish-everything",))
+        self.assertEqual(mixed.execution_plan.waves, (("intelligence-market",),))
+
+        all_unknown = compiler.compile([
+            {"kind": "attacker.publish-everything", "parallel": True},
+        ])
+        self.assertTrue(all_unknown.fallback_required)
+        self.assertEqual(all_unknown.execution_plan.mode, "SEQUENTIAL_FALLBACK")
+        self.assertEqual(all_unknown.execution_plan.waves, ())
 
 
 if __name__ == "__main__":
