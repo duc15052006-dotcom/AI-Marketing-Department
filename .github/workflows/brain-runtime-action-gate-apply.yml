@@ -286,7 +286,16 @@ jobs:
           python -m unittest -v tests.test_brain_runtime_action_gate_v1
           git diff --check
           git status --short
-          test "$(git diff --name-only | sort | tr '\n' ' ')" = "brain/action_policy.py tools/tool_gateway.py "
+          python - <<'PY'
+          import subprocess
+          lines = subprocess.check_output(
+              ["git", "status", "--porcelain=v1"], text=True
+          ).splitlines()
+          paths = sorted(line[3:] for line in lines)
+          expected = ["brain/action_policy.py", "tools/tool_gateway.py"]
+          if paths != expected:
+              raise SystemExit(f"unexpected production scope: {paths!r}")
+          PY
 
       - name: Commit production fix and self-clean apply workflow
         shell: bash
