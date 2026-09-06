@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -84,31 +85,37 @@ class ExecutionReceipt(BaseModel):
 
 
 class ExecutionReceiptRepository:
-    """Interface and in-memory/local repository for storing and querying execution receipts."""
+    """Thread-safe in-memory repository for immutable execution receipts."""
 
     def __init__(self) -> None:
         self._receipts: Dict[str, ExecutionReceipt] = {}
+        self._lock = threading.RLock()
 
     def save_receipt(self, receipt: ExecutionReceipt) -> ExecutionReceipt:
-        """Persist an execution receipt immutably."""
-        if not receipt.result_hash and receipt.data is not None:
-            receipt.result_hash = receipt.calculate_result_hash()
-        self._receipts[receipt.execution_id] = receipt
-        return receipt
+        """Persist an execution receipt atomically."""
+        with self._lock:
+            if not receipt.result_hash and receipt.data is not None:
+                receipt.result_hash = receipt.calculate_result_hash()
+            self._receipts[receipt.execution_id] = receipt
+            return receipt
 
     def get_receipt(self, execution_id: str) -> Optional[ExecutionReceipt]:
         """Retrieve receipt by execution ID."""
-        return self._receipts.get(execution_id)
+        with self._lock:
+            return self._receipts.get(execution_id)
 
     def list_receipts_for_run(self, run_id: str) -> List[ExecutionReceipt]:
-        """Query all receipts generated during a specific run."""
-        return [r for r in self._receipts.values() if r.run_id == run_id]
+        """Query all receipts generated during a specific run atomically."""
+        with self._lock:
+            return [r for r in self._receipts.values() if r.run_id == run_id]
 
     def list_receipts_for_agent(self, agent_id: str) -> List[ExecutionReceipt]:
-        """Query all receipts for a specific requesting agent."""
+        """Query all receipts for a specific requesting agent atomically."""
         aid = agent_id.lower()
-        return [r for r in self._receipts.values() if r.agent_id.lower() == aid]
+        with self._lock:
+            return [r for r in self._receipts.values() if r.agent_id.lower() == aid]
 
     def list_receipts_by_status(self, status: ExecutionStatus) -> List[ExecutionReceipt]:
-        """Filter receipts by execution status."""
-        return [r for r in self._receipts.values() if r.status == status]
+        """Filter receipts by execution status atomically."""
+        with self._lock:
+            return [r for r in self._receipts.values() if r.status == status]
