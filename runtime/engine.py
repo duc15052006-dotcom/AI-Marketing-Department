@@ -2746,6 +2746,10 @@ class FiveAgentDepartmentRuntime:
 
     def request_publish_action(self, context: RuntimeContext, platform: str = "linkedin", approval_token: Optional[str] = None) -> ExecutionReceipt:
         """Attempt to execute a publishing action, triggering Human Approval Gate if unapproved."""
+        if self.is_cancelled(context.run_id) or context.status == RuntimeStatus.CANCELLED:
+            context.status = RuntimeStatus.CANCELLED
+            raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
+
         pub_req = ToolRequest(
             run_id=context.run_id,
             agent_id="cmo",
