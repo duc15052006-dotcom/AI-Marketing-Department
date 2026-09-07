@@ -1,0 +1,54 @@
+name: TEMP PR232 exact engine patch
+
+on:
+  push:
+    branches:
+      - fix/runtime-lineage-citation-run-isolation-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/runtime-lineage-citation-run-isolation-v1
+          fetch-depth: 0
+
+      - name: Apply fail-closed run-isolation patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("runtime/engine.py")
+          text = path.read_text(encoding="utf-8")
+          old = '                    "citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()],'
+          new = '''                    "citations": [
+                        c.citation_id
+                        for c in self.lineage_inspector.get_all_citations()
+                        if c.citation_id in context.knowledge_refs
+                    ],'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"FAIL_CLOSED: expected exactly one citation sealing marker, found {count}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Verify exact production diff
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- runtime/engine.py
+          test "$(git diff --name-only | tr -d '\r')" = "runtime/engine.py"
+
+      - name: Commit production patch and self-delete runner
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py
+          git rm .github/workflows/_temp_pr232_engine_patch.yml
+          git commit -m "fix(runtime): isolate sealed lineage citations per run"
+          git push origin HEAD:fix/runtime-lineage-citation-run-isolation-v1
