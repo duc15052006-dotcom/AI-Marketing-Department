@@ -1,0 +1,84 @@
+name: Brain Evidence Observation Causal Provenance Bootstrap
+
+on:
+  push:
+    branches:
+      - fix/brain-evidence-observation-causal-provenance-v1
+    paths:
+      - ".github/workflows/brain-evidence-observation-causal-provenance-bootstrap.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-production-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch with parent
+        uses: actions/checkout@v4
+        with:
+          ref: fix/brain-evidence-observation-causal-provenance-v1
+          fetch-depth: 2
+
+      - name: Verify bootstrap parent is hosted RED head
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD^)" = "7f9b7a140ac105e686d944380619cc9e67810437"
+
+      - name: Apply minimal production patch and remove bootstrap
+        shell: python
+        run: |
+          from pathlib import Path
+
+          models_path = Path("tools/evidence/models.py")
+          models = models_path.read_text(encoding="utf-8")
+          old_models = '''    run_id: str = ""
+              business_id: str = ""
+              project_id: str = ""
+
+              source_platform: str
+          '''.replace("              ", "    ")
+          new_models = '''    run_id: str = ""
+              business_id: str = ""
+              project_id: str = ""
+
+              # Causal execution provenance is copied verbatim from the source ObservationRecord.
+              # EvidenceBuilder is not an authority source and must never mint or replace either ID.
+              execution_id: str = ""
+              action_intent_id: Optional[str] = None
+
+              source_platform: str
+          '''.replace("              ", "    ")
+          if models.count(old_models) != 1:
+              raise SystemExit("models.py patch anchor mismatch")
+          models_path.write_text(models.replace(old_models, new_models, 1), encoding="utf-8")
+
+          builder_path = Path("tools/evidence/builder.py")
+          builder = builder_path.read_text(encoding="utf-8")
+          old_builder = '''            run_id=obs.run_id,
+              business_id=obs.business_id,
+              project_id=obs.project_id,
+              source_platform=obs.source_platform,
+          '''.replace("              ", "            ")
+          new_builder = '''            run_id=obs.run_id,
+              business_id=obs.business_id,
+              project_id=obs.project_id,
+              execution_id=obs.execution_id,
+              action_intent_id=obs.action_intent_id,
+              source_platform=obs.source_platform,
+          '''.replace("              ", "            ")
+          if builder.count(old_builder) != 1:
+              raise SystemExit("builder.py patch anchor mismatch")
+          builder_path.write_text(builder.replace(old_builder, new_builder, 1), encoding="utf-8")
+
+          Path(".github/workflows/brain-evidence-observation-causal-provenance-bootstrap.yml").unlink()
+
+      - name: Commit exact production patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/evidence/models.py tools/evidence/builder.py .github/workflows/brain-evidence-observation-causal-provenance-bootstrap.yml
+          git diff --cached --check
+          git commit -m "fix(brain): preserve observation causal provenance in evidence"
+          git push origin HEAD:fix/brain-evidence-observation-causal-provenance-v1
