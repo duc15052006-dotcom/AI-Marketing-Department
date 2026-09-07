@@ -750,6 +750,7 @@ class ToolGateway:
                     capability_id=request.capability_id,
                     provider=adapter.adapter_name,
                     request_hash=req_hash,
+                    action_intent_id=semantic_intent_id,
                     business_id=effective_business_id,
                     project_id=effective_project_id,
                     chat_id=request.chat_id,

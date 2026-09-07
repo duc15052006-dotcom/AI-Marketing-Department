@@ -176,6 +176,7 @@ class ExecutionIntent:
     capability_id: str
     provider: str
     request_hash: str
+    action_intent_id: Optional[str] = None
     state: ExecutionIntentState = ExecutionIntentState.PREPARED
     business_id: Optional[str] = None
     project_id: Optional[str] = None
@@ -205,6 +206,18 @@ class ExecutionIntent:
                 raise ValueError(f"{name.upper()}_REQUIRED: execution intent {name} is required")
         if not isinstance(self.dispatch_count, int) or isinstance(self.dispatch_count, bool) or self.dispatch_count < 0:
             raise ValueError("INVALID_DISPATCH_COUNT: dispatch_count must be a non-negative integer")
+        if not isinstance(self.schema_version, int) or isinstance(self.schema_version, bool) or self.schema_version < 1:
+            raise ValueError("INVALID_SCHEMA_VERSION: schema_version must be a positive integer")
+
+        action_intent_id = self.action_intent_id
+        if action_intent_id is not None:
+            if not isinstance(action_intent_id, str):
+                raise ValueError("INVALID_ACTION_INTENT_ID: action_intent_id must be a string")
+            action_intent_id = action_intent_id.strip() or None
+        if self.schema_version >= 2 and action_intent_id is None:
+            raise ValueError("ACTION_INTENT_ID_REQUIRED: schema v2 execution intents must bind canonical ActionIntent provenance")
+        if self.schema_version < 2 and action_intent_id is not None:
+            raise ValueError("ACTION_INTENT_SCHEMA_VERSION_REQUIRED: ActionIntent provenance requires schema v2 or newer")
 
         state = self.state
         if not isinstance(state, ExecutionIntentState):
@@ -220,6 +233,7 @@ class ExecutionIntent:
             capability_id=self.capability_id.strip(),
             provider=self.provider.strip(),
             request_hash=self.request_hash.strip(),
+            action_intent_id=action_intent_id,
             state=state,
             approval_reference=_safe_approval_reference(self.approval_reference),
             last_error_class=sanitize_sensitive_text(self.last_error_class) if self.last_error_class else None,
@@ -231,7 +245,7 @@ class ExecutionIntent:
         return replace(normalized, record_hash=normalized.calculate_hash())
 
     def hash_payload(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "schema_version": self.schema_version,
             "intent_id": self.intent_id,
             "request_id": self.request_id,
@@ -252,6 +266,9 @@ class ExecutionIntent:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
+        if self.schema_version >= 2:
+            payload["action_intent_id"] = self.action_intent_id
+        return payload
 
     def calculate_hash(self) -> str:
         return _payload_hash(self.hash_payload())
@@ -300,6 +317,10 @@ def _receipt_matches_intent_binding(receipt: ExecutionReceipt, intent: Execution
         and receipt.capability_id == intent.capability_id
         and receipt.provider == intent.provider
         and receipt.request_hash == intent.request_hash
+        and (
+            intent.action_intent_id is None
+            or receipt.action_intent_id == intent.action_intent_id
+        )
         and receipt.business_id == intent.business_id
         and receipt.project_id == intent.project_id
         and receipt.chat_id == intent.chat_id
@@ -377,6 +398,7 @@ class ExecutionReceiptRepository:
                     capability_id TEXT NOT NULL,
                     provider TEXT NOT NULL,
                     request_hash TEXT NOT NULL,
+                    action_intent_id TEXT,
                     state TEXT NOT NULL,
                     business_id TEXT,
                     project_id TEXT,
@@ -394,6 +416,14 @@ class ExecutionReceiptRepository:
                 )
                 """
             )
+            intent_columns = {
+                str(row["name"])
+                for row in self._conn.execute("PRAGMA table_info(execution_intents)").fetchall()
+            }
+            if "action_intent_id" not in intent_columns:
+                self._conn.execute(
+                    "ALTER TABLE execution_intents ADD COLUMN action_intent_id TEXT"
+                )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_receipts_run ON execution_receipts(run_id, execution_id)"
             )
@@ -430,6 +460,7 @@ class ExecutionReceiptRepository:
             capability_id=row["capability_id"],
             provider=row["provider"],
             request_hash=row["request_hash"],
+            action_intent_id=row["action_intent_id"],
             state=ExecutionIntentState(row["state"]),
             business_id=row["business_id"],
             project_id=row["project_id"],
@@ -491,6 +522,7 @@ class ExecutionReceiptRepository:
             intent.capability_id,
             intent.provider,
             intent.request_hash,
+            intent.action_intent_id,
             intent.state.value,
             intent.business_id,
             intent.project_id,
@@ -634,6 +666,7 @@ class ExecutionReceiptRepository:
         capability_id: str,
         provider: str,
         request_hash: str,
+        action_intent_id: Optional[str] = None,
         business_id: Optional[str] = None,
         project_id: Optional[str] = None,
         chat_id: Optional[str] = None,
@@ -649,10 +682,12 @@ class ExecutionReceiptRepository:
             capability_id=capability_id,
             provider=provider,
             request_hash=request_hash,
+            action_intent_id=action_intent_id,
             business_id=business_id,
             project_id=project_id,
             chat_id=chat_id,
             approval_reference=approval_reference,
+            schema_version=2 if action_intent_id is not None else 1,
         ).normalized()
 
         with self._lock:
@@ -665,11 +700,11 @@ class ExecutionReceiptRepository:
                         """
                         INSERT INTO execution_intents(
                             intent_id, request_id, run_id, agent_id, capability_id, provider,
-                            request_hash, state, business_id, project_id, chat_id,
+                            request_hash, action_intent_id, state, business_id, project_id, chat_id,
                             approval_reference, dispatch_count, receipt_execution_id,
                             last_error_class, last_error_message, created_at, updated_at,
                             schema_version, record_hash
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         self._intent_values(intent),
                     )
@@ -724,7 +759,7 @@ class ExecutionReceiptRepository:
             """
             UPDATE execution_intents SET
                 request_id=?, run_id=?, agent_id=?, capability_id=?, provider=?,
-                request_hash=?, state=?, business_id=?, project_id=?, chat_id=?,
+                request_hash=?, action_intent_id=?, state=?, business_id=?, project_id=?, chat_id=?,
                 approval_reference=?, dispatch_count=?, receipt_execution_id=?,
                 last_error_class=?, last_error_message=?, created_at=?, updated_at=?,
                 schema_version=?, record_hash=?
@@ -737,6 +772,7 @@ class ExecutionReceiptRepository:
                 normalized.capability_id,
                 normalized.provider,
                 normalized.request_hash,
+                normalized.action_intent_id,
                 normalized.state.value,
                 normalized.business_id,
                 normalized.project_id,
