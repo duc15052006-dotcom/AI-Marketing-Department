@@ -20,12 +20,17 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
-from brain.contracts import BrainAgentId
+from brain.contracts import ActionIntent, BrainAgentId
+from brain.decisions import DecisionEvaluationRequest
 from brain.action_policy import (
     ActionAuthorization,
     ActionDisposition,
+    CapabilityBindingDisposition,
     RuntimeActionIntent,
+    TrustedCapabilityBinding,
     authorize_action,
+    authorize_action_intent,
+    evaluate_action_intent_capability_binding,
 )
 from schemas.base import BaseModel, Field
 from tools.adapters import (
@@ -277,8 +282,20 @@ class ToolGateway:
             chat_id=request.chat_id,
         )
 
-    def execute(self, request: ToolRequest) -> ExecutionReceipt:
-        """Execute a tool capability with governance, durable intent, and receipts."""
+    def execute(
+        self,
+        request: ToolRequest,
+        *,
+        action_intent: Optional[ActionIntent] = None,
+        decision_request: Optional[DecisionEvaluationRequest] = None,
+    ) -> ExecutionReceipt:
+        """Execute a tool capability with governance, durable intent, and receipts.
+
+        ``action_intent`` and ``decision_request`` form a trusted semantic
+        authority channel. They are keyword-only and never inferred from
+        ``ToolRequest.parameters``. Legacy callers may omit both until the
+        runtime migration makes semantic authority mandatory end-to-end.
+        """
         start_time = datetime.now(timezone.utc)
 
         # Approval authority may restore omitted trusted scope, but model-controlled
@@ -327,7 +344,9 @@ class ToolGateway:
         # the Brain to authorize an action. Unknown identities never reach the
         # Brain authorizer and remain auditable as UNRECOGNIZED_AGENT.
         try:
-            BrainAgentId(str(request.agent_id or '').strip().upper())
+            canonical_request_agent = BrainAgentId(
+                str(request.agent_id or '').strip().upper()
+            )
         except ValueError:
             return self.receipt_repository.save_receipt(
                 self._error_receipt(
@@ -346,12 +365,156 @@ class ToolGateway:
                 )
             )
 
-        # 2. Brain Action Authorization Gate
+        # 3. Canonical Semantic Action Authority Gate
+        # The semantic channel is trusted runtime input, separate from the
+        # model/caller-controlled ToolRequest envelope. If either half is present,
+        # both must be present and canonical validation fails closed.
+        semantic_intent_id: Optional[str] = None
+        semantic_context_present = (
+            action_intent is not None or decision_request is not None
+        )
+        if semantic_context_present:
+            if not isinstance(action_intent, ActionIntent) or not isinstance(
+                decision_request, DecisionEvaluationRequest
+            ):
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=cap.provider,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.BLOCKED,
+                        error_class="BRAIN_ACTION_DENIED",
+                        error_message=(
+                            "SEMANTIC_ACTION_CONTEXT_INCOMPLETE: action_intent and "
+                            "decision_request must both be trusted canonical objects."
+                        ),
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                    )
+                )
+
+            if action_intent.owner_agent != canonical_request_agent:
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=cap.provider,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.BLOCKED,
+                        error_class="BRAIN_ACTION_DENIED",
+                        error_message=(
+                            "ACTION_INTENT_AGENT_MISMATCH: ToolRequest agent does not "
+                            "match the canonical ActionIntent owner."
+                        ),
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                    )
+                )
+
+            try:
+                trusted_binding = TrustedCapabilityBinding(
+                    capability_id=cap.capability_id,
+                    semantic_needs=tuple(cap.semantic_needs),
+                    supported_agents=tuple(cap.supported_agents),
+                )
+                binding_assessment = evaluate_action_intent_capability_binding(
+                    action_intent, trusted_binding
+                )
+            except Exception as exc:
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=cap.provider,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.BLOCKED,
+                        error_class="BRAIN_ACTION_DENIED",
+                        error_message=f"BRAIN_SEMANTIC_CAPABILITY_POLICY_ERROR: {exc}",
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                    )
+                )
+
+            if (
+                binding_assessment.disposition
+                != CapabilityBindingDisposition.BOUND
+                or binding_assessment.intent_id != action_intent.intent_id
+                or binding_assessment.capability_id != cap.capability_id
+            ):
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=cap.provider,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.BLOCKED,
+                        error_class="BRAIN_ACTION_DENIED",
+                        error_message=binding_assessment.reason,
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                    )
+                )
+
+            try:
+                semantic_authorization = authorize_action_intent(
+                    action_intent, decision_request
+                )
+            except Exception as exc:
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=cap.provider,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.BLOCKED,
+                        error_class="BRAIN_ACTION_DENIED",
+                        error_message=f"BRAIN_SEMANTIC_DECISION_POLICY_ERROR: {exc}",
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                    )
+                )
+
+            if (
+                not isinstance(semantic_authorization, ActionAuthorization)
+                or semantic_authorization.intent_id != action_intent.intent_id
+                or semantic_authorization.disposition != ActionDisposition.ALLOW
+            ):
+                if isinstance(semantic_authorization, ActionAuthorization):
+                    semantic_denial_reason = semantic_authorization.reason
+                    if semantic_authorization.intent_id != action_intent.intent_id:
+                        semantic_denial_reason = (
+                            "SEMANTIC_ACTION_INTENT_MISMATCH: "
+                            f"{semantic_denial_reason}"
+                        )
+                else:
+                    semantic_denial_reason = "SEMANTIC_ACTION_AUTHORIZATION_INVALID"
+                return self.receipt_repository.save_receipt(
+                    self._error_receipt(
+                        request,
+                        provider=cap.provider,
+                        request_hash=req_hash,
+                        started_at=start_time,
+                        status=ExecutionStatus.BLOCKED,
+                        error_class="BRAIN_ACTION_DENIED",
+                        error_message=semantic_denial_reason,
+                        business_id=effective_business_id,
+                        project_id=effective_project_id,
+                    )
+                )
+
+            semantic_intent_id = action_intent.intent_id
+
+        # 4. Existing structural Brain Action Authorization Gate
         # Capability policy metadata comes only from the trusted registry snapshot;
         # request.parameters is deliberately excluded from Brain authorization.
         try:
             brain_intent = RuntimeActionIntent(
-                intent_id=f"BRAIN-ACTION-{request.request_id}",
+                intent_id=(
+                    semantic_intent_id
+                    if semantic_intent_id is not None
+                    else f"BRAIN-ACTION-{request.request_id}"
+                ),
                 run_id=request.run_id,
                 agent_id=request.agent_id,
                 capability_id=cap.capability_id,
