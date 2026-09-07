@@ -50,7 +50,7 @@ jobs:
         run: |
           python -m unittest -v \
             tests.test_brain_publish_semantic_capability_binding_v1 \
-            tests.test_capability_registry_policy_immutability_v2 \
+            tests.test_brain_action_intent_capability_binding_v1 \
             2>&1 | tee .ci-results/targeted-test.log
 
       - name: Upload targeted evidence
