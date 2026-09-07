@@ -196,3 +196,8 @@ class SettingsTests(unittest.TestCase):
     def test_remote_http_rejected_without_request(self):
         self.provider.base_url='http://remote.example/v1'
         with self.assertRaises(RuntimeError):self.service._planner('local')
+
+    def test_builtin_paid_cost_authority_cannot_be_overridden_by_stale_settings(self):
+        self.current.providers['openai'] = self.provider
+        with self.assertRaises(ValueError): self.service._planner('openai')
+        self.settings._secret_store.get_secret.assert_not_called()

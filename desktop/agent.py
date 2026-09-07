@@ -91,7 +91,9 @@ class DesktopAgentService(BaseCapabilityAdapter):
         if not p or not p.enabled or p.adapter_type not in ('OPENAI', 'OPENAI_COMPATIBLE'):
             raise ValueError('DESKTOP_VISION_PROVIDER_UNAVAILABLE')
         if not p.default_model or not p.base_url: raise ValueError('DESKTOP_VISION_SETTINGS_REQUIRED')
-        if settings.free_only_mode and getattr(p.cost_policy, 'value', p.cost_policy) != 'FREE_TIER_ALLOWED':
+        from integrations.models.registry import BUILTIN_PROVIDER_COST_POLICIES
+        cost = BUILTIN_PROVIDER_COST_POLICIES.get(provider_id, p.cost_policy)
+        if settings.free_only_mode and getattr(cost, 'value', cost) != 'FREE_TIER_ALLOWED':
             raise ValueError('DESKTOP_PAID_PROVIDER_BLOCKED')
         key = self.settings._secret_store.get_secret(p.credential_ref) or ''
         planner = CompatibleVisionPlanner(p.base_url, p.default_model, key)
