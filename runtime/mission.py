@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from threading import RLock
 from typing import Any, Dict, List, Optional
 
 from schemas.base import BaseModel, Field
@@ -102,6 +103,14 @@ _MISSION_TRANSITION_PAIRS = frozenset(
     }
 )
 
+_MISSION_AUTHORITY_LOCK_STRIPE_COUNT = 64
+_MISSION_AUTHORITY_LOCK_STRIPES = tuple(
+    RLock() for _ in range(_MISSION_AUTHORITY_LOCK_STRIPE_COUNT)
+)
+_MISSION_AUTHORITY_MUTATION_FIELDS = frozenset(
+    {"mission_id", "business_id", "project_id", "user_id", "status", "commitment_id"}
+)
+
 _COMMITMENT_REVISION_UNSET = object()
 
 
@@ -114,6 +123,19 @@ def _require_mission_status(value: object) -> MissionStatus:
         return MissionStatus(value)
     except (TypeError, ValueError) as exc:
         raise MissionTransitionError(f"MISSION_STATUS_INVALID: {value!r}") from exc
+
+
+def _mission_authority_lock_index(record: object) -> int:
+    """Select a well-distributed process-local lock stripe for one Mission object."""
+
+    identity = id(record)
+    return (identity ^ (identity >> 4)) % _MISSION_AUTHORITY_LOCK_STRIPE_COUNT
+
+
+def _mission_authority_lock(record: object) -> RLock:
+    """Return the process-local authority lock without storing it on the record."""
+
+    return _MISSION_AUTHORITY_LOCK_STRIPES[_mission_authority_lock_index(record)]
 
 
 class _FrozenCommitmentDict(dict):
@@ -379,68 +401,78 @@ class MissionRecord(BaseModel):
         object.__setattr__(self, "status", _require_mission_status(self.status))
 
     def __setattr__(self, name: str, value: object) -> None:
-        """Protect Mission lifecycle and authoritative scope from unsafe mutation.
+        """Serialize initialized Mission authority mutation through one lock stripe.
 
-        Lifecycle changes after initialization must pass through ``transition_to``
-        or the validated ``mark_ready`` trust boundary. Same-state raw assignment
-        remains idempotent. Executable Mission identity/scope cannot be rebound
-        after the Mission leaves CREATED.
+        #214 deliberately does not forbid direct commitment_id rebinding; #215
+        owns that authority invariant.  It does ensure such writes cannot race a
+        lifecycle/scope mutation or an authoritative snapshot read.
         """
 
-        if name in {"mission_id", "business_id", "project_id", "user_id"} and name in self.__dict__:
-            current_value = self.__dict__[name]
-            status = _require_mission_status(
-                self.__dict__.get("status", MissionStatus.CREATED)
-            )
+        if name not in _MISSION_AUTHORITY_MUTATION_FIELDS or name not in self.__dict__:
+            object.__setattr__(self, name, value)
+            return
 
-            if status != MissionStatus.CREATED and value != current_value:
+        with _mission_authority_lock(self):
+            if name in {"mission_id", "business_id", "project_id", "user_id"}:
+                current_value = self.__dict__[name]
+                status = _require_mission_status(
+                    self.__dict__.get("status", MissionStatus.CREATED)
+                )
+                if status != MissionStatus.CREATED and value != current_value:
+                    raise MissionTransitionError(
+                        f"MISSION_AUTHORITATIVE_SCOPE_IMMUTABLE: {name}"
+                    )
+
+            if name == "status":
+                current = _require_mission_status(self.__dict__["status"])
+                target = _require_mission_status(value)
+
+                if target == current:
+                    return
+
+                if current in TERMINAL_MISSION_STATUSES:
+                    raise MissionTransitionError(
+                        f"MISSION_TERMINAL_STATE_IMMUTABLE: {current.value}->{target.value}"
+                    )
+
                 raise MissionTransitionError(
-                    f"MISSION_AUTHORITATIVE_SCOPE_IMMUTABLE: {name}"
+                    f"MISSION_STATUS_TRANSITION_REQUIRES_AUTHORITY: {current.value}->{target.value}"
                 )
 
-        if name == "status" and "status" in self.__dict__:
-            current = _require_mission_status(self.__dict__["status"])
-            target = _require_mission_status(value)
+            object.__setattr__(self, name, value)
 
-            if target == current:
-                return
+    def model_dump(self, mode: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
+        """Read one atomic serialized authority snapshot for this Mission."""
 
-            if current in TERMINAL_MISSION_STATUSES:
-                raise MissionTransitionError(
-                    f"MISSION_TERMINAL_STATE_IMMUTABLE: {current.value}->{target.value}"
-                )
-
-            raise MissionTransitionError(
-                f"MISSION_STATUS_TRANSITION_REQUIRES_AUTHORITY: {current.value}->{target.value}"
-            )
-
-        object.__setattr__(self, name, value)
+        with _mission_authority_lock(self):
+            return super().model_dump(mode=mode, **kwargs)
 
     def transition_to(self, target: object) -> None:
         """Apply one canonical generic FSM transition under lifecycle authority."""
 
-        current = _require_mission_status(self.status)
-        normalized_target = _require_mission_status(target)
+        with _mission_authority_lock(self):
+            current = _require_mission_status(self.status)
+            normalized_target = _require_mission_status(target)
 
-        if normalized_target == MissionStatus.READY:
-            raise MissionTransitionError(
-                "MISSION_READY_REQUIRES_COMMITMENT_VALIDATION"
-            )
+            if normalized_target == MissionStatus.READY:
+                raise MissionTransitionError(
+                    "MISSION_READY_REQUIRES_COMMITMENT_VALIDATION"
+                )
 
-        if normalized_target == current:
-            return
+            if normalized_target == current:
+                return
 
-        if current in TERMINAL_MISSION_STATUSES:
-            raise MissionTransitionError(
-                f"MISSION_TERMINAL_STATE_IMMUTABLE: {current.value}->{normalized_target.value}"
-            )
+            if current in TERMINAL_MISSION_STATUSES:
+                raise MissionTransitionError(
+                    f"MISSION_TERMINAL_STATE_IMMUTABLE: {current.value}->{normalized_target.value}"
+                )
 
-        if (current, normalized_target) not in _MISSION_TRANSITION_PAIRS:
-            raise MissionTransitionError(
-                f"MISSION_TRANSITION_INVALID: {current.value}->{normalized_target.value}"
-            )
+            if (current, normalized_target) not in _MISSION_TRANSITION_PAIRS:
+                raise MissionTransitionError(
+                    f"MISSION_TRANSITION_INVALID: {current.value}->{normalized_target.value}"
+                )
 
-        object.__setattr__(self, "status", normalized_target)
+            object.__setattr__(self, "status", normalized_target)
 
     def _validate_executable_commitment(
         self,
@@ -474,18 +506,14 @@ class MissionRecord(BaseModel):
         *,
         now: Optional[datetime] = None,
     ) -> None:
-        """Enter executable READY state only after the Commitment passes all gates.
+        """Enter READY atomically after one Commitment passes all authority gates."""
 
-        Validation happens before either field is changed so every rejection is
-        atomic from the caller's perspective: the Mission remains non-executable
-        and unbound after a failed attempt.
-        """
+        with _mission_authority_lock(self):
+            if self.status != MissionStatus.CREATED:
+                raise MissionCommitmentError(
+                    f"MISSION_READY_TRANSITION_INVALID_FROM_{self.status.value}"
+                )
 
-        if self.status != MissionStatus.CREATED:
-            raise MissionCommitmentError(
-                f"MISSION_READY_TRANSITION_INVALID_FROM_{self.status.value}"
-            )
-
-        validated = self._validate_executable_commitment(commitment, now=now)
-        object.__setattr__(self, "commitment_id", validated.commitment_id)
-        object.__setattr__(self, "status", MissionStatus.READY)
+            validated = self._validate_executable_commitment(commitment, now=now)
+            object.__setattr__(self, "commitment_id", validated.commitment_id)
+            object.__setattr__(self, "status", MissionStatus.READY)
