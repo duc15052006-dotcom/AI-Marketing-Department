@@ -2429,6 +2429,26 @@ mod tests {
         assert!(!json_str.contains("a9fca20f039a"));
     }
 
+    // Test server must consume the full request before closing the socket;
+    // unread incoming bytes can cause an abortive reset on Windows.
+    fn drain_mock_request(stream: &mut std::net::TcpStream) {
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
+        let mut headers = Vec::new();
+        while !headers.ends_with(b"\r\n\r\n") {
+            assert!(headers.len() < 16384, "oversized fixture request");
+            let mut byte = [0u8; 1];
+            stream.read_exact(&mut byte).unwrap();
+            headers.push(byte[0]);
+        }
+        let text = String::from_utf8(headers).unwrap();
+        let length = text.lines().filter_map(|line| line.split_once(':'))
+            .find(|(name, _)| name.eq_ignore_ascii_case("content-length"))
+            .map(|(_, value)| value.trim().parse::<usize>().unwrap()).unwrap_or(0);
+        assert!(length <= 16384);
+        let mut body = vec![0u8; length];
+        stream.read_exact(&mut body).unwrap();
+    }
+
     #[test]
     fn test_loopback_stream_against_mock_server() {
         use std::net::TcpListener;
@@ -2438,8 +2458,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
+                drain_mock_request(&mut stream);
                 let response = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nConnection: close\r\n\r\nevent: progress\r\ndata: {\"sequence\":1}\r\n\r\nevent: delta\r\ndata: {\"content\":\"Xin chao\"}\r\n\r\nevent: complete\r\ndata: {\"status\":\"COMPLETED\"}\r\n\r\n";
                 let _ = stream.write_all(response.as_bytes());
                 let _ = stream.flush();
@@ -2477,8 +2496,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_mock_request(&mut stream);
                 let response = "HTTP/1.0 401 Unauthorized\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"error\":\"UNAUTHORIZED\"}";
                 let _ = stream.write_all(response.as_bytes());
             }
@@ -2507,8 +2525,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_mock_request(&mut stream);
                 let response = "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}";
                 let _ = stream.write_all(response.as_bytes());
             }
@@ -2537,8 +2554,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_mock_request(&mut stream);
                 let response = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nConnection: close\r\n\r\nevent: delta\r\ndata: {\"content\":\"first\"}\r\n\r\nevent: delta\r\ndata: {\"content\":\"second\"}\r\n\r\n";
                 let _ = stream.write_all(response.as_bytes());
             }
@@ -2664,8 +2680,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_mock_request(&mut stream);
                 // Entire response sent in a single write/packet: headers + 2 SSE frames
                 let packet = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\nevent: progress\r\ndata: {\"step\":1}\r\n\r\nevent: complete\r\ndata: {\"status\":\"DONE\"}\r\n\r\n";
                 let _ = stream.write_all(packet.as_bytes());
@@ -2702,8 +2717,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_mock_request(&mut stream);
                 let giant_header = "X-Padding: ".to_string() + &"a".repeat(20000) + "\r\n";
                 let response = format!("HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\n{}\r\n\r\n", giant_header);
                 let _ = stream.write_all(response.as_bytes());
