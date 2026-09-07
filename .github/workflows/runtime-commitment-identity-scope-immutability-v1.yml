@@ -1,0 +1,68 @@
+name: Runtime Commitment Identity Scope Immutability V1 RED
+
+on:
+  pull_request:
+    paths:
+      - "runtime/mission.py"
+      - "tests/test_runtime_commitment_identity_scope_immutability_v1.py"
+      - ".github/workflows/runtime-commitment-identity-scope-immutability-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  red-commitment-identity-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          printf 'expected_sha=%s\nactual_sha=%s\n' "$EXPECTED" "$ACTUAL" | tee .ci-results/identity.txt
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run RED Commitment identity scope regression
+        shell: bash
+        run: |
+          set +e
+          python -m unittest -v tests.test_runtime_commitment_identity_scope_immutability_v1 2>&1 | tee .ci-results/red-test.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > .ci-results/red-exit-code.txt
+          exit "$code"
+
+      - name: Upload RED evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commitment-identity-scope-red-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
