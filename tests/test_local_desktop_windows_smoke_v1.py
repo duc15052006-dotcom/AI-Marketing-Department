@@ -99,6 +99,29 @@ class WindowsDesktopSmoke(unittest.TestCase):
             act('scroll', rect=[40, 240, 200, 40], ticks=-2)
             self.assertTrue(wheel)
             self.assertGreater(scroll_area.yview()[0], before_scroll[0])
+            # Exercise task-level authorization and independent native readback.
+            from desktop.live import LiveSession, LiveTask, TaskGrant
+            session.stop()
+            session = LiveSession(backend, sleep=pump, max_actions=3)
+            class LocalPlanner:
+                count = 0
+                def propose(inner, goal, observation, previous):
+                    inner.count += 1
+                    frame = session.preview()
+                    self.assertIsNotNone(frame)
+                    self.assertNotIn('observation_id', frame)
+                    if inner.count == 1:
+                        return {'status': 'act', 'reason': 'Click fixture button', 'expected': 'Count increases',
+                                'action': {'kind': 'click', 'rect': [35, 145, 160, 40]}}
+                    return {'status': 'done', 'reason': 'Readback next', 'expected': '', 'action': None}
+            def verify(goal, observation):
+                root.update()
+                return {'verified': clicked == [True, True], 'evidence': 'Owned Tk callback count == 2'}
+            result = LiveTask(session, LocalPlanner(), TaskGrant('Click test button once', session.window, 3),
+                              verifier=verify).run()
+            self.assertEqual(result['status'], 'HOST_VERIFIED')
+            self.assertEqual(clicked, [True, True])
+            session = LiveSession(backend, sleep=pump, max_actions=1)
             backend.gui.keyDown('esc')
             try:
                 with self.assertRaisesRegex(DesktopError, 'STOPPED'):
