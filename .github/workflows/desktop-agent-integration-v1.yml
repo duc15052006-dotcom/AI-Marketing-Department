@@ -30,5 +30,9 @@ jobs:
         working-directory: frontend
       - run: npm test
         working-directory: frontend
+      - run: npx playwright install chromium --only-shell
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
       - name: Native IPC route and approval tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
