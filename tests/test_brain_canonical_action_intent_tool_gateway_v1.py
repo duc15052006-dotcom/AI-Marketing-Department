@@ -208,6 +208,19 @@ class BrainCanonicalActionIntentToolGatewayV1Tests(unittest.TestCase):
         self.assertEqual(parameters["action_intent"].kind, inspect.Parameter.KEYWORD_ONLY)
         self.assertEqual(parameters["decision_request"].kind, inspect.Parameter.KEYWORD_ONLY)
 
+    def test_missing_entire_canonical_context_fails_closed_before_structural_veto(self) -> None:
+        observed = []
+        gateway = self._gateway(observed)
+        receipt = gateway.execute(self._request())
+        self.assertEqual(
+            observed,
+            [],
+            "STILL_PRESENT: ToolGateway dispatched into structural authorization without canonical semantic ActionIntent authority.",
+        )
+        self.assertEqual(receipt.status, ExecutionStatus.BLOCKED)
+        self.assertEqual(receipt.error_class, "BRAIN_ACTION_DENIED")
+        self.assertIn("SEMANTIC_ACTION_CONTEXT", receipt.error_message)
+
     def test_incomplete_semantic_context_fails_closed_before_structural_veto(self) -> None:
         observed = []
         gateway = self._gateway(observed)
