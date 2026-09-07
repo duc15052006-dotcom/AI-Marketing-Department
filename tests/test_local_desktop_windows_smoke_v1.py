@@ -50,6 +50,15 @@ class WindowsDesktopSmoke(unittest.TestCase):
             user.SetCursorPos(720, 500)
             user.GetAsyncKeyState(0x1b)  # clear historical Esc edge from runner setup
             backend = WindowsBackend(hwnd)
+            original_paste = backend.paste
+            def diagnostic_paste(*args):
+                try:
+                    return original_paste(*args)
+                except Exception as exc:
+                    # Fixture-only diagnostic: all clipboard/input data here is synthetic.
+                    print('Native paste error:', type(exc).__name__, str(exc), flush=True)
+                    raise
+            backend.paste = diagnostic_paste
             def pump(seconds):
                 root.update()
                 time.sleep(seconds)
