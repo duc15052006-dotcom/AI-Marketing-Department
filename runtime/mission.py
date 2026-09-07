@@ -20,6 +20,10 @@ class MissionCommitmentError(ValueError):
     """Raised when a Mission cannot safely bind an executable Commitment."""
 
 
+class MissionTransitionError(ValueError):
+    """Raised when a Mission lifecycle transition violates runtime authority."""
+
+
 class MissionStatus(str, Enum):
     """Durable lifecycle states for a long-lived Continuity Runtime Mission."""
 
@@ -36,6 +40,16 @@ class MissionStatus(str, Enum):
     CANCELLED = "CANCELLED"
     FAILED = "FAILED"
     EXPIRED = "EXPIRED"
+
+
+TERMINAL_MISSION_STATUSES = frozenset(
+    {
+        MissionStatus.COMPLETED,
+        MissionStatus.CANCELLED,
+        MissionStatus.FAILED,
+        MissionStatus.EXPIRED,
+    }
+)
 
 
 class CommitmentRecord(BaseModel):
@@ -82,6 +96,40 @@ class MissionRecord(BaseModel):
     status: MissionStatus = MissionStatus.CREATED
     commitment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Protect terminal lifecycle authority from ordinary field mutation.
+
+        This slice deliberately does not define the complete non-terminal FSM.
+        It establishes the stronger one-way invariant that terminal Missions can
+        never be revived.  Re-assigning the same terminal state remains
+        idempotent.
+        """
+
+        if name == "status" and "status" in self.__dict__:
+            current_raw = self.__dict__["status"]
+            try:
+                current = (
+                    current_raw
+                    if isinstance(current_raw, MissionStatus)
+                    else MissionStatus(current_raw)
+                )
+            except (TypeError, ValueError):
+                current = current_raw
+
+            try:
+                target = value if isinstance(value, MissionStatus) else MissionStatus(value)
+            except (TypeError, ValueError):
+                target = value
+
+            if current in TERMINAL_MISSION_STATUSES and target != current:
+                current_label = current.value if isinstance(current, MissionStatus) else str(current)
+                target_label = target.value if isinstance(target, MissionStatus) else str(target)
+                raise MissionTransitionError(
+                    f"MISSION_TERMINAL_STATE_IMMUTABLE: {current_label}->{target_label}"
+                )
+
+        object.__setattr__(self, name, value)
 
     def _validate_executable_commitment(
         self,
