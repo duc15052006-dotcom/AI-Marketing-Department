@@ -30,7 +30,11 @@ class WindowsDesktopSmoke(unittest.TestCase):
             button = tk.Button(root, text='Local test button', command=lambda: clicked.append(True))
             button.place(x=30, y=140, width=180, height=50)
             wheel = []
-            root.bind_all('<MouseWheel>', lambda event: wheel.append(event.delta))
+            scroll_area = tk.Text(root, wrap='none', insertontime=0)
+            scroll_area.place(x=30, y=220, width=500, height=100)
+            scroll_area.insert('1.0', '\n'.join(f'Row {i}' for i in range(80)))
+            scroll_area.yview_moveto(0)
+            scroll_area.bind('<MouseWheel>', lambda event: wheel.append(event.delta))
             root.update()
             root.focus_force()
             root.update()
@@ -66,8 +70,11 @@ class WindowsDesktopSmoke(unittest.TestCase):
             self.assertEqual(entry.get(), text)
             act('press', key='backspace')
             self.assertEqual(entry.get(), text[:-1])
-            act('scroll', rect=[30, 240, 200, 80], ticks=-2)
+            act('click', rect=[40, 240, 200, 40])
+            before_scroll = scroll_area.yview()
+            act('scroll', rect=[40, 240, 200, 40], ticks=-2)
             self.assertTrue(wheel)
+            self.assertGreater(scroll_area.yview()[0], before_scroll[0])
             backend.gui.keyDown('esc')
             try:
                 with self.assertRaisesRegex(DesktopError, 'STOPPED'):
