@@ -8,16 +8,18 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "lucide-react": "^0.475.0",
-    "clsx": "^2.1.1",
     "tailwind-merge": "^3.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",

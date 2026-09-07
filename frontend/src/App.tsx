@@ -1,3 +1,4 @@
+import DesktopTaskPanel from './components/DesktopTaskPanel.tsx';
 import React, { useState, useEffect, useRef } from 'react';
 import brandLogo from './assets/logo.png';
 import { MarkdownView } from './components/MarkdownView.tsx';
@@ -191,8 +192,8 @@ export default function App() {
         const data = await sessRes.value.json();
         const items = data.sessions || [];
         setChatSessions((prev) => mergeBackendSessionsWithLocal(prev, items));
-        if (items.length > 0 && !activeChatId) {
-          setActiveChatId(items[0].chat_id);
+        if (items.length > 0) {
+          setActiveChatId(current => current || items[0].chat_id);
         }
       }
       if (projRes.status === 'fulfilled' && projRes.value.ok) {
@@ -1031,6 +1032,16 @@ export default function App() {
             {showRightDrawer ? <IconChevronRight size={13} /> : <IconChevronLeft size={13} />}
           </button>
         </header>
+
+        {activeView === 'chat' && <DesktopTaskPanel chatId={activeChatId} initialGoal={chatInput}
+          onChanged={() => { void fetchCoreData(); }}
+          ensureChat={async () => {
+            const res = await apiFetch(`${API_BASE}/api/chat/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Nhiệm vụ máy tính' }) });
+            if (!res.ok) throw new Error('Cannot create chat');
+            const session = await res.json();
+            setChatSessions(prev => [session, ...prev]); setActiveChatId(session.chat_id);
+            return session.chat_id;
+          }} />}
 
         {/* Scrollable Conversation Content Area */}
         <div ref={scrollContainerRef} style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>

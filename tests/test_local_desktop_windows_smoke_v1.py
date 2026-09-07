@@ -153,6 +153,40 @@ class WindowsDesktopSmoke(unittest.TestCase):
                               verifier=verify).run()
             self.assertEqual(result['status'], 'HOST_VERIFIED')
             self.assertEqual(clicked, [True, True])
+            # Full host path: chat proposal -> gateway pending -> test human approval
+            # -> task worker -> real input -> result back to the same chat.
+            from desktop.agent import DesktopAgentService
+            from tests.test_desktop_agent_integration_v1 import Chats
+            from tools.tool_gateway import ToolGateway
+            from tools.capabilities import CapabilityRegistry
+            from dataclasses import asdict
+            gateway = ToolGateway(capability_registry=CapabilityRegistry())
+            chats, workers = Chats(), []
+            service = DesktopAgentService(gateway, chats, None,
+                windows=lambda: [{**asdict(backend.bound), 'title': 'owned fixture'}],
+                planner_factory=lambda pid: (LocalPlanner(), {'provider_id': 'fixture', 'model_id': 'fixture', 'endpoint': 'http://localhost/v1'}),
+                launch=workers.append,
+                session_factory=lambda w,n,t: LiveSession(backend, sleep=pump, max_actions=n, lifetime=t), countdown=0)
+            proposal = service.propose({'chat_id': 'a', 'goal': 'Click fixture once', 'hwnd': hwnd,
+                                       'provider_id': 'fixture', 'max_steps': 3, 'seconds': 60})
+            self.assertFalse(workers)
+            ok, approval, _ = gateway.policy_engine.approve_pending_action(proposal['pending_approval_id'], approved_by='Owned fixture test')
+            self.assertTrue(ok)
+            self.assertEqual(service.start('a', proposal['ticket'], approval.approval_token)['status'], 'SUCCESS')
+            # LocalPlanner preview refers to this variable; use the service session.
+            class ServicePlanner:
+                count = 0
+                def propose(inner, *args):
+                    inner.count += 1
+                    return ({'status': 'act', 'reason': 'fixture', 'expected': 'callback',
+                             'action': {'kind': 'click', 'rect': [35, 145, 160, 40]}}
+                            if inner.count == 1 else {'status': 'done', 'reason': 'fixture', 'expected': '', 'action': None})
+            service._jobs[proposal['ticket']]['planner'] = ServicePlanner()
+            workers[0]()
+            self.assertEqual(clicked, [True, True, True])
+            self.assertEqual(chats.messages[-1][2]['agent_outputs']['desktop']['status'], 'MODEL_REPORTED_COMPLETE_UNVERIFIED')
+            self.assertEqual(len(chats.messages[-1][2]['agent_outputs']['desktop']['evidence']), 1)
+            service.shutdown()
             session = LiveSession(backend, sleep=pump, max_actions=1)
             backend.gui.keyDown('esc')
             try:

@@ -1,0 +1,38 @@
+name: Desktop agent UI and native host
+on:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'app_api/server.py'
+      - 'frontend/**'
+      - 'src-tauri/src/main.rs'
+      - '.github/workflows/desktop-agent-integration-v1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-agent-ui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  frontend-and-native-host:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npx playwright install chromium --only-shell
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+      - name: Native IPC route and approval tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

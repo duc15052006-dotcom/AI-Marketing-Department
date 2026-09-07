@@ -237,3 +237,36 @@ Validation: new hermetic live contracts cover stop during planning, stale screen
 pause/resume invalidation, scope mismatch, disallowed kinds, one-use task execution,
 preview token isolation and independent verifier handling. The opt-in Windows smoke
 uses only its own Tk window, then independently checks the native button callback.
+
+## Integrated agent/chat path
+
+The application now mounts **Điều khiển máy tính** inside the chat view. Enter the
+objective, select a visible primary-screen window and a vision-capable compatible
+provider already saved in Settings, then choose **Giao nhiệm vụ cho agent**.
+The backend prepares a `desktop_task` for CMO through ToolGateway. It does not
+execute until the existing native desktop confirmation approves that exact pending
+proposal. Browser/Vite mode cannot approve it. After approval, focus the target
+within five seconds. Preview, pause, resume and Stop remain in the chat panel;
+results and per-step before/after hashes return to the originating conversation.
+
+`requirements.txt` now includes Windows-only input dependencies; reinstall it when
+updating an existing checkout. Provider keys stay in the backend secret store and
+are resolved into a session snapshot; the frontend only selects a saved provider.
+Only image-capable OpenAI-compatible endpoints are currently supported, and
+FREE_ONLY mode rejects paid provider definitions. No fallback sends screenshots to
+an unapproved endpoint. Changes to provider settings do not retarget an already
+prepared proposal.
+
+One desktop task can run at a time. Start is one-use; approval/window/scope changes
+cannot silently rebind the proposal. Switching chats or closing the panel host
+requests Stop. Loss of polling for 15 seconds, deleted/archived chat, or backend
+shutdown stops the active session. Native input already dispatched remains
+irreversible. Model completion still requires application-specific or human
+verification; this integration does not create DOM/UIA or ad-spend enforcement.
+
+Validation includes real authenticated HTTP routes, pending approval and replay
+cases, cross-chat isolation, changed PID/geometry, countdown cancellation, stopped
+viewer while a planner is waiting, final chat evidence, Settings snapshot/cost
+handling, frontend build/tests and native Rust route/confirmation tests. The native
+Windows fixture exercises the complete proposal -> approval -> task -> click ->
+chat-result chain on its own Tk window only; it never touches a user account.
