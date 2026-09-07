@@ -345,6 +345,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["performance", "cmo", "strategist"],
+                semantic_needs=["PERFORMANCE_TELEMETRY"],
                 provider="analytics_adapter",
                 timeout_policy=20.0,
             )
@@ -360,6 +361,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["performance", "cmo", "strategist"],
+                semantic_needs=["KPI_COMPUTATION"],
                 provider="kpi_calc_adapter",
                 timeout_policy=15.0,
             )
@@ -375,6 +377,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["performance", "cmo"],
+                semantic_needs=["ATTRIBUTION_EVIDENCE"],
                 provider="attribution_adapter",
                 timeout_policy=20.0,
             )
@@ -390,6 +393,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["performance", "cmo", "strategist"],
+                semantic_needs=["EXPERIMENT_ANALYSIS"],
                 provider="stats_analysis_adapter",
                 timeout_policy=20.0,
             )
