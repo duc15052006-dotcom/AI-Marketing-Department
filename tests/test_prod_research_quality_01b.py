@@ -643,11 +643,12 @@ class TestOneResearchExecution(unittest.TestCase):
 
     def test_single_tool_execution(self) -> None:
         src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)
-        self.assertIn("tool_gateway.execute(search_req)", src)
+        self.assertIn("self._execute_tool_request(context, search_req)", src)
+        self.assertNotIn("tool_gateway.execute(search_req)", src)
 
     def test_no_second_search(self) -> None:
         src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)
-        execute_count = src.count("tool_gateway.execute(")
+        execute_count = src.count("self._execute_tool_request(context, search_req)")
         self.assertEqual(execute_count, 1)
 
     def test_quality_evaluation_is_local(self) -> None:

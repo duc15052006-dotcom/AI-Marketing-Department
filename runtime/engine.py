@@ -19,8 +19,9 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from brain.action_policy import BrainActionAuthority
 from governance.access_matrix import AgentAccessMatrix
 from governance.claim_safety import FinalClaimAuditGateResult, ValidationDecision
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
@@ -222,6 +223,9 @@ class FiveAgentDepartmentRuntime:
         session_knowledge: Optional[SessionKnowledgeStore] = None,
         context_compiler: Optional[ContextCompiler] = None,
         claim_verifier: Optional[BaseClaimVerifier] = None,
+        brain_action_authority_resolver: Optional[
+            Callable[[RuntimeContext, ToolRequest], Optional[BrainActionAuthority]]
+        ] = None,
         max_completed_runs_cache: int = 1000,
     ) -> None:
         self.model_gateway = model_gateway or UniversalModelGateway(free_only_mode=True)
@@ -231,6 +235,7 @@ class FiveAgentDepartmentRuntime:
         self.learning_repo = learning_repo or LocalLearningRepository()
         self.session_knowledge = session_knowledge or SessionKnowledgeStore()
         self.claim_verifier = claim_verifier
+        self.brain_action_authority_resolver = brain_action_authority_resolver
         self.max_completed_runs_cache = max_completed_runs_cache
 
         self.knowledge_builder = KnowledgeContextBuilder(self.knowledge_repo)
@@ -262,6 +267,40 @@ class FiveAgentDepartmentRuntime:
                 )
             except Exception:
                 pass
+
+    def _execute_tool_request(
+        self,
+        context: RuntimeContext,
+        request: ToolRequest,
+    ) -> ExecutionReceipt:
+        """Dispatch one ToolRequest through the trusted Brain authority seam.
+
+        Legacy Runtime callers remain compatible while no resolver is
+        configured. Once a trusted resolver is installed, missing, malformed,
+        or resolver-failed authority is terminal for this dispatch and can
+        never silently downgrade to the legacy ToolGateway path.
+        """
+        semantic_kwargs: Dict[str, Any] = {}
+        resolver = self.brain_action_authority_resolver
+        if resolver is not None:
+            try:
+                authority = resolver(context, request)
+            except Exception as exc:
+                raise RuntimeError(
+                    "BRAIN_ACTION_AUTHORITY_REQUIRED: configured Runtime Brain "
+                    "authority resolver failed before tool dispatch."
+                ) from exc
+            if not isinstance(authority, BrainActionAuthority):
+                raise RuntimeError(
+                    "BRAIN_ACTION_AUTHORITY_REQUIRED: configured Runtime Brain "
+                    "authority resolver must return canonical BrainActionAuthority."
+                )
+            semantic_kwargs = {
+                "action_intent": authority.action_intent,
+                "decision_request": authority.decision_request,
+            }
+
+        return self.tool_gateway.execute(request, **semantic_kwargs)
 
 
     @staticmethod
@@ -971,7 +1010,7 @@ class FiveAgentDepartmentRuntime:
                     project_id=context.project_id,
                     chat_id=context.chat_id,
                 )
-                page_receipt = self.tool_gateway.execute(page_req)
+                page_receipt = self._execute_tool_request(context, page_req)
                 self._executed_tool_idempotency_keys[page_idem_key] = page_receipt
 
             context.execution_receipt_refs.append(page_receipt.execution_id)
@@ -1023,7 +1062,7 @@ class FiveAgentDepartmentRuntime:
                 project_id=context.project_id,
                 chat_id=context.chat_id,
             )
-            search_receipt = self.tool_gateway.execute(search_req)
+            search_receipt = self._execute_tool_request(context, search_req)
             self._executed_tool_idempotency_keys[idem_key] = search_receipt
 
         context.execution_receipt_refs.append(search_receipt.execution_id)
@@ -1414,7 +1453,7 @@ class FiveAgentDepartmentRuntime:
                 project_id=context.project_id,
                 chat_id=context.chat_id,
             )
-            img_receipt = self.tool_gateway.execute(img_req)
+            img_receipt = self._execute_tool_request(context, img_req)
             self._executed_tool_idempotency_keys[idem_key] = img_receipt
 
         context.execution_receipt_refs.append(img_receipt.execution_id)
@@ -1559,7 +1598,7 @@ class FiveAgentDepartmentRuntime:
                 project_id=context.project_id,
                 chat_id=context.chat_id,
             )
-            analytics_receipt = self.tool_gateway.execute(analytics_req)
+            analytics_receipt = self._execute_tool_request(context, analytics_req)
             self._executed_tool_idempotency_keys[idem_key] = analytics_receipt
 
         context.execution_receipt_refs.append(analytics_receipt.execution_id)
@@ -2577,7 +2616,7 @@ class FiveAgentDepartmentRuntime:
             project_id=context.project_id,
             chat_id=context.chat_id,
         )
-        receipt = self.tool_gateway.execute(pub_req)
+        receipt = self._execute_tool_request(context, pub_req)
         context.execution_receipt_refs.append(receipt.execution_id)
         self.lineage_inspector.add_receipt(receipt)
 
