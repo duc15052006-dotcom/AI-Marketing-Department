@@ -113,6 +113,11 @@ class MissionLifecycleTransitionAuthorityV1Tests(unittest.TestCase):
         self.assertEqual(mission.status, MissionStatus.WAITING_FOR_TIME)
 
     def test_exhaustive_169_fsm_pairs_match_canonical_policy(self):
+        # Collapse the pre-fix missing-method signal to one deterministic ERROR.
+        # Once the API exists, the same test exercises all 169 pairs.
+        if not hasattr(MissionRecord, "transition_to"):
+            raise AttributeError("MissionRecord.transition_to is required")
+
         statuses = tuple(MissionStatus)
         self.assertEqual(len(statuses) * len(statuses), 169)
 

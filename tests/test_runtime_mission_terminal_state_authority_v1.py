@@ -62,10 +62,10 @@ class MissionTerminalStateAuthorityV1Tests(unittest.TestCase):
 
         self.assertEqual(mission.status, MissionStatus.CANCELLED)
 
-    def test_non_terminal_transition_remains_outside_this_slice_control(self):
+    def test_non_terminal_transition_uses_canonical_authority_control(self):
         mission = self._mission(MissionStatus.ACTIVE)
 
-        mission.status = MissionStatus.WAITING_FOR_TIME
+        mission.transition_to(MissionStatus.WAITING_FOR_TIME)
 
         self.assertEqual(mission.status, MissionStatus.WAITING_FOR_TIME)
 

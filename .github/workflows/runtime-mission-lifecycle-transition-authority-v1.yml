@@ -5,6 +5,7 @@ on:
     paths:
       - "runtime/mission.py"
       - "tests/test_runtime_mission_lifecycle_transition_authority_v1.py"
+      - "tests/test_runtime_mission_terminal_state_authority_v1.py"
       - ".github/workflows/runtime-mission-lifecycle-transition-authority-v1.yml"
   workflow_dispatch:
 
@@ -51,10 +52,12 @@ jobs:
       - name: Compile touched production source
         run: python -m py_compile runtime/mission.py
 
-      - name: Run Mission lifecycle authority targeted regressions
+      - name: Run canonical 20-test lifecycle contract
+        run: python -m unittest -v tests.test_runtime_mission_lifecycle_transition_authority_v1
+
+      - name: Run adjacent Mission regressions
         run: |
           python -m unittest -v \
-            tests.test_runtime_mission_lifecycle_transition_authority_v1 \
             tests.test_runtime_mission_terminal_state_authority_v1 \
             tests.test_runtime_mission_authoritative_scope_immutability_v1 \
             tests.test_runtime_mission_commitment_contract_v1 \
