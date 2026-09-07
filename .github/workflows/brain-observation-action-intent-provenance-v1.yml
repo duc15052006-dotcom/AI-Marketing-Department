@@ -1,4 +1,4 @@
-name: Brain Observation ActionIntent Provenance V1 RED
+name: Brain Observation ActionIntent Provenance V1
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 jobs:
-  observation-action-intent-provenance-red:
+  observation-action-intent-provenance:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact PR head
@@ -52,7 +52,7 @@ jobs:
         run: |
           python -m py_compile tools/observation/models.py tools/tool_gateway.py tools/receipts.py
 
-      - name: Run Observation causal provenance RED regressions
+      - name: Run Observation causal provenance regressions
         shell: bash
         run: |
           python -m unittest -v \
@@ -62,11 +62,11 @@ jobs:
             tests.test_brain_canonical_action_intent_tool_gateway_v1 \
             2>&1 | tee .ci-results/targeted-test.log
 
-      - name: Upload RED evidence
+      - name: Upload qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: brain-observation-action-intent-provenance-red-${{ github.event.pull_request.head.sha || github.sha }}
+          name: brain-observation-action-intent-provenance-v1-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
