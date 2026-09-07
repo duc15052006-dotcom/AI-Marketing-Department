@@ -184,3 +184,56 @@ Kiểm thử model giả xác minh re-plan khi nút đổi vị trí, chặn sta
 không retry và context bước trước. Native Windows test xác minh dán tiếng Việt dài
 và khôi phục clipboard trong cửa sổ thử nghiệm. Khả năng hiểu giao diện của một
 model thật vẫn phải được đánh giá riêng với provider của bạn; CI không gọi model trả phí.
+
+## Live supervision v1 (opt-in, Windows)
+
+Run from the `feat/desktop-live-supervision-v1` branch after installing
+`requirements.txt` and `requirements-desktop.txt`:
+
+```powershell
+$env:DESKTOP_VISION_API_KEY = 'your-key'
+python -m desktop.live_cli --hwnd 123456 --goal "Nhập và lưu bản nháp thử nghiệm" --vision-url https://your-provider.example/v1 --vision-model your-vision-model --max-steps 10 --seconds 300
+```
+
+Replace HWND and provider settings with your own. Obtain HWND as described above.
+Place the target and monitor side by side on the primary display; neither may
+cover the target's buttons. Click **Bắt đầu**, read the one-time grant, then focus
+the target within 5 seconds. Do not run on an account containing consequential
+controls until you accept the window-wide scope described below.
+
+- Local live preview targets four PNG frames/second, with latest-frame replacement
+  instead of a growing video queue. Only task observations go to the configured
+  model. Preview continues during model latency; it skips captures while native
+  input holds the backend lock. The viewer labels old frames with their age.
+  This is a live image sequence, **not WebRTC, encoded video, or a streaming model
+  video API**. No live-provider latency/accuracy benchmark has been performed.
+- One task grant authorizes mouse, typing, paste and scrolling for one bound
+  HWND/PID/position/size, action budget and session lifetime. There is no per-click
+  prompt. The grant is created by local user consent, never model/page content.
+  **It does not enforce website, account, publishing or monetary boundaries inside
+  that window.** Goal text is not a permission sandbox. A model can click the wrong
+  button; use an isolated test window first. Existing gateway approvals are unchanged.
+- **Tạm dừng** invalidates pending plans; **Tiếp tục** provides 5 seconds to refocus
+  and does not extend budget or lifetime. A pause during input may end the session
+  with uncertain partial effects; it will not replay that action. Losing focus can
+  pause observation or terminate execution. Esc, screen corners, Stop and closing
+  the monitor stop future work. An OS input already sent cannot be recalled.
+- Every step records its proposal, measured planning latency and before/after
+  image hashes. Logs are bounded in memory; **Lưu nhật ký** explicitly exports JSON
+  containing goal and proposed text (possibly sensitive), but not screenshots or
+  API keys. No recordings are persisted automatically.
+- Model completion is `MODEL_REPORTED_COMPLETE_UNVERIFIED`. A trusted application
+  adapter can supply `LiveTask(..., verifier=...)` and must return
+  `{'verified': True, 'evidence': 'specific structured readback evidence'}` to earn
+  `HOST_VERIFIED`; the default CLI does not have this adapter. The observer verifies
+  the screen did not change across verification. The GUI's **Tôi đã kiểm chứng**
+  records a separate `USER_CONFIRMED` after the operator checks the real result.
+- `LiveTask(session, planner, TaskGrant(...))` is reusable by the existing five-agent
+  host. It is not automatically registered in chat/runtime; there is no sixth agent.
+  No DOM/UIA extraction, persistent learning, generic ads-budget enforcement or
+  automatic semantic verification of arbitrary websites is claimed here.
+
+Validation: new hermetic live contracts cover stop during planning, stale screen,
+pause/resume invalidation, scope mismatch, disallowed kinds, one-use task execution,
+preview token isolation and independent verifier handling. The opt-in Windows smoke
+uses only its own Tk window, then independently checks the native button callback.
