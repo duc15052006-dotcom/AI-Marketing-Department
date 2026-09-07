@@ -11,6 +11,38 @@ import unittest
 @unittest.skipUnless(sys.platform == 'win32' and os.environ.get('RUN_DESKTOP_NATIVE_SMOKE') == '1',
                      'Native desktop smoke requires explicit Windows opt-in')
 class WindowsDesktopSmoke(unittest.TestCase):
+    def test_live_monitor_renders_without_grant_or_native_input(self):
+        import tkinter as tk
+        from unittest.mock import patch
+        from desktop import live_cli
+        real_tk = tk.Tk
+        checked = []
+        failures = []
+        def factory():
+            root = real_tk()
+            def inspect():
+                try:
+                    controls = [w for f in root.winfo_children() for w in f.winfo_children()
+                                if isinstance(w, tk.Button)]
+                    self.assertEqual(len(controls), 6)
+                    next(w for w in controls if w.cget('text') == 'Bắt đầu').invoke()
+                    checked.append(True)
+                except BaseException as exc:
+                    failures.append(exc)
+                finally:
+                    root.destroy()
+            root.after(200, inspect)
+            return root
+        argv = ['desktop.live_cli', '--hwnd', '1', '--goal', 'Local monitor fixture',
+                '--vision-url', 'http://localhost:12345/v1', '--vision-model', 'fixture']
+        with patch.object(sys, 'argv', argv), patch.object(tk, 'Tk', factory), \
+             patch('tkinter.messagebox.askyesno', return_value=False), \
+             patch('desktop.windows.WindowsBackend') as backend:
+            self.assertEqual(live_cli.main(), 0)
+            backend.assert_not_called()
+        if failures: raise failures[0]
+        self.assertEqual(checked, [True])
+
     def test_owned_window_click_unicode_backspace_scroll_and_stop(self):
         import ctypes
         import tkinter as tk
