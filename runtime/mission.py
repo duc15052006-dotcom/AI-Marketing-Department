@@ -55,7 +55,65 @@ TERMINAL_MISSION_STATUSES = frozenset(
     }
 )
 
+# Canonical generic lifecycle policy. READY is intentionally absent from every
+# target pair: READY may only be granted by mark_ready(valid Commitment).
+_MISSION_TRANSITION_PAIRS = frozenset(
+    {
+        (MissionStatus.CREATED, MissionStatus.CANCELLED),
+        (MissionStatus.CREATED, MissionStatus.EXPIRED),
+        (MissionStatus.READY, MissionStatus.ACTIVE),
+        (MissionStatus.READY, MissionStatus.CANCELLED),
+        (MissionStatus.READY, MissionStatus.FAILED),
+        (MissionStatus.READY, MissionStatus.EXPIRED),
+        (MissionStatus.ACTIVE, MissionStatus.WAITING_FOR_TIME),
+        (MissionStatus.ACTIVE, MissionStatus.WAITING_FOR_EVENT),
+        (MissionStatus.ACTIVE, MissionStatus.WAITING_FOR_CONDITION),
+        (MissionStatus.ACTIVE, MissionStatus.WAITING_FOR_APPROVAL),
+        (MissionStatus.ACTIVE, MissionStatus.WAITING_FOR_RESULT),
+        (MissionStatus.ACTIVE, MissionStatus.SLEEPING),
+        (MissionStatus.ACTIVE, MissionStatus.COMPLETED),
+        (MissionStatus.ACTIVE, MissionStatus.CANCELLED),
+        (MissionStatus.ACTIVE, MissionStatus.FAILED),
+        (MissionStatus.ACTIVE, MissionStatus.EXPIRED),
+        (MissionStatus.WAITING_FOR_TIME, MissionStatus.ACTIVE),
+        (MissionStatus.WAITING_FOR_TIME, MissionStatus.CANCELLED),
+        (MissionStatus.WAITING_FOR_TIME, MissionStatus.FAILED),
+        (MissionStatus.WAITING_FOR_TIME, MissionStatus.EXPIRED),
+        (MissionStatus.WAITING_FOR_EVENT, MissionStatus.ACTIVE),
+        (MissionStatus.WAITING_FOR_EVENT, MissionStatus.CANCELLED),
+        (MissionStatus.WAITING_FOR_EVENT, MissionStatus.FAILED),
+        (MissionStatus.WAITING_FOR_EVENT, MissionStatus.EXPIRED),
+        (MissionStatus.WAITING_FOR_CONDITION, MissionStatus.ACTIVE),
+        (MissionStatus.WAITING_FOR_CONDITION, MissionStatus.CANCELLED),
+        (MissionStatus.WAITING_FOR_CONDITION, MissionStatus.FAILED),
+        (MissionStatus.WAITING_FOR_CONDITION, MissionStatus.EXPIRED),
+        (MissionStatus.WAITING_FOR_APPROVAL, MissionStatus.ACTIVE),
+        (MissionStatus.WAITING_FOR_APPROVAL, MissionStatus.CANCELLED),
+        (MissionStatus.WAITING_FOR_APPROVAL, MissionStatus.FAILED),
+        (MissionStatus.WAITING_FOR_APPROVAL, MissionStatus.EXPIRED),
+        (MissionStatus.WAITING_FOR_RESULT, MissionStatus.ACTIVE),
+        (MissionStatus.WAITING_FOR_RESULT, MissionStatus.CANCELLED),
+        (MissionStatus.WAITING_FOR_RESULT, MissionStatus.FAILED),
+        (MissionStatus.WAITING_FOR_RESULT, MissionStatus.EXPIRED),
+        (MissionStatus.SLEEPING, MissionStatus.ACTIVE),
+        (MissionStatus.SLEEPING, MissionStatus.CANCELLED),
+        (MissionStatus.SLEEPING, MissionStatus.FAILED),
+        (MissionStatus.SLEEPING, MissionStatus.EXPIRED),
+    }
+)
+
 _COMMITMENT_REVISION_UNSET = object()
+
+
+def _require_mission_status(value: object) -> MissionStatus:
+    """Return a canonical MissionStatus or fail closed with the domain error."""
+
+    if isinstance(value, MissionStatus):
+        return value
+    try:
+        return MissionStatus(value)
+    except (TypeError, ValueError) as exc:
+        raise MissionTransitionError(f"MISSION_STATUS_INVALID: {value!r}") from exc
 
 
 class _FrozenCommitmentDict(dict):
@@ -314,23 +372,26 @@ class MissionRecord(BaseModel):
     commitment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    def __post_init__(self) -> None:
+        """Validate fields and canonicalize the durable lifecycle state."""
+
+        super().__post_init__()
+        object.__setattr__(self, "status", _require_mission_status(self.status))
+
     def __setattr__(self, name: str, value: object) -> None:
         """Protect Mission lifecycle and authoritative scope from unsafe mutation.
 
-        This slice deliberately does not define the complete non-terminal FSM.
-        It establishes two one-way invariants: terminal Missions can never be
-        revived, and executable Mission identity/scope cannot be rebound after
-        the Mission leaves CREATED. Re-assigning the same value remains
-        idempotent.
+        Lifecycle changes after initialization must pass through ``transition_to``
+        or the validated ``mark_ready`` trust boundary. Same-state raw assignment
+        remains idempotent. Executable Mission identity/scope cannot be rebound
+        after the Mission leaves CREATED.
         """
 
         if name in {"mission_id", "business_id", "project_id", "user_id"} and name in self.__dict__:
             current_value = self.__dict__[name]
-            status_raw = self.__dict__.get("status", MissionStatus.CREATED)
-            try:
-                status = status_raw if isinstance(status_raw, MissionStatus) else MissionStatus(status_raw)
-            except (TypeError, ValueError):
-                status = status_raw
+            status = _require_mission_status(
+                self.__dict__.get("status", MissionStatus.CREATED)
+            )
 
             if status != MissionStatus.CREATED and value != current_value:
                 raise MissionTransitionError(
@@ -338,29 +399,48 @@ class MissionRecord(BaseModel):
                 )
 
         if name == "status" and "status" in self.__dict__:
-            current_raw = self.__dict__["status"]
-            try:
-                current = (
-                    current_raw
-                    if isinstance(current_raw, MissionStatus)
-                    else MissionStatus(current_raw)
-                )
-            except (TypeError, ValueError):
-                current = current_raw
+            current = _require_mission_status(self.__dict__["status"])
+            target = _require_mission_status(value)
 
-            try:
-                target = value if isinstance(value, MissionStatus) else MissionStatus(value)
-            except (TypeError, ValueError):
-                target = value
+            if target == current:
+                return
 
-            if current in TERMINAL_MISSION_STATUSES and target != current:
-                current_label = current.value if isinstance(current, MissionStatus) else str(current)
-                target_label = target.value if isinstance(target, MissionStatus) else str(target)
+            if current in TERMINAL_MISSION_STATUSES:
                 raise MissionTransitionError(
-                    f"MISSION_TERMINAL_STATE_IMMUTABLE: {current_label}->{target_label}"
+                    f"MISSION_TERMINAL_STATE_IMMUTABLE: {current.value}->{target.value}"
                 )
+
+            raise MissionTransitionError(
+                f"MISSION_STATUS_TRANSITION_REQUIRES_AUTHORITY: {current.value}->{target.value}"
+            )
 
         object.__setattr__(self, name, value)
+
+    def transition_to(self, target: object) -> None:
+        """Apply one canonical generic FSM transition under lifecycle authority."""
+
+        current = _require_mission_status(self.status)
+        normalized_target = _require_mission_status(target)
+
+        if normalized_target == MissionStatus.READY:
+            raise MissionTransitionError(
+                "MISSION_READY_REQUIRES_COMMITMENT_VALIDATION"
+            )
+
+        if normalized_target == current:
+            return
+
+        if current in TERMINAL_MISSION_STATUSES:
+            raise MissionTransitionError(
+                f"MISSION_TERMINAL_STATE_IMMUTABLE: {current.value}->{normalized_target.value}"
+            )
+
+        if (current, normalized_target) not in _MISSION_TRANSITION_PAIRS:
+            raise MissionTransitionError(
+                f"MISSION_TRANSITION_INVALID: {current.value}->{normalized_target.value}"
+            )
+
+        object.__setattr__(self, "status", normalized_target)
 
     def _validate_executable_commitment(
         self,
@@ -407,5 +487,5 @@ class MissionRecord(BaseModel):
             )
 
         validated = self._validate_executable_commitment(commitment, now=now)
-        self.commitment_id = validated.commitment_id
-        self.status = MissionStatus.READY
+        object.__setattr__(self, "commitment_id", validated.commitment_id)
+        object.__setattr__(self, "status", MissionStatus.READY)
