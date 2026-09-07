@@ -1,8 +1,8 @@
-"""Adversarial RED regressions for Commitment identity/scope immutability.
+"""Adversarial regressions for Commitment identity/scope immutability.
 
 Invariant: a Commitment record is an authority snapshot. Once constructed, its
 identity and authoritative scope cannot be rebound by ordinary field assignment.
-Changes to the authority envelope belong to a later revision/version slice.
+Authority-envelope changes must use the revision boundary.
 """
 
 from __future__ import annotations
@@ -62,10 +62,18 @@ class CommitmentIdentityScopeImmutabilityV1Tests(unittest.TestCase):
         commitment.user_id = "USER-001"
         self.assertEqual(commitment.commitment_id, "COMMIT-SCOPE-001")
 
-    def test_authority_envelope_remains_outside_this_slice_control(self):
+    def test_authority_envelope_change_uses_revision_boundary(self):
         commitment = self._commitment()
-        commitment.authority_mode = "SUPERVISED"
-        self.assertEqual(commitment.authority_mode, "SUPERVISED")
+        with self.assertRaises(ValueError):
+            commitment.authority_mode = "SUPERVISED"
+
+        revised = commitment.revise(
+            new_commitment_id="COMMIT-SCOPE-002",
+            authority_mode="SUPERVISED",
+        )
+        self.assertEqual(commitment.authority_mode, "OPERATOR_APPROVED")
+        self.assertEqual(revised.authority_mode, "SUPERVISED")
+        self.assertEqual(revised.revision, commitment.revision + 1)
 
 
 if __name__ == "__main__":
