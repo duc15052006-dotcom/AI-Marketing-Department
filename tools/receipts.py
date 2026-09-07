@@ -133,6 +133,10 @@ class ExecutionReceipt(BaseModel):
     cost_or_token_usage: Dict[str, Any] = Field(default_factory=dict)
     artifact_references: List[str] = Field(default_factory=list)
     approval_reference: Optional[str] = Field(default=None, description="Non-replayable approval audit reference")
+    action_intent_id: Optional[str] = Field(
+        default=None,
+        description="Canonical Brain ActionIntent identity for a semantically authorized dispatch",
+    )
     business_id: Optional[str] = Field(default=None, description="Originating business/tenant scope")
     project_id: Optional[str] = Field(default=None, description="Originating project scope")
     chat_id: Optional[str] = Field(default=None, description="Originating chat session scope")
