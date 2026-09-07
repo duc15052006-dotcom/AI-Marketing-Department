@@ -98,13 +98,27 @@ class MissionRecord(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __setattr__(self, name: str, value: object) -> None:
-        """Protect terminal lifecycle authority from ordinary field mutation.
+        """Protect Mission lifecycle and authoritative scope from unsafe mutation.
 
         This slice deliberately does not define the complete non-terminal FSM.
-        It establishes the stronger one-way invariant that terminal Missions can
-        never be revived.  Re-assigning the same terminal state remains
+        It establishes two one-way invariants: terminal Missions can never be
+        revived, and executable Mission identity/scope cannot be rebound after
+        the Mission leaves CREATED. Re-assigning the same value remains
         idempotent.
         """
+
+        if name in {"mission_id", "business_id", "project_id", "user_id"} and name in self.__dict__:
+            current_value = self.__dict__[name]
+            status_raw = self.__dict__.get("status", MissionStatus.CREATED)
+            try:
+                status = status_raw if isinstance(status_raw, MissionStatus) else MissionStatus(status_raw)
+            except (TypeError, ValueError):
+                status = status_raw
+
+            if status != MissionStatus.CREATED and value != current_value:
+                raise MissionTransitionError(
+                    f"MISSION_AUTHORITATIVE_SCOPE_IMMUTABLE: {name}"
+                )
 
         if name == "status" and "status" in self.__dict__:
             current_raw = self.__dict__["status"]
