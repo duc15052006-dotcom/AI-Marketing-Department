@@ -6,3 +6,8 @@ beautifulsoup4>=4.15.0,<5.0.0
 
 # Phase 3C.1: YouTube Metadata + Transcript Observation (Eyes V0)
 yt-dlp>=2026.0.0,<2027.0.0
+
+# Integrated Windows desktop capability (imports remain opt-in).
+PyAutoGUI==0.9.54; sys_platform == "win32"
+Pillow>=10.4,<13; sys_platform == "win32"
+pywin32>=306,<400; sys_platform == "win32"

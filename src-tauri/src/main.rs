@@ -906,12 +906,19 @@ pub fn is_allowed_generic_route(method: &str, path: &str) -> bool {
         return false;
     }
 
+    if method == "GET" && path.starts_with("/api/desktop/status?") { return true; }
+
     match (method, path) {
         ("GET", "/api/health") => true,
         ("GET", "/api/system/status") => true,
         ("GET", "/api/system/diagnostics") => true,
         ("GET", "/api/system/health") => true,
         ("GET", "/api/chat/sessions") => true,
+        ("POST", "/api/chat/sessions") => true,
+        ("GET", "/api/desktop/options") | ("GET", "/api/desktop/status") => true,
+        ("POST", "/api/desktop/propose") | ("POST", "/api/desktop/start")
+        | ("POST", "/api/desktop/stop") | ("POST", "/api/desktop/pause")
+        | ("POST", "/api/desktop/resume") => true,
         ("POST", "/api/chat/sessions/first_turn") => true,
         ("GET", "/api/projects") => true,
         ("POST", "/api/projects") => true,
@@ -1008,7 +1015,11 @@ pub fn format_approval_confirmation_message(proposal: &serde_json::Value, pendin
     let short_fp = if fingerprint.len() > 16 { &fingerprint[..16] } else { fingerprint };
     let empty_params = serde_json::Value::Object(serde_json::Map::new());
     let params_val = proposal.get("parameters").unwrap_or(&empty_params);
-    let params_summary = sanitize_material_parameters(params_val);
+    let params_summary = if capability == "desktop_task" {
+        serde_json::to_string_pretty(params_val).unwrap_or_else(|_| "Invalid proposal".to_string())
+    } else {
+        sanitize_material_parameters(params_val)
+    };
 
     format!(
         "AI Marketing Department — Consequential Action Authorization\n\n\
@@ -1764,6 +1775,12 @@ mod tests {
 
     #[test]
     fn test_allowed_generic_routes() {
+        assert!(is_allowed_generic_route("GET", "/api/desktop/status?chat_id=a&ticket=b"));
+        assert!(is_allowed_generic_route("POST", "/api/desktop/propose"));
+        assert!(is_allowed_generic_route("POST", "/api/desktop/start"));
+        assert!(!is_allowed_generic_route("POST", "/api/desktop/approve"));
+        assert!(!is_allowed_generic_route("POST", "/api/desktop/status"));
+        assert!(!is_allowed_generic_route("POST", "/api/desktop/execute_anything"));
         assert!(is_allowed_generic_route("GET", "/api/health"));
         assert!(is_allowed_generic_route("GET", "/api/system/status"));
         assert!(is_allowed_generic_route("GET", "/api/system/diagnostics"));
@@ -2078,6 +2095,12 @@ mod tests {
 
     #[test]
     fn test_sanitize_material_parameters_redacts_secrets() {
+        let desktop = serde_json::json!({"capability_id":"desktop_task", "parameters":{
+            "goal":"Nhập nội dung tiếng Việt và kiểm chứng kết quả".repeat(10),
+            "scope_notice":"Whole window input; no spend enforcement"}});
+        let rendered_desktop = format_approval_confirmation_message(&desktop, "pending_appr_test");
+        assert!(rendered_desktop.contains("kiểm chứng"));
+        assert!(rendered_desktop.contains("no spend enforcement"));
         let mut map = serde_json::Map::new();
         map.insert("platform".to_string(), serde_json::Value::String("facebook".to_string()));
         map.insert("content".to_string(), serde_json::Value::String("Launch post text".to_string()));

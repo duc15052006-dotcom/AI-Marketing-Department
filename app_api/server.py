@@ -281,6 +281,8 @@ class DepartmentAppBackend:
 
         # Authoritative Model & Provider Settings Manager (PROD-MODEL-SETTINGS-01)
         self.settings_manager = ModelSettingsManager(gateway=self.runtime.model_gateway)
+        from desktop.agent import DesktopAgentService
+        self.desktop_service = DesktopAgentService(self.tool_gateway, self.chat_mgr, self.settings_manager)
 
         # Register Demo Workspace with explicit warning
         self.biz_registry.register_workspace(
@@ -766,6 +768,10 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
             return
 
+        if path.startswith("/api/desktop/"):
+            self._desktop_request("GET", path, query)
+            return
+
         # 1. Minimal Public Health Check (Zero secret or operational leakage)
         if path == "/api/health":
             self._send_json({"status": "ok", "service": "AI Marketing Department API"})
@@ -1145,6 +1151,35 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
         self._send_json({"error": "NOT_FOUND"}, 404)
 
+    def _desktop_request(self, method, path, data):
+        """Called only after the existing API authentication check."""
+        service = APP_BACKEND.desktop_service
+        try:
+            if method == "GET" and path == "/api/desktop/options":
+                result = service.options()
+            elif method == "GET" and path == "/api/desktop/status":
+                if set(data) != {"chat_id", "ticket"} or any(len(v) != 1 for v in data.values()):
+                    raise ValueError("DESKTOP_SCOPE_REQUIRED")
+                result = service.status(data["chat_id"][0], data["ticket"][0])
+            elif method == "POST" and path == "/api/desktop/propose":
+                result = service.propose(data)
+            elif method == "POST" and path == "/api/desktop/start":
+                if set(data) != {"chat_id", "ticket", "approval_token"} or any(not isinstance(v, str) for v in data.values()):
+                    raise ValueError("DESKTOP_START_INVALID")
+                result = service.start(data["chat_id"], data["ticket"], data["approval_token"])
+            elif method == "POST" and path in ("/api/desktop/stop", "/api/desktop/pause", "/api/desktop/resume"):
+                if set(data) != {"chat_id", "ticket"} or any(not isinstance(v, str) for v in data.values()):
+                    raise ValueError("DESKTOP_CONTROL_INVALID")
+                result = service.control(data["chat_id"], data["ticket"], path.rsplit("/",1)[-1])
+            else:
+                self._send_json({"error":"NOT_FOUND"},404)
+                return
+            self._send_json(result)
+        except (ValueError, RuntimeError):
+            self._send_json({"error":"DESKTOP_REQUEST_REJECTED", "message":"Check task scope, window, provider settings and approval."},400)
+        except Exception:
+            self._send_json({"error":"DESKTOP_SERVICE_UNAVAILABLE"},503)
+
     def _authoritative_provider_report(self) -> List[Dict[str, Any]]:
         """Provider health/status report built from AUTHORITATIVE ModelSettings
         and the live ProviderRegistry (not legacy GLOBAL_PROVIDER_CONFIG values)
@@ -1190,6 +1225,10 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
 
         if not self._is_authenticated():
             self._send_json({"error": "UNAUTHORIZED", "message": "Valid API session token required"}, 401)
+            return
+
+        if path.startswith("/api/desktop/"):
+            self._desktop_request("POST", path, body)
             return
 
         def _require_expected_revision() -> int:
@@ -1902,6 +1941,7 @@ def run_server(
     except KeyboardInterrupt:
         logger.info("API server stopped.")
     finally:
+        APP_BACKEND.desktop_service.shutdown()
         remove_backend_state()
         try:
             httpd.server_close()
