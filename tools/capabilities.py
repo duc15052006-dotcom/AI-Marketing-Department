@@ -213,6 +213,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["creative", "strategist", "cmo"],
+                semantic_needs=["TEXT_CREATION"],
                 provider="creative_text_adapter",
                 timeout_policy=30.0,
             )
@@ -228,6 +229,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.MEDIUM,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["IMAGE_GENERATION"],
                 provider="image_gen_adapter",
                 timeout_policy=45.0,
             )
@@ -243,6 +245,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["IMAGE_EDITING"],
                 provider="image_edit_adapter",
                 timeout_policy=30.0,
             )
@@ -258,6 +261,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.MEDIUM,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["VIDEO_GENERATION"],
                 provider="video_gen_adapter",
                 timeout_policy=60.0,
             )
@@ -273,6 +277,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["VIDEO_EDITING"],
                 provider="video_edit_adapter",
                 timeout_policy=60.0,
             )
