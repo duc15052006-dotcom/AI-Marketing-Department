@@ -5,6 +5,26 @@ from tools.capabilities import CapabilityCategory, CapabilityDescriptor, Evidenc
 from tools.receipts import ExecutionMode
 
 
+def action_schema():
+    """Expose executable arguments to tool-calling models without host authority."""
+    rect = {'type': 'array', 'items': {'type': 'integer'}, 'minItems': 4, 'maxItems': 4,
+            'description': 'Window-relative [x,y,width,height], from the latest screenshot; minimum size 7x7.'}
+    payloads = {
+        'click': {'rect': rect},
+        'type': {'text': {'type': 'string', 'minLength': 1, 'maxLength': 500,
+                          'description': 'Printable Unicode only; Enter requires a separate approved action.'}},
+        'press': {'key': {'enum': ['enter', 'tab', 'backspace', 'left', 'right', 'up', 'down', 'delete']}},
+        'scroll': {'rect': rect, 'ticks': {'type': 'integer', 'minimum': -5, 'maximum': 5,
+                                          'description': 'Nonzero; positive up, negative down.'}},
+    }
+    return {'oneOf': [
+        {'type': 'object', 'properties': {
+            'kind': {'const': kind}, 'observation_id': {'type': 'string'}, **fields},
+         'required': ['kind', 'observation_id', *fields], 'additionalProperties': False}
+        for kind, fields in payloads.items()
+    ]}
+
+
 class DesktopAdapter(BaseCapabilityAdapter):
     def __init__(self, session: DesktopSession, *, run_id: str, business_id: str, project_id: str):
         if not all(isinstance(v, str) and v.strip() for v in (run_id, business_id, project_id)):
@@ -58,7 +78,8 @@ def register_desktop(gateway, session, *, run_id, business_id, project_id):
                 else 'Dispatch one approved click/type/press/scroll using a fresh observation. No automatic retries.'),
             category=CapabilityCategory.FILE_DATA,
             evidence_role=EvidenceRole.OBSERVATION if cid == 'desktop_observe' else EvidenceRole.ACTION,
-            input_schema={'type': 'object'},
+            input_schema=({'type': 'object', 'properties': {}, 'additionalProperties': False}
+                          if cid == 'desktop_observe' else action_schema()),
             required_permissions=[PermissionLevel.EXTERNAL_WRITE],
             risk_level=RiskLevel.HIGH, human_approval_required=True,
             supported_agents=['cmo'], provider=adapter.adapter_name,

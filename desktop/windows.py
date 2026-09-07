@@ -90,7 +90,9 @@ class WindowsBackend:
         self._point(x, y)
         self.gui.moveTo(x, y, duration=0.2)
         self._point(x, y)
-        self.gui.scroll(ticks)
+        # Windows defines one wheel notch as WHEEL_DELTA=120. Use SendInput
+        # directly and check acceptance instead of an opaque GUI-library result.
+        self._send([('mouse', ctypes.c_uint32(ticks * 120).value, 0x0800)])
 
     def press(self, key):
         self._guard()
@@ -99,6 +101,15 @@ class WindowsBackend:
     def write_char(self, char):
         self._guard()
         # KEYEVENTF_UNICODE supports Vietnamese without changing the clipboard.
+        data = char.encode('utf-16-le')
+        events = []
+        for i in range(0, len(data), 2):
+            unit = int.from_bytes(data[i:i+2], 'little')
+            events.extend(('keyboard', unit, flags) for flags in (4, 6))
+        self._send(events)
+
+    def _send(self, events):
+        self._guard()
         class Mouse(ctypes.Structure):
             _fields_ = [('dx', wintypes.LONG), ('dy', wintypes.LONG), ('data', wintypes.DWORD),
                         ('flags', wintypes.DWORD), ('time', wintypes.DWORD), ('extra', ctypes.c_size_t)]
@@ -109,14 +120,13 @@ class WindowsBackend:
             _fields_ = [('mouse', Mouse), ('keyboard', Keyboard)]
         class Input(ctypes.Structure):
             _fields_ = [('type', wintypes.DWORD), ('payload', Payload)]
-        data = char.encode('utf-16-le')
-        events = []
-        for i in range(0, len(data), 2):
-            unit = int.from_bytes(data[i:i+2], 'little')
-            for flags in (4, 6):
-                events.append(Input(1, Payload(keyboard=Keyboard(0, unit, flags, 0, 0))))
-        batch = (Input * len(events))(*events)
+        native = [
+            Input(0, Payload(mouse=Mouse(0, 0, value, flags, 0, 0))) if kind == 'mouse'
+            else Input(1, Payload(keyboard=Keyboard(0, value, flags, 0, 0)))
+            for kind, value, flags in events
+        ]
+        batch = (Input * len(native))(*native)
         self.user.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(Input), ctypes.c_int]
         self.user.SendInput.restype = wintypes.UINT
-        if self.user.SendInput(len(events), batch, ctypes.sizeof(Input)) != len(events):
-            raise DesktopError('DESKTOP_UNICODE_INPUT_PARTIAL')
+        if self.user.SendInput(len(native), batch, ctypes.sizeof(Input)) != len(native):
+            raise DesktopError('DESKTOP_NATIVE_INPUT_PARTIAL')
