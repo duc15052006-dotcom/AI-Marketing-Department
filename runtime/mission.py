@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from schemas.base import BaseModel, Field
 
@@ -21,7 +21,7 @@ class MissionCommitmentError(ValueError):
 
 
 class CommitmentMutationError(ValueError):
-    """Raised when immutable Commitment identity or scope is rebound."""
+    """Raised when an immutable Commitment snapshot is mutated in place."""
 
 
 class MissionTransitionError(ValueError):
@@ -55,6 +55,8 @@ TERMINAL_MISSION_STATUSES = frozenset(
     }
 )
 
+_COMMITMENT_REVISION_UNSET = object()
+
 
 class CommitmentRecord(BaseModel):
     """Runtime-enforceable authority and limit envelope for one Mission."""
@@ -70,30 +72,97 @@ class CommitmentRecord(BaseModel):
     budget_limits: Dict[str, float] = Field(default_factory=dict)
     stop_conditions: List[str] = Field(default_factory=list)
     revision: int = Field(default=1, ge=1)
+    supersedes_commitment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __setattr__(self, name: str, value: object) -> None:
-        """Keep Commitment identity and authoritative scope bound after creation.
+        """Keep an existing Commitment snapshot immutable at field boundaries.
 
-        Authority-envelope mutation/revision semantics are intentionally outside
-        this slice. Same-value assignment remains idempotent.
+        Identity/scope and authority-envelope changes must create a new revision
+        snapshot. Same-value assignment remains idempotent. Deep in-place
+        mutation inside mutable containers is hardened in a separate slice.
         """
 
-        immutable_fields = {
+        identity_scope_fields = {
             "commitment_id",
             "mission_id",
             "business_id",
             "project_id",
             "user_id",
         }
-        if name in immutable_fields and name in self.__dict__:
+        authority_snapshot_fields = {
+            "authority_mode",
+            "active",
+            "deadline_at",
+            "budget_limits",
+            "stop_conditions",
+            "revision",
+            "supersedes_commitment_id",
+        }
+        protected_fields = identity_scope_fields | authority_snapshot_fields
+
+        if name in protected_fields and name in self.__dict__:
             current_value = self.__dict__[name]
             if value != current_value:
-                raise CommitmentMutationError(
-                    f"COMMITMENT_IDENTITY_SCOPE_IMMUTABLE: {name}"
-                )
+                if name in identity_scope_fields:
+                    code = "COMMITMENT_IDENTITY_SCOPE_IMMUTABLE"
+                else:
+                    code = "COMMITMENT_AUTHORITY_SNAPSHOT_IMMUTABLE"
+                raise CommitmentMutationError(f"{code}: {name}")
 
         object.__setattr__(self, name, value)
+
+    def revise(
+        self,
+        *,
+        new_commitment_id: str,
+        authority_mode: Any = _COMMITMENT_REVISION_UNSET,
+        active: Any = _COMMITMENT_REVISION_UNSET,
+        deadline_at: Any = _COMMITMENT_REVISION_UNSET,
+        budget_limits: Any = _COMMITMENT_REVISION_UNSET,
+        stop_conditions: Any = _COMMITMENT_REVISION_UNSET,
+    ) -> "CommitmentRecord":
+        """Create the next immutable authority snapshot without mutating this one."""
+
+        if new_commitment_id == self.commitment_id:
+            raise CommitmentMutationError("COMMITMENT_REVISION_REQUIRES_DISTINCT_ID")
+
+        revised_authority_mode = (
+            self.authority_mode
+            if authority_mode is _COMMITMENT_REVISION_UNSET
+            else authority_mode
+        )
+        revised_active = self.active if active is _COMMITMENT_REVISION_UNSET else active
+        revised_deadline = (
+            self.deadline_at
+            if deadline_at is _COMMITMENT_REVISION_UNSET
+            else deadline_at
+        )
+        revised_budget_limits = (
+            self.budget_limits
+            if budget_limits is _COMMITMENT_REVISION_UNSET
+            else budget_limits
+        )
+        revised_stop_conditions = (
+            self.stop_conditions
+            if stop_conditions is _COMMITMENT_REVISION_UNSET
+            else stop_conditions
+        )
+
+        return CommitmentRecord(
+            commitment_id=new_commitment_id,
+            mission_id=self.mission_id,
+            business_id=self.business_id,
+            project_id=self.project_id,
+            user_id=self.user_id,
+            authority_mode=revised_authority_mode,
+            active=revised_active,
+            deadline_at=revised_deadline,
+            budget_limits=dict(revised_budget_limits),
+            stop_conditions=list(revised_stop_conditions),
+            revision=self.revision + 1,
+            supersedes_commitment_id=self.commitment_id,
+        )
 
     def is_expired(self, now: Optional[datetime] = None) -> bool:
         """Return whether this Commitment is past its absolute deadline.
