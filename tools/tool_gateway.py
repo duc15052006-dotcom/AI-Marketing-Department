@@ -851,7 +851,19 @@ class ToolGateway:
         safe_approval_ref = self._safe_approval_reference(request.approval_token)
         if adapter_res and adapter_res.success:
             mode = self._resolve_execution_mode(adapter, cap.capability_id, adapter_res)
+
+            # The outer gateway owns causal execution identity. Observation
+            # adapters may report empirical content, but cannot self-attest the
+            # execution or Brain ActionIntent that authorized that content.
+            execution_id = f"EXEC-{uuid.uuid4().hex[:12].upper()}"
+            bound_observation_record = None
+            if adapter_res.observation_record is not None:
+                bound_observation_record = dict(adapter_res.observation_record)
+                bound_observation_record["execution_id"] = execution_id
+                bound_observation_record["action_intent_id"] = semantic_intent_id
+
             receipt = ExecutionReceipt(
+                execution_id=execution_id,
                 run_id=request.run_id,
                 agent_id=request.agent_id,
                 capability_id=request.capability_id,
@@ -869,7 +881,7 @@ class ToolGateway:
                 business_id=effective_business_id,
                 project_id=effective_project_id,
                 chat_id=request.chat_id,
-                observation_record=adapter_res.observation_record,
+                observation_record=bound_observation_record,
             )
         else:
             if ambiguous_external_outcome:
