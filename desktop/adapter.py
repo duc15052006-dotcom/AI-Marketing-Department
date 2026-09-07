@@ -13,6 +13,8 @@ def action_schema():
         'click': {'rect': rect},
         'type': {'text': {'type': 'string', 'minLength': 1, 'maxLength': 500,
                           'description': 'Printable Unicode only; Enter requires a separate approved action.'}},
+        'paste': {'text': {'type': 'string', 'minLength': 1, 'maxLength': 20000,
+                           'description': 'Long Unicode text; clipboard preservation required.'}},
         'press': {'key': {'enum': ['enter', 'tab', 'backspace', 'left', 'right', 'up', 'down', 'delete']}},
         'scroll': {'rect': rect, 'ticks': {'type': 'integer', 'minimum': -5, 'maximum': 5,
                                           'description': 'Nonzero; positive up, negative down.'}},

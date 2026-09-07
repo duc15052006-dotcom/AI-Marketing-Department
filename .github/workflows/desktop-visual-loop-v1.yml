@@ -1,0 +1,42 @@
+name: Desktop visual loop full regression
+on:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'requirements-desktop.txt'
+      - 'tests/test_desktop_visual_loop_v1.py'
+      - 'tests/test_local_desktop_windows_smoke_v1.py'
+      - '.github/workflows/desktop-visual-loop-v1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-visual-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  full-regression:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      RUN_LIVE_PROVIDER_TESTS: '0'
+      RUN_REAL_MODEL_TEST: '0'
+      RUN_LIVE_MODEL_TESTS: '0'
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Record exact head and compile
+        run: |
+          git rev-parse HEAD
+          python -m compileall -q desktop
+      - name: Visual loop and existing desktop contracts
+        run: python -m unittest -v tests.test_desktop_visual_loop_v1 tests.test_local_desktop_control_v1
+      - name: Full offline regression
+        run: python -m unittest discover -s tests -p "test_*.py" -v

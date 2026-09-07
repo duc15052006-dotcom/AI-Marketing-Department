@@ -31,6 +31,7 @@ class Backend(Protocol):
     def capture(self) -> bytes: ...
     def click(self, x: int, y: int, duration: float) -> None: ...
     def write_char(self, char: str) -> None: ...
+    def paste(self, text: str, guard, wait) -> None: ...
     def press(self, key: str) -> None: ...
     def scroll(self, ticks: int, x: int, y: int) -> None: ...
 
@@ -120,12 +121,12 @@ class DesktopSession:
             if not isinstance(action, dict):
                 raise DesktopError('DESKTOP_ACTION_INVALID')
             kind = action.get('kind')
-            fields = {'click': {'rect'}, 'type': {'text'}, 'press': {'key'}, 'scroll': {'rect', 'ticks'}}
+            fields = {'click': {'rect'}, 'type': {'text'}, 'paste': {'text'}, 'press': {'key'}, 'scroll': {'rect', 'ticks'}}
             if kind not in fields or set(action) != fields[kind] | {'kind', 'observation_id'}:
                 raise DesktopError('DESKTOP_ACTION_INVALID')
             point = self._rect(action['rect']) if kind in ('click', 'scroll') else None
-            if kind == 'type' and (not isinstance(action['text'], str) or not 1 <= len(action['text']) <= 500 or
-                                   any(ord(c) < 32 or 0x7f <= ord(c) <= 0x9f or 0xd800 <= ord(c) <= 0xdfff for c in action['text'])):
+            if kind in ('type', 'paste') and (not isinstance(action['text'], str) or not 1 <= len(action['text']) <= (500 if kind == 'type' else 20000) or
+                                   any((ord(c) < 32 and not (kind == 'paste' and c in '\n\r\t')) or 0x7f <= ord(c) <= 0x9f or 0xd800 <= ord(c) <= 0xdfff for c in action['text'])):
                 raise DesktopError('DESKTOP_TEXT_INVALID')
             if kind == 'press' and action['key'] not in ('enter', 'tab', 'backspace', 'left', 'right', 'up', 'down', 'delete'):
                 raise DesktopError('DESKTOP_KEY_NOT_ALLOWED')
@@ -149,6 +150,8 @@ class DesktopSession:
                         self._guard()
                         self.backend.write_char(char)
                         self._wait(self.rng.uniform(0.025, 0.09))
+                elif kind == 'paste':
+                    self.backend.paste(action['text'], self._guard, self._wait)
                 elif kind == 'press':
                     self.backend.press(action['key'])
                 else:

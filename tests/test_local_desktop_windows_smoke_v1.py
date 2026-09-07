@@ -70,6 +70,21 @@ class WindowsDesktopSmoke(unittest.TestCase):
             self.assertEqual(entry.get(), text)
             act('press', key='backspace')
             self.assertEqual(entry.get(), text[:-1])
+            import win32clipboard as clipboard
+            clipboard.OpenClipboard(hwnd)
+            try:
+                clipboard.EmptyClipboard()
+                clipboard.SetClipboardText('original clipboard', 13)
+            finally:
+                clipboard.CloseClipboard()
+            long_text = ' Nội dung dài tiếng Việt.' * 30
+            act('paste', text=long_text)
+            self.assertEqual(entry.get(), text[:-1] + long_text)
+            clipboard.OpenClipboard(hwnd)
+            try:
+                self.assertEqual(clipboard.GetClipboardData(13), 'original clipboard')
+            finally:
+                clipboard.CloseClipboard()
             act('click', rect=[40, 240, 200, 40])
             before_scroll = scroll_area.yview()
             act('scroll', rect=[40, 240, 200, 40], ticks=-2)
