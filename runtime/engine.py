@@ -1098,10 +1098,18 @@ class FiveAgentDepartmentRuntime:
         # ObservationRecord from the observation execution path via the
         # ObservationSearchAdapter → ToolGateway → ExecutionReceipt transport.
         research_grounding_section = ""
+        # Rebuild this runtime-owned index on every Intelligence execution so a
+        # retried stage can never retain stale citation provenance.
+        context.working_state["research_evidence_causal_index"] = {}
         canonical_obs_data = getattr(search_receipt, "observation_record", None)
         if canonical_obs_data is not None and search_receipt.status == ExecutionStatus.SUCCESS:
             obs_record = ObservationRecord(**canonical_obs_data)
             ev_item = EvidenceBuilder.observation_to_evidence(obs_record)
+            context.working_state["research_evidence_causal_index"][ev_item.evidence_id] = {
+                "observation_id": ev_item.observation_id,
+                "execution_id": ev_item.execution_id,
+                "action_intent_id": ev_item.action_intent_id,
+            }
             ev_bundle = EvidenceBuilder.assemble_bundle(
                 task_id=f"INT-{context.run_id}",
                 product_id=obs_record.product_id,
@@ -2733,7 +2741,20 @@ class FiveAgentDepartmentRuntime:
                 artifacts=context.artifact_refs,
                 learning_candidates=cand_memories,
                 final_cmo_output=context.stage_outputs.get("final_cmo", {}),
-                lineage_summary={"citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()]},
+                lineage_summary={
+                    "citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()],
+                    "evidence_causal_index": {
+                        evidence_id: {
+                            "observation_id": lineage.get("observation_id"),
+                            "execution_id": lineage.get("execution_id"),
+                            "action_intent_id": lineage.get("action_intent_id"),
+                        }
+                        for evidence_id, lineage in sorted(
+                            context.working_state.get("research_evidence_causal_index", {}).items()
+                        )
+                        if isinstance(evidence_id, str) and isinstance(lineage, dict)
+                    },
+                },
                 binding_constraints=list(context.constraints),
                 epistemic_handoffs=dict(context.working_state.get("stage_handoffs", {})),
                 claim_verification_ledger=list(context.working_state.get("claim_verification_ledger", [])),
