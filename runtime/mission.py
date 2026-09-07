@@ -20,6 +20,10 @@ class MissionCommitmentError(ValueError):
     """Raised when a Mission cannot safely bind an executable Commitment."""
 
 
+class CommitmentMutationError(ValueError):
+    """Raised when immutable Commitment identity or scope is rebound."""
+
+
 class MissionTransitionError(ValueError):
     """Raised when a Mission lifecycle transition violates runtime authority."""
 
@@ -67,6 +71,29 @@ class CommitmentRecord(BaseModel):
     stop_conditions: List[str] = Field(default_factory=list)
     revision: int = Field(default=1, ge=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Keep Commitment identity and authoritative scope bound after creation.
+
+        Authority-envelope mutation/revision semantics are intentionally outside
+        this slice. Same-value assignment remains idempotent.
+        """
+
+        immutable_fields = {
+            "commitment_id",
+            "mission_id",
+            "business_id",
+            "project_id",
+            "user_id",
+        }
+        if name in immutable_fields and name in self.__dict__:
+            current_value = self.__dict__[name]
+            if value != current_value:
+                raise CommitmentMutationError(
+                    f"COMMITMENT_IDENTITY_SCOPE_IMMUTABLE: {name}"
+                )
+
+        object.__setattr__(self, name, value)
 
     def is_expired(self, now: Optional[datetime] = None) -> bool:
         """Return whether this Commitment is past its absolute deadline.
