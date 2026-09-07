@@ -154,15 +154,22 @@ class Clipboard:
     def __init__(self):
         self.formats, self.value, self.sequence = [13], 'original', 1
         self.concurrent_on_close = False
+        self.marker = None
+        self.dirty = False
+    def RegisterClipboardFormat(self, name): return 50000
+    def SetClipboardData(self, format, data): self.marker = data; self.dirty = True
     def OpenClipboard(self, hwnd): pass
     def CloseClipboard(self):
+        if self.dirty:
+            self.sequence += 1
+            self.dirty = False
         if self.concurrent_on_close:
             self.concurrent_on_close = False
-            self.value = 'human copy'; self.sequence += 1
+            self.value = 'human copy'; self.marker = None; self.sequence += 1
     def EnumClipboardFormats(self, previous):
         return self.formats[0] if not previous and self.formats else 0
-    def GetClipboardData(self, format): return self.value
-    def EmptyClipboard(self): self.value = None; self.sequence += 1
+    def GetClipboardData(self, format): return self.value if format == 13 else self.marker
+    def EmptyClipboard(self): self.value = None; self.marker = None; self.dirty = True; self.sequence += 1
     def SetClipboardText(self, value, format): self.value = value; self.sequence += 1
     def GetClipboardSequenceNumber(self): return self.sequence
 
@@ -176,9 +183,15 @@ class ClipboardTests(unittest.TestCase):
 
     def test_concurrent_copy_is_never_overwritten_including_close_race(self):
         api = Clipboard(); api.concurrent_on_close = True
-        lease = TextClipboardLease(api, 'long text', 1)
-        self.assertFalse(lease.restore(1))
+        with self.assertRaisesRegex(DesktopError, 'CHANGED_BEFORE_PASTE'):
+            TextClipboardLease(api, 'long text', 1)
         self.assertEqual(api.value, 'human copy')
+
+    def test_copy_after_lease_is_preserved(self):
+        api = Clipboard(); lease = TextClipboardLease(api, 'long text', 1)
+        api.EmptyClipboard(); api.SetClipboardText('later human copy', 13); api.CloseClipboard()
+        self.assertFalse(lease.restore(1))
+        self.assertEqual(api.value, 'later human copy')
 
     def test_rich_clipboard_is_left_untouched(self):
         api = Clipboard(); api.formats = [49152]
