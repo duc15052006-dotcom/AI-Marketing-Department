@@ -71,3 +71,5 @@ jobs:
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
+
+# Qualification-only commit after production patch; no production semantics changed.
