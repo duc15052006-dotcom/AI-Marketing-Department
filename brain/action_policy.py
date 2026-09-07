@@ -68,6 +68,48 @@ def _semantic_need(value: object) -> str:
 
 
 @dataclass(frozen=True)
+class BrainActionAuthority:
+    """Typed semantic authority envelope for trusted Body-side handoff.
+
+    This value binds the exact canonical ActionIntent to the exact raw
+    DecisionEvaluationRequest. It is transport authority only: possessing
+    this envelope never authorizes execution. ToolGateway must still
+    recompute canonical decision policy and trusted capability binding.
+    """
+
+    action_intent: ActionIntent
+    decision_request: "DecisionEvaluationRequest"
+
+    def __post_init__(self) -> None:
+        from brain.decisions import DecisionEvaluationRequest
+
+        if not isinstance(self.action_intent, ActionIntent):
+            raise ValueError("action_intent must be an ActionIntent")
+        if not isinstance(self.decision_request, DecisionEvaluationRequest):
+            raise ValueError(
+                "decision_request must be a DecisionEvaluationRequest"
+            )
+
+        decision = self.decision_request.decision
+        if self.action_intent.decision_id is None:
+            raise ValueError(
+                "BrainActionAuthority requires ActionIntent decision provenance"
+            )
+        if self.action_intent.decision_id != decision.decision_id:
+            raise ValueError(
+                "BrainActionAuthority decision_id must match canonical decision"
+            )
+        if self.action_intent.goal_id != decision.goal_id:
+            raise ValueError(
+                "BrainActionAuthority goal_id must match canonical decision"
+            )
+        if self.action_intent.owner_agent != decision.agent_id:
+            raise ValueError(
+                "BrainActionAuthority owner must match canonical decision agent"
+            )
+
+
+@dataclass(frozen=True)
 class TrustedCapabilityBinding:
     """Brain-neutral projection of trusted capability-registry authority.
 
