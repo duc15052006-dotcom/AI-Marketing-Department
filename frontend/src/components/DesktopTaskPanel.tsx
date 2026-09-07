@@ -24,11 +24,19 @@ export default function DesktopTaskPanel({ chatId, initialGoal, ensureChat, onCh
   const changed = useRef(onChanged); changed.current = onChanged;
   const alive = useRef(true);
   const generation = useRef(0);
+  const observedChat = useRef(chatId);
+  const preparingChat = useRef<string | null>(null);
   const stop = () => { const task = active.current; if (task) void apiPost('/api/desktop/stop', task).catch(() => {}); };
   useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; stop(); }; }, []);
   useEffect(() => {
+    if (observedChat.current !== chatId) {
+      observedChat.current = chatId;
+      // Invalidate in-flight proposals as well as established tasks. Allow only
+      // the chat created by this operation to adopt its first proposal.
+      if (preparingChat.current !== chatId) generation.current++;
+    }
     if (active.current && active.current.chat_id !== chatId) {
-      stop(); active.current = null; generation.current++; setProposal(null); setSnapshot(null);
+      stop(); active.current = null; setProposal(null); setSnapshot(null);
     }
   }, [chatId]);
   useEffect(() => {
@@ -59,13 +67,14 @@ export default function DesktopTaskPanel({ chatId, initialGoal, ensureChat, onCh
     setBusy(true); setError('');
     try {
       const cid = chatId || await ensureChat();
+      preparingChat.current = cid;
       const p = await apiPost<Proposal>('/api/desktop/propose', { chat_id: cid, goal, hwnd: Number(hwnd), provider_id: provider, max_steps: steps, seconds });
       if (!alive.current || turn !== generation.current) {
         void apiPost('/api/desktop/stop', { chat_id: cid, ticket: p.ticket }).catch(() => {}); return;
       }
       active.current = { chat_id: cid, ticket: p.ticket }; setProposal(p); setSnapshot(null); changed.current();
     } catch { if (alive.current) setError('Không tạo được nhiệm vụ. Kiểm tra cửa sổ, model trong Settings và giới hạn đã nhập.'); }
-    finally { if (alive.current) setBusy(false); }
+    finally { preparingChat.current = null; if (alive.current) setBusy(false); }
   };
   const approve = async () => {
     if (!proposal || !active.current || busy) return;
