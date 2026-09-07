@@ -290,6 +290,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.CRITICAL,
                 human_approval_required=True,
                 supported_agents=["cmo"],
+                semantic_needs=["CONTENT_PUBLISHING"],
                 provider="social_publish_adapter",
                 timeout_policy=30.0,
             )
@@ -305,6 +306,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.HIGH,
                 human_approval_required=True,
                 supported_agents=["cmo"],
+                semantic_needs=["CONTENT_PUBLISHING"],
                 provider="schedule_adapter",
                 timeout_policy=20.0,
             )
@@ -320,6 +322,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.CRITICAL,
                 human_approval_required=True,
                 supported_agents=["cmo"],
+                semantic_needs=["CAMPAIGN_OPERATIONS"],
                 provider="ad_platform_adapter",
                 timeout_policy=30.0,
             )
