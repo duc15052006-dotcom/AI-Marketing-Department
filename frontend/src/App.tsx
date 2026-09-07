@@ -192,8 +192,8 @@ export default function App() {
         const data = await sessRes.value.json();
         const items = data.sessions || [];
         setChatSessions((prev) => mergeBackendSessionsWithLocal(prev, items));
-        if (items.length > 0 && !activeChatId) {
-          setActiveChatId(items[0].chat_id);
+        if (items.length > 0) {
+          setActiveChatId(current => current || items[0].chat_id);
         }
       }
       if (projRes.status === 'fulfilled' && projRes.value.ok) {
