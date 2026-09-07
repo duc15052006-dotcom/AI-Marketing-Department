@@ -1,4 +1,4 @@
-name: Brain Analytics Semantic Capability Binding V1 RED
+name: Brain Analytics Semantic Capability Binding V1
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  red-analytics-semantic-binding:
+  analytics-semantic-binding-regression:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact PR head
@@ -42,20 +42,24 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Run RED analytics semantic binding regression
+      - name: Compile touched production source
+        run: python -m py_compile tools/capabilities.py brain/action_policy.py brain/contracts.py
+
+      - name: Run analytics semantic binding regressions
         shell: bash
         run: |
-          set +e
-          python -m unittest -v tests.test_brain_analytics_semantic_capability_binding_v1 2>&1 | tee .ci-results/red-test.log
-          code=${PIPESTATUS[0]}
-          echo "$code" > .ci-results/red-exit-code.txt
-          exit "$code"
+          python -m unittest -v \
+            tests.test_brain_analytics_semantic_capability_binding_v1 \
+            tests.test_brain_action_intent_capability_binding_v1 \
+            tests.test_brain_creative_semantic_capability_binding_v1 \
+            tests.test_brain_publish_semantic_capability_binding_v1 \
+            2>&1 | tee .ci-results/targeted-test.log
 
-      - name: Upload RED evidence
+      - name: Upload targeted evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: brain-analytics-semantic-binding-red-${{ github.event.pull_request.head.sha || github.sha }}
+          name: brain-analytics-semantic-binding-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
