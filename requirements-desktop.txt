@@ -1,3 +1,4 @@
 # Optional; install only on the Windows machine that will be controlled.
 PyAutoGUI==0.9.54
 Pillow>=10.4,<13
+pywin32>=306,<400; sys_platform == "win32"

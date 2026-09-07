@@ -98,6 +98,30 @@ class WindowsBackend:
         self._guard()
         self.gui.press(key)
 
+    def paste(self, text, guard, wait):
+        from desktop.clipboard import TextClipboardLease
+        import win32clipboard
+        self._guard()
+        lease = TextClipboardLease(win32clipboard, text, self.hwnd)
+        try:
+            guard()
+            if win32clipboard.GetClipboardSequenceNumber() != lease.sequence:
+                raise DesktopError('DESKTOP_CLIPBOARD_CHANGED_BEFORE_PASTE')
+            # One checked batch avoids guard checks mistaking our own Ctrl
+            # for a human-held modifier. On partial input, release owned keys.
+            try:
+                self._send([('virtual', 0x11, 0), ('virtual', 0x56, 0),
+                            ('virtual', 0x56, 2), ('virtual', 0x11, 2)])
+            except Exception:
+                self.user.keybd_event(0x56, 0, 2, 0)
+                self.user.keybd_event(0x11, 0, 2, 0)
+                raise
+            # Give the application a bounded opportunity to consume clipboard.
+            # Application-level completion is still UNVERIFIED.
+            wait(0.75)
+        finally:
+            lease.restore(self.hwnd)
+
     def write_char(self, char):
         self._guard()
         # KEYEVENTF_UNICODE supports Vietnamese without changing the clipboard.
@@ -122,7 +146,8 @@ class WindowsBackend:
             _fields_ = [('type', wintypes.DWORD), ('payload', Payload)]
         native = [
             Input(0, Payload(mouse=Mouse(0, 0, value, flags, 0, 0))) if kind == 'mouse'
-            else Input(1, Payload(keyboard=Keyboard(0, value, flags, 0, 0)))
+            else Input(1, Payload(keyboard=Keyboard(value if kind == 'virtual' else 0,
+                                                     0 if kind == 'virtual' else value, flags, 0, 0)))
             for kind, value, flags in events
         ]
         batch = (Input * len(native))(*native)
