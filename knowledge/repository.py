@@ -19,6 +19,14 @@ from knowledge.models import (
 )
 
 
+_AUTHORITY_RANK = {
+    AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH: 1,
+    AuthorityLevel.TIER_2_VERIFIED_RESEARCH: 2,
+    AuthorityLevel.TIER_3_SECONDARY_INDUSTRY_DATA: 3,
+    AuthorityLevel.TIER_4_UNVERIFIED_OBSERVATION: 4,
+}
+
+
 class KnowledgeRepository(abc.ABC):
     """Abstract interface for knowledge storage and querying."""
 
@@ -126,6 +134,13 @@ class LocalKnowledgeRepository(KnowledgeRepository):
     def query_knowledge(self, query: str, scope: Optional[str] = None, min_authority: Optional[AuthorityLevel] = None) -> List[KnowledgeDocument]:
         q_lower = query.lower()
         docs = self.list_documents(scope=scope)
+        if min_authority is not None:
+            maximum_rank = _AUTHORITY_RANK[min_authority]
+            docs = [
+                d
+                for d in docs
+                if _AUTHORITY_RANK[d.authority_level] <= maximum_rank
+            ]
         matched = []
         for d in docs:
             if q_lower in d.title.lower() or q_lower in d.content.lower() or any(q_lower in t.lower() for t in d.tags):
