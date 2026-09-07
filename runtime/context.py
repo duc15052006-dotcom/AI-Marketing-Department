@@ -227,20 +227,27 @@ class RuntimeContext(BaseModel):
         object.__setattr__(self, "_scope_frozen", True)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if getattr(self, "_scope_frozen", False) and name in (
-            "run_id",
-            "business_id",
-            "project_id",
-            "chat_id",
-            "campaign_id",
-            "user_id",
-            "trusted_knowledge_scope",
-            "trusted_memory_scope",
-        ):
-            raise AttributeError(
-                f"Cannot mutate authoritative scope field '{name}' on active RuntimeContext. "
-                "Runtime context scope is strictly immutable across all execution stages."
-            )
+        if getattr(self, "_scope_frozen", False):
+            if name == "status" and getattr(self, "status", None) == RuntimeStatus.CANCELLED:
+                # Cancellation is terminal. Late provider/tool callbacks may still
+                # return auditable receipts, but they cannot revive the run into
+                # RUNNING/WAITING/FAILED after the operator has cancelled it.
+                if value != RuntimeStatus.CANCELLED:
+                    return
+            if name in (
+                "run_id",
+                "business_id",
+                "project_id",
+                "chat_id",
+                "campaign_id",
+                "user_id",
+                "trusted_knowledge_scope",
+                "trusted_memory_scope",
+            ):
+                raise AttributeError(
+                    f"Cannot mutate authoritative scope field '{name}' on active RuntimeContext. "
+                    "Runtime context scope is strictly immutable across all execution stages."
+                )
         super().__setattr__(name, value)
 
     @property
