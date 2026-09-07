@@ -1,0 +1,61 @@
+name: Brain File Data Semantic Capability Binding V1 RED
+
+on:
+  pull_request:
+    branches:
+      - fix/brain-analytics-semantic-capability-binding-v1
+    paths:
+      - "tools/capabilities.py"
+      - "brain/action_policy.py"
+      - "brain/contracts.py"
+      - "tests/test_brain_file_data_semantic_capability_binding_v1.py"
+      - ".github/workflows/brain-file-data-semantic-capability-binding-v1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  red-file-data-semantic-binding:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          printf 'expected_sha=%s\nactual_sha=%s\n' "$EXPECTED" "$ACTUAL" | tee .ci-results/identity.txt
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run RED file-data semantic binding regression
+        shell: bash
+        run: |
+          set +e
+          python -m unittest -v tests.test_brain_file_data_semantic_capability_binding_v1 2>&1 | tee .ci-results/red-test.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > .ci-results/red-exit-code.txt
+          exit "$code"
+
+      - name: Upload RED evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-file-data-semantic-binding-red-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
