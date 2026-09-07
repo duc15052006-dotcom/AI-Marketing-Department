@@ -55,6 +55,90 @@ TERMINAL_MISSION_STATUSES = frozenset(
     }
 )
 
+MISSION_ALLOWED_TRANSITIONS = {
+    MissionStatus.CREATED: frozenset(
+        {
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.READY: frozenset(
+        {
+            MissionStatus.ACTIVE,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.ACTIVE: frozenset(
+        {
+            MissionStatus.WAITING_FOR_TIME,
+            MissionStatus.WAITING_FOR_EVENT,
+            MissionStatus.WAITING_FOR_CONDITION,
+            MissionStatus.WAITING_FOR_APPROVAL,
+            MissionStatus.WAITING_FOR_RESULT,
+            MissionStatus.SLEEPING,
+            MissionStatus.COMPLETED,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.WAITING_FOR_TIME: frozenset(
+        {
+            MissionStatus.ACTIVE,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.WAITING_FOR_EVENT: frozenset(
+        {
+            MissionStatus.ACTIVE,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.WAITING_FOR_CONDITION: frozenset(
+        {
+            MissionStatus.ACTIVE,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.WAITING_FOR_APPROVAL: frozenset(
+        {
+            MissionStatus.ACTIVE,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.WAITING_FOR_RESULT: frozenset(
+        {
+            MissionStatus.ACTIVE,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.SLEEPING: frozenset(
+        {
+            MissionStatus.ACTIVE,
+            MissionStatus.CANCELLED,
+            MissionStatus.FAILED,
+            MissionStatus.EXPIRED,
+        }
+    ),
+    MissionStatus.COMPLETED: frozenset(),
+    MissionStatus.CANCELLED: frozenset(),
+    MissionStatus.FAILED: frozenset(),
+    MissionStatus.EXPIRED: frozenset(),
+}
+
 _COMMITMENT_REVISION_UNSET = object()
 
 
@@ -315,14 +399,7 @@ class MissionRecord(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __setattr__(self, name: str, value: object) -> None:
-        """Protect Mission lifecycle and authoritative scope from unsafe mutation.
-
-        This slice deliberately does not define the complete non-terminal FSM.
-        It establishes two one-way invariants: terminal Missions can never be
-        revived, and executable Mission identity/scope cannot be rebound after
-        the Mission leaves CREATED. Re-assigning the same value remains
-        idempotent.
-        """
+        """Protect authoritative scope and require canonical lifecycle transitions."""
 
         if name in {"mission_id", "business_id", "project_id", "user_id"} and name in self.__dict__:
             current_value = self.__dict__[name]
@@ -353,14 +430,61 @@ class MissionRecord(BaseModel):
             except (TypeError, ValueError):
                 target = value
 
-            if current in TERMINAL_MISSION_STATUSES and target != current:
-                current_label = current.value if isinstance(current, MissionStatus) else str(current)
-                target_label = target.value if isinstance(target, MissionStatus) else str(target)
+            if target == current:
+                return
+
+            current_label = current.value if isinstance(current, MissionStatus) else str(current)
+            target_label = target.value if isinstance(target, MissionStatus) else str(target)
+
+            if current in TERMINAL_MISSION_STATUSES:
                 raise MissionTransitionError(
                     f"MISSION_TERMINAL_STATE_IMMUTABLE: {current_label}->{target_label}"
                 )
 
+            raise MissionTransitionError(
+                f"MISSION_STATUS_REQUIRES_TRANSITION_API: {current_label}->{target_label}"
+            )
+
         object.__setattr__(self, name, value)
+
+    def transition_to(self, target: MissionStatus) -> None:
+        """Apply one canonical lifecycle transition using the deterministic FSM."""
+
+        current_raw = self.status
+        try:
+            current = (
+                current_raw
+                if isinstance(current_raw, MissionStatus)
+                else MissionStatus(current_raw)
+            )
+        except (TypeError, ValueError) as exc:
+            raise MissionTransitionError(
+                f"MISSION_STATUS_INVALID_CURRENT: {current_raw}"
+            ) from exc
+
+        try:
+            target_status = target if isinstance(target, MissionStatus) else MissionStatus(target)
+        except (TypeError, ValueError) as exc:
+            raise MissionTransitionError(f"MISSION_STATUS_INVALID_TARGET: {target}") from exc
+
+        if target_status == current:
+            return
+
+        if current in TERMINAL_MISSION_STATUSES:
+            raise MissionTransitionError(
+                f"MISSION_TERMINAL_STATE_IMMUTABLE: {current.value}->{target_status.value}"
+            )
+
+        if current == MissionStatus.CREATED and target_status == MissionStatus.READY:
+            raise MissionTransitionError("MISSION_READY_REQUIRES_COMMITMENT_GATE")
+
+        allowed = MISSION_ALLOWED_TRANSITIONS.get(current, frozenset())
+        if target_status not in allowed:
+            raise MissionTransitionError(
+                f"MISSION_TRANSITION_INVALID: {current.value}->{target_status.value}"
+            )
+
+        object.__setattr__(self, "status", target_status)
 
     def _validate_executable_commitment(
         self,
@@ -408,4 +532,4 @@ class MissionRecord(BaseModel):
 
         validated = self._validate_executable_commitment(commitment, now=now)
         self.commitment_id = validated.commitment_id
-        self.status = MissionStatus.READY
+        object.__setattr__(self, "status", MissionStatus.READY)
