@@ -58,6 +58,111 @@ TERMINAL_MISSION_STATUSES = frozenset(
 _COMMITMENT_REVISION_UNSET = object()
 
 
+class _FrozenCommitmentDict(dict):
+    """Dict-compatible immutable authority container for a Commitment snapshot."""
+
+    @classmethod
+    def from_mapping(cls, value: object) -> "_FrozenCommitmentDict":
+        instance = cls.__new__(cls)
+        dict.__init__(instance)
+        dict.update(instance, value)  # type: ignore[arg-type]
+        return instance
+
+    @staticmethod
+    def _immutable() -> None:
+        raise CommitmentMutationError(
+            "COMMITMENT_AUTHORITY_CONTAINER_IMMUTABLE: budget_limits"
+        )
+
+    def __setitem__(self, key: object, value: object) -> None:
+        self._immutable()
+
+    def __delitem__(self, key: object) -> None:
+        self._immutable()
+
+    def clear(self) -> None:
+        self._immutable()
+
+    def pop(self, key: object, *args: object) -> object:
+        self._immutable()
+
+    def popitem(self) -> object:
+        self._immutable()
+
+    def setdefault(self, key: object, default: object = None) -> object:
+        self._immutable()
+
+    def update(self, *args: object, **kwargs: object) -> None:
+        self._immutable()
+
+    def __ior__(self, other: object) -> "_FrozenCommitmentDict":
+        self._immutable()
+
+    def __copy__(self) -> "_FrozenCommitmentDict":
+        return self
+
+    def __deepcopy__(self, memo: Dict[int, object]) -> "_FrozenCommitmentDict":
+        return self
+
+
+class _FrozenCommitmentList(list):
+    """List-compatible immutable authority container for a Commitment snapshot."""
+
+    @classmethod
+    def from_iterable(cls, value: object) -> "_FrozenCommitmentList":
+        instance = cls.__new__(cls)
+        list.__init__(instance, value)  # type: ignore[arg-type]
+        return instance
+
+    @staticmethod
+    def _immutable() -> None:
+        raise CommitmentMutationError(
+            "COMMITMENT_AUTHORITY_CONTAINER_IMMUTABLE: stop_conditions"
+        )
+
+    def __setitem__(self, key: object, value: object) -> None:
+        self._immutable()
+
+    def __delitem__(self, key: object) -> None:
+        self._immutable()
+
+    def append(self, value: object) -> None:
+        self._immutable()
+
+    def clear(self) -> None:
+        self._immutable()
+
+    def extend(self, value: object) -> None:
+        self._immutable()
+
+    def insert(self, index: int, value: object) -> None:
+        self._immutable()
+
+    def pop(self, index: int = -1) -> object:
+        self._immutable()
+
+    def remove(self, value: object) -> None:
+        self._immutable()
+
+    def reverse(self) -> None:
+        self._immutable()
+
+    def sort(self, *args: object, **kwargs: object) -> None:
+        self._immutable()
+
+    def __iadd__(self, other: object) -> "_FrozenCommitmentList":
+        self._immutable()
+
+    def __imul__(self, other: object) -> "_FrozenCommitmentList":
+        self._immutable()
+
+    def __copy__(self) -> "_FrozenCommitmentList":
+        return self
+
+    def __deepcopy__(self, memo: Dict[int, object]) -> "_FrozenCommitmentList":
+        return self
+
+
 class CommitmentRecord(BaseModel):
     """Runtime-enforceable authority and limit envelope for one Mission."""
 
@@ -75,12 +180,27 @@ class CommitmentRecord(BaseModel):
     supersedes_commitment_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    def __post_init__(self) -> None:
+        """Validate inputs, then detach and freeze mutable authority containers."""
+
+        super().__post_init__()
+        object.__setattr__(
+            self,
+            "budget_limits",
+            _FrozenCommitmentDict.from_mapping(self.budget_limits),
+        )
+        object.__setattr__(
+            self,
+            "stop_conditions",
+            _FrozenCommitmentList.from_iterable(self.stop_conditions),
+        )
+
     def __setattr__(self, name: str, value: object) -> None:
-        """Keep an existing Commitment snapshot immutable at field boundaries.
+        """Keep an existing Commitment snapshot immutable at every field boundary.
 
         Identity/scope and authority-envelope changes must create a new revision
-        snapshot. Same-value assignment remains idempotent. Deep in-place
-        mutation inside mutable containers is hardened in a separate slice.
+        snapshot. Same-value assignment remains idempotent without replacing the
+        already detached/frozen object stored by the snapshot.
         """
 
         identity_scope_fields = {
@@ -109,6 +229,7 @@ class CommitmentRecord(BaseModel):
                 else:
                     code = "COMMITMENT_AUTHORITY_SNAPSHOT_IMMUTABLE"
                 raise CommitmentMutationError(f"{code}: {name}")
+            return
 
         object.__setattr__(self, name, value)
 
