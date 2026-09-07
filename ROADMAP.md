@@ -173,13 +173,38 @@
 - Add mission timeline, wake history, task/action receipts, budget history, approval history, checkpoint lineage, reconciliation findings, and failure trail.
 - Every wake and external effect must be traceable back to mission, commitment, authoritative scope, and originating decision/action intent.
 
+#### 11.10 — Trustworthy Execution + Validated Learning Backlog
+
+The detailed non-Brain backlog is maintained in `RUNTIME_HARDENING_LEARNING_BACKLOG.md` and is part of Phase 11 implementation scope.
+
+**P0 — trust boundaries first**
+- Finish Mission/Commitment authority and canonical Mission State Machine enforcement.
+- Harden knowledge content/version integrity, authority thresholds, snapshot isolation, and invalidation.
+- Connect `Decision` / `ActionIntent` through one unified Execution Authority Gate to `ToolGateway` and receipt lineage.
+- Distinguish `UNKNOWN` / reconciliation-required outcomes from definitive failure; reconcile before retrying consequential actions.
+
+**P1 — durable continuity and validated-learning infrastructure**
+- Durable Mission/Commitment repositories, migrations, transactions, leases, restart recovery, and one complete end-to-end continuity workflow.
+- Error taxonomy and retry policy.
+- Decision dependency graph from evidence/source versions through decisions/actions/receipts/outcomes.
+- Hypothesis/experiment/outcome durable contracts, re-evaluation triggers, and explainability read models.
+- Split oversized runtime modules only after behavioral contracts stabilize.
+
+**P2 — interoperability and measured optimization**
+- Shared adapter contract suite for timeout/error/stream/cancel/provenance behavior.
+- Provider failure hardening.
+- Dynamic routing infrastructure and quality/cost telemetry while leaving semantic routing decisions to the Brain.
+
 #### Implementation order / hardening gates
-1. Shared contracts + Mission/Commitment domain model.
-2. Mission Store + lifecycle/state machine.
-3. Durable wake system.
-4. Mission task queue + existing scheduler integration.
-5. Persistent checkpoint + resume + reconciliation.
-6. Action Authority Fabric + durable external-effect safety.
-7. Cognitive-state persistence + observability + reliability hardening.
+1. Shared contracts + Mission/Commitment domain model and canonical lifecycle authority.
+2. Knowledge integrity/version dependency hardening.
+3. Decision/ActionIntent execution bridge + one Execution Authority Gate.
+4. Explicit unknown-outcome semantics + reconciliation-before-retry.
+5. Durable Mission/Commitment stores + restart recovery + one end-to-end continuity flow.
+6. Durable wake system + mission task queue + existing scheduler integration.
+7. Decision dependency graph + Hypothesis/Experiment/Outcome persistence.
+8. Re-evaluation triggers + explainability + mission observability/reliability.
+9. Adapter contracts + provider hardening + quality/cost telemetry.
+10. Behavior-preserving modularization of oversized runtime files after the above contracts are stable.
 
 Each runtime invariant is implemented as a small branch/PR with adversarial RED evidence before production code, targeted regression tests, then full hermetic CI. No Continuity Runtime PR may bypass existing cancellation, approval, provider, ToolGateway, lineage, checkpoint, or scope guarantees.
