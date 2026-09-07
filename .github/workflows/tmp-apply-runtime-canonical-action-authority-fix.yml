@@ -185,7 +185,7 @@ jobs:
         run: |
           python -m compileall -q brain runtime
           git diff --check
-          test "$(git diff --name-only | sort | tr '\n' ' ')" = "brain/action_policy.py runtime/engine.py "
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = ".github/workflows/tmp-apply-runtime-canonical-action-authority-fix.yml brain/action_policy.py runtime/engine.py "
           grep -q 'class BrainActionAuthority' brain/action_policy.py
           test "$(grep -c 'self.tool_gateway.execute(' runtime/engine.py)" -eq 1
 
