@@ -411,6 +411,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["cmo", "intelligence", "strategist", "creative", "performance"],
+                semantic_needs=["WORKSPACE_READ"],
                 provider="file_io_adapter",
                 timeout_policy=10.0,
             )
@@ -426,6 +427,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["cmo", "creative", "performance", "intelligence"],
+                semantic_needs=["WORKSPACE_WRITE"],
                 provider="file_io_adapter",
                 timeout_policy=15.0,
             )
@@ -441,6 +443,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["cmo", "intelligence", "performance", "strategist"],
+                semantic_needs=["STRUCTURED_DATA_QUERY"],
                 provider="db_storage_adapter",
                 timeout_policy=20.0,
             )
@@ -456,6 +459,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["cmo", "performance", "creative"],
+                semantic_needs=["ARTIFACT_EXPORT"],
                 provider="export_adapter",
                 timeout_policy=25.0,
             )
