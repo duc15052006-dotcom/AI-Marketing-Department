@@ -140,18 +140,27 @@ class BrainActionIntentExecutionIntentProvenanceV1Tests(unittest.TestCase):
         return gateway, adapter
 
     @classmethod
-    def _request(cls, run_id: str) -> ToolRequest:
+    def _request(cls, run_id: str, *, approval_token: Optional[str] = None) -> ToolRequest:
         return ToolRequest(
             request_id=f"REQ-{run_id}",
             run_id=run_id,
             agent_id="strategist",
             capability_id=cls.CAPABILITY_ID,
             parameters={"payload": "semantic journal provenance"},
+            approval_token=approval_token,
         )
 
     def _execute_semantic(self, gateway: ToolGateway, run_id: str):
+        unsigned_request = self._request(run_id)
+        approval = gateway.policy_engine.create_server_approval(
+            capability_id=self.CAPABILITY_ID,
+            parameters=unsigned_request.parameters,
+            run_id=run_id,
+            approved_by="semantic journal provenance regression",
+            risk_level=RiskLevel.LOW,
+        )
         return gateway.execute(
-            self._request(run_id),
+            self._request(run_id, approval_token=approval.approval_token),
             action_intent=CanonicalGatewayContract._intent(),
             decision_request=CanonicalGatewayContract._decision_request(),
         )
