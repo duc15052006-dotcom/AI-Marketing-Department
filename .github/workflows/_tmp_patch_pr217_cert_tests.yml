@@ -1,0 +1,73 @@
+name: TEMP Patch PR217 Certification Tests
+
+on:
+  push:
+    branches:
+      - fix/brain-runtime-canonical-action-intent-handoff-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/brain-runtime-canonical-action-intent-handoff-v1
+          fetch-depth: 0
+
+      - name: Align stale source-inspection contracts with Runtime authority seam
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("tests/test_prod_research_grounding_01b.py"): [
+                  (
+                      '''    def test_single_tool_execution_in_intelligence(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertIn("tool_gateway.execute(search_req)", src)\n        self.assertIn("idem_key", src)\n\n    def test_no_second_search(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        execute_count = src.count("tool_gateway.execute(")\n        self.assertEqual(execute_count, 1)\n''',
+                      '''    def test_single_tool_execution_in_intelligence(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertIn("self._execute_tool_request(context, search_req)", src)\n        self.assertNotIn("tool_gateway.execute(search_req)", src)\n        self.assertIn("idem_key", src)\n\n    def test_no_second_search(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        execute_count = src.count("self._execute_tool_request(context, search_req)")\n        self.assertEqual(execute_count, 1)\n''',
+                  ),
+              ],
+              Path("tests/test_prod_research_quality_01b.py"): [
+                  (
+                      '''    def test_single_tool_execution(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertIn("tool_gateway.execute(search_req)", src)\n\n    def test_no_second_search(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        execute_count = src.count("tool_gateway.execute(")\n        self.assertEqual(execute_count, 1)\n''',
+                      '''    def test_single_tool_execution(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        self.assertIn("self._execute_tool_request(context, search_req)", src)\n        self.assertNotIn("tool_gateway.execute(search_req)", src)\n\n    def test_no_second_search(self) -> None:\n        src = inspect.getsource(FiveAgentDepartmentRuntime.execute_stage_intelligence)\n        execute_count = src.count("self._execute_tool_request(context, search_req)")\n        self.assertEqual(execute_count, 1)\n''',
+                  ),
+              ],
+          }
+
+          for path, reps in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              for old, new in reps:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f"{path}: expected exact old block once, found {count}")
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
+
+          for path in replacements:
+              compile(path.read_text(encoding="utf-8"), str(path), "exec")
+
+          grounding = Path("tests/test_prod_research_grounding_01b.py").read_text(encoding="utf-8")
+          quality = Path("tests/test_prod_research_quality_01b.py").read_text(encoding="utf-8")
+          assert grounding.count('self._execute_tool_request(context, search_req)') == 2
+          assert quality.count('self._execute_tool_request(context, search_req)') == 2
+          assert 'self.assertIn("tool_gateway.execute(search_req)", src)' not in grounding
+          assert 'self.assertIn("tool_gateway.execute(search_req)", src)' not in quality
+          PY
+
+      - name: Commit only certification-test alignment and self-delete workflow
+        shell: bash
+        run: |
+          rm .github/workflows/_tmp_patch_pr217_cert_tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_prod_research_grounding_01b.py tests/test_prod_research_quality_01b.py .github/workflows/_tmp_patch_pr217_cert_tests.yml
+          git diff --cached --check
+          changed="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' '.github/workflows/_tmp_patch_pr217_cert_tests.yml' 'tests/test_prod_research_grounding_01b.py' 'tests/test_prod_research_quality_01b.py' | sort)"
+          test "$changed" = "$expected"
+          git commit -m "test(runtime): align research dispatch certification"
+          git push origin HEAD:fix/brain-runtime-canonical-action-intent-handoff-v1
