@@ -1,0 +1,66 @@
+name: Runtime Mission Lifecycle Linearizability V1
+
+on:
+  pull_request:
+    paths:
+      - "runtime/mission.py"
+      - "tests/test_runtime_mission_lifecycle_linearizability_v1.py"
+      - ".github/workflows/runtime-mission-lifecycle-linearizability-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  mission-lifecycle-linearizability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "expected=$EXPECTED"
+          echo "actual=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile touched source and regression
+        run: |
+          python -m py_compile runtime/mission.py tests/test_runtime_mission_lifecycle_linearizability_v1.py
+
+      - name: Run deterministic linearizability regressions
+        run: python -m unittest -v tests.test_runtime_mission_lifecycle_linearizability_v1
+
+      - name: Run canonical Mission lifecycle regressions
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_mission_lifecycle_transition_authority_v1 \
+            tests.test_runtime_mission_terminal_state_authority_v1 \
+            tests.test_runtime_mission_authoritative_scope_immutability_v1 \
+            tests.test_runtime_mission_commitment_contract_v1 \
+            tests.test_structure
