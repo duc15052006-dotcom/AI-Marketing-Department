@@ -94,3 +94,15 @@ test('switching chat while proposal is pending cancels the late proposal', async
   await expect.poll(() => s.calls.some(c => c.path === '/api/desktop/stop')).toBe(true);
   await expect(page.getByRole('button', { name: 'Duyệt quyền một lần và bắt đầu' })).toHaveCount(0);
 });
+
+test('background chat refresh preserves the active desktop conversation', async ({ page }) => {
+  const s = await fixture(page);
+  await page.getByText('Chat B', { exact: true }).click();
+  await page.getByRole('button', { name: 'Giao nhiệm vụ cho agent' }).click();
+  await page.getByRole('button', { name: 'Duyệt quyền một lần và bắt đầu' }).click();
+  await expect.poll(() => s.calls.filter(c => c.path === '/api/desktop/start').length).toBe(1);
+  // The app's real background refresh runs every 8 seconds. It must not switch
+  // to the first conversation and stop a task belonging to the selected one.
+  await page.waitForTimeout(8500);
+  expect(s.calls.filter(c => c.path === '/api/desktop/stop')).toHaveLength(0);
+});
