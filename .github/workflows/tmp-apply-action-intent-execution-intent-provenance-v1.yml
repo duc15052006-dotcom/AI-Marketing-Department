@@ -1,0 +1,189 @@
+name: TEMP Apply ActionIntent ExecutionIntent Provenance V1
+
+on:
+  push:
+    branches:
+      - fix/brain-action-intent-execution-intent-provenance-v1
+    paths:
+      - ".github/workflows/tmp-apply-action-intent-execution-intent-provenance-v1.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-production-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/brain-action-intent-execution-intent-provenance-v1
+          fetch-depth: 0
+
+      - name: Apply exact production patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, got {count}")
+              return text.replace(old, new, 1)
+
+          receipts_path = Path("tools/receipts.py")
+          text = receipts_path.read_text(encoding="utf-8")
+
+          text = replace_once(
+              text,
+              "    request_hash: str\n    state: ExecutionIntentState = ExecutionIntentState.PREPARED\n",
+              "    request_hash: str\n    action_intent_id: Optional[str] = None\n    state: ExecutionIntentState = ExecutionIntentState.PREPARED\n",
+              "ExecutionIntent field",
+          )
+
+          text = replace_once(
+              text,
+              "        if not isinstance(self.dispatch_count, int) or isinstance(self.dispatch_count, bool) or self.dispatch_count < 0:\n            raise ValueError(\"INVALID_DISPATCH_COUNT: dispatch_count must be a non-negative integer\")\n\n        state = self.state\n",
+              "        if not isinstance(self.dispatch_count, int) or isinstance(self.dispatch_count, bool) or self.dispatch_count < 0:\n            raise ValueError(\"INVALID_DISPATCH_COUNT: dispatch_count must be a non-negative integer\")\n        if not isinstance(self.schema_version, int) or isinstance(self.schema_version, bool) or self.schema_version < 1:\n            raise ValueError(\"INVALID_SCHEMA_VERSION: schema_version must be a positive integer\")\n\n        action_intent_id = self.action_intent_id\n        if action_intent_id is not None:\n            if not isinstance(action_intent_id, str):\n                raise ValueError(\"INVALID_ACTION_INTENT_ID: action_intent_id must be a string\")\n            action_intent_id = action_intent_id.strip() or None\n        if self.schema_version >= 2 and action_intent_id is None:\n            raise ValueError(\"ACTION_INTENT_ID_REQUIRED: schema v2 execution intents must bind canonical ActionIntent provenance\")\n        if self.schema_version < 2 and action_intent_id is not None:\n            raise ValueError(\"ACTION_INTENT_SCHEMA_VERSION_REQUIRED: ActionIntent provenance requires schema v2 or newer\")\n\n        state = self.state\n",
+              "ExecutionIntent semantic validation",
+          )
+
+          text = replace_once(
+              text,
+              "            request_hash=self.request_hash.strip(),\n            state=state,\n",
+              "            request_hash=self.request_hash.strip(),\n            action_intent_id=action_intent_id,\n            state=state,\n",
+              "ExecutionIntent normalization",
+          )
+
+          text = replace_once(
+              text,
+              "    def hash_payload(self) -> Dict[str, Any]:\n        return {\n",
+              "    def hash_payload(self) -> Dict[str, Any]:\n        payload = {\n",
+              "ExecutionIntent hash payload start",
+          )
+          text = replace_once(
+              text,
+              "            \"updated_at\": self.updated_at,\n        }\n\n    def calculate_hash(self) -> str:\n",
+              "            \"updated_at\": self.updated_at,\n        }\n        if self.schema_version >= 2:\n            payload[\"action_intent_id\"] = self.action_intent_id\n        return payload\n\n    def calculate_hash(self) -> str:\n",
+              "ExecutionIntent hash payload semantic binding",
+          )
+
+          text = replace_once(
+              text,
+              "        and receipt.request_hash == intent.request_hash\n        and receipt.business_id == intent.business_id\n",
+              "        and receipt.request_hash == intent.request_hash\n        and (\n            intent.action_intent_id is None\n            or receipt.action_intent_id == intent.action_intent_id\n        )\n        and receipt.business_id == intent.business_id\n",
+              "receipt intent semantic matcher",
+          )
+
+          text = replace_once(
+              text,
+              "                    request_hash TEXT NOT NULL,\n                    state TEXT NOT NULL,\n",
+              "                    request_hash TEXT NOT NULL,\n                    action_intent_id TEXT,\n                    state TEXT NOT NULL,\n",
+              "SQLite create semantic column",
+          )
+
+          text = replace_once(
+              text,
+              "            self._conn.execute(\n                \"CREATE INDEX IF NOT EXISTS idx_receipts_run ON execution_receipts(run_id, execution_id)\"\n            )\n",
+              "            intent_columns = {\n                str(row[\"name\"])\n                for row in self._conn.execute(\"PRAGMA table_info(execution_intents)\").fetchall()\n            }\n            if \"action_intent_id\" not in intent_columns:\n                self._conn.execute(\n                    \"ALTER TABLE execution_intents ADD COLUMN action_intent_id TEXT\"\n                )\n            self._conn.execute(\n                \"CREATE INDEX IF NOT EXISTS idx_receipts_run ON execution_receipts(run_id, execution_id)\"\n            )\n",
+              "SQLite backward-compatible semantic migration",
+          )
+
+          text = replace_once(
+              text,
+              "            request_hash=row[\"request_hash\"],\n            state=ExecutionIntentState(row[\"state\"]),\n",
+              "            request_hash=row[\"request_hash\"],\n            action_intent_id=row[\"action_intent_id\"],\n            state=ExecutionIntentState(row[\"state\"]),\n",
+              "SQLite semantic row decode",
+          )
+
+          text = replace_once(
+              text,
+              "            intent.request_hash,\n            intent.state.value,\n",
+              "            intent.request_hash,\n            intent.action_intent_id,\n            intent.state.value,\n",
+              "SQLite semantic intent values",
+          )
+
+          text = replace_once(
+              text,
+              "        provider: str,\n        request_hash: str,\n        business_id: Optional[str] = None,\n",
+              "        provider: str,\n        request_hash: str,\n        action_intent_id: Optional[str] = None,\n        business_id: Optional[str] = None,\n",
+              "prepare intent semantic parameter",
+          )
+
+          text = replace_once(
+              text,
+              "            provider=provider,\n            request_hash=request_hash,\n            business_id=business_id,\n",
+              "            provider=provider,\n            request_hash=request_hash,\n            action_intent_id=action_intent_id,\n            business_id=business_id,\n",
+              "prepare intent semantic value",
+          )
+          text = replace_once(
+              text,
+              "            approval_reference=approval_reference,\n        ).normalized()\n",
+              "            approval_reference=approval_reference,\n            schema_version=2 if action_intent_id is not None else 1,\n        ).normalized()\n",
+              "prepare intent schema version",
+          )
+
+          text = replace_once(
+              text,
+              "                            request_hash, state, business_id, project_id, chat_id,\n",
+              "                            request_hash, action_intent_id, state, business_id, project_id, chat_id,\n",
+              "SQLite insert semantic column",
+          )
+          text = replace_once(
+              text,
+              "                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n",
+              "                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n",
+              "SQLite insert semantic placeholder",
+          )
+
+          text = replace_once(
+              text,
+              "                request_hash=?, state=?, business_id=?, project_id=?, chat_id=?,\n",
+              "                request_hash=?, action_intent_id=?, state=?, business_id=?, project_id=?, chat_id=?,\n",
+              "SQLite update semantic column",
+          )
+          text = replace_once(
+              text,
+              "                normalized.request_hash,\n                normalized.state.value,\n",
+              "                normalized.request_hash,\n                normalized.action_intent_id,\n                normalized.state.value,\n",
+              "SQLite update semantic value",
+          )
+
+          receipts_path.write_text(text, encoding="utf-8")
+
+          gateway_path = Path("tools/tool_gateway.py")
+          gateway = gateway_path.read_text(encoding="utf-8")
+          gateway = replace_once(
+              gateway,
+              "                    request_hash=req_hash,\n                    business_id=effective_business_id,\n",
+              "                    request_hash=req_hash,\n                    action_intent_id=semantic_intent_id,\n                    business_id=effective_business_id,\n",
+              "ToolGateway pre-dispatch semantic journal binding",
+          )
+          gateway_path.write_text(gateway, encoding="utf-8")
+          PY
+
+      - name: Verify patch shape and compile
+        shell: bash
+        run: |
+          python -m py_compile tools/receipts.py tools/tool_gateway.py
+          git diff --check
+          python - <<'PY'
+          from pathlib import Path
+          receipts = Path('tools/receipts.py').read_text(encoding='utf-8')
+          gateway = Path('tools/tool_gateway.py').read_text(encoding='utf-8')
+          assert 'action_intent_id: Optional[str] = None' in receipts
+          assert 'ALTER TABLE execution_intents ADD COLUMN action_intent_id TEXT' in receipts
+          assert 'payload["action_intent_id"] = self.action_intent_id' in receipts
+          assert 'action_intent_id=semantic_intent_id' in gateway
+          PY
+
+      - name: Commit production patch and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-apply-action-intent-execution-intent-provenance-v1.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/receipts.py tools/tool_gateway.py .github/workflows/tmp-apply-action-intent-execution-intent-provenance-v1.yml
+          git diff --cached --check
+          git commit -m "fix(brain): bind ActionIntent provenance into execution journal"
+          git push origin HEAD:fix/brain-action-intent-execution-intent-provenance-v1
