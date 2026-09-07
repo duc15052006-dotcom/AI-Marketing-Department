@@ -81,6 +81,20 @@ class CommitmentDeepAuthorityImmutabilityV1Tests(unittest.TestCase):
         stops.append("BUDGET_EXHAUSTED")
         self.assertEqual(commitment.stop_conditions, ["OPERATOR_CANCEL"])
 
+    def test_equal_value_budget_reassignment_does_not_create_mutable_alias(self):
+        commitment = self._commitment()
+        replacement = {"spend_usd": 100.0}
+        commitment.budget_limits = replacement
+        replacement["spend_usd"] = 1.0
+        self.assertEqual(commitment.budget_limits, {"spend_usd": 100.0})
+
+    def test_equal_value_stop_reassignment_does_not_create_mutable_alias(self):
+        commitment = self._commitment()
+        replacement = ["OPERATOR_CANCEL"]
+        commitment.stop_conditions = replacement
+        replacement.append("BUDGET_EXHAUSTED")
+        self.assertEqual(commitment.stop_conditions, ["OPERATOR_CANCEL"])
+
     def test_model_dump_returns_detached_plain_containers_control(self):
         commitment = self._commitment()
         dumped = commitment.model_dump()
