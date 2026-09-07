@@ -122,6 +122,8 @@ class EvidenceBuilder:
             run_id=obs.run_id,
             business_id=obs.business_id,
             project_id=obs.project_id,
+            execution_id=obs.execution_id,
+            action_intent_id=obs.action_intent_id,
             source_platform=obs.source_platform,
             source_type=obs.source_type,
             source_url_or_id=obs.source_url_or_id,
