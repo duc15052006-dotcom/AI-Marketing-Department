@@ -5,6 +5,7 @@ on:
       - 'desktop/**'
       - 'requirements-desktop.txt'
       - 'tests/test_local_desktop_control_v1.py'
+      - 'tests/test_local_desktop_windows_smoke_v1.py'
       - '.github/workflows/local-desktop-control-v1.yml'
   workflow_dispatch:
 permissions:
@@ -24,3 +25,20 @@ jobs:
         run: python -m compileall -q desktop
       - name: Exercise desktop contracts with fake backend (no desktop input)
         run: python -m unittest -v tests.test_local_desktop_control_v1 tests.test_tool_gateway_idempotency_01 tests.test_tool_receipt_provenance_04
+  desktop-native-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install optional desktop dependencies
+        run: python -m pip install -r requirements-desktop.txt
+      - name: Test native input only in an owned temporary Tk window
+        env:
+          RUN_DESKTOP_NATIVE_SMOKE: '1'
+          PYTHONUTF8: '1'
+        run: python -m unittest -v tests.test_local_desktop_windows_smoke_v1
