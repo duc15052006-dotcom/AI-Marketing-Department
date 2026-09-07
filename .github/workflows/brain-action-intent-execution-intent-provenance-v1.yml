@@ -1,4 +1,4 @@
-name: Brain ActionIntent ExecutionIntent Provenance V1 RED
+name: Brain ActionIntent ExecutionIntent Provenance V1
 
 on:
   pull_request:
@@ -13,13 +13,16 @@ on:
       - "tests/test_brain_action_intent_execution_intent_provenance_v1.py"
       - "tests/test_brain_action_intent_receipt_provenance_v1.py"
       - "tests/test_brain_canonical_action_intent_tool_gateway_v1.py"
+      - "tests/test_receipt_intent_authority_correlation_v1.py"
+      - "tests/test_receipt_approval_provenance_binding_v1.py"
+      - "tests/test_receipt_single_intent_ownership_v1.py"
       - ".github/workflows/brain-action-intent-execution-intent-provenance-v1.yml"
 
 permissions:
   contents: read
 
 jobs:
-  action-intent-execution-intent-provenance-red:
+  action-intent-execution-intent-provenance-regression:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact PR head
@@ -46,24 +49,27 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Compile current production source
+      - name: Compile touched production source
         run: |
           python -m py_compile tools/receipts.py tools/tool_gateway.py
 
-      - name: Run ActionIntent ExecutionIntent provenance adversarial RED
+      - name: Run ActionIntent ExecutionIntent provenance regressions
         shell: bash
         run: |
           python -m unittest -v \
             tests.test_brain_action_intent_execution_intent_provenance_v1 \
             tests.test_brain_action_intent_receipt_provenance_v1 \
             tests.test_brain_canonical_action_intent_tool_gateway_v1 \
-            2>&1 | tee .ci-results/red-test.log
+            tests.test_receipt_intent_authority_correlation_v1 \
+            tests.test_receipt_approval_provenance_binding_v1 \
+            tests.test_receipt_single_intent_ownership_v1 \
+            2>&1 | tee .ci-results/targeted-test.log
 
-      - name: Upload RED evidence
+      - name: Upload targeted evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: brain-action-intent-execution-intent-provenance-red-${{ github.event.pull_request.head.sha || github.sha }}
+          name: brain-action-intent-execution-intent-provenance-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
