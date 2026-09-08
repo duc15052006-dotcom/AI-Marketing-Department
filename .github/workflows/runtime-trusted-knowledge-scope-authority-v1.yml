@@ -10,6 +10,8 @@ on:
       - "runtime/scope_bridge.py"
       - "runtime/context_compiler.py"
       - "tests/test_runtime_trusted_knowledge_scope_authority_v1.py"
+      - "tests/test_runtime_trusted_legacy_scope_authority_v1.py"
+      - "tests/test_phase6_2_pilot_and_v1_release.py"
       - ".github/workflows/runtime-trusted-knowledge-scope-authority-v1.yml"
 
 permissions:
@@ -50,12 +52,16 @@ jobs:
             runtime/context.py \
             runtime/scope_bridge.py \
             runtime/context_compiler.py \
-            tests/test_runtime_trusted_knowledge_scope_authority_v1.py
+            tests/test_runtime_trusted_knowledge_scope_authority_v1.py \
+            tests/test_runtime_trusted_legacy_scope_authority_v1.py \
+            tests/test_phase6_2_pilot_and_v1_release.py
 
       - name: Run trusted knowledge scope authority regression
         shell: bash
         run: |
           python -m unittest -v tests.test_runtime_trusted_knowledge_scope_authority_v1 \
+            tests.test_runtime_trusted_legacy_scope_authority_v1 \
+            tests.test_phase6_2_pilot_and_v1_release \
             2>&1 | tee .ci-results/targeted-test.log
 
       - name: Upload qualification evidence
