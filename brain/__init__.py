@@ -77,9 +77,20 @@ from brain.reasoning import (
     SignalLevel,
     select_reasoning_depth,
 )
+from brain.world_state import (
+    BeliefRevision,
+    BeliefStatus,
+    WorldBelief,
+    WorldProposition,
+    WorldStateRequest,
+    WorldStateSnapshot,
+    build_world_state,
+)
 
 __all__ = [
     "ActionIntent",
+    "BeliefRevision",
+    "BeliefStatus",
     "BrainAgentId",
     "DecisionDisposition",
     "DecisionRecord",
@@ -129,10 +140,15 @@ __all__ = [
     "StrategyTrial",
     "TrialEffect",
     "UnknownRecord",
+    "WorldBelief",
+    "WorldProposition",
+    "WorldStateRequest",
+    "WorldStateSnapshot",
     "analyze_learning_episode",
     "apply_plan_revision",
     "assess_hypothesis_portfolio",
     "assess_metacognition",
+    "build_world_state",
     "derive_knowledge_gaps",
     "evaluate_meta_learning",
     "prioritize_research_agenda",
