@@ -959,6 +959,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                         "pending_approval_id": p.pending_approval_id,
                         "run_id": p.run_id,
                         "business_id": p.business_id,
+                        "project_id": p.project_id,
                         "capability_id": p.capability_id,
                         "action_type": p.capability_id,
                         "parameters": p.parameters,
@@ -978,6 +979,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                                 "pending_approval_id": f"PENDING-{rid}",
                                 "run_id": rid,
                                 "business_id": ctx.business_id,
+                                "project_id": ctx.project_id,
                                 "objective": ctx.objective,
                                 "pending_since": ctx.created_at.isoformat(),
                                 "action_type": "social_publishing",
@@ -1003,6 +1005,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                         "pending_approval_id": p.pending_approval_id,
                         "run_id": p.run_id,
                         "business_id": p.business_id,
+                        "project_id": p.project_id,
                         "capability_id": p.capability_id,
                         "action_type": p.capability_id,
                         "parameters": p.parameters,
@@ -1736,6 +1739,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     parameters=body["parameters"],
                     run_id=pending.run_id,
                     business_id=pending.business_id,
+                    project_id=pending.project_id,
                 )
                 if provided_fp != pending.request_fingerprint:
                     self._send_json(
@@ -1760,6 +1764,15 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     {
                         "error": "APPROVAL_TAMPERING_REJECTED",
                         "message": "Cannot alter business_id during approval",
+                    },
+                    400,
+                )
+                return
+            if "project_id" in body and body["project_id"] and body["project_id"] != pending.project_id:
+                self._send_json(
+                    {
+                        "error": "APPROVAL_TAMPERING_REJECTED",
+                        "message": "Cannot alter project_id during approval",
                     },
                     400,
                 )
@@ -1793,6 +1806,8 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     "approval_token": record.approval_token,
                     "capability_id": record.capability_id,
                     "run_id": record.run_id,
+                    "business_id": record.business_id,
+                    "project_id": record.project_id,
                 },
                 200,
             )
