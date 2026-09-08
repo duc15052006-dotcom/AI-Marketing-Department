@@ -1,0 +1,67 @@
+name: Runtime Lineage Citation Run Isolation V1
+
+on:
+  pull_request:
+    branches:
+      - fix/runtime-evidence-citation-provenance-v1
+    paths:
+      - "runtime/engine.py"
+      - "runtime/lineage.py"
+      - "runtime/context.py"
+      - "tests/test_runtime_lineage_citation_run_isolation_v1.py"
+      - "tests/test_runtime_evidence_citation_provenance_v1.py"
+      - ".github/workflows/runtime-lineage-citation-run-isolation-v1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-lineage-citation-run-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          printf 'expected_sha=%s\nactual_sha=%s\n' "$EXPECTED" "$ACTUAL" | tee .ci-results/identity.txt
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile current production source
+        run: |
+          python -m py_compile runtime/engine.py runtime/lineage.py runtime/context.py
+
+      - name: Run runtime lineage citation isolation regressions
+        shell: bash
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_lineage_citation_run_isolation_v1 \
+            tests.test_runtime_evidence_citation_provenance_v1 \
+            2>&1 | tee .ci-results/targeted-test.log
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-lineage-citation-run-isolation-v1-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+
+# Qualification workflow for PR #232; no production semantics are changed here.

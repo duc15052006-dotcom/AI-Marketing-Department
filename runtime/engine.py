@@ -2742,7 +2742,11 @@ class FiveAgentDepartmentRuntime:
                 learning_candidates=cand_memories,
                 final_cmo_output=context.stage_outputs.get("final_cmo", {}),
                 lineage_summary={
-                    "citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()],
+                    "citations": [
+              c.citation_id
+              for c in self.lineage_inspector.get_all_citations()
+              if c.citation_id in context.knowledge_refs
+          ],
                     "evidence_causal_index": {
                         evidence_id: {
                             "observation_id": lineage.get("observation_id"),
