@@ -143,6 +143,11 @@ class LearningEpisode(BaseModel):
                 "intervention_id/control_ref are valid only for EXPERIMENT method"
             )
 
+        # BaseModel instances remain mutable after construction. Preserve the
+        # complete normalized semantic envelope so a structurally-valid
+        # post-validation rewrite cannot acquire new learning authority.
+        self._semantic_snapshot = copy.deepcopy(self.model_dump())
+
 
 class LearningDecision(BaseModel):
     """Auditable result of one hypothesis-evaluation episode."""
@@ -225,6 +230,14 @@ def _canonical_learning_episode(episode: LearningEpisode) -> LearningEpisode:
 
     if not isinstance(episode, LearningEpisode):
         raise ValidationError("episode must be a LearningEpisode")
+
+    original_snapshot = getattr(episode, "_semantic_snapshot", None)
+    current_snapshot = copy.deepcopy(episode.model_dump())
+    if original_snapshot is None or current_snapshot != original_snapshot:
+        raise ValidationError(
+            "learning episode semantic state changed after validation"
+        )
+
     return LearningEpisode(
         episode_id=episode.episode_id,
         goal_id=episode.goal_id,
