@@ -19,6 +19,7 @@ from brain.contracts import BrainAgentId
 from brain.evidence import (
     ClaimEvidenceRequest,
     ClaimVerdict,
+    EvidenceSignal,
     assess_claim_evidence,
 )
 from brain.metacognition import LearningStrategy
@@ -142,6 +143,11 @@ class LearningEpisode(BaseModel):
                 "intervention_id/control_ref are valid only for EXPERIMENT method"
             )
 
+        # BaseModel instances remain mutable after construction. Preserve the
+        # complete normalized semantic envelope so a structurally-valid
+        # post-validation rewrite cannot acquire new learning authority.
+        self._semantic_snapshot = copy.deepcopy(self.model_dump())
+
 
 class LearningDecision(BaseModel):
     """Auditable result of one hypothesis-evaluation episode."""
@@ -200,12 +206,58 @@ class LearningDecision(BaseModel):
                 )
 
 
-def analyze_learning_episode(episode: LearningEpisode) -> LearningDecision:
-    """Convert canonical evidence into a conservative semantic learning update."""
+def _canonical_evidence_request(request: ClaimEvidenceRequest) -> ClaimEvidenceRequest:
+    if not isinstance(request, ClaimEvidenceRequest):
+        raise ValidationError("evidence_request must be a ClaimEvidenceRequest")
+    if not isinstance(request.evidence, list):
+        raise ValidationError("evidence must be a list of EvidenceSignal")
+    evidence: List[EvidenceSignal] = []
+    for raw in request.evidence:
+        if not isinstance(raw, EvidenceSignal):
+            raise ValidationError("evidence must contain only EvidenceSignal items")
+        evidence.append(EvidenceSignal(**copy.deepcopy(raw.model_dump())))
+    return ClaimEvidenceRequest(
+        assessment_id=request.assessment_id,
+        goal_id=request.goal_id,
+        claim_id=request.claim_id,
+        agent_id=request.agent_id,
+        evidence=evidence,
+    )
+
+
+def _canonical_learning_episode(episode: LearningEpisode) -> LearningEpisode:
+    """Revalidate the full mutable learning envelope at its authority boundary."""
 
     if not isinstance(episode, LearningEpisode):
         raise ValidationError("episode must be a LearningEpisode")
-    episode = copy.deepcopy(episode)
+
+    original_snapshot = getattr(episode, "_semantic_snapshot", None)
+    current_snapshot = copy.deepcopy(episode.model_dump())
+    if original_snapshot is None or current_snapshot != original_snapshot:
+        raise ValidationError(
+            "learning episode semantic state changed after validation"
+        )
+
+    return LearningEpisode(
+        episode_id=episode.episode_id,
+        goal_id=episode.goal_id,
+        agent_id=episode.agent_id,
+        hypothesis_id=episode.hypothesis_id,
+        claim_kind=episode.claim_kind,
+        method=episode.method,
+        hypothesis=episode.hypothesis,
+        prediction=episode.prediction,
+        evidence_request=_canonical_evidence_request(episode.evidence_request),
+        intervention_id=episode.intervention_id,
+        control_ref=episode.control_ref,
+        context_refs=copy.deepcopy(episode.context_refs),
+    )
+
+
+def analyze_learning_episode(episode: LearningEpisode) -> LearningDecision:
+    """Convert canonical evidence into a conservative semantic learning update."""
+
+    episode = _canonical_learning_episode(episode)
 
     assessment = assess_claim_evidence(episode.evidence_request)
     evidence_refs: List[str] = []
