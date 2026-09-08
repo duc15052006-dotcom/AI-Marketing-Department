@@ -2631,7 +2631,11 @@ class FiveAgentDepartmentRuntime:
 
     def complete_run(self, context: RuntimeContext) -> DepartmentRunArtifact:
         """Finalize the supervised run, record candidate memories and produce sealed artifact."""
-        context.current_stage = RuntimeStage.COMPLETED
+        # Cancellation is absorbing lifecycle authority. Sealing a cancelled run
+        # must preserve the stage at which cancellation won instead of relabeling
+        # that lifecycle as COMPLETED.
+        if context.status != RuntimeStatus.CANCELLED:
+            context.current_stage = RuntimeStage.COMPLETED
         if context.status not in (RuntimeStatus.FAILED, RuntimeStatus.CANCELLED):
             if context.stage_outputs.get("final_cmo", {}).get("status") == "CANCELLED":
                 context.status = RuntimeStatus.CANCELLED
