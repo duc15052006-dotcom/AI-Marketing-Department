@@ -25,7 +25,7 @@ class RuntimeContinuityAuthorityStackV1Tests(unittest.TestCase):
         self.scheduler_db = str(root / "mission-wakes.sqlite3")
         self.lease_db = str(root / "mission-leases.sqlite3")
         self.checkpoint_db = str(root / "mission-checkpoints.sqlite3")
-        self.base = datetime(2026, 9, 8, 18, 0, tzinfo=timezone.utc)
+        self.base = datetime.now(timezone.utc)
         self.now = [self.base]
         self._open_runtime()
         self.mission = self._create_mission()
