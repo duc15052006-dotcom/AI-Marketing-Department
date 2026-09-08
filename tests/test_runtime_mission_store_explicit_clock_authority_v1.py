@@ -84,16 +84,17 @@ class RuntimeMissionStoreExplicitClockAuthorityV1Tests(unittest.TestCase):
 
     def test_explicit_authority_time_is_used_instead_of_host_wall_clock(self) -> None:
         lease = self._lease_and_activate()
-        _ControlledDateTime.current = self.base + timedelta(seconds=11)
 
-        with patch.object(mission_store_module, "datetime", _ControlledDateTime):
-            self.store.save_mission_fenced(
-                self.mission,
-                worker_id=lease.lease_owner or "",
-                lease_token=lease.lease_token or "",
-                fencing_token=lease.fencing_token,
-                now=self.base + timedelta(seconds=1),
-            )
+        # The durable lease expires in 2001, far behind the real hosted runner
+        # wall clock. This succeeds only if the explicit authority time governs
+        # the fenced validation rather than the host clock.
+        self.store.save_mission_fenced(
+            self.mission,
+            worker_id=lease.lease_owner or "",
+            lease_token=lease.lease_token or "",
+            fencing_token=lease.fencing_token,
+            now=self.base + timedelta(seconds=1),
+        )
 
         restored = self.store.get_mission(
             self.mission.mission_id,
