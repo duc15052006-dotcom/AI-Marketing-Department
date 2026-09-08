@@ -57,6 +57,14 @@ from brain.hypotheses import (
     assess_hypothesis_portfolio,
     prioritize_research_agenda,
 )
+from brain.knowledge_graph import (
+    KnowledgeEntity,
+    KnowledgeGraphRequest,
+    KnowledgeGraphSnapshot,
+    KnowledgeRelationSpec,
+    KnowledgeRelationView,
+    build_knowledge_graph,
+)
 from brain.learning import (
     LearningClaimKind,
     LearningDecision,
@@ -155,8 +163,13 @@ __all__ = [
     "HypothesisPortfolioRequest",
     "InformationValue",
     "InquiryCost",
+    "KnowledgeEntity",
     "KnowledgeGap",
     "KnowledgeGapKind",
+    "KnowledgeGraphRequest",
+    "KnowledgeGraphSnapshot",
+    "KnowledgeRelationSpec",
+    "KnowledgeRelationView",
     "KnowledgeState",
     "LearningClaimKind",
     "LearningDecision",
@@ -207,6 +220,7 @@ __all__ = [
     "assess_hypothesis_portfolio",
     "assess_metacognition",
     "build_goal_decomposition",
+    "build_knowledge_graph",
     "build_world_state",
     "compare_counterfactuals",
     "derive_knowledge_gaps",
