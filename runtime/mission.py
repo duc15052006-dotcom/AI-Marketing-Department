@@ -313,6 +313,46 @@ class CommitmentRecord(BaseModel):
 
         object.__setattr__(self, name, value)
 
+    def model_copy(
+        self,
+        update: Optional[Dict[str, Any]] = None,
+        deep: bool = False,
+    ) -> "CommitmentRecord":
+        """Copy this snapshot without allowing copy-time authority replacement."""
+
+        import copy
+        from dataclasses import fields
+
+        protected_fields = {
+            "commitment_id",
+            "mission_id",
+            "business_id",
+            "project_id",
+            "user_id",
+            "authority_mode",
+            "active",
+            "deadline_at",
+            "budget_limits",
+            "stop_conditions",
+            "revision",
+            "supersedes_commitment_id",
+        }
+        requested = dict(update or {})
+        for name in protected_fields.intersection(requested):
+            if requested[name] != getattr(self, name):
+                raise CommitmentMutationError(
+                    "COMMITMENT_COPY_UPDATE_REQUIRES_REVISION"
+                )
+
+        # BaseModel.model_dump() intentionally serializes runtime types such as
+        # datetime. Copy from raw dataclass fields so a Commitment snapshot keeps
+        # its executable runtime types and is detached again by __post_init__.
+        data = {field.name: getattr(self, field.name) for field in fields(self)}
+        data.update(requested)
+        if deep:
+            data = copy.deepcopy(data)
+        return self.__class__(**data)
+
     def revise(
         self,
         *,
