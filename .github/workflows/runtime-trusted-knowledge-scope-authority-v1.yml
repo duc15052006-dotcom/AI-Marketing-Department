@@ -3,7 +3,7 @@ name: Runtime Trusted Knowledge Scope Authority V1
 on:
   pull_request:
     branches:
-      - fix/runtime-stage-lineage-citation-isolation-v1
+      - checkpoint/pr232-qualified-3d565378
     paths:
       - "runtime/engine.py"
       - "runtime/context.py"
