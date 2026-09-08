@@ -1,4 +1,4 @@
-"""Provider-neutral cognitive domain for the five-agent marketing brain.
+"""Provider-neutral cognitive domain for the five-ASI marketing brain.
 
 This package intentionally owns only semantic cognition contracts. It must not
 import runtime, tools, provider integrations, persistence, or connector code.
@@ -15,6 +15,17 @@ from brain.contracts import (
     StopDecision,
     StopReason,
     UnknownRecord,
+)
+from brain.metacognition import (
+    GapResolutionDirective,
+    KnowledgeGap,
+    KnowledgeGapKind,
+    KnowledgeState,
+    LearningStrategy,
+    MetacognitionDecision,
+    MetacognitionRequest,
+    assess_metacognition,
+    derive_knowledge_gaps,
 )
 from brain.planning import (
     PlanRevision,
@@ -41,8 +52,15 @@ __all__ = [
     "DecisionDisposition",
     "DecisionRecord",
     "EvidenceNeed",
+    "GapResolutionDirective",
     "GoalSpec",
     "GoalStatus",
+    "KnowledgeGap",
+    "KnowledgeGapKind",
+    "KnowledgeState",
+    "LearningStrategy",
+    "MetacognitionDecision",
+    "MetacognitionRequest",
     "PlanRevision",
     "PlanSnapshot",
     "PlanStatus",
@@ -58,6 +76,8 @@ __all__ = [
     "StopReason",
     "UnknownRecord",
     "apply_plan_revision",
+    "assess_metacognition",
+    "derive_knowledge_gaps",
     "ready_step_ids",
     "select_reasoning_depth",
 ]
