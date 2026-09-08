@@ -391,6 +391,8 @@ class TestProdSec01RRHTTPTrustBoundary(unittest.TestCase):
             capability_id="social_publishing",
             parameters=params,
             run_id="RUN-API-LIFECYCLE-01",
+            business_id="BIZ-API-LIFECYCLE-01",
+            project_id="PROJ-API-LIFECYCLE-01",
         )
 
         # 2. GET /api/approvals returns the pending proposal
@@ -411,6 +413,17 @@ class TestProdSec01RRHTTPTrustBoundary(unittest.TestCase):
         self.assertEqual(code_det, 200)
         self.assertEqual(det_data.get("pending_approval_id"), pending.pending_approval_id)
         self.assertEqual(det_data.get("status"), "PENDING")
+        self.assertEqual(det_data.get("project_id"), "PROJ-API-LIFECYCLE-01")
+
+        # Caller cannot widen or switch the project while approving.
+        code_project, _, project_data = self._request(
+            "POST",
+            f"/api/approvals/{pending.pending_approval_id}/approve",
+            payload={"project_id": "PROJ-ATTACKER"},
+            headers={"Authorization": f"Bearer {GLOBAL_API_SESSION_TOKEN}"},
+        )
+        self.assertEqual(code_project, 400)
+        self.assertEqual(project_data.get("error"), "APPROVAL_TAMPERING_REJECTED")
 
         # 4. Caller attempts to tamper with parameters during approve -> BLOCKED
         code_tamper, _, tamper_data = self._request(
@@ -432,6 +445,7 @@ class TestProdSec01RRHTTPTrustBoundary(unittest.TestCase):
         self.assertEqual(code_appr, 200)
         self.assertTrue(appr_data.get("success"))
         self.assertEqual(appr_data.get("status"), "APPROVED")
+        self.assertEqual(appr_data.get("project_id"), "PROJ-API-LIFECYCLE-01")
         token = appr_data.get("approval_token")
         self.assertTrue(token.startswith("appr_"))
 
