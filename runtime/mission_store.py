@@ -290,6 +290,7 @@ class MissionStore:
         worker_id: str,
         lease_token: str,
         fencing_token: int,
+        now: Optional[datetime] = None,
     ) -> None:
         """Atomically validate the current execution fence and persist Mission.
 
@@ -304,6 +305,15 @@ class MissionStore:
             raise MissionStoreAuthorityError("MISSION_STORE_LEASE_TOKEN_REQUIRED")
         if not isinstance(fencing_token, int) or isinstance(fencing_token, bool) or fencing_token < 1:
             raise MissionStoreAuthorityError("MISSION_STORE_FENCING_TOKEN_INVALID")
+        explicit_reference: Optional[datetime] = None
+        if now is not None:
+            if (
+                not isinstance(now, datetime)
+                or now.tzinfo is None
+                or now.utcoffset() is None
+            ):
+                raise ValueError("MISSION_STORE_NOW_MUST_BE_TIMEZONE_AWARE")
+            explicit_reference = now.astimezone(timezone.utc)
 
         fields = self._snapshot_fields(mission)
         mission_id, business_id, project_id, user_id, payload_json, updated_at = fields
@@ -365,10 +375,14 @@ class MissionStore:
                         "MISSION_STORE_EXECUTION_LEASE_EXPIRY_NOT_TIMEZONE_AWARE"
                     )
 
-                # Evaluate lease expiry only after the durable transaction and
-                # authoritative lease read. Contention cannot reuse a stale
-                # pre-transaction clock to authorize a Mission snapshot write.
-                reference = datetime.now(timezone.utc)
+                # Preserve the transaction-local sampling hardening for ordinary
+                # wall-clock callers. Only a caller that explicitly supplies a
+                # deterministic authority time may override that local sample.
+                reference = (
+                    explicit_reference
+                    if explicit_reference is not None
+                    else datetime.now(timezone.utc)
+                )
                 if expires_at.astimezone(timezone.utc) <= reference:
                     raise MissionStoreAuthorityError(
                         "MISSION_STORE_EXECUTION_LEASE_EXPIRED"
