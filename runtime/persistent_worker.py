@@ -119,6 +119,7 @@ class PersistentMissionWorker:
         self._scheduler = scheduler
         self._mission_leases = mission_leases
         self._checkpoints = checkpoints
+        self._clock_is_explicit = clock is not None
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._dispatcher = MissionWakeDispatcher(
             mission_store=mission_store,
@@ -133,6 +134,17 @@ class PersistentMissionWorker:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("PERSISTENT_WORKER_NOW_MUST_BE_TIMEZONE_AWARE")
         return value.astimezone(timezone.utc)
+
+    def _authority_now(self) -> Optional[datetime]:
+        """Preserve omitted authority time until the downstream authority layer.
+
+        A caller-injected clock is an explicit deterministic authority seam and
+        is propagated.  The worker's ordinary default wall clock is not sampled
+        early and converted into caller-controlled time before Dispatcher /
+        Scheduler / Mission-lease authority is reached.
+        """
+
+        return self._now() if self._clock_is_explicit else None
 
     @staticmethod
     def _require_worker_id(worker_id: object) -> str:
@@ -187,7 +199,7 @@ class PersistentMissionWorker:
         grant: MissionExecutionGrant,
     ) -> MissionExecutionGrant:
         try:
-            return self._dispatcher.validate(grant, now=self._now())
+            return self._dispatcher.validate(grant, now=self._authority_now())
         except (MissionDispatchLeaseLostError, MissionDispatchAuthorityError) as exc:
             raise self._authority_error(exc) from exc
 
@@ -208,7 +220,7 @@ class PersistentMissionWorker:
         try:
             grant = self._dispatcher.claim_next(
                 worker_id=normalized_worker,
-                now=self._now(),
+                now=self._authority_now(),
                 wake_lease_seconds=wake_lease_seconds,
                 mission_lease_seconds=mission_lease_seconds,
             )
@@ -273,7 +285,7 @@ class PersistentMissionWorker:
             next_wake_id = next_wake.wake_id
 
         try:
-            self._dispatcher.finish_delivery(grant, now=self._now())
+            self._dispatcher.finish_delivery(grant, now=self._authority_now())
         except (MissionDispatchLeaseLostError, MissionDispatchAuthorityError) as exc:
             raise self._authority_error(exc) from exc
 
