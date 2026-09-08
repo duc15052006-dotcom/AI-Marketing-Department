@@ -11,11 +11,12 @@ on:
       - ".github/workflows/runtime-citation-ownership-isolation-v1.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   runtime-citation-ownership-isolation:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@v4
@@ -42,49 +43,14 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Apply atomic citation ownership claim patch once
+      - name: Compile touched source and regressions
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("runtime/engine.py")
-          text = path.read_text(encoding="utf-8")
-          marker = "# Commit citation ownership only after artifact integrity sealing succeeds."
-          if marker in text:
-              print("atomic citation ownership marker already present; no-op")
-              raise SystemExit(0)
-
-          premature_claim = (
-              "            for citation_id in sealed_citation_ids:\n"
-              "                self._citation_owner_by_id[citation_id] = context.run_id\n"
-              "\n"
-          )
-          if text.count(premature_claim) != 1:
-              raise SystemExit(f"unexpected premature claim count: {text.count(premature_claim)}")
-          text = text.replace(premature_claim, "", 1)
-
-          hash_anchor = "            artifact.final_artifact_hash = artifact.compute_artifact_hash()\n\n"
-          committed_claim = (
-              hash_anchor
-              + "            # Commit citation ownership only after artifact integrity sealing succeeds.\n"
-              + "            # A failed artifact construction/hash must not poison ownership.\n"
-              + "            for citation_id in sealed_citation_ids:\n"
-              + "                self._citation_owner_by_id[citation_id] = context.run_id\n"
-              + "\n"
-          )
-          if text.count(hash_anchor) != 1:
-              raise SystemExit(f"unexpected artifact hash anchor count: {text.count(hash_anchor)}")
-          text = text.replace(hash_anchor, committed_claim, 1)
-
-          path.write_text(text, encoding="utf-8")
-          print("atomic citation ownership claim patch applied")
-          PY
-          git diff --check
-          git diff -- runtime/engine.py | tee .ci-results/production-patch.diff
-
-      - name: Compile patched production source
-        run: python -m py_compile runtime/engine.py
+          python -m py_compile \
+            runtime/engine.py \
+            tests/test_runtime_lineage_citation_run_isolation_v1.py \
+            tests/test_runtime_evidence_citation_provenance_v1.py \
+            2>&1 | tee .ci-results/compile.log
 
       - name: Run citation ownership regressions
         shell: bash
@@ -94,20 +60,7 @@ jobs:
             tests.test_runtime_evidence_citation_provenance_v1 \
             2>&1 | tee .ci-results/targeted-test.log
 
-      - name: Commit and push atomicity patch when present
-        shell: bash
-        run: |
-          if git diff --quiet -- runtime/engine.py; then
-            echo "No production diff to push."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/engine.py
-          git commit -m "fix(runtime): claim citation ownership after artifact seal"
-          git push origin HEAD:${{ github.head_ref }}
-
-      - name: Upload qualification evidence
+      - name: Upload exact-head qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -115,7 +68,4 @@ jobs:
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
-
-# TEMPORARY ONE-SHOT ATOMICITY PATCHER: remove contents:write and patch/push
-# steps immediately after the guarded production commit lands. Final exact-head
-# GREEN evidence must come from the cleaned read-only workflow.
+          retention-days: 14
