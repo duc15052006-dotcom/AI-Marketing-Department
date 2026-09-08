@@ -10,6 +10,14 @@ from brain.adaptive_replanning import (
     ReplanSignal,
     apply_adaptive_replan,
 )
+from brain.cognitive_loop import (
+    CognitiveCycle,
+    CognitiveCycleRequest,
+    CognitiveDirective,
+    CognitiveDirectiveKind,
+    CognitivePhase,
+    derive_cognitive_cycle,
+)
 from brain.contracts import (
     ActionIntent,
     BrainAgentId,
@@ -137,6 +145,11 @@ __all__ = [
     "BeliefRevision",
     "BeliefStatus",
     "BrainAgentId",
+    "CognitiveCycle",
+    "CognitiveCycleRequest",
+    "CognitiveDirective",
+    "CognitiveDirectiveKind",
+    "CognitivePhase",
     "CognitiveReflectionReport",
     "CognitiveReflectionRequest",
     "CounterfactualComparison",
@@ -223,6 +236,7 @@ __all__ = [
     "build_knowledge_graph",
     "build_world_state",
     "compare_counterfactuals",
+    "derive_cognitive_cycle",
     "derive_knowledge_gaps",
     "evaluate_meta_learning",
     "prioritize_research_agenda",
