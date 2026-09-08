@@ -55,7 +55,7 @@ class RuntimeTrustedLegacyScopeAuthorityV1Tests(unittest.TestCase):
             knowledge_repo,
             title="trusted-legacy-scope",
             content="scope lineage TRUSTED_LEGACY_KNOWLEDGE",
-            scope="SCOPE_PILOT_CARDIO",
+            scope="SCOPE_BIZ_A",
         )
         spoof_doc = self._save_knowledge(
             knowledge_repo,
@@ -66,7 +66,7 @@ class RuntimeTrustedLegacyScopeAuthorityV1Tests(unittest.TestCase):
         trusted_memory = self._save_memory(
             memory_repo,
             content="scope lineage TRUSTED_LEGACY_MEMORY",
-            scope="SCOPE_PILOT_CARDIO",
+            scope="SCOPE_BIZ_A",
         )
         spoof_memory = self._save_memory(
             memory_repo,
@@ -85,8 +85,8 @@ class RuntimeTrustedLegacyScopeAuthorityV1Tests(unittest.TestCase):
             objective="scope lineage",
             business_id="BIZ_A",
             campaign_id="CAMP_A",
-            trusted_knowledge_scope="SCOPE_PILOT_CARDIO",
-            trusted_memory_scope="SCOPE_PILOT_CARDIO",
+            trusted_knowledge_scope="SCOPE_BIZ_A",
+            trusted_memory_scope="SCOPE_BIZ_A",
         )
 
         with self.assertRaises(AttributeError):
