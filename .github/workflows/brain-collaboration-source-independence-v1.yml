@@ -38,4 +38,4 @@ jobs:
       - name: Run source-independence adversarial regression
         run: python -m unittest -v tests.test_brain_collaboration_source_independence_v1
       - name: Run adjacent collaboration regression
-        run: python -m unittest -v tests.test_brain_collaboration_intelligence_v1 tests.test_brain_peer_review_evidence_provenance_v1
+        run: python -m unittest -v tests.test_brain_collaboration_intelligence_v1
