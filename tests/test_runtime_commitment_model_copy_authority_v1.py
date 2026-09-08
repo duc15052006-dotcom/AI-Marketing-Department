@@ -1,4 +1,4 @@
-"""Adversarial RED regressions for Commitment model_copy authority.
+"""Adversarial regressions for Commitment model_copy authority.
 
 Invariant: model_copy(update=...) must not bypass immutable Commitment authority.
 Differing protected updates require the explicit revision boundary, while plain
@@ -83,6 +83,22 @@ class CommitmentModelCopyAuthorityV1Tests(unittest.TestCase):
         )
         self.assertEqual(commitment.budget_limits, {"spend_usd": 100.0})
 
+    def test_remaining_protected_fields_require_revision(self):
+        commitment = self._commitment()
+        differing_updates = {
+            "business_id": "BIZ-OTHER",
+            "project_id": "PROJECT-OTHER",
+            "user_id": "USER-OTHER",
+            "deadline_at": commitment.deadline_at + timedelta(days=1),
+            "stop_conditions": ["BUDGET_EXHAUSTED"],
+            "revision": commitment.revision + 1,
+            "supersedes_commitment_id": "COMMIT-COPY-PREVIOUS",
+        }
+
+        for field_name, value in differing_updates.items():
+            with self.subTest(field=field_name):
+                self._assert_copy_revision_error(commitment, {field_name: value})
+
     def test_plain_model_copy_is_allowed_control(self):
         commitment = self._commitment()
         copied = commitment.model_copy()
@@ -97,13 +113,36 @@ class CommitmentModelCopyAuthorityV1Tests(unittest.TestCase):
     def test_same_value_protected_update_is_allowed_control(self):
         commitment = self._commitment()
         copied = commitment.model_copy(
-            update={"commitment_id": commitment.commitment_id}
+            update={
+                "commitment_id": commitment.commitment_id,
+                "mission_id": commitment.mission_id,
+                "business_id": commitment.business_id,
+                "project_id": commitment.project_id,
+                "user_id": commitment.user_id,
+                "authority_mode": commitment.authority_mode,
+                "active": commitment.active,
+                "deadline_at": commitment.deadline_at,
+                "budget_limits": commitment.budget_limits,
+                "stop_conditions": commitment.stop_conditions,
+                "revision": commitment.revision,
+                "supersedes_commitment_id": commitment.supersedes_commitment_id,
+            }
         )
 
         self.assertIsInstance(copied, CommitmentRecord)
         self.assertIsNot(copied, commitment)
         self.assertEqual(copied.commitment_id, commitment.commitment_id)
-        self.assertEqual(commitment.commitment_id, "COMMIT-COPY-001")
+        self.assertEqual(copied.mission_id, commitment.mission_id)
+        self.assertEqual(copied.business_id, commitment.business_id)
+        self.assertEqual(copied.project_id, commitment.project_id)
+        self.assertEqual(copied.user_id, commitment.user_id)
+        self.assertEqual(copied.authority_mode, commitment.authority_mode)
+        self.assertEqual(copied.active, commitment.active)
+        self.assertEqual(copied.deadline_at, commitment.deadline_at)
+        self.assertEqual(copied.budget_limits, commitment.budget_limits)
+        self.assertEqual(copied.stop_conditions, commitment.stop_conditions)
+        self.assertEqual(copied.revision, commitment.revision)
+        self.assertEqual(copied.supersedes_commitment_id, commitment.supersedes_commitment_id)
 
 
 if __name__ == "__main__":
