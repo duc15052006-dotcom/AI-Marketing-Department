@@ -316,8 +316,28 @@ class ToolGateway:
         last_exc: Optional[BaseException] = None
         exception_error_code: Optional[str] = None
         ambiguous_external_outcome = False
+        execution_intent = None
+        adapter_execution_mode = self._resolve_execution_mode(adapter, cap.capability_id)
 
         try:
+            if cap_is_consequential:
+                execution_intent = self.receipt_repository.prepare_execution_intent(
+                    request_id=request.request_id,
+                    run_id=request.run_id,
+                    agent_id=request.agent_id,
+                    capability_id=request.capability_id,
+                    provider=adapter.adapter_name,
+                    request_hash=req_hash,
+                    execution_mode=adapter_execution_mode,
+                    business_id=request.business_id,
+                    project_id=request.project_id,
+                    chat_id=request.chat_id,
+                    approval_reference=request.approval_token,
+                )
+                self.receipt_repository.mark_execution_intent_dispatching(
+                    execution_intent.intent_id
+                )
+
             for attempt in range(max_retries + 1):
                 try:
                     adapter_res = adapter.execute(
@@ -434,4 +454,10 @@ class ToolGateway:
                 chat_id=request.chat_id,
             )
 
+        if execution_intent is not None:
+            return self.receipt_repository.finalize_execution_intent(
+                execution_intent.intent_id,
+                receipt,
+                ambiguous=ambiguous_external_outcome,
+            )
         return self.receipt_repository.save_receipt(receipt)
