@@ -24,6 +24,15 @@ from brain.learning import (
     LearningMethod,
     analyze_learning_episode,
 )
+from brain.meta_learning import (
+    MetaLearningDecision,
+    MetaLearningDisposition,
+    MetaLearningRequest,
+    StrategyPerformance,
+    StrategyTrial,
+    TrialEffect,
+    evaluate_meta_learning,
+)
 from brain.metacognition import (
     GapResolutionDirective,
     KnowledgeGap,
@@ -72,6 +81,9 @@ __all__ = [
     "LearningEpisode",
     "LearningMethod",
     "LearningStrategy",
+    "MetaLearningDecision",
+    "MetaLearningDisposition",
+    "MetaLearningRequest",
     "MetacognitionDecision",
     "MetacognitionRequest",
     "PlanRevision",
@@ -87,11 +99,15 @@ __all__ = [
     "SignalLevel",
     "StopDecision",
     "StopReason",
+    "StrategyPerformance",
+    "StrategyTrial",
+    "TrialEffect",
     "UnknownRecord",
     "analyze_learning_episode",
     "apply_plan_revision",
     "assess_metacognition",
     "derive_knowledge_gaps",
+    "evaluate_meta_learning",
     "ready_step_ids",
     "select_reasoning_depth",
 ]
