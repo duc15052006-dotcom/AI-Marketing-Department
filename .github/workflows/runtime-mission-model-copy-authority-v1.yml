@@ -66,6 +66,9 @@ jobs:
           ) -> "MissionRecord":
               """Copy a Mission without bypassing existing authority boundaries."""
 
+              import copy
+              from dataclasses import fields
+
               requested = dict(update or {})
               identity_scope_fields = {
                   "mission_id",
@@ -109,7 +112,11 @@ jobs:
                               f"{current_status.value}->{target_status.value}"
                           )
 
-                  return super().model_copy(update=requested, deep=deep)
+                  data = {field.name: getattr(self, field.name) for field in fields(self)}
+                  data.update(requested)
+                  if deep:
+                      data = copy.deepcopy(data)
+                  return self.__class__(**data)
 
           '''
           text = text.replace(anchor, method + anchor, 1)
