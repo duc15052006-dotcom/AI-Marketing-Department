@@ -311,6 +311,7 @@ class DurableMissionCheckpointStore:
         state: Dict[str, Any],
         source_wake_id: Optional[str] = None,
         worker_cycle: Optional[Dict[str, Any]] = None,
+        now: Optional[datetime] = None,
     ) -> MissionCheckpointRecord:
         """Append one checkpoint under the exact current live Mission fence."""
 
@@ -342,6 +343,15 @@ class DurableMissionCheckpointStore:
             raise MissionCheckpointStateError(
                 "MISSION_CHECKPOINT_SOURCE_WAKE_ID_REQUIRED"
             )
+        explicit_reference: Optional[datetime] = None
+        if now is not None:
+            if (
+                not isinstance(now, datetime)
+                or now.tzinfo is None
+                or now.utcoffset() is None
+            ):
+                raise ValueError("MISSION_CHECKPOINT_NOW_MUST_BE_TIMEZONE_AWARE")
+            explicit_reference = now.astimezone(timezone.utc)
 
         normalized_mission_id = mission_id.strip()
         normalized_business_id = business_id.strip()
@@ -411,10 +421,14 @@ class DurableMissionCheckpointStore:
                         "MISSION_CHECKPOINT_LEASE_EXPIRY_NOT_TIMEZONE_AWARE"
                     )
 
-                # Sample authority time only after the durable transaction and
-                # lease read. Lock/transaction contention must not let an expired
-                # lease reuse a stale pre-authority timestamp.
-                created_at = self._aware_utc_now()
+                # Preserve the transaction-local sampling hardening for ordinary
+                # wall-clock callers. Only a caller that explicitly supplies a
+                # deterministic authority time may override that local sample.
+                created_at = (
+                    explicit_reference
+                    if explicit_reference is not None
+                    else self._aware_utc_now()
+                )
                 encoded_created_at = created_at.isoformat()
                 if expiry.astimezone(timezone.utc) <= created_at:
                     raise MissionCheckpointAuthorityError(
