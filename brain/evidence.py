@@ -182,6 +182,33 @@ def _side_qualifies(signals: List[EvidenceSignal]) -> bool:
     return moderate_sources >= 2
 
 
+def _canonical_request(request: ClaimEvidenceRequest) -> ClaimEvidenceRequest:
+    """Deeply reconstruct authority-bearing evidence at the use boundary.
+
+    ``BaseModel`` instances are intentionally mutable, so construction-time
+    validation cannot be treated as continuing authority. Rebuilding every
+    nested ``EvidenceSignal`` prevents post-validation mutation from laundering
+    an invalid source, enum, binding, or strength into a later assessment.
+    """
+
+    if not isinstance(request.evidence, list):
+        raise ValidationError("evidence must be a list of EvidenceSignal")
+
+    canonical_evidence: List[EvidenceSignal] = []
+    for signal in request.evidence:
+        if not isinstance(signal, EvidenceSignal):
+            raise ValidationError("evidence must contain only EvidenceSignal items")
+        canonical_evidence.append(EvidenceSignal(**signal.model_dump()))
+
+    return ClaimEvidenceRequest(
+        assessment_id=request.assessment_id,
+        goal_id=request.goal_id,
+        claim_id=request.claim_id,
+        agent_id=request.agent_id,
+        evidence=canonical_evidence,
+    )
+
+
 def assess_claim_evidence(request: ClaimEvidenceRequest) -> ClaimEvidenceAssessment:
     """Assess evidence conservatively for one exact goal/claim pair.
 
@@ -194,6 +221,7 @@ def assess_claim_evidence(request: ClaimEvidenceRequest) -> ClaimEvidenceAssessm
 
     if not isinstance(request, ClaimEvidenceRequest):
         raise ValidationError("request must be a ClaimEvidenceRequest")
+    request = _canonical_request(request)
 
     support: List[EvidenceSignal] = []
     contradict: List[EvidenceSignal] = []
