@@ -147,6 +147,8 @@ class LearningDecision(BaseModel):
     """Auditable result of one hypothesis-evaluation episode."""
 
     episode_id: str
+    goal_id: str
+    agent_id: BrainAgentId
     hypothesis_id: str
     disposition: LearningDisposition
     evidence_verdict: ClaimVerdict
@@ -158,6 +160,8 @@ class LearningDecision(BaseModel):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.episode_id = _required_text(self.episode_id, "episode_id")
+        self.goal_id = _required_text(self.goal_id, "goal_id")
+        self.agent_id = _enum(self.agent_id, BrainAgentId, "agent_id")
         self.hypothesis_id = _required_text(self.hypothesis_id, "hypothesis_id")
         self.disposition = _enum(
             self.disposition, LearningDisposition, "disposition"
@@ -212,14 +216,20 @@ def analyze_learning_episode(episode: LearningEpisode) -> LearningDecision:
         if ref not in evidence_refs:
             evidence_refs.append(ref)
 
+    common = {
+        "episode_id": episode.episode_id,
+        "goal_id": episode.goal_id,
+        "agent_id": episode.agent_id,
+        "hypothesis_id": episode.hypothesis_id,
+        "evidence_verdict": assessment.verdict,
+        "evidence_refs": evidence_refs,
+    }
+
     if assessment.verdict == ClaimVerdict.CONTESTED:
         return LearningDecision(
-            episode_id=episode.episode_id,
-            hypothesis_id=episode.hypothesis_id,
+            **common,
             disposition=LearningDisposition.RESOLVE_CONTRADICTION,
-            evidence_verdict=assessment.verdict,
             next_strategy=LearningStrategy.RESOLVE_CONTRADICTION,
-            evidence_refs=evidence_refs,
             reasons=[
                 "conflicting qualifying evidence prevents a stable lesson"
             ],
@@ -227,12 +237,9 @@ def analyze_learning_episode(episode: LearningEpisode) -> LearningDecision:
 
     if assessment.verdict == ClaimVerdict.INSUFFICIENT:
         return LearningDecision(
-            episode_id=episode.episode_id,
-            hypothesis_id=episode.hypothesis_id,
+            **common,
             disposition=LearningDisposition.GATHER_EVIDENCE,
-            evidence_verdict=assessment.verdict,
             next_strategy=LearningStrategy.RESEARCH,
-            evidence_refs=evidence_refs,
             reasons=[
                 "insufficient evidence cannot create a learning update"
             ],
@@ -240,12 +247,9 @@ def analyze_learning_episode(episode: LearningEpisode) -> LearningDecision:
 
     if assessment.verdict == ClaimVerdict.REFUTED:
         return LearningDecision(
-            episode_id=episode.episode_id,
-            hypothesis_id=episode.hypothesis_id,
+            **common,
             disposition=LearningDisposition.REVISE_HYPOTHESIS,
-            evidence_verdict=assessment.verdict,
             next_strategy=LearningStrategy.RESEARCH,
-            evidence_refs=evidence_refs,
             reasons=[
                 "qualifying observed evidence refutes the current hypothesis"
             ],
@@ -261,12 +265,9 @@ def analyze_learning_episode(episode: LearningEpisode) -> LearningDecision:
         and not controlled_causal_test
     ):
         return LearningDecision(
-            episode_id=episode.episode_id,
-            hypothesis_id=episode.hypothesis_id,
+            **common,
             disposition=LearningDisposition.TEST_CAUSALLY,
-            evidence_verdict=assessment.verdict,
             next_strategy=LearningStrategy.EXPERIMENT,
-            evidence_refs=evidence_refs,
             reasons=[
                 "observational support is not enough to promote a causal lesson",
                 "causal learning requires an explicit intervention and control reference",
@@ -274,12 +275,9 @@ def analyze_learning_episode(episode: LearningEpisode) -> LearningDecision:
         )
 
     return LearningDecision(
-        episode_id=episode.episode_id,
-        hypothesis_id=episode.hypothesis_id,
+        **common,
         disposition=LearningDisposition.CANDIDATE_LESSON,
-        evidence_verdict=assessment.verdict,
         next_strategy=LearningStrategy.NONE,
-        evidence_refs=evidence_refs,
         lesson_candidate=episode.hypothesis,
         reasons=[
             "qualifying observed evidence supports the hypothesis",
