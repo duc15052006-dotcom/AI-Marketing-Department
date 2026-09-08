@@ -10,7 +10,7 @@ import copy
 import hashlib
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -241,6 +241,38 @@ class RuntimeContext(BaseModel):
                 "Runtime context scope is strictly immutable across all execution stages."
             )
         super().__setattr__(name, value)
+
+    def model_copy(
+        self,
+        update: Optional[Dict[str, Any]] = None,
+        deep: bool = False,
+    ) -> "RuntimeContext":
+        """Copy this context without allowing copy-time scope rebinding."""
+
+        protected_fields = {
+            "run_id",
+            "business_id",
+            "project_id",
+            "chat_id",
+            "campaign_id",
+            "user_id",
+        }
+        requested = dict(update or {})
+        for name in protected_fields.intersection(requested):
+            if requested[name] != getattr(self, name):
+                raise AttributeError(
+                    f"Cannot mutate authoritative scope field '{name}' on active RuntimeContext. "
+                    "Runtime context scope is strictly immutable across all execution stages."
+                )
+
+        # BaseModel.model_dump() serializes runtime types such as datetime,
+        # Enum values, and nested BaseModel instances. Copy raw dataclass fields
+        # so the copied RuntimeContext remains executable runtime state.
+        data = {field.name: getattr(self, field.name) for field in fields(self)}
+        data.update(requested)
+        if deep:
+            data = copy.deepcopy(data)
+        return self.__class__(**data)
 
     @property
     def scope(self) -> AuthoritativeScope:
