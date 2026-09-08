@@ -268,6 +268,34 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             conn.rollback()
             raise
 
+    def _migrate_plaintext_attachment_local_refs(self, conn: sqlite3.Connection) -> None:
+        """Atomically protect legacy attachment local storage references."""
+        marker = conn.execute(
+            "SELECT 1 FROM chat_payload_migrations WHERE migration_key = ?",
+            ("attachment_local_ref_at_rest_v1",),
+        ).fetchone()
+        if marker:
+            return
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for row in conn.execute(
+                "SELECT attachment_id, local_storage_ref FROM chat_attachments WHERE local_storage_ref IS NOT NULL"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE chat_attachments SET local_storage_ref = ? WHERE attachment_id = ?",
+                    (self._protect_text(row["local_storage_ref"]), row["attachment_id"]),
+                )
+
+            conn.execute(
+                "INSERT INTO chat_payload_migrations (migration_key, applied_at) VALUES (?, ?)",
+                ("attachment_local_ref_at_rest_v1", datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(
@@ -360,6 +388,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
 
             self._migrate_v1_plaintext_payloads(conn)
             self._migrate_plaintext_session_titles(conn)
+            self._migrate_plaintext_attachment_local_refs(conn)
 
     # =========================================================================
     # ChatSession Methods
@@ -396,12 +425,10 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 ),
             )
 
-            # Persist any messages that might not yet be in DB
             for idx, msg in enumerate(session.messages):
                 msg.sequence_number = idx
                 self._save_message_with_conn(conn, msg)
 
-            # Persist attachments
             for att in session.attachments:
                 self._save_attachment_with_conn(conn, att)
 
@@ -562,7 +589,6 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             ),
         )
 
-        # Save any attachments attached directly to this message
         for att in getattr(message, "attachments", []):
             if not att.chat_id:
                 att.chat_id = message.chat_id
@@ -581,7 +607,6 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
         messages = [self._row_to_message(r) for r in rows]
         attachments = self._list_attachments_with_conn(conn, chat_id)
         if attachments and messages:
-            # Associate attachments to messages in this chat
             for msg in messages:
                 if msg.role == ChatRole.USER:
                     msg.attachments = [a for a in attachments if a.chat_id == chat_id]
@@ -631,7 +656,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 self._protect_text(attachment.content),
                 attachment.content_hash,
                 getattr(attachment, "source_type", "INLINE_UPLOAD"),
-                getattr(attachment, "local_storage_ref", None),
+                self._protect_text(getattr(attachment, "local_storage_ref", None)),
                 attachment.created_at.isoformat() if isinstance(attachment.created_at, datetime) else str(attachment.created_at),
                 getattr(attachment, "parser_status", "PARSED"),
                 attachment.content_size_bytes,
@@ -731,7 +756,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             content_hash=row["content_hash"],
             created_at=created_dt,
             source_type=row["source_type"],
-            local_storage_ref=row["local_storage_ref"],
+            local_storage_ref=self._unprotect_text(row["local_storage_ref"]) if row["local_storage_ref"] is not None else None,
             parser_status=row["parser_status"],
             content_size_bytes=row["content_size_bytes"],
         )
