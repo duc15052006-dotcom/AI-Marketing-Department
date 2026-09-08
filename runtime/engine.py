@@ -2779,9 +2779,6 @@ class FiveAgentDepartmentRuntime:
                 sealed_citation_ids.append(citation_id)
                 seen_citation_ids.add(citation_id)
 
-            for citation_id in sealed_citation_ids:
-                self._citation_owner_by_id[citation_id] = context.run_id
-
             artifact = DepartmentRunArtifact(
                 run_id=context.run_id,
                 objective=context.objective,
@@ -2822,6 +2819,11 @@ class FiveAgentDepartmentRuntime:
                 errors=context.risk_flags,
             )
             artifact.final_artifact_hash = artifact.compute_artifact_hash()
+
+            # Commit citation ownership only after artifact integrity sealing succeeds.
+            # A failed artifact construction/hash must not poison ownership.
+            for citation_id in sealed_citation_ids:
+                self._citation_owner_by_id[citation_id] = context.run_id
 
             self._completed_runs[context.run_id] = artifact
             while len(self._completed_runs) > self.max_completed_runs_cache:
