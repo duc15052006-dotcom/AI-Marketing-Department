@@ -94,7 +94,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: runtime-completed-run-artifact-cache-isolation-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
-          path: .ci-results/
+          path: |
+            .ci-results/
+            runtime/engine.py
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
