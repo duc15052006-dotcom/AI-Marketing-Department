@@ -76,10 +76,12 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         self.assertIn(CapabilityCategory.ANALYZE, categories)
         self.assertIn(CapabilityCategory.FILE_DATA, categories)
 
+        # Query by category
         publish_caps = self.cap_registry.list_capabilities(CapabilityCategory.PUBLISH)
         self.assertTrue(all(c.category == CapabilityCategory.PUBLISH for c in publish_caps))
         self.assertIn("social_publishing", [c.capability_id for c in publish_caps])
 
+        # Query for specific agent
         intel_caps = self.cap_registry.list_capabilities_for_agent("intelligence")
         intel_ids = [c.capability_id for c in intel_caps]
         self.assertIn("web_search", intel_ids)
@@ -100,6 +102,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
 
     def test_creative_agent_permission_boundaries(self):
         """Verify Creative agent can execute local creation but cannot execute external analytics or publish."""
+        # Allowed local image creation
         req_allowed = ToolRequest(
             agent_id="creative",
             capability_id="image_generation",
@@ -108,6 +111,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         receipt_allowed = self.gateway.execute(req_allowed)
         self.assertEqual(receipt_allowed.status, ExecutionStatus.SUCCESS)
 
+        # Blocked analytics retrieval
         req_blocked = ToolRequest(
             agent_id="creative",
             capability_id="attribution_data_access",
@@ -172,6 +176,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         self.assertTrue(len(receipt.result_hash) == 64)
         self.assertIsNotNone(receipt.data)
 
+        # Stored in repository
         stored = self.receipt_repo.get_receipt(receipt.execution_id)
         self.assertIsNotNone(stored)
         self.assertEqual(stored.result_hash, receipt.result_hash)
@@ -184,10 +189,11 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
             should_fail=False,
             error_code="NETWORK_ERROR",
             error_message="Transient connection dropped",
-            fail_attempts=1,
+            fail_attempts=1,  # Fails on attempt 1, succeeds on attempt 2
         )
         self.gateway.register_adapter(mock_adapter)
 
+        # Register custom test capability
         self.cap_registry.register_capability(
             CapabilityDescriptor(
                 capability_id="flaky_search",
@@ -225,7 +231,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
                 description="Testing timeout",
                 provider="slow_adapter",
                 supported_agents=["intelligence", "cmo"],
-                timeout_policy=0.1,
+                timeout_policy=0.1,  # Timeout is 0.1s while delay is 0.5s
             )
         )
 
@@ -265,6 +271,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         self.assertEqual(saved.version, 1)
         self.assertGreater(len(saved.chunks), 0)
 
+        # Update document
         saved.content += " Anti-cure marketing compliance is strictly mandatory."
         updated = self.knowledge_repo.save_document(saved, changed_by="Legal Compliance", summary="Added compliance clause")
         self.assertEqual(updated.version, 2)
@@ -274,6 +281,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         self.assertEqual(history[0].version_number, 1)
         self.assertEqual(history[1].version_number, 2)
 
+        # Test Provenance Verification
         citation = KnowledgeCitation(
             knowledge_id=saved.knowledge_id,
             chunk_id=saved.chunks[0].chunk_id,
@@ -294,18 +302,22 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         )
         self.memory_repo.save_memory(mem)
 
+        # 1. Direct promotion to PROMOTED_LEARNING without verification must fail
         ok, reason = MemoryPromotionEngine.promote_memory(mem, PromotionState.PROMOTED_LEARNING)
         self.assertFalse(ok)
         self.assertIn("LIFECYCLE_VIOLATION", reason)
 
+        # 2. Promote to CANDIDATE_MEMORY
         ok_cand, _ = MemoryPromotionEngine.promote_memory(mem, PromotionState.CANDIDATE_MEMORY)
         self.assertTrue(ok_cand)
         self.assertEqual(mem.promotion_level, PromotionState.CANDIDATE_MEMORY)
 
+        # 3. Promote to VERIFIED_MEMORY requires evidence + confidence
         ok_ver_fail, reason_fail = MemoryPromotionEngine.promote_memory(mem, PromotionState.VERIFIED_MEMORY)
         self.assertFalse(ok_ver_fail)
         self.assertIn("EVIDENCE_REQUIRED", reason_fail)
 
+        # Provide evidence and confidence
         mem.confidence = 0.85
         ok_ver, _ = MemoryPromotionEngine.promote_memory(
             mem,
@@ -315,6 +327,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         self.assertTrue(ok_ver)
         self.assertEqual(mem.promotion_level, PromotionState.VERIFIED_MEMORY)
 
+        # 4. Promote to PROMOTED_LEARNING with institutional review rationale
         ok_prom, _ = MemoryPromotionEngine.promote_memory(
             mem,
             PromotionState.PROMOTED_LEARNING,
@@ -382,6 +395,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         self.assertEqual(len(AgentAccessMatrix.PROFILES), 5)
         self.assertEqual(set(AgentAccessMatrix.PROFILES.keys()), {"cmo", "intelligence", "strategist", "creative", "performance"})
 
+        # Verify access boundaries
         self.assertTrue(AgentAccessMatrix.can_access_knowledge_source("cmo", SourceType.LEGAL_COMPLIANCE))
         self.assertFalse(AgentAccessMatrix.can_access_knowledge_source("creative", SourceType.LEGAL_COMPLIANCE))
 
