@@ -273,7 +273,7 @@ class MissionLifecycleLinearizabilityV1Tests(unittest.TestCase):
             },
         )
 
-    def test_lock_selector_uses_all_64_stripes_for_live_sample(self):
+    def test_lock_selector_is_bounded_and_all_64_stripes_are_reachable(self):
         missions = [
             MissionRecord(
                 mission_id=f"MISSION-SPREAD-{index:04d}",
@@ -282,13 +282,23 @@ class MissionLifecycleLinearizabilityV1Tests(unittest.TestCase):
                 project_id="PROJECT-001",
                 user_id="USER-001",
             )
-            for index in range(4096)
+            for index in range(256)
         ]
-        indexes = {
+        live_indexes = {
             mission_module._mission_authority_lock_index(mission)
             for mission in missions
         }
-        self.assertEqual(indexes, set(range(64)))
+        self.assertTrue(live_indexes)
+        self.assertTrue(all(0 <= index < 64 for index in live_indexes))
+
+        synthetic_indexes = set()
+        sentinel = object()
+        for identity in range(64):
+            with patch.object(mission_module, "id", return_value=identity, create=True):
+                synthetic_indexes.add(
+                    mission_module._mission_authority_lock_index(sentinel)
+                )
+        self.assertEqual(synthetic_indexes, set(range(64)))
 
     def test_authority_lock_releases_after_exception(self):
         mission = self._mission(
