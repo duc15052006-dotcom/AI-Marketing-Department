@@ -74,6 +74,31 @@ class IntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.service.control('a',p['ticket'],'resume')
         self.assertFalse(self.work)
 
+    def test_pause_during_resume_countdown_cancels_stale_resume(self):
+        import threading,time
+        from desktop.live import LiveSession
+        from tests.test_local_desktop_control_v1 import FakeBackend
+        p=self.propose();job=self.service._jobs[p['ticket']]
+        session=LiveSession(FakeBackend());session.pause()
+        job['session']=session;job['status']='PAUSED'
+        entered,release=threading.Event(),threading.Event()
+        original_stop=job['stop']
+        class ControlledStop:
+            def is_set(self):return original_stop.is_set()
+            def set(self):original_stop.set();release.set()
+            def wait(self, timeout):entered.set();release.wait(2);return original_stop.is_set()
+        job['stop']=ControlledStop()
+        self.service.control('a',p['ticket'],'resume')
+        self.assertTrue(entered.wait(1))
+        self.service.control('a',p['ticket'],'pause')
+        release.set()
+        for _ in range(100):
+            if job['status']=='RUNNING':break
+            time.sleep(.01)
+        self.assertTrue(session.paused.is_set())
+        self.assertEqual(job['status'],'PAUSED')
+        session.stop()
+
 if __name__=='__main__':unittest.main()
 
 class WorkerTests(unittest.TestCase):
