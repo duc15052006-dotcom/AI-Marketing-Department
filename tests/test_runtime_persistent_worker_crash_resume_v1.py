@@ -123,11 +123,14 @@ class RuntimePersistentWorkerCrashResumeV1Tests(unittest.TestCase):
         )
 
     def _wake_count(self) -> int:
-        with sqlite3.connect(self.scheduler_db) as connection:
+        connection = sqlite3.connect(self.scheduler_db)
+        try:
             row = connection.execute(
                 "SELECT COUNT(*) FROM mission_wakes WHERE mission_id = ?",
                 (self.mission.mission_id,),
             ).fetchone()
+        finally:
+            connection.close()
         assert row is not None
         return int(row[0])
 
