@@ -51,6 +51,8 @@ class MissionCheckpointRecord:
     resume_cursor: str
     state: Dict[str, Any]
     created_at: datetime
+    source_wake_id: Optional[str] = None
+    worker_cycle: Optional[Dict[str, Any]] = None
 
 
 class DurableMissionCheckpointStore:
@@ -60,7 +62,7 @@ class DurableMissionCheckpointStore:
     _COLUMNS = (
         "checkpoint_id, mission_id, business_id, project_id, worker_id, "
         "lease_token, fencing_token, checkpoint_sequence, resume_cursor, "
-        "state_json, created_at"
+        "state_json, created_at, source_wake_id, worker_cycle_json"
     )
 
     def __init__(
@@ -113,13 +115,21 @@ class DurableMissionCheckpointStore:
                 resume_cursor TEXT NOT NULL,
                 state_json TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                source_wake_id TEXT NULL,
+                worker_cycle_json TEXT NULL,
                 UNIQUE(mission_id, checkpoint_sequence)
             )
             """
         )
+        self._migrate_recovery_columns()
         self._connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_mission_checkpoints_scope_latest "
             "ON mission_checkpoints(business_id, project_id, mission_id, checkpoint_sequence DESC)"
+        )
+        self._connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_mission_checkpoints_source_wake "
+            "ON mission_checkpoints(mission_id, source_wake_id) "
+            "WHERE source_wake_id IS NOT NULL"
         )
         self._connection.commit()
 
@@ -141,6 +151,25 @@ class DurableMissionCheckpointStore:
             raise MissionCheckpointAuthorityError(
                 "MISSION_CHECKPOINT_LEASE_AUTHORITY_TABLE_MISSING"
             )
+
+    def _migrate_recovery_columns(self) -> None:
+        """Add nullable crash-recovery metadata to pre-feature databases."""
+
+        columns = {
+            str(row[1])
+            for row in self._connection.execute(
+                "PRAGMA table_info(mission_checkpoints)"
+            ).fetchall()
+        }
+        if "source_wake_id" not in columns:
+            self._connection.execute(
+                "ALTER TABLE mission_checkpoints ADD COLUMN source_wake_id TEXT NULL"
+            )
+        if "worker_cycle_json" not in columns:
+            self._connection.execute(
+                "ALTER TABLE mission_checkpoints ADD COLUMN worker_cycle_json TEXT NULL"
+            )
+        self._connection.commit()
 
     @property
     def durable(self) -> bool:
@@ -172,9 +201,27 @@ class DurableMissionCheckpointStore:
         except (TypeError, ValueError) as exc:
             raise ValueError("MISSION_CHECKPOINT_STATE_NOT_JSON_SERIALIZABLE") from exc
 
+    @staticmethod
+    def _encode_worker_cycle(worker_cycle: object) -> Optional[str]:
+        if worker_cycle is None:
+            return None
+        if not isinstance(worker_cycle, dict):
+            raise TypeError("MISSION_CHECKPOINT_WORKER_CYCLE_MUST_BE_DICT")
+        try:
+            return json.dumps(
+                worker_cycle,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "MISSION_CHECKPOINT_WORKER_CYCLE_NOT_JSON_SERIALIZABLE"
+            ) from exc
+
     @classmethod
     def _row_to_record(cls, row: Sequence[object]) -> MissionCheckpointRecord:
-        if len(row) != 11:
+        if len(row) != 13:
             raise MissionCheckpointCorruptionError("MISSION_CHECKPOINT_ROW_SHAPE_INVALID")
         try:
             fencing_token = int(row[6])
@@ -183,6 +230,7 @@ class DurableMissionCheckpointStore:
             if created_at.tzinfo is None or created_at.utcoffset() is None:
                 raise ValueError("created_at")
             state = json.loads(str(row[9]))
+            worker_cycle = None if row[12] is None else json.loads(str(row[12]))
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise MissionCheckpointCorruptionError("MISSION_CHECKPOINT_ROW_INVALID") from exc
 
@@ -190,6 +238,10 @@ class DurableMissionCheckpointStore:
             raise MissionCheckpointCorruptionError("MISSION_CHECKPOINT_SEQUENCE_OR_FENCE_INVALID")
         if not isinstance(state, dict):
             raise MissionCheckpointCorruptionError("MISSION_CHECKPOINT_STATE_INVALID")
+        if worker_cycle is not None and not isinstance(worker_cycle, dict):
+            raise MissionCheckpointCorruptionError(
+                "MISSION_CHECKPOINT_WORKER_CYCLE_INVALID"
+            )
 
         record = MissionCheckpointRecord(
             checkpoint_id=str(row[0]),
@@ -203,6 +255,8 @@ class DurableMissionCheckpointStore:
             resume_cursor=str(row[8]),
             state=state,
             created_at=created_at.astimezone(timezone.utc),
+            source_wake_id=None if row[11] is None else str(row[11]),
+            worker_cycle=worker_cycle,
         )
         if (
             not record.checkpoint_id
@@ -213,6 +267,10 @@ class DurableMissionCheckpointStore:
             or not record.resume_cursor
         ):
             raise MissionCheckpointCorruptionError("MISSION_CHECKPOINT_REQUIRED_FIELD_MISSING")
+        if record.source_wake_id is not None and not record.source_wake_id:
+            raise MissionCheckpointCorruptionError(
+                "MISSION_CHECKPOINT_SOURCE_WAKE_ID_INVALID"
+            )
         return record
 
     def _lease_row_locked(self, mission_id: str) -> Optional[Sequence[object]]:
@@ -251,6 +309,8 @@ class DurableMissionCheckpointStore:
         checkpoint_sequence: int,
         resume_cursor: str,
         state: Dict[str, Any],
+        source_wake_id: Optional[str] = None,
+        worker_cycle: Optional[Dict[str, Any]] = None,
     ) -> MissionCheckpointRecord:
         """Append one checkpoint under the exact current live Mission fence."""
 
@@ -276,13 +336,23 @@ class DurableMissionCheckpointStore:
             raise MissionCheckpointStateError("MISSION_CHECKPOINT_SEQUENCE_INVALID")
         if not isinstance(resume_cursor, str) or not resume_cursor.strip():
             raise MissionCheckpointStateError("MISSION_CHECKPOINT_RESUME_CURSOR_REQUIRED")
+        if source_wake_id is not None and (
+            not isinstance(source_wake_id, str) or not source_wake_id.strip()
+        ):
+            raise MissionCheckpointStateError(
+                "MISSION_CHECKPOINT_SOURCE_WAKE_ID_REQUIRED"
+            )
 
         normalized_mission_id = mission_id.strip()
         normalized_business_id = business_id.strip()
         normalized_worker = worker_id.strip()
         normalized_lease_token = lease_token.strip()
         normalized_cursor = resume_cursor.strip()
+        normalized_source_wake = (
+            None if source_wake_id is None else source_wake_id.strip()
+        )
         encoded_state = self._encode_state(state)
+        encoded_worker_cycle = self._encode_worker_cycle(worker_cycle)
 
         mission = self._mission_store.get_mission(
             normalized_mission_id,
@@ -362,8 +432,9 @@ class DurableMissionCheckpointStore:
                     INSERT INTO mission_checkpoints(
                         checkpoint_id, mission_id, business_id, project_id,
                         worker_id, lease_token, fencing_token,
-                        checkpoint_sequence, resume_cursor, state_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        checkpoint_sequence, resume_cursor, state_json, created_at,
+                        source_wake_id, worker_cycle_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         checkpoint_id,
@@ -377,13 +448,15 @@ class DurableMissionCheckpointStore:
                         normalized_cursor,
                         encoded_state,
                         encoded_created_at,
+                        normalized_source_wake,
+                        encoded_worker_cycle,
                     ),
                 )
                 self._connection.commit()
             except sqlite3.IntegrityError as exc:
                 self._connection.rollback()
                 raise MissionCheckpointStateError(
-                    "MISSION_CHECKPOINT_SEQUENCE_CONFLICT"
+                    "MISSION_CHECKPOINT_SEQUENCE_OR_SOURCE_WAKE_CONFLICT"
                 ) from exc
             except Exception:
                 self._connection.rollback()
@@ -420,6 +493,38 @@ class DurableMissionCheckpointStore:
                 LIMIT 1
                 """,
                 (mission_id, business_id, project_id, project_id),
+            ).fetchone()
+        return None if row is None else self._row_to_record(row)
+
+    def get_by_source_wake(
+        self,
+        *,
+        mission_id: str,
+        business_id: str,
+        project_id: Optional[str],
+        source_wake_id: str,
+    ) -> Optional[MissionCheckpointRecord]:
+        """Return the exact checkpoint already produced by one source wake."""
+
+        if not mission_id or not business_id or not source_wake_id:
+            return None
+        with self._lock:
+            self._require_open()
+            row = self._connection.execute(
+                f"""
+                SELECT {self._COLUMNS}
+                FROM mission_checkpoints
+                WHERE mission_id = ? AND business_id = ? AND source_wake_id = ?
+                  AND ((project_id IS NULL AND ? IS NULL) OR project_id = ?)
+                LIMIT 1
+                """,
+                (
+                    mission_id,
+                    business_id,
+                    source_wake_id,
+                    project_id,
+                    project_id,
+                ),
             ).fetchone()
         return None if row is None else self._row_to_record(row)
 
