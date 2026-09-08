@@ -1,0 +1,40 @@
+name: Brain Reasoning Use Boundary Revalidation V1
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    name: Reasoning use-boundary adversarial regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact CI identity
+        shell: bash
+        run: |
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "expected_head_sha=$expected"
+          echo "actual_head_sha=$actual"
+          test "$expected" = "$actual"
+
+      - name: Compile targeted sources
+        run: python -m compileall -q brain schemas tests/test_brain_reasoning_use_boundary_revalidation_v1.py
+
+      - name: Run targeted regression
+        run: python -m unittest -v tests.test_brain_reasoning_use_boundary_revalidation_v1
