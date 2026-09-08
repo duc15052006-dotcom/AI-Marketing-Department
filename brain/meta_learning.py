@@ -80,18 +80,12 @@ class StrategyTrial(BaseModel):
         self.strategy = _enum(self.strategy, LearningStrategy, "strategy")
         if self.strategy == LearningStrategy.NONE:
             raise ValidationError("strategy trials cannot use NONE")
-
         if not isinstance(self.before_request, MetacognitionRequest):
-            raise ValidationError(
-                "before_request must be a MetacognitionRequest"
-            )
+            raise ValidationError("before_request must be a MetacognitionRequest")
         if not isinstance(self.after_request, MetacognitionRequest):
-            raise ValidationError(
-                "after_request must be a MetacognitionRequest"
-            )
+            raise ValidationError("after_request must be a MetacognitionRequest")
         self.before_request = copy.deepcopy(self.before_request)
         self.after_request = copy.deepcopy(self.after_request)
-
         if self.before_request.goal_id != self.after_request.goal_id:
             raise ValidationError(
                 "before/after metacognition requests must bind to the same goal_id"
@@ -153,7 +147,6 @@ class MetaLearningRequest(BaseModel):
         )
         if not isinstance(self.trials, list):
             raise ValidationError("trials must be a list of StrategyTrial")
-
         normalized: List[StrategyTrial] = []
         trial_ids = set()
         for raw in self.trials:
@@ -216,12 +209,9 @@ class MetaLearningDecision(BaseModel):
                 seen.add(reason)
                 normalized_reasons.append(reason)
         self.reasons = normalized_reasons
-
         if self.disposition == MetaLearningDisposition.PREFER_STRATEGY:
             if self.preferred_strategy is None:
-                raise ValidationError(
-                    "PREFER_STRATEGY requires preferred_strategy"
-                )
+                raise ValidationError("PREFER_STRATEGY requires preferred_strategy")
         elif self.preferred_strategy is not None:
             raise ValidationError(
                 "preferred_strategy is only valid for PREFER_STRATEGY"
@@ -245,6 +235,39 @@ def _unresolved_count(decision: MetacognitionDecision) -> int:
     )
 
 
+def _canonical_metacognition_request(request: MetacognitionRequest) -> MetacognitionRequest:
+    if not isinstance(request, MetacognitionRequest):
+        raise ValidationError("trial requests must be MetacognitionRequest objects")
+    return MetacognitionRequest(**copy.deepcopy(request.model_dump()))
+
+
+def _canonical_strategy_trial(trial: StrategyTrial) -> StrategyTrial:
+    if not isinstance(trial, StrategyTrial):
+        raise ValidationError("trials must contain only StrategyTrial items")
+    return StrategyTrial(
+        trial_id=trial.trial_id,
+        problem_family_id=trial.problem_family_id,
+        strategy=trial.strategy,
+        before_request=_canonical_metacognition_request(trial.before_request),
+        after_request=_canonical_metacognition_request(trial.after_request),
+    )
+
+
+def _canonical_meta_learning_request(request: MetaLearningRequest) -> MetaLearningRequest:
+    """Revalidate complete mutable trial history before it can update policy."""
+
+    if not isinstance(request, MetaLearningRequest):
+        raise ValidationError("request must be a MetaLearningRequest")
+    if not isinstance(request.trials, list):
+        raise ValidationError("trials must be a list of StrategyTrial")
+    return MetaLearningRequest(
+        assessment_id=request.assessment_id,
+        problem_family_id=request.problem_family_id,
+        policy_owner_agent=request.policy_owner_agent,
+        trials=[_canonical_strategy_trial(trial) for trial in request.trials],
+    )
+
+
 def _trial_effect(trial: StrategyTrial) -> TrialEffect:
     before = assess_metacognition(trial.before_request)
     after = assess_metacognition(trial.after_request)
@@ -260,9 +283,7 @@ def _trial_effect(trial: StrategyTrial) -> TrialEffect:
 def evaluate_meta_learning(request: MetaLearningRequest) -> MetaLearningDecision:
     """Evaluate which learning strategy reduces uncertainty most reliably."""
 
-    if not isinstance(request, MetaLearningRequest):
-        raise ValidationError("request must be a MetaLearningRequest")
-    request = copy.deepcopy(request)
+    request = _canonical_meta_learning_request(request)
 
     counts: Dict[LearningStrategy, Dict[TrialEffect, int]] = {}
     for trial in request.trials:
