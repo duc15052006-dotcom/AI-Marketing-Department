@@ -2,6 +2,7 @@ name: Runtime Continuity Authority Stack V1
 
 # Qualification trigger after preserving the #271 MissionStore lease binding
 # while retaining the independently validated #280 authority-time repair.
+# This exact head also carries the validated RED-to-GREEN race test blobs.
 on:
   pull_request:
     paths:
