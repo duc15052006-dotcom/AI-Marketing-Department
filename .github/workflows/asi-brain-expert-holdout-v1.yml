@@ -1,0 +1,65 @@
+name: ASI Brain Expert Holdout V1
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asi-brain-expert-holdout-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  expert-holdout:
+    name: Five-ASI semantic Brain adversarial holdout
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact test identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          printf 'expected_head_sha=%s\nactual_head_sha=%s\n' "$expected" "$actual" | tee .ci-results/asi-brain-holdout-identity.txt
+          test "$expected" = "$actual"
+
+      - name: Compile semantic Brain and holdout
+        shell: bash
+        run: |
+          python -m compileall -q brain schemas tests/test_asi_brain_expert_holdout_v1.py
+
+      - name: Run expert five-ASI adversarial holdout
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v tests.test_asi_brain_expert_holdout_v1 2>&1 | tee .ci-results/asi-brain-expert-holdout-v1.log
+
+      - name: Upload holdout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asi-brain-expert-holdout-v1-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
