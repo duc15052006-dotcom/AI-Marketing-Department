@@ -340,6 +340,20 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
 
     request = _canonical_request(raw_request)
 
+    if request.goal.status == GoalStatus.BLOCKED:
+        return _result(
+            request,
+            CognitivePhase.COMPLETE,
+            [
+                _directive(
+                    request,
+                    CognitiveDirectiveKind.STOP,
+                    [request.goal.goal_id],
+                    "The canonical goal is blocked; no semantic planning or action is prepared until it is unblocked.",
+                )
+            ],
+        )
+
     if request.goal.status in (GoalStatus.SATISFIED, GoalStatus.ABANDONED):
         return _result(
             request,
