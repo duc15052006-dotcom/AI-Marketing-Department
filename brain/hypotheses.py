@@ -472,7 +472,10 @@ def prioritize_research_agenda(request: ResearchAgendaRequest) -> ResearchAgenda
 
     if not isinstance(request, ResearchAgendaRequest):
         raise ValidationError("request must be a ResearchAgendaRequest")
-    request = copy.deepcopy(request)
+    # ResearchAgendaRequest is mutable, so construction-time validation is not
+    # an authority boundary. Rebuild the complete semantic envelope from its
+    # current serialized state before portfolio/probe state influences research.
+    request = ResearchAgendaRequest(**copy.deepcopy(request.model_dump()))
     active = set(request.portfolio.active_hypothesis_ids)
     recommendations: List[ResearchRecommendation] = []
 
