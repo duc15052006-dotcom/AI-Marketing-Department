@@ -210,6 +210,12 @@ def evaluate_stop(request: StopEvaluationRequest) -> StopDecision:
     if not isinstance(request, StopEvaluationRequest):
         raise ValidationError("request must be a StopEvaluationRequest")
 
+    # Construction-time validation is not continuing authority because Brain
+    # models are mutable. Reconstruct the complete envelope so post-validation
+    # mutations of blockers, goal bindings, or nested trajectory state fail
+    # closed before any stop authority is computed.
+    request = StopEvaluationRequest(**request.model_dump())
+
     open_questions = [item.question for item in request.outstanding_unknowns]
     open_questions.extend(item.question for item in request.outstanding_evidence_needs)
 
