@@ -1,5 +1,7 @@
 name: Runtime Continuity Authority Stack V1
 
+# Qualification trigger after preserving the #271 MissionStore lease binding
+# while retaining the independently validated #280 authority-time repair.
 on:
   pull_request:
     paths:
