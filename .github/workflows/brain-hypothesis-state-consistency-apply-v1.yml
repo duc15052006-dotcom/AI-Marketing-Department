@@ -36,3 +36,5 @@ jobs:
           git diff --cached --check
           git commit -m "fix(brain): enforce hypothesis semantic-state consistency"
           git push origin HEAD:fix/brain-hypothesis-state-consistency-v1
+
+# bootstrap-retry: 2
