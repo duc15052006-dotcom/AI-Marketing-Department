@@ -49,7 +49,7 @@ class ApprovalState(str, Enum):
 
 
 class RuntimeStage(str, Enum):
-    """Execution stages across the Five-Agent Department runtime."""
+    """Execution stages across the Five-Agent Department."""
     INIT = "INIT"
     CMO_INITIAL = "CMO_INITIAL"
     INTELLIGENCE = "INTELLIGENCE"
