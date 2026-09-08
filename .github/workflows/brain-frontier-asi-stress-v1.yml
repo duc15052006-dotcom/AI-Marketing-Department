@@ -1,0 +1,40 @@
+name: Brain Frontier ASI Stress V1
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontier-holdout:
+    name: Frontier ASI adversarial holdout
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact CI identity
+        shell: bash
+        run: |
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "expected_head_sha=$expected"
+          echo "actual_head_sha=$actual"
+          test "$expected" = "$actual"
+
+      - name: Compile frontier holdout
+        run: python -m compileall -q brain schemas tests/test_brain_frontier_asi_stress_v1.py
+
+      - name: Run frontier holdout
+        run: python -m unittest -v tests.test_brain_frontier_asi_stress_v1
