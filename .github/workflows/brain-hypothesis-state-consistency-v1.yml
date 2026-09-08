@@ -1,0 +1,35 @@
+name: Brain Hypothesis State Consistency V1
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact CI identity
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Compile touched Brain surface
+        run: python -m py_compile brain/hypotheses.py tests/test_brain_hypothesis_state_consistency_v4.py
+      - name: Run semantic-state regression
+        run: python -m unittest -v tests.test_brain_hypothesis_state_consistency_v4
+      - name: Run adjacent hypothesis and research regressions
+        run: |
+          python -m unittest -v tests.test_brain_hypothesis_portfolio_v1
+          python -m unittest -v tests.test_brain_research_agenda_use_boundary_revalidation_v1
