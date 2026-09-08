@@ -24,6 +24,8 @@ from schemas.base import ValidationError
 
 
 class BrainResearchAgendaUseBoundaryRevalidationV1Tests(unittest.TestCase):
+    """Lock the seven RED research-agenda mutations preserved in holdout PR #268."""
+
     def _hypothesis(self, hypothesis_id: str) -> HypothesisCandidate:
         return HypothesisCandidate(
             hypothesis_id=hypothesis_id,
