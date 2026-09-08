@@ -1,7 +1,7 @@
 """Provider-neutral autonomous learning primitives for the five permanent ASIs.
 
 The Brain already contains goals, evidence, planning, decisions, outcomes, memory
-policy and stopping semantics.  This module closes the cognitive loop between
+policy and stopping semantics. This module closes the cognitive loop between
 those components without teaching the Brain how to call a provider or execute a
 tool.
 
@@ -11,7 +11,7 @@ The loop is deliberately explicit and auditable:
          -> expectation delta -> causal lesson -> memory candidate
          -> meta-learning signal -> next learning strategy
 
-No model weights are changed here.  "Learning" means system-level acquisition of
+No model weights are changed here. "Learning" means system-level acquisition of
 verified knowledge, lessons, procedures and strategy signals that can be handed
 to the existing Memory authority boundary.
 """
@@ -24,7 +24,12 @@ from enum import Enum
 from typing import List, Optional, Type, TypeVar
 
 from brain.contracts import BrainAgentId, EvidenceNeed, GoalSpec, UnknownRecord
-from brain.evidence import ClaimEvidenceRequest, ClaimVerdict, assess_claim_evidence
+from brain.evidence import (
+    ClaimEvidenceRequest,
+    ClaimVerdict,
+    EvidenceSignal,
+    assess_claim_evidence,
+)
 from schemas.base import BaseModel, Field, ValidationError
 
 
@@ -113,6 +118,25 @@ def _text_list(value: object, field_name: str) -> List[str]:
             seen.add(item)
             result.append(item)
     return result
+
+
+def _canonical_claim_request(request: ClaimEvidenceRequest) -> ClaimEvidenceRequest:
+    if not isinstance(request, ClaimEvidenceRequest):
+        raise ValidationError("evidence_request must be a ClaimEvidenceRequest")
+    if not isinstance(request.evidence, list):
+        raise ValidationError("evidence_request.evidence must be a list")
+    signals: List[EvidenceSignal] = []
+    for signal in copy.deepcopy(request.evidence):
+        if not isinstance(signal, EvidenceSignal):
+            raise ValidationError("evidence_request must contain only EvidenceSignal items")
+        signals.append(EvidenceSignal(**signal.model_dump()))
+    return ClaimEvidenceRequest(
+        assessment_id=request.assessment_id,
+        goal_id=request.goal_id,
+        claim_id=request.claim_id,
+        agent_id=request.agent_id,
+        evidence=signals,
+    )
 
 
 class KnowledgeGap(BaseModel):
@@ -215,9 +239,7 @@ class Hypothesis(BaseModel):
         )
         if not self.falsification_criteria:
             raise ValidationError("hypothesis requires at least one falsification criterion")
-        self.prior_confidence = _bounded_float(
-            self.prior_confidence, "prior_confidence"
-        )
+        self.prior_confidence = _bounded_float(self.prior_confidence, "prior_confidence")
         self.evidence_refs = _text_list(self.evidence_refs, "evidence_refs")
 
 
@@ -290,9 +312,7 @@ class LearningEpisode(BaseModel):
         if not isinstance(self.evidence_request, ClaimEvidenceRequest):
             raise ValidationError("evidence_request must be a ClaimEvidenceRequest")
         self.experiment_id = _optional_text(self.experiment_id, "experiment_id")
-        self.prediction_matched = _strict_bool(
-            self.prediction_matched, "prediction_matched"
-        )
+        self.prediction_matched = _strict_bool(self.prediction_matched, "prediction_matched")
 
 
 class LessonRecord(BaseModel):
@@ -321,9 +341,7 @@ class LessonRecord(BaseModel):
         self.causal_explanation = _required_text(
             self.causal_explanation, "causal_explanation"
         )
-        self.prediction_matched = _strict_bool(
-            self.prediction_matched, "prediction_matched"
-        )
+        self.prediction_matched = _strict_bool(self.prediction_matched, "prediction_matched")
         self.posterior_confidence = _bounded_float(
             self.posterior_confidence, "posterior_confidence"
         )
@@ -372,35 +390,36 @@ def assess_knowledge_state(
     if not isinstance(unknowns, list) or not isinstance(evidence_needs, list):
         raise ValidationError("unknowns and evidence_needs must be lists")
 
-    goal_copy = copy.deepcopy(goal)
-    unknown_copies = copy.deepcopy(unknowns)
-    need_copies = copy.deepcopy(evidence_needs)
+    goal_copy = GoalSpec(**copy.deepcopy(goal.model_dump()))
+    need_copies: List[EvidenceNeed] = []
+    for need in copy.deepcopy(evidence_needs):
+        if not isinstance(need, EvidenceNeed):
+            raise ValidationError("evidence_needs must contain only EvidenceNeed items")
+        canonical_need = EvidenceNeed(**need.model_dump())
+        if canonical_need.goal_id != goal_copy.goal_id:
+            raise ValidationError("evidence need goal_id must match goal")
+        need_copies.append(canonical_need)
 
     needs_by_question = {}
     for need in need_copies:
-        if not isinstance(need, EvidenceNeed):
-            raise ValidationError("evidence_needs must contain only EvidenceNeed items")
-        need = EvidenceNeed(**need.model_dump())
-        if need.goal_id != goal_copy.goal_id:
-            raise ValidationError("evidence need goal_id must match goal")
         needs_by_question.setdefault(need.question, []).append(need)
 
     gaps: List[KnowledgeGap] = []
-    for index, unknown in enumerate(unknown_copies, start=1):
+    for index, unknown in enumerate(copy.deepcopy(unknowns), start=1):
         if not isinstance(unknown, UnknownRecord):
             raise ValidationError("unknowns must contain only UnknownRecord items")
-        unknown = UnknownRecord(**unknown.model_dump())
-        if unknown.goal_id != goal_copy.goal_id:
+        canonical_unknown = UnknownRecord(**unknown.model_dump())
+        if canonical_unknown.goal_id != goal_copy.goal_id:
             raise ValidationError("unknown goal_id must match goal")
-        matching_needs = needs_by_question.get(unknown.question, [])
+        matching_needs = needs_by_question.get(canonical_unknown.question, [])
         gaps.append(
             KnowledgeGap(
                 gap_id=f"KG-{goal_copy.goal_id}-{index}",
                 goal_id=goal_copy.goal_id,
                 owner_agent=goal_copy.owner_agent,
-                question=unknown.question,
-                consequence=unknown.consequence,
-                blocking=unknown.blocking,
+                question=canonical_unknown.question,
+                consequence=canonical_unknown.consequence,
+                blocking=canonical_unknown.blocking,
                 evidence_need_ids=[need.need_id for need in matching_needs],
             )
         )
@@ -432,14 +451,31 @@ def assess_knowledge_state(
     )
 
 
+def _canonical_gap_assessment(
+    assessment: KnowledgeGapAssessment,
+) -> KnowledgeGapAssessment:
+    if not isinstance(assessment, KnowledgeGapAssessment):
+        raise ValidationError("assessment must be a KnowledgeGapAssessment")
+    gaps: List[KnowledgeGap] = []
+    for gap in copy.deepcopy(assessment.gaps):
+        if not isinstance(gap, KnowledgeGap):
+            raise ValidationError("gaps must contain only KnowledgeGap items")
+        gaps.append(KnowledgeGap(**gap.model_dump()))
+    return KnowledgeGapAssessment(
+        goal_id=assessment.goal_id,
+        state=assessment.state,
+        gaps=gaps,
+        recommended_action=assessment.recommended_action,
+        rationale=assessment.rationale,
+    )
+
+
 def research_directives_for_gaps(
     assessment: KnowledgeGapAssessment,
 ) -> List[ResearchDirective]:
     """Produce provider-neutral research work from canonical gaps."""
 
-    if not isinstance(assessment, KnowledgeGapAssessment):
-        raise ValidationError("assessment must be a KnowledgeGapAssessment")
-    canonical = KnowledgeGapAssessment(**copy.deepcopy(assessment.model_dump()))
+    canonical = _canonical_gap_assessment(assessment)
     if canonical.state == KnowledgeState.SUFFICIENT:
         return []
 
@@ -471,25 +507,24 @@ def choose_learning_action(
 ) -> LearningAction:
     """Choose the next semantic learning action without executing anything."""
 
-    if not isinstance(knowledge, KnowledgeGapAssessment):
-        raise ValidationError("knowledge must be a KnowledgeGapAssessment")
-    canonical = KnowledgeGapAssessment(**copy.deepcopy(knowledge.model_dump()))
-
+    canonical = _canonical_gap_assessment(knowledge)
     if canonical.state in {KnowledgeState.GAP, KnowledgeState.BLOCKED}:
         return LearningAction.RESEARCH
     if hypothesis is None:
         return LearningAction.ACT
     if not isinstance(hypothesis, Hypothesis):
         raise ValidationError("hypothesis must be a Hypothesis or None")
+    canonical_hypothesis = Hypothesis(**copy.deepcopy(hypothesis.model_dump()))
     if experiment is None:
         return LearningAction.EXPERIMENT
     if not isinstance(experiment, ExperimentDesign):
         raise ValidationError("experiment must be an ExperimentDesign or None")
-    if experiment.hypothesis_id != hypothesis.hypothesis_id:
+    canonical_experiment = ExperimentDesign(**copy.deepcopy(experiment.model_dump()))
+    if canonical_experiment.hypothesis_id != canonical_hypothesis.hypothesis_id:
         raise ValidationError("experiment must test the supplied hypothesis")
-    if experiment.goal_id != hypothesis.goal_id:
+    if canonical_experiment.goal_id != canonical_hypothesis.goal_id:
         raise ValidationError("experiment and hypothesis must belong to the same goal")
-    if experiment.risk == ExperimentRisk.CRITICAL:
+    if canonical_experiment.risk == ExperimentRisk.CRITICAL:
         return LearningAction.HOLD
     return LearningAction.EXPERIMENT
 
@@ -499,10 +534,22 @@ def derive_lesson(episode: LearningEpisode) -> LessonRecord:
 
     if not isinstance(episode, LearningEpisode):
         raise ValidationError("episode must be a LearningEpisode")
-    canonical = copy.deepcopy(episode)
-    canonical = LearningEpisode(**canonical.model_dump())
 
-    evidence = ClaimEvidenceRequest(**canonical.evidence_request.model_dump())
+    hypothesis = Hypothesis(**copy.deepcopy(episode.hypothesis.model_dump()))
+    evidence = _canonical_claim_request(episode.evidence_request)
+    canonical = LearningEpisode(
+        episode_id=episode.episode_id,
+        goal_id=episode.goal_id,
+        owner_agent=episode.owner_agent,
+        hypothesis=hypothesis,
+        expected_outcome=episode.expected_outcome,
+        observed_outcome=episode.observed_outcome,
+        causal_explanation=episode.causal_explanation,
+        evidence_request=evidence,
+        experiment_id=episode.experiment_id,
+        prediction_matched=episode.prediction_matched,
+    )
+
     if evidence.goal_id != canonical.goal_id:
         raise ValidationError("learning evidence goal_id must match episode goal_id")
     if evidence.agent_id != canonical.owner_agent:
@@ -527,7 +574,7 @@ def derive_lesson(episode: LearningEpisode) -> LessonRecord:
         lesson = "Evidence is not decisive enough to promote a durable causal lesson."
 
     refs = list(assessment.supporting_evidence_refs)
-    for ref in assessment.refuting_evidence_refs:
+    for ref in assessment.contradicting_evidence_refs:
         if ref not in refs:
             refs.append(ref)
 
@@ -554,9 +601,9 @@ def derive_meta_learning_signal(
 ) -> MetaLearningSignal:
     """Infer how the next learning cycle should change from verified lessons.
 
-    This intentionally adjusts *learning strategy*, not model weights or system
-    authority.  A single lesson may suggest a weak signal; repeated verified
-    misses increase confidence that the learning process itself needs revision.
+    This adjusts learning strategy, not model weights or system authority. A
+    single lesson may suggest a weak signal; repeated verified misses increase
+    confidence that the learning process itself needs revision.
     """
 
     if not isinstance(lessons, list) or not lessons:
