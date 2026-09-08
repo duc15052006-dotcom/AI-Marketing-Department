@@ -1005,6 +1005,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                         "pending_approval_id": p.pending_approval_id,
                         "run_id": p.run_id,
                         "business_id": p.business_id,
+                        "project_id": p.project_id,
                         "capability_id": p.capability_id,
                         "action_type": p.capability_id,
                         "parameters": p.parameters,
