@@ -66,6 +66,30 @@ def _canonical_pair(*, business_id: str = "", project_id: str = "") -> Tuple[str
     return knowledge_key, memory_key
 
 
+def _knowledge_alias_is_within_authority(
+    alias: str,
+    *,
+    business_id: str,
+    project_id: str,
+) -> bool:
+    """Return True only when a compatibility alias names canonical run authority.
+
+    ``trusted_knowledge_scope`` is compatibility metadata, not an authorization
+    primitive.  An alias may therefore preserve an already-authorized canonical
+    project/business scope (including the historical exact aliases emitted by
+    ContextCompiler), but it may not introduce a new foreign or opaque scope.
+    """
+
+    allowed_aliases = set()
+    if project_id.upper() not in _GLOBAL_PROJECT_SENTINELS:
+        project_key, _ = _canonical_pair(project_id=project_id)
+        allowed_aliases.update((project_key, f"SCOPE_PROJ_{project_id}"))
+    if business_id.upper() not in _DEFAULT_BUSINESS_SCOPE_IDS:
+        business_key, _ = _canonical_pair(business_id=business_id)
+        allowed_aliases.update((business_key, f"SCOPE_{business_id}"))
+    return alias in allowed_aliases
+
+
 def build_runtime_canonical_scope_plan(context: RuntimeContext) -> RuntimeCanonicalScopePlan:
     """Derive exact governed scope keys exclusively from immutable runtime scope.
 
@@ -104,11 +128,23 @@ def build_runtime_canonical_scope_plan(context: RuntimeContext) -> RuntimeCanoni
         if memory_key not in memory_keys:
             memory_keys.append(memory_key)
 
-    # Exact legacy aliases are accepted only after a trusted workspace binds
-    # them into immutable RuntimeContext authority at run creation.
-    if trusted_knowledge_scope and trusted_knowledge_scope.upper() != "GLOBAL":
+    # Compatibility metadata may only preserve an alias that maps back to the
+    # canonical business/project authority already carried by RuntimeContext.
+    # Caller-controlled or stale foreign aliases must never widen read scope.
+    if (
+        trusted_knowledge_scope
+        and trusted_knowledge_scope.upper() != "GLOBAL"
+        and _knowledge_alias_is_within_authority(
+            trusted_knowledge_scope,
+            business_id=business_id,
+            project_id=project_id,
+        )
+    ):
         if trusted_knowledge_scope not in knowledge_keys:
             knowledge_keys.append(trusted_knowledge_scope)
+
+    # Memory alias authority is intentionally unchanged in this Knowledge-only
+    # hardening slice and must be audited independently.
     if trusted_memory_scope and trusted_memory_scope.upper() != "GLOBAL":
         if trusted_memory_scope not in memory_keys:
             memory_keys.append(trusted_memory_scope)
