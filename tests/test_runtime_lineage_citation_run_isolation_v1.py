@@ -5,7 +5,8 @@ A long-lived FiveAgentDepartmentRuntime may process many runs, but a sealed
 DepartmentRunArtifact must expose only knowledge citations referenced by that
 specific RuntimeContext. Citations retained by the runtime-wide
 LineageInspector from earlier or unrelated runs must never leak into the next
-artifact.
+artifact. Mutable RuntimeContext.knowledge_refs is request input, not citation
+ownership authority.
 """
 
 from __future__ import annotations
@@ -90,6 +91,29 @@ class TestRuntimeLineageCitationRunIsolation(unittest.TestCase):
             artifact_b.lineage_summary["citations"],
             [],
             "STILL PRESENT: mutable run-B refs can reinject run A citation into sealed lineage.",
+        )
+
+    def test_unknown_mutable_ref_cannot_be_sealed_as_owned_citation(self) -> None:
+        runtime = FiveAgentDepartmentRuntime()
+        unknown_citation_id = "CIT-NOT-IN-LINEAGE-INSPECTOR"
+
+        artifact = runtime.complete_run(
+            self._context(
+                "RUN-UNKNOWN-CITATION",
+                "BIZ-UNKNOWN-CITATION",
+                [unknown_citation_id],
+            )
+        )
+
+        self.assertEqual(
+            artifact.knowledge_used,
+            [],
+            "STILL PRESENT: mutable refs can fabricate sealed knowledge ownership without a citation record.",
+        )
+        self.assertEqual(
+            artifact.lineage_summary["citations"],
+            [],
+            "STILL PRESENT: unknown mutable citation ref appears in sealed lineage.",
         )
 
     def test_unreferenced_runtime_global_citation_never_enters_artifact(self) -> None:
