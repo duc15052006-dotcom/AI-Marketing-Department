@@ -204,6 +204,7 @@ class RuntimeContinuityAuthorityStackV1Tests(unittest.TestCase):
             worker_id=third.lease_owner or "",
             lease_token=third.lease_token or "",
             fencing_token=third.fencing_token,
+            now=self.now[0] + timedelta(seconds=1),
         )
         released = self.leases.release(
             third,
