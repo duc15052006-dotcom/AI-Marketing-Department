@@ -69,7 +69,7 @@ jobs:
       - name: Compile checkpoint contract and adjacent runtime
         shell: pwsh
         run: |
-          python -m py_compile runtime/mission.py runtime/mission_store.py runtime/mission_lease.py runtime/mission_dispatch.py tests/test_runtime_durable_mission_checkpoint_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          python -m py_compile runtime/mission.py runtime/mission_store.py runtime/mission_lease.py runtime/mission_dispatch.py runtime/mission_checkpoint.py tests/test_runtime_durable_mission_checkpoint_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run durable Mission checkpoint contract
