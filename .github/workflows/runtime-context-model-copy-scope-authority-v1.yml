@@ -1,0 +1,103 @@
+name: Runtime Context Model Copy Scope Authority V1
+
+on:
+  pull_request:
+    paths:
+      - "runtime/context.py"
+      - "schemas/base.py"
+      - "tests/test_runtime_context_model_copy_scope_authority_v1.py"
+      - ".github/workflows/runtime-context-model-copy-scope-authority-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  runtime-context-model-copy-scope-authority:
+    name: runtime-context-model-copy-scope-authority (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact PR head with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          "runner_os=${{ runner.os }}" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "exact-head mismatch: expected=$expected actual=$actual" }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile touched source and regression
+        shell: pwsh
+        run: |
+          python -m py_compile runtime/context.py schemas/base.py tests/test_runtime_context_model_copy_scope_authority_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run RuntimeContext model_copy scope authority regressions
+        id: targeted
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_context_model_copy_scope_authority_v1 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run adjacent runtime scope authority regressions
+        id: adjacent
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_prod_scope_01_isolation tests.test_prod_runtime_01_single_run_authority 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload exact-head RED evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-context-model-copy-scope-authority-red-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Enforce targeted authority gate
+        if: always()
+        shell: pwsh
+        run: |
+          $outcome = "${{ steps.targeted.outcome }}"
+          if ($outcome -ne "success") {
+            throw "RuntimeContext model_copy scope authority regressions are RED: targeted outcome=$outcome"
+          }
