@@ -204,6 +204,10 @@ class PublishingAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self._name
 
+    def execution_mode_for(self, _capability_id: str) -> ExecutionMode:
+        """Expose deterministic SANDBOX provenance before consequential I/O."""
+        return ExecutionMode.SANDBOX
+
     def execute(
         self,
         capability_id: str,
