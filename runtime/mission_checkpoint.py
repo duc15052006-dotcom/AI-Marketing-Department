@@ -292,8 +292,6 @@ class DurableMissionCheckpointStore:
         if mission is None:
             raise MissionCheckpointAuthorityError("MISSION_CHECKPOINT_SCOPE_NOT_AUTHORIZED")
 
-        created_at = self._aware_utc_now()
-        encoded_created_at = created_at.isoformat()
         checkpoint_id = uuid.uuid4().hex
 
         with self._lock:
@@ -342,6 +340,12 @@ class DurableMissionCheckpointStore:
                     raise MissionCheckpointCorruptionError(
                         "MISSION_CHECKPOINT_LEASE_EXPIRY_NOT_TIMEZONE_AWARE"
                     )
+
+                # Sample authority time only after the durable transaction and
+                # lease read. Lock/transaction contention must not let an expired
+                # lease reuse a stale pre-authority timestamp.
+                created_at = self._aware_utc_now()
+                encoded_created_at = created_at.isoformat()
                 if expiry.astimezone(timezone.utc) <= created_at:
                     raise MissionCheckpointAuthorityError(
                         "MISSION_CHECKPOINT_EXECUTION_LEASE_EXPIRED"
