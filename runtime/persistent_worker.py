@@ -443,6 +443,7 @@ class PersistentMissionWorker:
                 state=result.state,
                 source_wake_id=grant.wake.wake_id,
                 worker_cycle=worker_cycle,
+                now=self._authority_now(),
             )
         except (MissionCheckpointAuthorityError, MissionCheckpointStateError) as exc:
             raise self._authority_error(exc) from exc
