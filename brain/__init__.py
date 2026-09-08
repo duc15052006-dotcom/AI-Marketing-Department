@@ -16,6 +16,14 @@ from brain.contracts import (
     StopReason,
     UnknownRecord,
 )
+from brain.learning import (
+    LearningClaimKind,
+    LearningDecision,
+    LearningDisposition,
+    LearningEpisode,
+    LearningMethod,
+    analyze_learning_episode,
+)
 from brain.metacognition import (
     GapResolutionDirective,
     KnowledgeGap,
@@ -58,6 +66,11 @@ __all__ = [
     "KnowledgeGap",
     "KnowledgeGapKind",
     "KnowledgeState",
+    "LearningClaimKind",
+    "LearningDecision",
+    "LearningDisposition",
+    "LearningEpisode",
+    "LearningMethod",
     "LearningStrategy",
     "MetacognitionDecision",
     "MetacognitionRequest",
@@ -75,6 +88,7 @@ __all__ = [
     "StopDecision",
     "StopReason",
     "UnknownRecord",
+    "analyze_learning_episode",
     "apply_plan_revision",
     "assess_metacognition",
     "derive_knowledge_gaps",
