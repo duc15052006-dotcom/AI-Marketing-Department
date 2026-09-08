@@ -1,0 +1,111 @@
+name: Runtime Completed Artifact Cache Alias V1
+
+on:
+  pull_request:
+    paths:
+      - "runtime/engine.py"
+      - "runtime/artifacts.py"
+      - "tests/test_runtime_completed_artifact_cache_alias_v1.py"
+      - ".github/workflows/runtime-completed-artifact-cache-alias-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  runtime-completed-artifact-cache-alias:
+    name: runtime-completed-artifact-cache-alias (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact PR head with full history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          "runner_os=${{ runner.os }}" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "exact-head mismatch: expected=$expected actual=$actual" }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile touched source and regression
+        shell: pwsh
+        run: |
+          python -m py_compile runtime/engine.py runtime/artifacts.py tests/test_runtime_completed_artifact_cache_alias_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run completed artifact cache alias adversarial regression
+        id: targeted
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_completed_artifact_cache_alias_v1 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run adjacent artifact integrity regressions
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_artifact_approval_hash_20 tests.test_artifact_approval_lineage_21 tests.test_artifact_provenance_hash_23 tests.test_receipt_data_integrity_22 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows'
+        timeout-minutes: 45
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload exact-head qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-completed-artifact-cache-alias-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Enforce targeted authority gate
+        if: always()
+        shell: pwsh
+        run: |
+          $outcome = "${{ steps.targeted.outcome }}"
+          if ($outcome -ne "success") {
+            throw "Completed artifact cache alias regression is RED: targeted outcome=$outcome"
+          }
