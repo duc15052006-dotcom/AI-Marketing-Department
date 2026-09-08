@@ -524,8 +524,19 @@ class PolicyEngine:
                     reason=f"APPROVAL_RUN_MISMATCH: Approval is bound to run '{record.run_id}', not '{run_id}'.",
                 )
 
+            # A business-bound approval cannot authorize an unscoped request.
+            # Otherwise the fingerprint fallback below would silently substitute
+            # the approved business and allow the adapter to receive no tenant.
+            if record.business_id and not business_id:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_BUSINESS_SCOPE_REQUIRED",
+                    reason=f"APPROVAL_BUSINESS_SCOPE_REQUIRED: Approval is bound to business '{record.business_id}', but the request has no business scope.",
+                )
+
             # Check business_id match (if bound in record)
-            if record.business_id and business_id and record.business_id != business_id:
+            if record.business_id and record.business_id != business_id:
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
