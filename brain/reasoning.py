@@ -149,10 +149,16 @@ def select_reasoning_depth(assessment: ReasoningAssessment) -> ReasoningDecision
     The policy is intentionally monotonic: stronger risk/uncertainty signals can
     only raise reasoning depth. A caller-supplied minimum is a floor, never a
     way to bypass a stronger policy requirement.
+
+    ``ReasoningAssessment`` is mutable, so construction-time validation alone is
+    not an authority boundary. Rebuild a detached canonical assessment from its
+    current serialized state before any field can influence reasoning depth.
     """
 
     if not isinstance(assessment, ReasoningAssessment):
         raise ValidationError("assessment must be a ReasoningAssessment")
+
+    assessment = ReasoningAssessment(**assessment.model_dump())
 
     signals = (
         assessment.complexity,
