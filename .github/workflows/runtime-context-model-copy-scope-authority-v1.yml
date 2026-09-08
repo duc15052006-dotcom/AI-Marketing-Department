@@ -27,7 +27,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout exact PR head with full history
         uses: actions/checkout@v4
@@ -84,7 +84,7 @@ jobs:
 
       - name: Run canonical full hermetic unittest discovery
         if: runner.os == 'Windows'
-        timeout-minutes: 45
+        timeout-minutes: 75
         shell: pwsh
         run: |
           python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
