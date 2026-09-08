@@ -489,6 +489,65 @@ class MissionRecord(BaseModel):
 
             object.__setattr__(self, name, value)
 
+    def model_copy(
+        self,
+        update: Optional[Dict[str, Any]] = None,
+        deep: bool = False,
+    ) -> "MissionRecord":
+        """Copy a Mission without bypassing existing authority boundaries."""
+
+        import copy
+        from dataclasses import fields
+
+        requested = dict(update or {})
+        identity_scope_fields = {
+            "mission_id",
+            "business_id",
+            "project_id",
+            "user_id",
+        }
+
+        with _mission_authority_lock(self):
+            current_status = _require_mission_status(
+                self.__dict__.get("status", MissionStatus.CREATED)
+            )
+
+            for name in identity_scope_fields.intersection(requested):
+                current_value = self.__dict__[name]
+                if (
+                    current_status != MissionStatus.CREATED
+                    and requested[name] != current_value
+                ):
+                    raise MissionTransitionError(
+                        f"MISSION_AUTHORITATIVE_SCOPE_IMMUTABLE: {name}"
+                    )
+
+            if "commitment_id" in requested:
+                current_commitment_id = self.__dict__.get("commitment_id")
+                if requested["commitment_id"] != current_commitment_id:
+                    raise MissionCommitmentError(
+                        "MISSION_COMMITMENT_BINDING_REQUIRES_MARK_READY"
+                    )
+
+            if "status" in requested:
+                target_status = _require_mission_status(requested["status"])
+                if target_status != current_status:
+                    if current_status in TERMINAL_MISSION_STATUSES:
+                        raise MissionTransitionError(
+                            f"MISSION_TERMINAL_STATE_IMMUTABLE: "
+                            f"{current_status.value}->{target_status.value}"
+                        )
+                    raise MissionTransitionError(
+                        f"MISSION_STATUS_TRANSITION_REQUIRES_AUTHORITY: "
+                        f"{current_status.value}->{target_status.value}"
+                    )
+
+            data = {field.name: getattr(self, field.name) for field in fields(self)}
+            data.update(requested)
+            if deep:
+                data = copy.deepcopy(data)
+            return self.__class__(**data)
+
     def model_dump(self, mode: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
         """Read one atomic serialized authority snapshot for this Mission."""
 
