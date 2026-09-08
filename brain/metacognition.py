@@ -1,11 +1,9 @@
 """Provider-neutral metacognitive control for the five-ASI Brain.
 
-This module answers a question the lower cognitive modules cannot answer alone:
-"Is our knowledge state good enough to act, and if not, what kind of learning
-work should happen next?"
-
-It deliberately remains semantic. It does not choose providers, tools, search
-engines, experiment runners, persistence backends, or runtime workers.
+This module answers whether current knowledge is sufficient to act and, when it
+is not, which semantic learning move should happen next. It deliberately does
+not select providers, tools, search engines, experiment runners, persistence
+backends, or runtime workers.
 """
 
 from __future__ import annotations
@@ -20,8 +18,6 @@ from schemas.base import BaseModel, Field, ValidationError
 
 
 class KnowledgeState(str, Enum):
-    """High-level epistemic state for one goal."""
-
     SUFFICIENT = "SUFFICIENT"
     INCOMPLETE = "INCOMPLETE"
     CONTESTED = "CONTESTED"
@@ -29,8 +25,6 @@ class KnowledgeState(str, Enum):
 
 
 class KnowledgeGapKind(str, Enum):
-    """Semantic type of a gap without binding it to any concrete tool."""
-
     UNKNOWN = "UNKNOWN"
     EVIDENCE = "EVIDENCE"
     CONTRADICTION = "CONTRADICTION"
@@ -40,8 +34,6 @@ class KnowledgeGapKind(str, Enum):
 
 
 class LearningStrategy(str, Enum):
-    """Provider-neutral next cognitive move for reducing a knowledge gap."""
-
     NONE = "NONE"
     RESEARCH = "RESEARCH"
     RESOLVE_CONTRADICTION = "RESOLVE_CONTRADICTION"
@@ -88,6 +80,16 @@ def _unique_text_list(value: object, field_name: str) -> List[str]:
             seen.add(item)
             result.append(item)
     return result
+
+
+def _model_payload(raw: object, expected_type: type, field_name: str) -> dict:
+    if isinstance(raw, expected_type):
+        return copy.deepcopy(raw.model_dump())
+    if isinstance(raw, dict):
+        return copy.deepcopy(raw)
+    raise ValidationError(
+        f"{field_name} must contain only {expected_type.__name__} items or serialized mappings"
+    )
 
 
 class KnowledgeGap(BaseModel):
@@ -152,9 +154,7 @@ class MetacognitionRequest(BaseModel):
         normalized_gaps: List[KnowledgeGap] = []
         gap_ids = set()
         for raw in self.gaps:
-            if not isinstance(raw, KnowledgeGap):
-                raise ValidationError("gaps must contain only KnowledgeGap items")
-            gap = KnowledgeGap(**copy.deepcopy(raw.model_dump()))
+            gap = KnowledgeGap(**_model_payload(raw, KnowledgeGap, "gaps"))
             if gap.goal_id != self.goal_id:
                 raise ValidationError("knowledge gap goal_id must match request goal_id")
             if gap.gap_id in gap_ids:
@@ -170,11 +170,9 @@ class MetacognitionRequest(BaseModel):
         normalized_assessments: List[ClaimEvidenceAssessment] = []
         assessment_ids = set()
         for raw in self.evidence_assessments:
-            if not isinstance(raw, ClaimEvidenceAssessment):
-                raise ValidationError(
-                    "evidence_assessments must contain only ClaimEvidenceAssessment items"
-                )
-            assessment = ClaimEvidenceAssessment(**copy.deepcopy(raw.model_dump()))
+            assessment = ClaimEvidenceAssessment(
+                **_model_payload(raw, ClaimEvidenceAssessment, "evidence_assessments")
+            )
             if assessment.goal_id != self.goal_id:
                 raise ValidationError(
                     "evidence assessment goal_id must match request goal_id"
@@ -230,11 +228,9 @@ class MetacognitionDecision(BaseModel):
         normalized_directives: List[GapResolutionDirective] = []
         subjects = set()
         for raw in self.directives:
-            if not isinstance(raw, GapResolutionDirective):
-                raise ValidationError(
-                    "directives must contain only GapResolutionDirective items"
-                )
-            directive = GapResolutionDirective(**copy.deepcopy(raw.model_dump()))
+            directive = GapResolutionDirective(
+                **_model_payload(raw, GapResolutionDirective, "directives")
+            )
             if directive.subject_id in subjects:
                 raise ValidationError(
                     f"duplicate directive subject_id: {directive.subject_id}"
@@ -275,13 +271,7 @@ def derive_knowledge_gaps(
     unknowns: List[UnknownRecord],
     evidence_needs: List[EvidenceNeed],
 ) -> List[KnowledgeGap]:
-    """Convert explicit Brain unknowns/evidence needs into open knowledge gaps.
-
-    This function intentionally does not guess gap type from natural-language
-    text. Unknowns become UNKNOWN gaps and evidence needs become EVIDENCE gaps.
-    Later cognition may explicitly refine a gap into CAUSAL, PROCEDURAL, or
-    PREDICTIVE when that classification is justified.
-    """
+    """Convert explicit Brain unknowns/evidence needs into open knowledge gaps."""
 
     goal_id = _required_text(goal_id, "goal_id")
     owner_agent = _enum(owner_agent, BrainAgentId, "owner_agent")
@@ -292,11 +282,8 @@ def derive_knowledge_gaps(
 
     gaps: List[KnowledgeGap] = []
     seen_ids = set()
-
     for raw in unknowns:
-        if not isinstance(raw, UnknownRecord):
-            raise ValidationError("unknowns must contain only UnknownRecord items")
-        unknown = UnknownRecord(**copy.deepcopy(raw.model_dump()))
+        unknown = UnknownRecord(**_model_payload(raw, UnknownRecord, "unknowns"))
         if unknown.goal_id != goal_id:
             raise ValidationError("unknown goal_id must match requested goal_id")
         gap_id = f"UNKNOWN:{unknown.unknown_id}"
@@ -317,11 +304,9 @@ def derive_knowledge_gaps(
         )
 
     for raw in evidence_needs:
-        if not isinstance(raw, EvidenceNeed):
-            raise ValidationError(
-                "evidence_needs must contain only EvidenceNeed items"
-            )
-        need = EvidenceNeed(**copy.deepcopy(raw.model_dump()))
+        need = EvidenceNeed(
+            **_model_payload(raw, EvidenceNeed, "evidence_needs")
+        )
         if need.goal_id != goal_id:
             raise ValidationError("evidence need goal_id must match requested goal_id")
         gap_id = f"EVIDENCE:{need.need_id}"
@@ -341,17 +326,12 @@ def derive_knowledge_gaps(
                 evidence_refs=list(need.evidence_refs),
             )
         )
-
     return gaps
 
 
 def _strategy_for_gap(gap: KnowledgeGap) -> LearningStrategy:
     if gap.kind in {KnowledgeGapKind.CAUSAL, KnowledgeGapKind.PREDICTIVE}:
-        return (
-            LearningStrategy.EXPERIMENT
-            if gap.testable
-            else LearningStrategy.RESEARCH
-        )
+        return LearningStrategy.EXPERIMENT if gap.testable else LearningStrategy.RESEARCH
     if gap.kind == KnowledgeGapKind.PROCEDURAL:
         return LearningStrategy.DECOMPOSE
     if gap.kind == KnowledgeGapKind.CONTRADICTION:
@@ -360,18 +340,17 @@ def _strategy_for_gap(gap: KnowledgeGap) -> LearningStrategy:
 
 
 def _strategy_rank(strategy: LearningStrategy) -> int:
-    rank = {
+    return {
         LearningStrategy.NONE: 0,
         LearningStrategy.RESEARCH: 1,
         LearningStrategy.DECOMPOSE: 2,
         LearningStrategy.EXPERIMENT: 3,
         LearningStrategy.RESOLVE_CONTRADICTION: 4,
-    }
-    return rank[strategy]
+    }[strategy]
 
 
 def assess_metacognition(request: MetacognitionRequest) -> MetacognitionDecision:
-    """Judge whether current knowledge is sufficient and choose the next learning move."""
+    """Judge whether current knowledge is sufficient and choose the next move."""
 
     if not isinstance(request, MetacognitionRequest):
         raise ValidationError("request must be a MetacognitionRequest")
@@ -399,8 +378,7 @@ def assess_metacognition(request: MetacognitionRequest) -> MetacognitionDecision
                 subject_id=gap.gap_id,
                 strategy=strategy,
                 rationale=(
-                    f"{gap.kind.value} knowledge gap must be reduced before it can "
-                    "be treated as resolved"
+                    f"{gap.kind.value} knowledge gap must be reduced before it can be treated as resolved"
                 ),
             )
         )
@@ -413,10 +391,7 @@ def assess_metacognition(request: MetacognitionRequest) -> MetacognitionDecision
                 GapResolutionDirective(
                     subject_id=subject_id,
                     strategy=LearningStrategy.RESOLVE_CONTRADICTION,
-                    rationale=(
-                        "materially conflicting evidence requires explicit "
-                        "contradiction resolution"
-                    ),
+                    rationale="materially conflicting evidence requires explicit contradiction resolution",
                 )
             )
             directive_subjects.add(subject_id)
@@ -428,33 +403,23 @@ def assess_metacognition(request: MetacognitionRequest) -> MetacognitionDecision
                 GapResolutionDirective(
                     subject_id=subject_id,
                     strategy=LearningStrategy.RESEARCH,
-                    rationale=(
-                        "insufficient evidence requires additional knowledge acquisition"
-                    ),
+                    rationale="insufficient evidence requires additional knowledge acquisition",
                 )
             )
             directive_subjects.add(subject_id)
 
     if blocking_gap_ids:
         knowledge_state = KnowledgeState.BLOCKED
-        reasons = [
-            "one or more explicit knowledge gaps are blocking safe goal progress"
-        ]
+        reasons = ["one or more explicit knowledge gaps are blocking safe goal progress"]
     elif contested_claim_ids:
         knowledge_state = KnowledgeState.CONTESTED
-        reasons = [
-            "materially conflicting evidence prevents a stable knowledge state"
-        ]
+        reasons = ["materially conflicting evidence prevents a stable knowledge state"]
     elif open_gap_ids or insufficient_claim_ids:
         knowledge_state = KnowledgeState.INCOMPLETE
-        reasons = [
-            "unresolved knowledge gaps or insufficient evidence remain"
-        ]
+        reasons = ["unresolved knowledge gaps or insufficient evidence remain"]
     else:
         knowledge_state = KnowledgeState.SUFFICIENT
-        reasons = [
-            "no open knowledge gaps, contested claims, or insufficient evidence remain"
-        ]
+        reasons = ["no open knowledge gaps, contested claims, or insufficient evidence remain"]
 
     if knowledge_state == KnowledgeState.SUFFICIENT:
         next_strategy = LearningStrategy.NONE
