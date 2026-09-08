@@ -37,6 +37,50 @@ class RecordingAdapter(BaseCapabilityAdapter):
 
 
 class ToolGatewayBusinessApprovalScopeTests(unittest.TestCase):
+    def test_business_bound_approval_cannot_dispatch_without_business_scope(self) -> None:
+        registry = CapabilityRegistry()
+        policy = PolicyEngine()
+        gateway = ToolGateway(capability_registry=registry, policy_engine=policy)
+        adapter = RecordingAdapter()
+        gateway.register_adapter(adapter)
+        registry.register_capability(
+            CapabilityDescriptor(
+                capability_id="tenant_write",
+                name="Tenant write",
+                description="Consequential tenant-scoped test capability",
+                category=CapabilityCategory.FILE_DATA,
+                evidence_role=EvidenceRole.ACTION,
+                required_permissions=[PermissionLevel.EXTERNAL_WRITE],
+                risk_level=RiskLevel.HIGH,
+                human_approval_required=True,
+                supported_agents=["cmo"],
+                provider=adapter.adapter_name,
+            )
+        )
+        parameters = {"value": "approved payload"}
+        approval = policy.create_server_approval(
+            capability_id="tenant_write",
+            parameters=parameters,
+            run_id="run-1",
+            business_id="BIZ_ALPHA",
+        )
+
+        receipt = gateway.execute(
+            ToolRequest(
+                run_id="run-1",
+                agent_id="cmo",
+                capability_id="tenant_write",
+                parameters=parameters,
+                approval_token=approval.approval_token,
+            )
+        )
+
+        self.assertEqual(receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
+        self.assertEqual(receipt.error_class, "APPROVAL_BUSINESS_SCOPE_REQUIRED")
+        self.assertEqual(adapter.calls, [])
+        self.assertFalse(approval.claimed)
+        self.assertFalse(approval.consumed)
+
     def test_business_a_approval_cannot_dispatch_for_business_b(self) -> None:
         registry = CapabilityRegistry()
         policy = PolicyEngine()
