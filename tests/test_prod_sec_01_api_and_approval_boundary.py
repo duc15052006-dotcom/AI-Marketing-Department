@@ -147,6 +147,7 @@ class TestProdSec01ApprovalAuthority(unittest.TestCase):
             capability_id="social_publishing",
             parameters=params,
             approval_token=record.approval_token,
+            business_id="BIZ-SEC-001",
         )
         receipt = self.gateway.execute(req)
         self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
@@ -170,6 +171,7 @@ class TestProdSec01ApprovalAuthority(unittest.TestCase):
             capability_id="social_publishing",
             parameters=params,
             approval_token=record.approval_token,
+            business_id="BIZ-SEC-001",
         )
         # First execution consumes the token
         receipt1 = self.gateway.execute(req)
@@ -196,6 +198,7 @@ class TestProdSec01ApprovalAuthority(unittest.TestCase):
             capability_id="social_publishing",
             parameters={"platform": "linkedin", "content": "Malicious Tampered Post"},
             approval_token=record.approval_token,
+            business_id="BIZ-SEC-001",
         )
         receipt = self.gateway.execute(req_tampered)
         self.assertEqual(receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
@@ -217,6 +220,7 @@ class TestProdSec01ApprovalAuthority(unittest.TestCase):
             capability_id="social_publishing",
             parameters={"platform": "twitter", "content": "Campaign Post"},
             approval_token=record.approval_token,
+            business_id="BIZ-SEC-001",
         )
         receipt = self.gateway.execute(req_tampered)
         self.assertEqual(receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
