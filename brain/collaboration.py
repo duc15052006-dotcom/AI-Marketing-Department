@@ -364,6 +364,66 @@ def _max_epistemically_independent_support(
     return independent
 
 
+def _canonical_support_source_ids(
+    request: Optional[ClaimEvidenceRequest],
+    assessment: Optional[ClaimEvidenceAssessment],
+) -> set[str]:
+    """Return only source identities that canonically support the claim."""
+
+    if request is None or assessment is None:
+        return set()
+    supporting_refs = set(assessment.supporting_evidence_refs)
+    return {
+        signal.source_id
+        for signal in request.evidence
+        if signal.evidence_id in supporting_refs
+    }
+
+
+def _max_epistemically_independent_support(
+    supporting: List["PeerReview"],
+    canonical_by_review_id: Dict[str, Optional[ClaimEvidenceAssessment]],
+    proposal_source_ids: set[str],
+) -> int:
+    """Compute reviewer quorum using independent underlying evidence sources.
+
+    Reviewer identity alone is not epistemic independence. A reviewer can count
+    toward quorum only when at least one of its canonical supporting sources is
+    distinct from the proposal's sources and from the source assigned to every
+    other counted reviewer. Maximum bipartite matching keeps the result
+    deterministic and independent of review ordering.
+    """
+
+    candidates: Dict[str, List[str]] = {}
+    for review in supporting:
+        canonical = canonical_by_review_id.get(review.review_id)
+        sources = (
+            _canonical_support_source_ids(review.evidence_request, canonical)
+            - proposal_source_ids
+        )
+        if sources:
+            candidates[review.review_id] = sorted(sources)
+
+    source_owner: Dict[str, str] = {}
+
+    def assign(review_id: str, seen_sources: set[str]) -> bool:
+        for source_id in candidates.get(review_id, []):
+            if source_id in seen_sources:
+                continue
+            seen_sources.add(source_id)
+            prior_review = source_owner.get(source_id)
+            if prior_review is None or assign(prior_review, seen_sources):
+                source_owner[source_id] = review_id
+                return True
+        return False
+
+    independent = 0
+    for review_id in sorted(candidates):
+        if assign(review_id, set()):
+            independent += 1
+    return independent
+
+
 class CollaborationDecision(BaseModel):
     """Auditable Brain decision that keeps consensus and dissent separate."""
 
