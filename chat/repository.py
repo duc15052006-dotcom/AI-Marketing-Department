@@ -330,7 +330,6 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             current_ver = row[0] if row and row[0] is not None else 0
 
             if current_ver < 1:
-                # Schema version 1
                 conn.executescript(
                     """
                     CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -425,10 +424,12 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
                 ),
             )
 
+            # Persist any messages that might not yet be in DB
             for idx, msg in enumerate(session.messages):
                 msg.sequence_number = idx
                 self._save_message_with_conn(conn, msg)
 
+            # Persist attachments
             for att in session.attachments:
                 self._save_attachment_with_conn(conn, att)
 
@@ -589,6 +590,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             ),
         )
 
+        # Save any attachments attached directly to this message
         for att in getattr(message, "attachments", []):
             if not att.chat_id:
                 att.chat_id = message.chat_id
@@ -607,6 +609,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
         messages = [self._row_to_message(r) for r in rows]
         attachments = self._list_attachments_with_conn(conn, chat_id)
         if attachments and messages:
+            # Associate attachments to messages in this chat
             for msg in messages:
                 if msg.role == ChatRole.USER:
                     msg.attachments = [a for a in attachments if a.chat_id == chat_id]
