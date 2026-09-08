@@ -137,13 +137,17 @@ class DurableMissionCheckpointV1Tests(unittest.TestCase):
 
     def test_stale_worker_cannot_checkpoint_after_crash_takeover(self) -> None:
         mission = self._mission()
-        stale = self._lease(mission, "worker-a", now=self.now, seconds=1)
+        # Keep the initial lease comfortably live in real wall-clock time. The
+        # takeover itself is advanced deterministically through the lease
+        # store's explicit `now` seam, so slow Windows CI cannot expire the
+        # first authority epoch before its baseline checkpoint is persisted.
+        stale = self._lease(mission, "worker-a", now=self.now, seconds=60)
         self._save(mission, stale, sequence=1, cursor="phase:plan")
 
         current = self._lease(
             mission,
             "worker-b",
-            now=self.now + timedelta(seconds=2),
+            now=self.now + timedelta(seconds=61),
             seconds=60,
         )
         self.assertGreater(current.fencing_token, stale.fencing_token)
