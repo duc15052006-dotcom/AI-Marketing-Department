@@ -1,0 +1,78 @@
+name: Runtime Mission Model Copy Authority V1
+
+on:
+  pull_request:
+    branches:
+      - fix/runtime-commitment-model-copy-authority-v1
+    paths:
+      - "runtime/mission.py"
+      - "tests/test_runtime_mission_model_copy_authority_v1.py"
+      - ".github/workflows/runtime-mission-model-copy-authority-v1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mission-model-copy-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          printf 'expected_sha=%s\nactual_sha=%s\n' "$EXPECTED" "$ACTUAL" | tee .ci-results/identity.txt
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile touched source and regression
+        shell: bash
+        run: |
+          python -m py_compile \
+            runtime/mission.py \
+            tests/test_runtime_mission_model_copy_authority_v1.py \
+            2>&1 | tee .ci-results/compile.log
+
+      - name: Run Mission model_copy authority RED regression
+        shell: bash
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_mission_model_copy_authority_v1 \
+            2>&1 | tee .ci-results/targeted-test.log
+
+      - name: Run adjacent Mission authority regressions
+        if: always()
+        shell: bash
+        run: |
+          python -m unittest -v \
+            tests.test_runtime_mission_authoritative_scope_immutability_v1 \
+            tests.test_runtime_mission_commitment_binding_authority_v1 \
+            tests.test_runtime_mission_lifecycle_transition_authority_v1 \
+            2>&1 | tee .ci-results/adjacent-test.log
+
+      - name: Upload exact-head qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-mission-model-copy-authority-v1-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
