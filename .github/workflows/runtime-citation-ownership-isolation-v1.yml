@@ -42,7 +42,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Apply exact citation ownership production patch once
+      - name: Apply atomic citation ownership claim patch once
         shell: bash
         run: |
           python - <<'PY'
@@ -50,81 +50,35 @@ jobs:
 
           path = Path("runtime/engine.py")
           text = path.read_text(encoding="utf-8")
-          marker = "self._citation_owner_by_id: Dict[str, str] = {}"
+          marker = "# Commit citation ownership only after artifact integrity sealing succeeds."
           if marker in text:
-              print("citation ownership production marker already present; no-op")
+              print("atomic citation ownership marker already present; no-op")
               raise SystemExit(0)
 
-          init_anchor = "        self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}\n"
-          init_replacement = (
-              init_anchor
-              + "        # Runtime-lifetime citation ownership authority. This registry is\n"
-              + "        # deliberately independent of the bounded completed-artifact cache so\n"
-              + "        # ownership cannot disappear after cache eviction.\n"
-              + "        self._citation_owner_by_id: Dict[str, str] = {}\n"
-          )
-          if text.count(init_anchor) != 1:
-              raise SystemExit(f"unexpected init anchor count: {text.count(init_anchor)}")
-          text = text.replace(init_anchor, init_replacement, 1)
-
-          artifact_anchor = "            artifact = DepartmentRunArtifact(\n"
-          canonical_block = (
-              "            # Mutable RuntimeContext.knowledge_refs is not ownership authority.\n"
-              "            # Seal only citations known to this runtime and not already owned by\n"
-              "            # another run. Claim ownership atomically under the runtime lock.\n"
-              "            known_citation_ids = {\n"
-              "                str(citation.citation_id).strip()\n"
-              "                for citation in self.lineage_inspector.get_all_citations()\n"
-              "                if str(citation.citation_id).strip()\n"
-              "            }\n"
-              "            sealed_citation_ids: List[str] = []\n"
-              "            seen_citation_ids: Set[str] = set()\n"
-              "            for citation_ref in context.knowledge_refs:\n"
-              "                citation_id = str(citation_ref or \"\").strip()\n"
-              "                if not citation_id or citation_id in seen_citation_ids:\n"
-              "                    continue\n"
-              "                if citation_id not in known_citation_ids:\n"
-              "                    continue\n"
-              "                owner_run_id = self._citation_owner_by_id.get(citation_id)\n"
-              "                if owner_run_id is not None and owner_run_id != context.run_id:\n"
-              "                    continue\n"
-              "                sealed_citation_ids.append(citation_id)\n"
-              "                seen_citation_ids.add(citation_id)\n"
-              "\n"
+          premature_claim = (
               "            for citation_id in sealed_citation_ids:\n"
               "                self._citation_owner_by_id[citation_id] = context.run_id\n"
               "\n"
           )
-          if text.count(artifact_anchor) != 1:
-              raise SystemExit(f"unexpected artifact anchor count: {text.count(artifact_anchor)}")
-          text = text.replace(artifact_anchor, canonical_block + artifact_anchor, 1)
+          if text.count(premature_claim) != 1:
+              raise SystemExit(f"unexpected premature claim count: {text.count(premature_claim)}")
+          text = text.replace(premature_claim, "", 1)
 
-          knowledge_anchor = "                knowledge_used=context.knowledge_refs,\n"
-          if text.count(knowledge_anchor) != 1:
-              raise SystemExit(f"unexpected knowledge anchor count: {text.count(knowledge_anchor)}")
-          text = text.replace(
-              knowledge_anchor,
-              "                knowledge_used=list(sealed_citation_ids),\n",
-              1,
+          hash_anchor = "            artifact.final_artifact_hash = artifact.compute_artifact_hash()\n\n"
+          committed_claim = (
+              hash_anchor
+              + "            # Commit citation ownership only after artifact integrity sealing succeeds.\n"
+              + "            # A failed artifact construction/hash must not poison ownership.\n"
+              + "            for citation_id in sealed_citation_ids:\n"
+              + "                self._citation_owner_by_id[citation_id] = context.run_id\n"
+              + "\n"
           )
-
-          lineage_anchor = (
-              "                    \"citations\": [\n"
-              "              c.citation_id\n"
-              "              for c in self.lineage_inspector.get_all_citations()\n"
-              "              if c.citation_id in context.knowledge_refs\n"
-              "          ],\n"
-          )
-          if text.count(lineage_anchor) != 1:
-              raise SystemExit(f"unexpected lineage anchor count: {text.count(lineage_anchor)}")
-          text = text.replace(
-              lineage_anchor,
-              "                    \"citations\": list(sealed_citation_ids),\n",
-              1,
-          )
+          if text.count(hash_anchor) != 1:
+              raise SystemExit(f"unexpected artifact hash anchor count: {text.count(hash_anchor)}")
+          text = text.replace(hash_anchor, committed_claim, 1)
 
           path.write_text(text, encoding="utf-8")
-          print("exact citation ownership production patch applied")
+          print("atomic citation ownership claim patch applied")
           PY
           git diff --check
           git diff -- runtime/engine.py | tee .ci-results/production-patch.diff
@@ -140,7 +94,7 @@ jobs:
             tests.test_runtime_evidence_citation_provenance_v1 \
             2>&1 | tee .ci-results/targeted-test.log
 
-      - name: Commit and push production patch when present
+      - name: Commit and push atomicity patch when present
         shell: bash
         run: |
           if git diff --quiet -- runtime/engine.py; then
@@ -150,7 +104,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add runtime/engine.py
-          git commit -m "fix(runtime): bind sealed citations to runtime ownership"
+          git commit -m "fix(runtime): claim citation ownership after artifact seal"
           git push origin HEAD:${{ github.head_ref }}
 
       - name: Upload qualification evidence
@@ -162,6 +116,6 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
 
-# TEMPORARY ONE-SHOT PATCHER: remove contents:write and the patch/push steps
-# immediately after the guarded production commit lands. Exact-head GREEN
-# evidence must come from a subsequent run where the patcher is a no-op or gone.
+# TEMPORARY ONE-SHOT ATOMICITY PATCHER: remove contents:write and patch/push
+# steps immediately after the guarded production commit lands. Final exact-head
+# GREEN evidence must come from the cleaned read-only workflow.
