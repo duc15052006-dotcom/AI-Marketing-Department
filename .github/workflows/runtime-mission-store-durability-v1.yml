@@ -63,10 +63,10 @@ jobs:
           python -m pip check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Compile RED contract and current Mission authority source
+      - name: Compile touched MissionStore source and regression
         shell: pwsh
         run: |
-          python -m py_compile runtime/mission.py tests/test_runtime_mission_store_durability_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          python -m py_compile runtime/mission.py runtime/mission_store.py tests/test_runtime_mission_store_durability_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run MissionStore durability regression
