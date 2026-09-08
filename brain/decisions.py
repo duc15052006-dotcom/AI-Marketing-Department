@@ -656,7 +656,16 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
             "collaboration assessment no longer matches canonical raw evidence provenance"
         )
 
-    collaboration_decision = evaluate_collaboration(collaboration)
+    # Collaboration may arrive as an audit/review envelope that intentionally
+    # does not duplicate the decision's raw primary evidence request. At this
+    # trusted decision boundary, bind the exact already-canonicalized raw request
+    # into a detached collaboration copy. Never trust or forward a caller-supplied
+    # proposal evidence request when authorizing the decision.
+    collaboration_data = collaboration.model_dump()
+    collaboration_data["proposal_evidence_request"] = evidence_request.model_dump()
+    authoritative_collaboration = CollaborationAssessment(**collaboration_data)
+
+    collaboration_decision = evaluate_collaboration(authoritative_collaboration)
     collaboration_id = collaboration.assessment_id
     if collaboration_decision.disposition == CollaborationDisposition.ACCEPT:
         return result(
