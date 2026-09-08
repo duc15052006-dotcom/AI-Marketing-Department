@@ -344,6 +344,12 @@ def evaluate_collaboration(
     if not isinstance(assessment, CollaborationAssessment):
         raise ValidationError("assessment must be a CollaborationAssessment")
 
+    # Construction-time validation is not continuing authority because Brain
+    # models are mutable. Reconstruct the complete Collaboration envelope before
+    # quorum or peer authority is used, so post-validation quorum/role/review
+    # mutations cannot manufacture consensus.
+    assessment = CollaborationAssessment(**assessment.model_dump())
+
     canonical_proposal = _canonical_proposal_assessment(assessment)
     reasons: List[str] = []
     ignored_review_ids: List[str] = []
