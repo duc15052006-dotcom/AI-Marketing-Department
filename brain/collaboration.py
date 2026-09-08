@@ -207,7 +207,14 @@ class PeerReview(BaseModel):
 
 
 class CollaborationAssessment(BaseModel):
-    """A request to evaluate independent review around one semantic proposal."""
+    """A request to evaluate independent review around one semantic proposal.
+
+    ``author_agent`` owns the proposal. ``proposal_evidence_request.agent_id``
+    identifies the permanent agent that assessed/discovered the raw evidence and
+    therefore does not have to equal the proposal author. Authority is bound by
+    the exact goal/claim plus canonical raw evidence, not by forcing research and
+    proposal ownership onto the same ASI.
+    """
 
     assessment_id: str
     goal_id: str
@@ -248,10 +255,6 @@ class CollaborationAssessment(BaseModel):
                 raise ValidationError(
                     "proposal_evidence_request claim_id must match proposal_id"
                 )
-            if request.agent_id != self.author_agent:
-                raise ValidationError(
-                    "proposal_evidence_request agent_id must match author_agent"
-                )
             canonical = assess_claim_evidence(request)
             if canonical.verdict != self.proposal_verdict:
                 raise ValidationError(
@@ -288,11 +291,7 @@ def _canonical_proposal_assessment(
     request = assessment.proposal_evidence_request
     if request is None:
         return None
-    if (
-        request.goal_id != assessment.goal_id
-        or request.claim_id != assessment.proposal_id
-        or request.agent_id != assessment.author_agent
-    ):
+    if request.goal_id != assessment.goal_id or request.claim_id != assessment.proposal_id:
         return None
     try:
         canonical = assess_claim_evidence(request)
