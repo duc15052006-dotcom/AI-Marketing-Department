@@ -2,7 +2,8 @@
 
 A consequential publishing dispatch may already be in flight when the operator
 cancels the run. The external result must still be retained for audit, but a
-late SUCCESS receipt must never revive the cancelled RuntimeContext to RUNNING.
+late SUCCESS receipt must never revive the cancelled RuntimeContext to RUNNING
+or let canonical run finalization relabel the cancelled lifecycle as COMPLETED.
 """
 
 from __future__ import annotations
@@ -10,8 +11,9 @@ from __future__ import annotations
 import threading
 import unittest
 
-from runtime.context import RuntimeStatus
+from runtime.context import RuntimeStage, RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime
+from runtime.progress import ProgressEventType
 from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
 
 
@@ -104,6 +106,57 @@ class RuntimeInflightPublishCancellationV1Tests(unittest.TestCase):
             "late publish SUCCESS must not revive CANCELLED -> RUNNING",
         )
         self.assertTrue(runtime.is_cancelled(context.run_id))
+
+    def test_cancelled_publish_finalization_cannot_relabel_lifecycle_completed(self) -> None:
+        runtime, context, gateway = self._runtime_and_context()
+        result = {}
+
+        def publish() -> None:
+            try:
+                result["receipt"] = runtime.request_publish_action(
+                    context,
+                    platform="linkedin",
+                )
+            except BaseException as exc:
+                result["error"] = exc
+
+        worker = threading.Thread(target=publish, name="publish-finalize-worker", daemon=True)
+        worker.start()
+        self.assertTrue(gateway.entered.wait(timeout=5.0))
+
+        self.assertTrue(runtime.cancel_run(context.run_id))
+        cancelled_stage = context.current_stage
+        self.assertEqual(context.status, RuntimeStatus.CANCELLED)
+
+        gateway.release.set()
+        worker.join(timeout=5.0)
+        self.assertFalse(worker.is_alive(), "publish worker did not terminate")
+        self.assertNotIn("error", result, result.get("error"))
+        receipt = result.get("receipt")
+        self.assertIsNotNone(receipt)
+        self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
+        self.assertEqual(len(gateway.calls), 1)
+
+        artifact = runtime.complete_run(context)
+
+        self.assertEqual(artifact.status, RuntimeStatus.CANCELLED)
+        self.assertEqual(context.status, RuntimeStatus.CANCELLED)
+        self.assertEqual(
+            context.current_stage,
+            cancelled_stage,
+            "canonical finalization must not relabel a cancelled lifecycle as COMPLETED",
+        )
+        self.assertNotEqual(context.current_stage, RuntimeStage.COMPLETED)
+        self.assertTrue(context.checkpoints)
+        self.assertTrue(
+            all(checkpoint.stage != RuntimeStage.COMPLETED for checkpoint in context.checkpoints),
+            "cancelled run must not produce a COMPLETED checkpoint",
+        )
+        self.assertNotIn(
+            ProgressEventType.RUN_COMPLETED,
+            {event.event_type for event in runtime.get_progress_events(context.run_id)},
+            "cancelled run must not emit RUN_COMPLETED progress",
+        )
 
     def test_non_cancelled_publish_control_still_returns_to_running(self) -> None:
         runtime, context, gateway = self._runtime_and_context()
