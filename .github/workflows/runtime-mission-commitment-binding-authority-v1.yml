@@ -20,8 +20,13 @@ env:
 
 jobs:
   mission-commitment-binding-authority:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: mission-commitment-binding-authority (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@v4
@@ -36,32 +41,56 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Verify exact head identity
-        shell: bash
+        shell: pwsh
         run: |
-          ACTUAL="$(git rev-parse HEAD)"
-          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
-          echo "expected=$EXPECTED"
-          echo "actual=$ACTUAL"
-          test "$ACTUAL" = "$EXPECTED"
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          "runner_os=${{ runner.os }}" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "exact-head mismatch: expected=$expected actual=$actual" }
 
       - name: Install runtime dependencies
+        shell: pwsh
         run: |
           python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile touched source and regression
+        shell: pwsh
         run: |
-          python -m py_compile runtime/mission.py tests/test_runtime_mission_commitment_binding_authority_v1.py
+          python -m py_compile runtime/mission.py tests/test_runtime_mission_commitment_binding_authority_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run commitment binding authority regressions
-        run: python -m unittest -v tests.test_runtime_mission_commitment_binding_authority_v1
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_mission_commitment_binding_authority_v1 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run adjacent Mission authority regressions
+        shell: pwsh
         run: |
-          python -m unittest -v \
-            tests.test_runtime_mission_lifecycle_linearizability_v1 \
-            tests.test_runtime_mission_lifecycle_transition_authority_v1 \
-            tests.test_runtime_mission_terminal_state_authority_v1 \
-            tests.test_runtime_mission_authoritative_scope_immutability_v1 \
-            tests.test_runtime_mission_commitment_contract_v1 \
-            tests.test_structure
+          python -m unittest -v tests.test_runtime_mission_lifecycle_linearizability_v1 tests.test_runtime_mission_lifecycle_transition_authority_v1 tests.test_runtime_mission_terminal_state_authority_v1 tests.test_runtime_mission_authoritative_scope_immutability_v1 tests.test_runtime_mission_commitment_contract_v1 tests.test_structure 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 45
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-mission-commitment-binding-authority-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
