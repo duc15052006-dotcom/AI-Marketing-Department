@@ -67,6 +67,7 @@ class ExecutionCheckpoint(BaseModel):
     business_id: Optional[str] = None
     project_id: Optional[str] = None
     chat_id: Optional[str] = None
+    campaign_id: Optional[str] = None
     stage: RuntimeStage
     status: RuntimeStatus
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -90,7 +91,10 @@ class ExecutionCheckpoint(BaseModel):
         business_id = self.business_id or ""
         project_id = self.project_id or ""
         chat_id = self.chat_id or ""
-        raw = f"{self.run_id}:{business_id}:{project_id}:{chat_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{pending_approval_id}:{working_state_json}"
+        scope_prefix = f"{self.run_id}:{business_id}:{project_id}:{chat_id}"
+        if self.campaign_id is not None:
+            scope_prefix = f"{scope_prefix}:{self.campaign_id}"
+        raw = f"{scope_prefix}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{pending_approval_id}:{working_state_json}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -293,6 +297,7 @@ class RuntimeContext(BaseModel):
             business_id=self.business_id,
             project_id=self.project_id,
             chat_id=self.chat_id,
+            campaign_id=self.campaign_id,
             stage=self.current_stage,
             status=self.status,
             completed_stages=list(self.stage_outputs.keys()),
