@@ -90,6 +90,15 @@ from brain.reasoning import (
     SignalLevel,
     select_reasoning_depth,
 )
+from brain.reflection import (
+    CognitiveReflectionReport,
+    CognitiveReflectionRequest,
+    DecisionPremise,
+    ReflectionDirective,
+    ReflectionFinding,
+    ReflectionFindingKind,
+    reflect_on_decision,
+)
 from brain.world_state import (
     BeliefRevision,
     BeliefStatus,
@@ -105,6 +114,8 @@ __all__ = [
     "BeliefRevision",
     "BeliefStatus",
     "BrainAgentId",
+    "CognitiveReflectionReport",
+    "CognitiveReflectionRequest",
     "CounterfactualComparison",
     "CounterfactualComparisonRequest",
     "CounterfactualEpistemicStatus",
@@ -114,6 +125,7 @@ __all__ = [
     "CounterfactualScenario",
     "CounterfactualScenarioRequest",
     "DecisionDisposition",
+    "DecisionPremise",
     "DecisionRecord",
     "EvidenceNeed",
     "GapResolutionDirective",
@@ -148,6 +160,9 @@ __all__ = [
     "ReasoningAssessment",
     "ReasoningDecision",
     "ReasoningDepth",
+    "ReflectionDirective",
+    "ReflectionFinding",
+    "ReflectionFindingKind",
     "ResearchAgenda",
     "ResearchAgendaRequest",
     "ResearchProbe",
@@ -176,6 +191,7 @@ __all__ = [
     "evaluate_meta_learning",
     "prioritize_research_agenda",
     "ready_step_ids",
+    "reflect_on_decision",
     "select_reasoning_depth",
     "simulate_counterfactual",
 ]
