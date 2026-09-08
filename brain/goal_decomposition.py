@@ -71,8 +71,6 @@ class GoalDependency(BaseModel):
         if not isinstance(self.rationale, str):
             raise ValidationError("rationale must be a string")
         self.rationale = self.rationale.strip()
-        if self.prerequisite_goal_id == self.dependent_goal_id:
-            raise ValidationError("goal dependency cannot be a self-edge")
 
 
 class SuccessCriterionTrace(BaseModel):
