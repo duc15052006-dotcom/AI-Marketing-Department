@@ -401,11 +401,11 @@ class MissionRecord(BaseModel):
         object.__setattr__(self, "status", _require_mission_status(self.status))
 
     def __setattr__(self, name: str, value: object) -> None:
-        """Serialize initialized Mission authority mutation through one lock stripe.
+        """Serialize and authorize initialized Mission authority mutation.
 
-        #214 deliberately does not forbid direct commitment_id rebinding; #215
-        owns that authority invariant.  It does ensure such writes cannot race a
-        lifecycle/scope mutation or an authoritative snapshot read.
+        Lifecycle, authoritative scope, and commitment binding all share the
+        #214 lock stripe. A differing commitment binding is never a direct field
+        mutation: only mark_ready() may establish it after Commitment validation.
         """
 
         if name not in _MISSION_AUTHORITY_MUTATION_FIELDS or name not in self.__dict__:
@@ -422,6 +422,14 @@ class MissionRecord(BaseModel):
                     raise MissionTransitionError(
                         f"MISSION_AUTHORITATIVE_SCOPE_IMMUTABLE: {name}"
                     )
+
+            if name == "commitment_id":
+                current_value = self.__dict__[name]
+                if value == current_value:
+                    return
+                raise MissionCommitmentError(
+                    "MISSION_COMMITMENT_BINDING_REQUIRES_MARK_READY"
+                )
 
             if name == "status":
                 current = _require_mission_status(self.__dict__["status"])

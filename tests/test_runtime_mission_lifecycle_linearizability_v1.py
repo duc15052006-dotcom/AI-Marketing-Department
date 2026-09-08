@@ -1,10 +1,10 @@
-"""Deterministic RED regressions for Mission authority linearizability.
+"""Deterministic regressions for Mission authority linearizability.
 
-The races here use explicit gates rather than stress timing.  The production
+The races here use explicit gates rather than stress timing. The production
 contract is one linearization domain for lifecycle transition, mark_ready,
 authoritative-scope mutation, commitment binding writes, and authority snapshot
-reads.  #215 remains separate: direct commitment_id rebinding is intentionally
-still allowed by this slice, but must be serialized with the same lock.
+reads. #215 additionally forbids differing direct commitment_id rebinding while
+preserving the same #214 authority lock serialization boundary.
 """
 
 from __future__ import annotations
@@ -332,13 +332,17 @@ class MissionLifecycleLinearizabilityV1Tests(unittest.TestCase):
         self.assertEqual(result, ["OK"])
         self.assertEqual(mission.status, MissionStatus.WAITING_FOR_TIME)
 
-    def test_commitment_id_rebinding_remains_separate_215_control(self):
+    def test_commitment_id_rebinding_is_rejected_after_215(self):
         mission = self._mission(
             status=MissionStatus.READY,
             commitment_id="COMMIT-001",
         )
-        mission.commitment_id = "COMMIT-002"
-        self.assertEqual(mission.commitment_id, "COMMIT-002")
+        with self.assertRaisesRegex(
+            MissionCommitmentError,
+            "MISSION_COMMITMENT_BINDING_REQUIRES_MARK_READY",
+        ):
+            mission.commitment_id = "COMMIT-002"
+        self.assertEqual(mission.commitment_id, "COMMIT-001")
 
 
 if __name__ == "__main__":
