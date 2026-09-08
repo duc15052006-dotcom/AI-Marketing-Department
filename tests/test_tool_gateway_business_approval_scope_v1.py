@@ -12,7 +12,7 @@ from tools.capabilities import (
     RiskLevel,
 )
 from tools.receipts import ExecutionMode, ExecutionStatus
-from tools.security import PolicyEngine
+from tools.security import PolicyEngine, compute_request_fingerprint
 from tools.tool_gateway import ToolGateway, ToolRequest
 
 
@@ -102,6 +102,8 @@ class ToolGatewayBusinessApprovalScopeTests(unittest.TestCase):
         ok, approval, _ = policy.approve_pending_action(pending.pending_approval_id)
         self.assertTrue(ok)
         self.assertIsNotNone(approval)
+        self.assertEqual(pending.project_id, "PROJ_ALPHA")
+        self.assertEqual(approval.project_id, "PROJ_ALPHA")
 
         receipt = gateway.execute(
             ToolRequest(
@@ -119,6 +121,44 @@ class ToolGatewayBusinessApprovalScopeTests(unittest.TestCase):
         self.assertEqual(adapter.calls, [])
         self.assertFalse(approval.claimed)
         self.assertFalse(approval.consumed)
+
+    def test_project_bound_approval_dispatches_only_in_same_project(self) -> None:
+        policy, gateway, adapter = self._project_scoped_gateway()
+        parameters = {"value": "approved payload"}
+        approval = policy.create_server_approval(
+            capability_id="tenant_write",
+            parameters=parameters,
+            run_id="run-1",
+            business_id="BIZ_ALPHA",
+            project_id="PROJ_ALPHA",
+        )
+
+        receipt = gateway.execute(
+            ToolRequest(
+                run_id="run-1",
+                agent_id="cmo",
+                capability_id="tenant_write",
+                parameters=parameters,
+                approval_token=approval.approval_token,
+                business_id="BIZ_ALPHA",
+                project_id="PROJ_ALPHA",
+            )
+        )
+
+        self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
+        self.assertEqual(adapter.calls, [("run-1", "BIZ_ALPHA", "PROJ_ALPHA")])
+        self.assertTrue(approval.claimed)
+        self.assertTrue(approval.consumed)
+
+    def test_project_scope_is_part_of_request_fingerprint(self) -> None:
+        params = {"value": "approved payload"}
+        fp_a = compute_request_fingerprint(
+            "tenant_write", params, "run-1", "BIZ_ALPHA", "PROJ_ALPHA"
+        )
+        fp_b = compute_request_fingerprint(
+            "tenant_write", params, "run-1", "BIZ_ALPHA", "PROJ_BETA"
+        )
+        self.assertNotEqual(fp_a, fp_b)
 
     def test_business_bound_approval_cannot_dispatch_without_business_scope(self) -> None:
         registry = CapabilityRegistry()
