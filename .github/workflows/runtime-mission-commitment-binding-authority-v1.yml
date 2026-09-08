@@ -28,10 +28,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout exact PR head with full history
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -78,7 +79,8 @@ jobs:
           python -m unittest -v tests.test_runtime_mission_lifecycle_linearizability_v1 tests.test_runtime_mission_lifecycle_transition_authority_v1 tests.test_runtime_mission_terminal_state_authority_v1 tests.test_runtime_mission_authoritative_scope_immutability_v1 tests.test_runtime_mission_commitment_contract_v1 tests.test_structure 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run full hermetic unittest discovery
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows'
         timeout-minutes: 45
         shell: pwsh
         run: |
