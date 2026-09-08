@@ -172,6 +172,13 @@ class RuntimePersistentWorkerCrashResumeV1Tests(unittest.TestCase):
         self.assertIsNotNone(checkpoint)
         assert checkpoint is not None
         self.assertEqual(1, checkpoint.checkpoint_sequence)
+        self.assertEqual(source_id, checkpoint.source_wake_id)
+        self.assertEqual({"step": 1, "phase": "checkpointed"}, checkpoint.state)
+        self.assertIsInstance(checkpoint.worker_cycle, dict)
+        assert checkpoint.worker_cycle is not None
+        persisted_next_id = checkpoint.worker_cycle.get("next_wake_id")
+        self.assertIsInstance(persisted_next_id, str)
+        self.assertTrue(persisted_next_id)
         self.assertEqual(1, self._wake_count())
         source = self._wake(source_id)
         self.assertIsNotNone(source)
@@ -200,7 +207,7 @@ class RuntimePersistentWorkerCrashResumeV1Tests(unittest.TestCase):
         self.assertEqual([], replayed, "durably checkpointed source wake was executed again")
         self.assertEqual(PersistentWorkerCycleStatus.CONTINUED, recovered.status)
         self.assertEqual(1, recovered.checkpoint_sequence)
-        self.assertIsNotNone(recovered.next_wake_id)
+        self.assertEqual(persisted_next_id, recovered.next_wake_id)
         self.assertEqual(2, self._wake_count())
         source = self._wake(source_id)
         self.assertIsNotNone(source)
@@ -247,6 +254,10 @@ class RuntimePersistentWorkerCrashResumeV1Tests(unittest.TestCase):
         self.assertIsNotNone(checkpoint)
         assert checkpoint is not None
         self.assertEqual(1, checkpoint.checkpoint_sequence)
+        self.assertEqual(source_id, checkpoint.source_wake_id)
+        self.assertIsInstance(checkpoint.worker_cycle, dict)
+        assert checkpoint.worker_cycle is not None
+        self.assertEqual(original_next_id, checkpoint.worker_cycle.get("next_wake_id"))
 
         self._reopen_after_lease_expiry()
         replayed: list[str] = []
@@ -305,6 +316,11 @@ class RuntimePersistentWorkerCrashResumeV1Tests(unittest.TestCase):
         self.assertIsNotNone(checkpoint)
         assert checkpoint is not None
         self.assertEqual(1, checkpoint.checkpoint_sequence)
+        self.assertEqual(source_id, checkpoint.source_wake_id)
+        self.assertEqual({"step": 1, "phase": "complete"}, checkpoint.state)
+        self.assertIsInstance(checkpoint.worker_cycle, dict)
+        assert checkpoint.worker_cycle is not None
+        self.assertIsNone(checkpoint.worker_cycle.get("next_wake_id"))
         self.assertEqual(1, self._wake_count())
 
         self._reopen_after_lease_expiry()
