@@ -1,0 +1,76 @@
+name: Brain Hypothesis State Consistency V4
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  holdout:
+    name: Hypothesis semantic-state future-ASI holdout V4
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact CI identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $expectedHead = "${{ github.event.pull_request.head.sha || github.sha }}"
+          $actualHead = (git rev-parse HEAD).Trim()
+          "expected_head_sha=$expectedHead" | Tee-Object -FilePath .ci-results/brain-hypothesis-state-consistency-v4-identity.txt
+          "actual_head_sha=$actualHead" | Tee-Object -FilePath .ci-results/brain-hypothesis-state-consistency-v4-identity.txt -Append
+          if ($actualHead -ne $expectedHead) { exit 1 }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run V4 semantic-state holdout
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_brain_hypothesis_state_consistency_v4 `
+            2>&1 | Tee-Object -FilePath .ci-results/brain-hypothesis-state-consistency-v4.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run adjacent research-agenda qualification
+        if: always()
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_brain_research_agenda_use_boundary_revalidation_v1 tests.test_brain_hypothesis_portfolio_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/brain-hypothesis-state-consistency-v4-adjacent.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload holdout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-hypothesis-state-consistency-v4-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
