@@ -1,0 +1,70 @@
+name: Temporary Apply Plan Snapshot Integrity V1
+
+on:
+  pull_request:
+    branches:
+      - fix/brain-collaboration-proposal-evidence-authority-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/brain-plan-use-boundary-revalidation-v1
+          fetch-depth: 0
+      - name: Apply minimal production patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('brain/planning.py')
+          text = path.read_text()
+
+          old = '''        self.steps = normalized_steps\n        self._validate_graph()\n        self._validate_state_consistency()\n\n    def _validate_graph(self) -> None:\n'''
+          new = '''        self.steps = normalized_steps\n        self._validate_graph()\n        self._validate_state_consistency()\n        self._authority_fingerprint = self._semantic_fingerprint()\n\n    @staticmethod\n    def _typed_fingerprint(value: object) -> tuple[type, object]:\n        return (type(value), value)\n\n    def _semantic_fingerprint(self) -> tuple:\n        scalar = self._typed_fingerprint\n        return (\n            scalar(self.plan_id),\n            scalar(self.goal_id),\n            scalar(self.revision),\n            scalar(self.status),\n            scalar(self.parent_revision),\n            scalar(self.revision_reason),\n            tuple(\n                (\n                    scalar(step.step_id),\n                    scalar(step.goal_id),\n                    scalar(step.owner_agent),\n                    scalar(step.objective),\n                    tuple(scalar(value) for value in step.depends_on),\n                    tuple(scalar(value) for value in step.completion_criteria),\n                    tuple(scalar(value) for value in step.evidence_need_ids),\n                    tuple(scalar(value) for value in step.action_intent_ids),\n                    scalar(step.state),\n                )\n                for step in self.steps\n            ),\n        )\n\n    def assert_unchanged(self) -> None:\n        \"\"\"Fail closed if a validated cognitive snapshot was mutated in place.\"\"\"\n\n        if not hasattr(self, \"_authority_fingerprint\"):\n            raise ValidationError(\"PlanSnapshot lacks its construction-time authority seal\")\n        if self._semantic_fingerprint() != self._authority_fingerprint:\n            raise ValidationError(\n                \"PlanSnapshot was mutated after validation; construct a new snapshot/revision instead\"\n            )\n\n    def _validate_graph(self) -> None:\n'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('PlanSnapshot post-init anchor not found')
+              text = text.replace(old, new, 1)
+
+          old = '''    if not isinstance(plan, PlanSnapshot):\n        raise ValidationError(\"plan must be a PlanSnapshot\")\n    if not isinstance(action_intents, list):\n'''
+          new = '''    if not isinstance(plan, PlanSnapshot):\n        raise ValidationError(\"plan must be a PlanSnapshot\")\n    plan.assert_unchanged()\n    if not isinstance(action_intents, list):\n'''
+          if text.count(new) == 0:
+              if old not in text:
+                  raise SystemExit('action binding use-boundary anchor not found')
+              text = text.replace(old, new, 1)
+
+          old = '''    if not isinstance(plan, PlanSnapshot):\n        raise ValidationError(\"plan must be a PlanSnapshot\")\n    if plan.status != PlanStatus.ACTIVE:\n'''
+          new = '''    if not isinstance(plan, PlanSnapshot):\n        raise ValidationError(\"plan must be a PlanSnapshot\")\n    plan.assert_unchanged()\n    if plan.status != PlanStatus.ACTIVE:\n'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('ready_step_ids use-boundary anchor not found')
+              text = text.replace(old, new, 1)
+
+          old = '''    if not isinstance(revision, PlanRevision):\n        raise ValidationError(\"revision must be a PlanRevision\")\n    if plan.status in (PlanStatus.SATISFIED, PlanStatus.ABANDONED):\n'''
+          new = '''    if not isinstance(revision, PlanRevision):\n        raise ValidationError(\"revision must be a PlanRevision\")\n    plan.assert_unchanged()\n    if plan.status in (PlanStatus.SATISFIED, PlanStatus.ABANDONED):\n'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('apply_plan_revision use-boundary anchor not found')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit production patch
+        shell: bash
+        run: |
+          if git diff --quiet -- brain/planning.py; then
+            echo 'No source change required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add brain/planning.py
+          git commit -m 'fix(brain): seal cognitive plan snapshots against mutation'
+          git push origin HEAD:fix/brain-plan-use-boundary-revalidation-v1
