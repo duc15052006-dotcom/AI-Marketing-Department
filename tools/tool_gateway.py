@@ -31,7 +31,7 @@ from tools.adapters import (
     SearchAdapter,
 )
 from tools.capabilities import CapabilityCategory, CapabilityDescriptor, CapabilityRegistry, PermissionLevel, RiskLevel
-from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
+from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus, _safe_approval_reference
 from tools.security import PolicyDecision, PolicyEngine
 
 logger = logging.getLogger("tool_gateway")
@@ -279,6 +279,7 @@ class ToolGateway:
         # 4. Atomic One-Shot Approval Claim for Consequential Actions
         cap_is_consequential = self._is_consequential_capability(cap)
         is_consequential = bool(request.approval_token and cap_is_consequential)
+        approval_reference = _safe_approval_reference(request.approval_token)
 
         if is_consequential:
             claimed = self.policy_engine.claim_approval(request.approval_token)
@@ -295,7 +296,7 @@ class ToolGateway:
                     status=ExecutionStatus.APPROVAL_REQUIRED,
                     error_class="APPROVAL_ALREADY_CLAIMED",
                     error_message="APPROVAL_ALREADY_CLAIMED: Approval token has already been claimed or consumed for execution.",
-                    approval_reference=request.approval_token,
+                    approval_reference=approval_reference,
                     business_id=request.business_id,
                     project_id=request.project_id,
                     chat_id=request.chat_id,
@@ -332,7 +333,7 @@ class ToolGateway:
                     business_id=request.business_id,
                     project_id=request.project_id,
                     chat_id=request.chat_id,
-                    approval_reference=request.approval_token,
+                    approval_reference=approval_reference,
                 )
                 self.receipt_repository.mark_execution_intent_dispatching(
                     execution_intent.intent_id
@@ -411,7 +412,7 @@ class ToolGateway:
                 data=adapter_res.data,
                 cost_or_token_usage=adapter_res.cost_or_tokens,
                 artifact_references=adapter_res.artifact_refs,
-                approval_reference=request.approval_token,
+                approval_reference=approval_reference,
                 business_id=request.business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
@@ -448,7 +449,7 @@ class ToolGateway:
                 error_message=err_msg,
                 cost_or_token_usage=adapter_res.cost_or_tokens if adapter_res else {},
                 artifact_references=adapter_res.artifact_refs if adapter_res else [],
-                approval_reference=request.approval_token,
+                approval_reference=approval_reference,
                 business_id=request.business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
