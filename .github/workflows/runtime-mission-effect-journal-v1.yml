@@ -1,0 +1,108 @@
+name: Runtime Mission Effect Journal V1
+
+on:
+  pull_request:
+    paths:
+      - "tools/receipts.py"
+      - "tests/test_runtime_mission_effect_journal_v1.py"
+      - "tests/test_runtime_continuity_authority_stack_v1.py"
+      - ".github/workflows/runtime-mission-effect-journal-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+  AI_MARKETING_MEMORY_EPHEMERAL: "1"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  mission-effect-journal:
+    name: mission-effect-journal (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "exact-head mismatch: expected=$expected actual=$actual" }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile Mission effect-journal boundary
+        shell: pwsh
+        run: |
+          python -m py_compile tools/receipts.py tests/test_runtime_mission_effect_journal_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Mission effect-journal contract
+        id: targeted
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_mission_effect_journal_v1 2>&1 | Tee-Object -FilePath .ci-results/mission-effect-journal.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run adjacent Continuity authority regression
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows' && steps.targeted.outcome == 'success'
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-hermetic.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload exact-head Mission effect evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-mission-effect-journal-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Enforce Mission effect-journal gate
+        if: always()
+        shell: pwsh
+        run: |
+          if ("${{ steps.targeted.outcome }}" -ne "success") {
+            throw "Mission effect-journal contract failed"
+          }

@@ -134,7 +134,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         self.assertEqual(receipt.error_class, "HUMAN_APPROVAL_REQUIRED")
 
     def test_human_approval_gate_passes_with_valid_token(self):
-        """Verify CMO requests succeed when authorized with a verified human approval token."""
+        """Verify CMO requests succeed while receipts retain only an opaque approval reference."""
         token = "AUTH-TOKEN-HUMAN-9999"
         self.policy_engine.register_approval(
             HumanApprovalRecord(
@@ -155,7 +155,10 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         )
         receipt = self.gateway.execute(req)
         self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
-        self.assertEqual(receipt.approval_reference, token)
+        self.assertIsNotNone(receipt.approval_reference)
+        self.assertTrue((receipt.approval_reference or "").startswith("approval_ref_"))
+        self.assertNotEqual(receipt.approval_reference, token)
+        self.assertNotIn(token, receipt.model_dump_json())
 
     # 4. Immutable Execution Receipts
     def test_immutable_execution_receipt_generation_and_hashing(self):
