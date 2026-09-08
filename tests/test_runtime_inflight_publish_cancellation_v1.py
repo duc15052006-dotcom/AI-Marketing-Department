@@ -14,7 +14,12 @@ import unittest
 from runtime.context import RuntimeStage, RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime
 from runtime.progress import ProgressEventType
-from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus
+from tools.receipts import (
+    ExecutionMode,
+    ExecutionReceipt,
+    ExecutionReceiptRepository,
+    ExecutionStatus,
+)
 
 
 class _BlockingPublishGateway:
@@ -22,13 +27,14 @@ class _BlockingPublishGateway:
         self.calls = []
         self.entered = threading.Event()
         self.release = threading.Event()
+        self.receipt_repository = ExecutionReceiptRepository()
 
     def execute(self, request, **_kwargs):
         self.calls.append(request)
         self.entered.set()
         if not self.release.wait(timeout=5.0):
             raise RuntimeError("TEST_GATEWAY_RELEASE_TIMEOUT")
-        return ExecutionReceipt(
+        receipt = ExecutionReceipt(
             execution_id="EXEC-INFLIGHT-CANCEL-PUBLISH-V1",
             run_id=request.run_id,
             agent_id=request.agent_id,
@@ -42,6 +48,7 @@ class _BlockingPublishGateway:
             chat_id=request.chat_id,
             data={"accepted": True},
         )
+        return self.receipt_repository.save_receipt(receipt)
 
 
 class RuntimeInflightPublishCancellationV1Tests(unittest.TestCase):
