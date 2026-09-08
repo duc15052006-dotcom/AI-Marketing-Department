@@ -94,6 +94,7 @@ class StrategyTrial(BaseModel):
             raise ValidationError(
                 "before/after metacognition requests must bind to the same ASI"
             )
+        self._semantic_snapshot = copy.deepcopy(self.model_dump())
 
 
 class StrategyPerformance(BaseModel):
@@ -162,6 +163,7 @@ class MetaLearningRequest(BaseModel):
             trial_ids.add(trial.trial_id)
             normalized.append(trial)
         self.trials = normalized
+        self._semantic_snapshot = copy.deepcopy(self.model_dump())
 
 
 class MetaLearningDecision(BaseModel):
@@ -244,6 +246,10 @@ def _canonical_metacognition_request(request: MetacognitionRequest) -> Metacogni
 def _canonical_strategy_trial(trial: StrategyTrial) -> StrategyTrial:
     if not isinstance(trial, StrategyTrial):
         raise ValidationError("trials must contain only StrategyTrial items")
+    original_snapshot = getattr(trial, "_semantic_snapshot", None)
+    current_snapshot = copy.deepcopy(trial.model_dump())
+    if original_snapshot is None or current_snapshot != original_snapshot:
+        raise ValidationError("strategy trial semantic state changed after validation")
     return StrategyTrial(
         trial_id=trial.trial_id,
         problem_family_id=trial.problem_family_id,
@@ -254,12 +260,16 @@ def _canonical_strategy_trial(trial: StrategyTrial) -> StrategyTrial:
 
 
 def _canonical_meta_learning_request(request: MetaLearningRequest) -> MetaLearningRequest:
-    """Revalidate complete mutable trial history before it can update policy."""
+    """Revalidate immutable policy evidence before it can update strategy authority."""
 
     if not isinstance(request, MetaLearningRequest):
         raise ValidationError("request must be a MetaLearningRequest")
     if not isinstance(request.trials, list):
         raise ValidationError("trials must be a list of StrategyTrial")
+    original_snapshot = getattr(request, "_semantic_snapshot", None)
+    current_snapshot = copy.deepcopy(request.model_dump())
+    if original_snapshot is None or current_snapshot != original_snapshot:
+        raise ValidationError("meta-learning request semantic state changed after validation")
     return MetaLearningRequest(
         assessment_id=request.assessment_id,
         problem_family_id=request.problem_family_id,
