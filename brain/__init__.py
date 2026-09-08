@@ -29,6 +29,13 @@ from brain.counterfactual import (
     compare_counterfactuals,
     simulate_counterfactual,
 )
+from brain.goal_decomposition import (
+    GoalDecomposition,
+    GoalDecompositionRequest,
+    GoalDependency,
+    SuccessCriterionTrace,
+    build_goal_decomposition,
+)
 from brain.hypotheses import (
     HypothesisAssessment,
     HypothesisCandidate,
@@ -129,6 +136,9 @@ __all__ = [
     "DecisionRecord",
     "EvidenceNeed",
     "GapResolutionDirective",
+    "GoalDecomposition",
+    "GoalDecompositionRequest",
+    "GoalDependency",
     "GoalSpec",
     "GoalStatus",
     "HypothesisAssessment",
@@ -175,6 +185,7 @@ __all__ = [
     "StopReason",
     "StrategyPerformance",
     "StrategyTrial",
+    "SuccessCriterionTrace",
     "TrialEffect",
     "UnknownRecord",
     "WorldBelief",
@@ -185,6 +196,7 @@ __all__ = [
     "apply_plan_revision",
     "assess_hypothesis_portfolio",
     "assess_metacognition",
+    "build_goal_decomposition",
     "build_world_state",
     "compare_counterfactuals",
     "derive_knowledge_gaps",
