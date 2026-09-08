@@ -103,10 +103,16 @@ class MissionWakeDispatcher:
 
     @staticmethod
     def _require_aware_now(now: Optional[datetime]) -> datetime:
-        reference = now or datetime.now(timezone.utc)
+        reference = now if now is not None else datetime.now(timezone.utc)
         if reference.tzinfo is None or reference.utcoffset() is None:
             raise ValueError("MISSION_DISPATCH_NOW_MUST_BE_TIMEZONE_AWARE")
         return reference.astimezone(timezone.utc)
+
+    @classmethod
+    def _explicit_now(cls, now: Optional[datetime]) -> Optional[datetime]:
+        """Normalize caller-controlled time without manufacturing a default early."""
+
+        return None if now is None else cls._require_aware_now(now)
 
     @staticmethod
     def _assert_composed_identity(
@@ -130,6 +136,21 @@ class MissionWakeDispatcher:
         if mission_lease.lease_owner != worker_id or not mission_lease.leased:
             raise MissionDispatchAuthorityError("MISSION_DISPATCH_MISSION_OWNER_MISMATCH")
 
+    @staticmethod
+    def _assert_live_at(
+        wake: WakeRecord,
+        mission_lease: MissionLeaseRecord,
+        *,
+        reference: datetime,
+    ) -> None:
+        if wake.lease_expires_at is None or wake.lease_expires_at <= reference:
+            raise MissionDispatchLeaseLostError("MISSION_DISPATCH_WAKE_LEASE_LOST")
+        if (
+            mission_lease.lease_expires_at is None
+            or mission_lease.lease_expires_at <= reference
+        ):
+            raise MissionDispatchLeaseLostError("MISSION_DISPATCH_MISSION_LEASE_LOST")
+
     def claim_next(
         self,
         *,
@@ -148,10 +169,10 @@ class MissionWakeDispatcher:
         """
 
         normalized_worker = self._require_worker_id(worker_id)
-        reference = self._require_aware_now(now)
+        explicit_reference = self._explicit_now(now)
         wakes = self._scheduler.claim_due(
             worker_id=normalized_worker,
-            now=reference,
+            now=explicit_reference,
             lease_seconds=wake_lease_seconds,
             limit=1,
         )
@@ -166,7 +187,7 @@ class MissionWakeDispatcher:
                 project_id=wake.project_id,
                 worker_id=normalized_worker,
                 lease_seconds=mission_lease_seconds,
-                now=reference,
+                now=explicit_reference,
             )
         except MissionLeaseStateError:
             # The wake remains leased for a bounded period.  We intentionally do
@@ -178,11 +199,17 @@ class MissionWakeDispatcher:
             mission_lease,
             worker_id=normalized_worker,
         )
+        composed_at = (
+            explicit_reference
+            if explicit_reference is not None
+            else self._require_aware_now(None)
+        )
+        self._assert_live_at(wake, mission_lease, reference=composed_at)
         return MissionExecutionGrant(
             worker_id=normalized_worker,
             wake=wake,
             mission_lease=mission_lease,
-            acquired_at=reference,
+            acquired_at=composed_at,
         )
 
     def validate(
@@ -195,12 +222,17 @@ class MissionWakeDispatcher:
 
         if not isinstance(grant, MissionExecutionGrant):
             raise MissionDispatchLeaseLostError("MISSION_DISPATCH_GRANT_REQUIRED")
-        reference = self._require_aware_now(now)
+        explicit_reference = self._explicit_now(now)
 
         current_wake = self._scheduler.get_wake(
             grant.wake.wake_id,
             business_id=grant.business_id,
             project_id=grant.project_id,
+        )
+        reference = (
+            explicit_reference
+            if explicit_reference is not None
+            else self._require_aware_now(None)
         )
         if (
             current_wake is None
@@ -215,7 +247,7 @@ class MissionWakeDispatcher:
         try:
             current_mission_lease = self._mission_leases.validate(
                 grant.mission_lease,
-                now=reference,
+                now=explicit_reference,
             )
         except MissionLeaseLostError as exc:
             raise MissionDispatchLeaseLostError(
@@ -226,6 +258,16 @@ class MissionWakeDispatcher:
             current_wake,
             current_mission_lease,
             worker_id=grant.worker_id,
+        )
+        final_reference = (
+            explicit_reference
+            if explicit_reference is not None
+            else self._require_aware_now(None)
+        )
+        self._assert_live_at(
+            current_wake,
+            current_mission_lease,
+            reference=final_reference,
         )
         return MissionExecutionGrant(
             worker_id=grant.worker_id,
@@ -244,12 +286,12 @@ class MissionWakeDispatcher:
     ) -> MissionExecutionGrant:
         """Renew both authorities or fail closed and relinquish Mission ownership."""
 
-        validated = self.validate(grant, now=now)
-        reference = self._require_aware_now(now)
+        explicit_reference = self._explicit_now(now)
+        validated = self.validate(grant, now=explicit_reference)
         renewed_mission = self._mission_leases.renew(
             validated.mission_lease,
             lease_seconds=mission_lease_seconds,
-            now=reference,
+            now=explicit_reference,
         )
         try:
             renewed_wake = self._scheduler.renew_lease(
@@ -257,17 +299,30 @@ class MissionWakeDispatcher:
                 worker_id=validated.worker_id,
                 lease_token=validated.wake.lease_token or "",
                 lease_seconds=wake_lease_seconds,
-                now=reference,
+                now=explicit_reference,
             )
         except MissionSchedulerLeaseError as exc:
             try:
-                self._mission_leases.release(renewed_mission, now=reference)
+                self._mission_leases.release(
+                    renewed_mission,
+                    now=explicit_reference,
+                )
             except MissionLeaseLostError:
                 pass
             raise MissionDispatchLeaseLostError(
                 "MISSION_DISPATCH_WAKE_RENEWAL_LOST"
             ) from exc
 
+        final_reference = (
+            explicit_reference
+            if explicit_reference is not None
+            else self._require_aware_now(None)
+        )
+        self._assert_live_at(
+            renewed_wake,
+            renewed_mission,
+            reference=final_reference,
+        )
         return MissionExecutionGrant(
             worker_id=validated.worker_id,
             wake=renewed_wake,
@@ -283,13 +338,19 @@ class MissionWakeDispatcher:
     ) -> WakeRecord:
         """Acknowledge delivery only while Mission execution authority is live."""
 
-        validated = self.validate(grant, now=now)
-        return self._scheduler.acknowledge_wake(
-            wake_id=validated.wake.wake_id,
-            worker_id=validated.worker_id,
-            lease_token=validated.wake.lease_token or "",
-            now=self._require_aware_now(now),
-        )
+        explicit_reference = self._explicit_now(now)
+        validated = self.validate(grant, now=explicit_reference)
+        try:
+            return self._scheduler.acknowledge_wake(
+                wake_id=validated.wake.wake_id,
+                worker_id=validated.worker_id,
+                lease_token=validated.wake.lease_token or "",
+                now=explicit_reference,
+            )
+        except MissionSchedulerLeaseError as exc:
+            raise MissionDispatchLeaseLostError(
+                "MISSION_DISPATCH_WAKE_LEASE_LOST"
+            ) from exc
 
     def release_mission(
         self,
@@ -299,9 +360,10 @@ class MissionWakeDispatcher:
     ) -> MissionLeaseRecord:
         """Release only the exact Mission fencing epoch carried by the grant."""
 
+        explicit_reference = self._explicit_now(now)
         return self._mission_leases.release(
             grant.mission_lease,
-            now=self._require_aware_now(now),
+            now=explicit_reference,
         )
 
     def finish_delivery(
@@ -317,10 +379,13 @@ class MissionWakeDispatcher:
         already-acknowledged wake is never replayed by this coordinator.
         """
 
-        reference = self._require_aware_now(now)
-        acknowledged = self.acknowledge_wake(grant, now=reference)
+        explicit_reference = self._explicit_now(now)
+        acknowledged = self.acknowledge_wake(grant, now=explicit_reference)
         try:
-            self._mission_leases.release(grant.mission_lease, now=reference)
+            self._mission_leases.release(
+                grant.mission_lease,
+                now=explicit_reference,
+            )
         except MissionLeaseLostError:
             # Acknowledgement truth is not rolled back.  A lost Mission lease is
             # already non-authoritative and cannot be revived by this path.
