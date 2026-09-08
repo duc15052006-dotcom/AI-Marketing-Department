@@ -2668,6 +2668,40 @@ class FiveAgentDepartmentRuntime:
                 "GLOBAL",
             )
 
+        # Resolve receipt references once at the sealing boundary and accept
+        # only receipts owned by this run's immutable authority. Optional
+        # legacy scope fields may be absent, but an explicitly conflicting
+        # business/project/chat scope is never allowed to cross into sealed
+        # artifacts or candidate-memory evidence.
+        receipts = [
+            self.tool_gateway.receipt_repository.get_receipt(r_id)
+            for r_id in context.execution_receipt_refs
+        ]
+        authority = context.scope
+        valid_receipts: List[ExecutionReceipt] = []
+        for receipt in receipts:
+            if receipt is None:
+                continue
+            if str(receipt.run_id or "").strip() != str(authority.run_id or "").strip():
+                continue
+            receipt_scope = (
+                str(receipt.business_id or "").strip(),
+                str(receipt.project_id or "").strip(),
+                str(receipt.chat_id or "").strip(),
+            )
+            authority_scope = (
+                str(authority.business_id or "").strip(),
+                str(authority.project_id or "").strip(),
+                str(authority.chat_id or "").strip(),
+            )
+            if any(
+                receipt_value and receipt_value != authority_value
+                for receipt_value, authority_value in zip(receipt_scope, authority_scope)
+            ):
+                continue
+            valid_receipts.append(receipt)
+        valid_receipt_ids = [receipt.execution_id for receipt in valid_receipts]
+
         # 1. Propose Memory Candidates only if run completed successfully.
         # COLLAB-04: template memories removed. Exactly ONE factual
         # decision-bookkeeping record is written, and ONLY when the run truly
@@ -2691,7 +2725,7 @@ class FiveAgentDepartmentRuntime:
                             "business_id": context.business_id,
                             "campaign_id": context.campaign_id,
                         },
-                        evidence_refs=list(context.execution_receipt_refs),
+                        evidence_refs=list(valid_receipt_ids),
                         confidence=CANDIDATE_BOOKKEEPING_CONFIDENCE,
                         target_initial_state=PromotionState.CANDIDATE_MEMORY,
                     ),
@@ -2706,8 +2740,6 @@ class FiveAgentDepartmentRuntime:
         # Verified evidence-based ingestion will be implemented in Phase 1B.
 
         # 3. Assemble DepartmentRunArtifact
-        receipts = [self.tool_gateway.receipt_repository.get_receipt(r_id) for r_id in context.execution_receipt_refs]
-        valid_receipts = [r for r in receipts if r is not None]
 
         # Enforce terminal immutability: CANCELLED or FAILED statuses are preserved
         with self._lock:
