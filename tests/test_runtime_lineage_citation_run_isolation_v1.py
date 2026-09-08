@@ -116,6 +116,33 @@ class TestRuntimeLineageCitationRunIsolation(unittest.TestCase):
             "STILL PRESENT: unknown mutable citation ref appears in sealed lineage.",
         )
 
+    def test_citation_ownership_survives_completed_artifact_cache_eviction(self) -> None:
+        runtime = FiveAgentDepartmentRuntime(max_completed_runs_cache=1)
+        citation_a = self._citation("CIT-EVICTED-OWNER-A", "KNOW-EVICTED-OWNER-A")
+        citation_b = self._citation("CIT-EVICTION-FILLER-B", "KNOW-EVICTION-FILLER-B")
+        runtime.lineage_inspector.add_citation(citation_a)
+        runtime.lineage_inspector.add_citation(citation_b)
+
+        artifact_a = runtime.complete_run(
+            self._context("RUN-EVICT-OWNER-A", "BIZ-EVICT-OWNER-A", [citation_a.citation_id])
+        )
+        self.assertEqual(artifact_a.knowledge_used, [citation_a.citation_id])
+
+        runtime.complete_run(
+            self._context("RUN-EVICT-FILLER-B", "BIZ-EVICT-FILLER-B", [citation_b.citation_id])
+        )
+        self.assertIsNone(runtime.get_completed_run("RUN-EVICT-OWNER-A"))
+
+        artifact_c = runtime.complete_run(
+            self._context("RUN-EVICT-ATTACKER-C", "BIZ-EVICT-ATTACKER-C", [citation_a.citation_id])
+        )
+        self.assertEqual(
+            artifact_c.knowledge_used,
+            [],
+            "STILL PRESENT: citation ownership disappears when the owner's artifact leaves the bounded cache.",
+        )
+        self.assertEqual(artifact_c.lineage_summary["citations"], [])
+
     def test_unreferenced_runtime_global_citation_never_enters_artifact(self) -> None:
         runtime = FiveAgentDepartmentRuntime()
         referenced = self._citation("CIT-REFERENCED", "KNOW-REFERENCED")
