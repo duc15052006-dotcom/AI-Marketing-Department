@@ -750,6 +750,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         mgr = RunManager(runtime=rt, max_workers=0)
         rid = rt.reserve_run_id()
         item = mgr.enqueue_run(objective="Approval resume queue test", run_id=rid)
+
         ctx = rt.start_run(objective="Approval wait", reserved_run_id=rid)
         rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(mgr.get_run(rid).status, RunQueueStatus.WAITING_APPROVAL)
