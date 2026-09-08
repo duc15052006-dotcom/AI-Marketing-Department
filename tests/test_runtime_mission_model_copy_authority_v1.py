@@ -8,6 +8,7 @@ commitment binding still require their canonical authority boundaries.
 
 from __future__ import annotations
 
+from datetime import datetime
 import unittest
 
 from runtime.mission import CommitmentRecord, MissionRecord, MissionStatus
@@ -81,6 +82,12 @@ class MissionModelCopyAuthorityV1Tests(unittest.TestCase):
         self.assertEqual(copied.user_id, mission.user_id)
         self.assertEqual(copied.status, MissionStatus.READY)
         self.assertEqual(copied.commitment_id, mission.commitment_id)
+
+    def test_plain_copy_preserves_created_at_runtime_type_control(self) -> None:
+        mission = self._created_mission()
+        copied = mission.model_copy()
+        self.assertIsInstance(copied.created_at, datetime)
+        self.assertEqual(copied.created_at, mission.created_at)
 
     def test_same_value_protected_updates_remain_idempotent_control(self) -> None:
         mission = self._ready_mission()
