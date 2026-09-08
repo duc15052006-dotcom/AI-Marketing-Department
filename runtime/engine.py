@@ -256,6 +256,10 @@ class FiveAgentDepartmentRuntime:
         self._reserved_run_ids: Set[str] = set()
         self._cancelled_run_ids: Set[str] = set()
         self._executed_tool_idempotency_keys: Dict[str, ExecutionReceipt] = {}
+        # Runtime-lifetime citation ownership authority. This registry is
+        # deliberately independent of the bounded completed-artifact cache so
+        # ownership cannot disappear after cache eviction.
+        self._citation_owner_by_id: Dict[str, str] = {}
 
         # PROD-MODEL-SETTINGS-01R2 credential lifetime authority:
         # this runtime answers whether an opaque credential_ref is still pinned
@@ -2753,6 +2757,31 @@ class FiveAgentDepartmentRuntime:
                 else:
                     context.status = RuntimeStatus.COMPLETED
 
+            # Mutable RuntimeContext.knowledge_refs is not ownership authority.
+            # Seal only citations known to this runtime and not already owned by
+            # another run. Claim ownership atomically under the runtime lock.
+            known_citation_ids = {
+                str(citation.citation_id).strip()
+                for citation in self.lineage_inspector.get_all_citations()
+                if str(citation.citation_id).strip()
+            }
+            sealed_citation_ids: List[str] = []
+            seen_citation_ids: Set[str] = set()
+            for citation_ref in context.knowledge_refs:
+                citation_id = str(citation_ref or "").strip()
+                if not citation_id or citation_id in seen_citation_ids:
+                    continue
+                if citation_id not in known_citation_ids:
+                    continue
+                owner_run_id = self._citation_owner_by_id.get(citation_id)
+                if owner_run_id is not None and owner_run_id != context.run_id:
+                    continue
+                sealed_citation_ids.append(citation_id)
+                seen_citation_ids.add(citation_id)
+
+            for citation_id in sealed_citation_ids:
+                self._citation_owner_by_id[citation_id] = context.run_id
+
             artifact = DepartmentRunArtifact(
                 run_id=context.run_id,
                 objective=context.objective,
@@ -2765,7 +2794,7 @@ class FiveAgentDepartmentRuntime:
                 completed_at=completed_at,
                 status=context.status,
                 agent_outputs=context.stage_outputs,
-                knowledge_used=context.knowledge_refs,
+                knowledge_used=list(sealed_citation_ids),
                 memory_used=context.memory_refs,
                 capabilities_used=[r.capability_id for r in valid_receipts],
                 execution_receipts=valid_receipts,
@@ -2774,11 +2803,7 @@ class FiveAgentDepartmentRuntime:
                 learning_candidates=cand_memories,
                 final_cmo_output=context.stage_outputs.get("final_cmo", {}),
                 lineage_summary={
-                    "citations": [
-              c.citation_id
-              for c in self.lineage_inspector.get_all_citations()
-              if c.citation_id in context.knowledge_refs
-          ],
+                    "citations": list(sealed_citation_ids),
                     "evidence_causal_index": {
                         evidence_id: {
                             "observation_id": lineage.get("observation_id"),
