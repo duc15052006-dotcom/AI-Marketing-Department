@@ -3,8 +3,10 @@ name: Brain Hypothesis Portfolio V1
 on:
   pull_request:
     paths:
+      - "brain/__init__.py"
       - "brain/hypotheses.py"
       - "tests/test_brain_hypothesis_portfolio_v1.py"
+      - "tests/test_brain_hypothesis_public_api_v1.py"
       - ".github/workflows/brain-hypothesis-portfolio-v1.yml"
   workflow_dispatch:
 
@@ -60,13 +62,20 @@ jobs:
       - name: Compile hypothesis architecture and regression
         shell: bash
         run: |
-          python -m compileall -q brain/hypotheses.py tests/test_brain_hypothesis_portfolio_v1.py
+          python -m compileall -q \
+            brain/__init__.py \
+            brain/hypotheses.py \
+            tests/test_brain_hypothesis_portfolio_v1.py \
+            tests/test_brain_hypothesis_public_api_v1.py
 
       - name: Run hypothesis portfolio regression
         shell: bash
         run: |
           set -o pipefail
-          python -m unittest -v tests.test_brain_hypothesis_portfolio_v1 2>&1 | tee .ci-results/targeted.log
+          python -m unittest -v \
+            tests.test_brain_hypothesis_portfolio_v1 \
+            tests.test_brain_hypothesis_public_api_v1 \
+            2>&1 | tee .ci-results/targeted.log
 
       - name: Run adjacent five-ASI learning stack
         shell: bash
