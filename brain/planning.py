@@ -11,10 +11,11 @@ audit trail for later Body-side persistence/integration.
 
 from __future__ import annotations
 
+import copy
 from enum import Enum
 from typing import Dict, List, Optional, Set, Type, TypeVar
 
-from brain.contracts import ActionIntent, BrainAgentId
+from brain.contracts import ActionIntent, BrainAgentId, EvidenceNeed
 from schemas.base import BaseModel, Field, ValidationError
 
 
@@ -337,6 +338,46 @@ def validate_plan_action_intent_bindings(
             if intent.owner_agent != step.owner_agent:
                 raise ValidationError(
                     f"action intent '{intent_id}' owner_agent must match step owner_agent"
+                )
+
+
+def validate_plan_evidence_need_bindings(
+    plan: PlanSnapshot,
+    evidence_needs: List[EvidenceNeed],
+) -> None:
+    """Fail closed unless every plan evidence reference resolves canonically.
+
+    Validation reconstructs both the mutable plan and evidence inputs at the use
+    boundary so post-construction mutation cannot silently weaken provenance.
+    Evidence references remain semantic Brain artifacts and confer no runtime or
+    execution authority.
+    """
+
+    if not isinstance(plan, PlanSnapshot):
+        raise ValidationError("plan must be a PlanSnapshot")
+    if not isinstance(evidence_needs, list):
+        raise ValidationError("evidence_needs must be a list of EvidenceNeed objects")
+
+    canonical_plan = PlanSnapshot(**copy.deepcopy(plan.model_dump()))
+    by_id: Dict[str, EvidenceNeed] = {}
+    for raw in evidence_needs:
+        if not isinstance(raw, EvidenceNeed):
+            raise ValidationError("evidence_needs must contain EvidenceNeed objects")
+        need = EvidenceNeed(**copy.deepcopy(raw.model_dump()))
+        if need.need_id in by_id:
+            raise ValidationError(f"duplicate evidence need id: {need.need_id}")
+        by_id[need.need_id] = need
+
+    for step in canonical_plan.steps:
+        for need_id in step.evidence_need_ids:
+            need = by_id.get(need_id)
+            if need is None:
+                raise ValidationError(
+                    f"step '{step.step_id}' references unknown evidence need '{need_id}'"
+                )
+            if need.goal_id != canonical_plan.goal_id or need.goal_id != step.goal_id:
+                raise ValidationError(
+                    f"evidence need '{need_id}' goal_id must match plan/step goal_id"
                 )
 
 
