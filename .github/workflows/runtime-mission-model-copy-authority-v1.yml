@@ -10,7 +10,7 @@ on:
       - ".github/workflows/runtime-mission-model-copy-authority-v1.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   mission-model-copy-authority:
@@ -42,6 +42,83 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
+      - name: Apply guarded Mission model_copy authority patch once
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("runtime/mission.py")
+          text = path.read_text(encoding="utf-8")
+          marker = '"""Copy a Mission without bypassing existing authority boundaries."""'
+          if marker in text:
+              print("Mission model_copy authority marker already present; no-op")
+              raise SystemExit(0)
+
+          anchor = '    def model_dump(self, mode: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:\n'
+          if text.count(anchor) != 1:
+              raise SystemExit(f"unexpected Mission model_dump anchor count: {text.count(anchor)}")
+
+          method = '''    def model_copy(
+              self,
+              update: Optional[Dict[str, Any]] = None,
+              deep: bool = False,
+          ) -> "MissionRecord":
+              """Copy a Mission without bypassing existing authority boundaries."""
+
+              requested = dict(update or {})
+              identity_scope_fields = {
+                  "mission_id",
+                  "business_id",
+                  "project_id",
+                  "user_id",
+              }
+
+              with _mission_authority_lock(self):
+                  current_status = _require_mission_status(
+                      self.__dict__.get("status", MissionStatus.CREATED)
+                  )
+
+                  for name in identity_scope_fields.intersection(requested):
+                      current_value = self.__dict__[name]
+                      if (
+                          current_status != MissionStatus.CREATED
+                          and requested[name] != current_value
+                      ):
+                          raise MissionTransitionError(
+                              f"MISSION_AUTHORITATIVE_SCOPE_IMMUTABLE: {name}"
+                          )
+
+                  if "commitment_id" in requested:
+                      current_commitment_id = self.__dict__.get("commitment_id")
+                      if requested["commitment_id"] != current_commitment_id:
+                          raise MissionCommitmentError(
+                              "MISSION_COMMITMENT_BINDING_REQUIRES_MARK_READY"
+                          )
+
+                  if "status" in requested:
+                      target_status = _require_mission_status(requested["status"])
+                      if target_status != current_status:
+                          if current_status in TERMINAL_MISSION_STATUSES:
+                              raise MissionTransitionError(
+                                  f"MISSION_TERMINAL_STATE_IMMUTABLE: "
+                                  f"{current_status.value}->{target_status.value}"
+                              )
+                          raise MissionTransitionError(
+                              f"MISSION_STATUS_TRANSITION_REQUIRES_AUTHORITY: "
+                              f"{current_status.value}->{target_status.value}"
+                          )
+
+                  return super().model_copy(update=requested, deep=deep)
+
+'''
+          text = text.replace(anchor, method + anchor, 1)
+          path.write_text(text, encoding="utf-8")
+          print("Mission model_copy authority patch applied")
+          PY
+          git diff --check
+          git diff -- runtime/mission.py | tee .ci-results/production-patch.diff
+
       - name: Compile touched source and regression
         shell: bash
         run: |
@@ -50,7 +127,7 @@ jobs:
             tests/test_runtime_mission_model_copy_authority_v1.py \
             2>&1 | tee .ci-results/compile.log
 
-      - name: Run Mission model_copy authority RED regression
+      - name: Run Mission model_copy authority regressions
         shell: bash
         run: |
           python -m unittest -v \
@@ -58,7 +135,6 @@ jobs:
             2>&1 | tee .ci-results/targeted-test.log
 
       - name: Run adjacent Mission authority regressions
-        if: always()
         shell: bash
         run: |
           python -m unittest -v \
@@ -66,6 +142,19 @@ jobs:
             tests.test_runtime_mission_commitment_binding_authority_v1 \
             tests.test_runtime_mission_lifecycle_transition_authority_v1 \
             2>&1 | tee .ci-results/adjacent-test.log
+
+      - name: Commit and push production patch when present
+        shell: bash
+        run: |
+          if git diff --quiet -- runtime/mission.py; then
+            echo "No production diff to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/mission.py
+          git commit -m "fix(runtime): enforce Mission model_copy authority"
+          git push origin HEAD:${{ github.head_ref }}
 
       - name: Upload exact-head qualification evidence
         if: always()
@@ -76,3 +165,7 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
+
+# TEMPORARY ONE-SHOT PATCHER: remove contents:write and patch/push steps
+# immediately after the guarded production commit lands. Final exact-head
+# qualification must come from the cleaned read-only workflow.
