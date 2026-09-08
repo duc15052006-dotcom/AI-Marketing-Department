@@ -307,7 +307,6 @@ class MissionStore:
 
         fields = self._snapshot_fields(mission)
         mission_id, business_id, project_id, user_id, payload_json, updated_at = fields
-        reference = datetime.now(timezone.utc)
 
         with self._lock:
             self._require_open()
@@ -365,6 +364,11 @@ class MissionStore:
                     raise MissionStoreCorruptionError(
                         "MISSION_STORE_EXECUTION_LEASE_EXPIRY_NOT_TIMEZONE_AWARE"
                     )
+
+                # Evaluate lease expiry only after the durable transaction and
+                # authoritative lease read. Contention cannot reuse a stale
+                # pre-transaction clock to authorize a Mission snapshot write.
+                reference = datetime.now(timezone.utc)
                 if expires_at.astimezone(timezone.utc) <= reference:
                     raise MissionStoreAuthorityError(
                         "MISSION_STORE_EXECUTION_LEASE_EXPIRED"

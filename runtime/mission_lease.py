@@ -137,7 +137,6 @@ class DurableMissionLeaseStore:
             "ON mission_leases(business_id, project_id, mission_id)"
         )
         self._connection.commit()
-        self._mission_store.bind_execution_lease_database(self._database_path)
 
     @property
     def durable(self) -> bool:
@@ -246,9 +245,13 @@ class DurableMissionLeaseStore:
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise ValueError("MISSION_LEASE_WORKER_ID_REQUIRED")
         seconds = self._validate_lease_seconds(lease_seconds)
-        reference = _aware_utc(
-            now or datetime.now(timezone.utc),
-            code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+        explicit_reference = (
+            None
+            if now is None
+            else _aware_utc(
+                now,
+                code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
         )
         self._require_mission_authority(
             mission_id=mission_id,
@@ -256,8 +259,6 @@ class DurableMissionLeaseStore:
             project_id=project_id,
         )
 
-        encoded_now = _encode_time(reference)
-        encoded_expiry = _encode_time(reference + timedelta(seconds=seconds))
         new_token = uuid.uuid4().hex
 
         with self._lock:
@@ -265,6 +266,18 @@ class DurableMissionLeaseStore:
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
                 row = self._row_locked(mission_id)
+                reference = (
+                    explicit_reference
+                    if explicit_reference is not None
+                    else _aware_utc(
+                        datetime.now(timezone.utc),
+                        code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+                    )
+                )
+                encoded_now = _encode_time(reference)
+                encoded_expiry = _encode_time(
+                    reference + timedelta(seconds=seconds)
+                )
                 if row is None:
                     self._connection.execute(
                         """
@@ -351,10 +364,21 @@ class DurableMissionLeaseStore:
         self,
         lease: MissionLeaseRecord,
         *,
-        now: datetime,
+        now: Optional[datetime] = None,
     ) -> MissionLeaseRecord:
         if not isinstance(lease, MissionLeaseRecord):
             raise MissionLeaseLostError("MISSION_LEASE_RECORD_REQUIRED")
+        reference = (
+            _aware_utc(
+                now,
+                code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
+            if now is not None
+            else _aware_utc(
+                datetime.now(timezone.utc),
+                code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
+        )
         row = self._row_locked(lease.mission_id)
         if row is None:
             raise MissionLeaseLostError("MISSION_LEASE_NOT_FOUND")
@@ -366,7 +390,7 @@ class DurableMissionLeaseStore:
             or current.lease_token != lease.lease_token
             or current.fencing_token != lease.fencing_token
             or current.lease_expires_at is None
-            or current.lease_expires_at <= now
+            or current.lease_expires_at <= reference
         ):
             raise MissionLeaseLostError("MISSION_LEASE_LOST_OR_EXPIRED")
         return current
@@ -379,9 +403,13 @@ class DurableMissionLeaseStore:
     ) -> MissionLeaseRecord:
         """Revalidate exact owner/token/fence before an authoritative operation."""
 
-        reference = _aware_utc(
-            now or datetime.now(timezone.utc),
-            code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+        explicit_reference = (
+            None
+            if now is None
+            else _aware_utc(
+                now,
+                code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
         )
         self._require_mission_authority(
             mission_id=lease.mission_id,
@@ -390,7 +418,10 @@ class DurableMissionLeaseStore:
         )
         with self._lock:
             self._require_open()
-            return self._require_exact_live_lease_locked(lease, now=reference)
+            return self._require_exact_live_lease_locked(
+                lease,
+                now=explicit_reference,
+            )
 
     def renew(
         self,
@@ -402,17 +433,34 @@ class DurableMissionLeaseStore:
         """Extend a live lease without changing its fencing epoch."""
 
         seconds = self._validate_lease_seconds(lease_seconds)
-        reference = _aware_utc(
-            now or datetime.now(timezone.utc),
-            code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+        explicit_reference = (
+            None
+            if now is None
+            else _aware_utc(
+                now,
+                code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
         )
-        encoded_now = _encode_time(reference)
         with self._lock:
             self._require_open()
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
-                current = self._require_exact_live_lease_locked(lease, now=reference)
+                current = self._require_exact_live_lease_locked(
+                    lease,
+                    now=explicit_reference,
+                )
+                reference = (
+                    explicit_reference
+                    if explicit_reference is not None
+                    else _aware_utc(
+                        datetime.now(timezone.utc),
+                        code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+                    )
+                )
                 assert current.lease_expires_at is not None
+                if current.lease_expires_at <= reference:
+                    raise MissionLeaseLostError("MISSION_LEASE_LOST_OR_EXPIRED")
+                encoded_now = _encode_time(reference)
                 base = max(current.lease_expires_at, reference)
                 new_expiry = _encode_time(base + timedelta(seconds=seconds))
                 updated = self._connection.execute(
@@ -449,16 +497,34 @@ class DurableMissionLeaseStore:
     ) -> MissionLeaseRecord:
         """Release only the exact current live fenced lease."""
 
-        reference = _aware_utc(
-            now or datetime.now(timezone.utc),
-            code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+        explicit_reference = (
+            None
+            if now is None
+            else _aware_utc(
+                now,
+                code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
         )
-        encoded_now = _encode_time(reference)
         with self._lock:
             self._require_open()
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
-                self._require_exact_live_lease_locked(lease, now=reference)
+                current = self._require_exact_live_lease_locked(
+                    lease,
+                    now=explicit_reference,
+                )
+                reference = (
+                    explicit_reference
+                    if explicit_reference is not None
+                    else _aware_utc(
+                        datetime.now(timezone.utc),
+                        code="MISSION_LEASE_NOW_MUST_BE_TIMEZONE_AWARE",
+                    )
+                )
+                assert current.lease_expires_at is not None
+                if current.lease_expires_at <= reference:
+                    raise MissionLeaseLostError("MISSION_LEASE_LOST_OR_EXPIRED")
+                encoded_now = _encode_time(reference)
                 updated = self._connection.execute(
                     """
                     UPDATE mission_leases
