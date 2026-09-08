@@ -353,8 +353,29 @@ class RuntimePersistentWorkerWakeCycleV1Tests(unittest.TestCase):
         assert untouched is not None
         self.assertEqual(WakeState.SCHEDULED, untouched.state)
 
-        self.mission.transition_to(MissionStatus.CANCELLED)
-        self.store.save_mission(self.mission)
+        # The first bounded cycle established a durable fencing history for the
+        # original Mission, so a later plain save must remain forbidden. Retire
+        # its untouched second wake before testing terminal cancellation on a
+        # fresh Mission that has never entered fenced execution.
+        self.scheduler.cancel_wake(
+            second.wake_id,
+            business_id=self.mission.business_id,
+            project_id=self.mission.project_id,
+            now=self.fake_now[0],
+        )
+
+        terminal_mission = self._create_mission("MISSION-WORKER-TERMINAL")
+        terminal_wake = self.scheduler.schedule_wake(
+            wake_id="WAKE-TERMINAL",
+            mission_id=terminal_mission.mission_id,
+            business_id=terminal_mission.business_id,
+            project_id=terminal_mission.project_id,
+            due_at=self.fake_now[0],
+            reason="terminal-worker-contract",
+            now=self.fake_now[0],
+        )
+        terminal_mission.transition_to(MissionStatus.CANCELLED)
+        self.store.save_mission(terminal_mission)
 
         terminal_calls = []
         terminal_report = self.worker.run_once(
@@ -367,9 +388,9 @@ class RuntimePersistentWorkerWakeCycleV1Tests(unittest.TestCase):
         self.assertEqual([], terminal_calls)
 
         cancelled_wake = self.scheduler.get_wake(
-            second.wake_id,
-            business_id=self.mission.business_id,
-            project_id=self.mission.project_id,
+            terminal_wake.wake_id,
+            business_id=terminal_mission.business_id,
+            project_id=terminal_mission.project_id,
         )
         self.assertIsNotNone(cancelled_wake)
         assert cancelled_wake is not None
