@@ -1736,6 +1736,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     parameters=body["parameters"],
                     run_id=pending.run_id,
                     business_id=pending.business_id,
+                    project_id=pending.project_id,
                 )
                 if provided_fp != pending.request_fingerprint:
                     self._send_json(
@@ -1760,6 +1761,15 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     {
                         "error": "APPROVAL_TAMPERING_REJECTED",
                         "message": "Cannot alter business_id during approval",
+                    },
+                    400,
+                )
+                return
+            if "project_id" in body and body["project_id"] and body["project_id"] != pending.project_id:
+                self._send_json(
+                    {
+                        "error": "APPROVAL_TAMPERING_REJECTED",
+                        "message": "Cannot alter project_id during approval",
                     },
                     400,
                 )
