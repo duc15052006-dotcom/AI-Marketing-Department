@@ -188,6 +188,46 @@ class PlanSnapshot(BaseModel):
         self.steps = normalized_steps
         self._validate_graph()
         self._validate_state_consistency()
+        self._authority_fingerprint = self._semantic_fingerprint()
+
+    @staticmethod
+    def _typed_fingerprint(value: object) -> tuple[type, object]:
+        return (type(value), value)
+
+    def _semantic_fingerprint(self) -> tuple:
+        scalar = self._typed_fingerprint
+        return (
+            scalar(self.plan_id),
+            scalar(self.goal_id),
+            scalar(self.revision),
+            scalar(self.status),
+            scalar(self.parent_revision),
+            scalar(self.revision_reason),
+            tuple(
+                (
+                    scalar(step.step_id),
+                    scalar(step.goal_id),
+                    scalar(step.owner_agent),
+                    scalar(step.objective),
+                    tuple(scalar(value) for value in step.depends_on),
+                    tuple(scalar(value) for value in step.completion_criteria),
+                    tuple(scalar(value) for value in step.evidence_need_ids),
+                    tuple(scalar(value) for value in step.action_intent_ids),
+                    scalar(step.state),
+                )
+                for step in self.steps
+            ),
+        )
+
+    def assert_unchanged(self) -> None:
+        """Fail closed if a validated cognitive snapshot was mutated in place."""
+
+        if not hasattr(self, "_authority_fingerprint"):
+            raise ValidationError("PlanSnapshot lacks its construction-time authority seal")
+        if self._semantic_fingerprint() != self._authority_fingerprint:
+            raise ValidationError(
+                "PlanSnapshot was mutated after validation; construct a new snapshot/revision instead"
+            )
 
     def _validate_graph(self) -> None:
         by_id: Dict[str, PlanStep] = {}
@@ -311,6 +351,7 @@ def validate_plan_action_intent_bindings(
 
     if not isinstance(plan, PlanSnapshot):
         raise ValidationError("plan must be a PlanSnapshot")
+    plan.assert_unchanged()
     if not isinstance(action_intents, list):
         raise ValidationError("action_intents must be a list of ActionIntent objects")
 
@@ -345,6 +386,7 @@ def ready_step_ids(plan: PlanSnapshot) -> List[str]:
 
     if not isinstance(plan, PlanSnapshot):
         raise ValidationError("plan must be a PlanSnapshot")
+    plan.assert_unchanged()
     if plan.status != PlanStatus.ACTIVE:
         return []
     by_id = {step.step_id: step for step in plan.steps}
@@ -369,6 +411,7 @@ def apply_plan_revision(
         raise ValidationError("plan must be a PlanSnapshot")
     if not isinstance(revision, PlanRevision):
         raise ValidationError("revision must be a PlanRevision")
+    plan.assert_unchanged()
     if plan.status in (PlanStatus.SATISFIED, PlanStatus.ABANDONED):
         raise ValidationError(
             f"Cannot revise terminal plan status {plan.status.value}"
