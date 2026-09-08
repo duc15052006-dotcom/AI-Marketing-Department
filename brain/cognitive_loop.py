@@ -27,6 +27,7 @@ from brain.planning import (
     PlanStatus,
     ready_step_ids,
     validate_plan_action_intent_bindings,
+    validate_plan_evidence_need_bindings,
 )
 from brain.reflection import CognitiveReflectionReport, ReflectionDirective
 from schemas.base import BaseModel, Field, ValidationError
@@ -456,6 +457,7 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
         )
 
     _validate_action_decision_provenance(request)
+    validate_plan_evidence_need_bindings(request.plan, request.evidence_needs)
     validate_plan_action_intent_bindings(request.plan, request.action_intents)
 
     ready_steps = set(ready_step_ids(request.plan))
