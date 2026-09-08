@@ -1,0 +1,41 @@
+name: Brain Plan Snapshot Integrity V1
+
+on:
+  pull_request:
+    paths:
+      - 'brain/planning.py'
+      - 'tests/test_brain_plan_snapshot_integrity_v1.py'
+      - '.github/workflows/brain-plan-snapshot-integrity-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plan-snapshot-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact CI identity
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          expected='${{ github.event.pull_request.head.sha }}'
+          actual="$(git rev-parse HEAD)"
+          echo "expected_head_sha=$expected"
+          echo "actual_head_sha=$actual"
+          test "$expected" = "$actual"
+      - name: Compile targeted surface
+        run: python -m compileall -q brain schemas tests/test_brain_plan_snapshot_integrity_v1.py
+      - name: Run plan snapshot adversarial regression
+        run: python -m unittest -v tests.test_brain_plan_snapshot_integrity_v1
+      - name: Run adjacent planning regression
+        run: python -m unittest discover -s tests -p 'test_brain_planning*.py' -v
