@@ -1,452 +1,141 @@
-"""Tool execution receipts and durable side-effect intent journal.
+"""Mission-aware compatibility facade for the durable execution receipt journal.
 
-The default repository remains in-memory for backward compatibility. Supplying a
-``database_path`` enables crash-safe SQLite persistence for receipts and
-consequential execution intents. The journal records intent before dispatch so a
-restart can distinguish "definitely not dispatched" from an ambiguous external
-side effect without replaying the action.
+The durable receipt/intent implementation is the qualified foundation from the
+platform hardening stack, retained byte-for-byte in :mod:`tools.receipts_core`.
+This facade extends that authority with optional Mission/Commitment lineage while
+preserving historical schema-v1/v2 intent hashes and legacy unbound receipt
+payloads.
 """
 
 from __future__ import annotations
 
 import copy
-import hashlib
-import json
 import sqlite3
-import threading
 import uuid
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
-from enum import Enum
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from governance.redaction import sanitize_sensitive_payload, sanitize_sensitive_text
-from schemas.base import BaseModel, Field
+from schemas.base import Field
+from tools import receipts_core as _core
+from tools.receipts_core import *  # noqa: F401,F403 - preserve the established module surface
 
 
-def sanitize_tool_payload(obj: Any) -> Any:
-    """Backward-compatible shared redaction entrypoint for tool payloads."""
-    return sanitize_sensitive_payload(obj)
+_BaseExecutionReceipt = _core.ExecutionReceipt
+_BaseExecutionIntent = _core.ExecutionIntent
+_BaseExecutionReceiptRepository = _core.ExecutionReceiptRepository
+_base_receipt_matches_intent_binding = _core._receipt_matches_intent_binding
 
 
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+class ExecutionReceipt(_BaseExecutionReceipt):
+    """Execution receipt with optional exact Mission/Commitment provenance."""
 
-
-def _utc_now_iso() -> str:
-    return _utc_now().isoformat()
-
-
-def _canonical_json(payload: Any) -> str:
-    return json.dumps(
-        payload,
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        default=str,
-    )
-
-
-def _payload_hash(payload: Any) -> str:
-    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
-
-
-def _safe_approval_reference(value: Optional[str]) -> Optional[str]:
-    """Persist only non-replayable approval references."""
-    if not value:
-        return None
-    if value.startswith("pending_appr_") or value.startswith("approval_ref_"):
-        return value
-    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
-    return f"approval_ref_{digest}"
-
-
-class ReceiptStoreError(RuntimeError):
-    """Base error raised by receipt/intent durability storage."""
-
-
-class ReceiptStoreIntegrityError(ReceiptStoreError):
-    """Raised when persisted receipt or intent data fails integrity checks."""
-
-
-class ReceiptStoreConflictError(ReceiptStoreError):
-    """Raised when immutable receipt/intent state would be overwritten."""
-
-
-def _sqlite_failure(operation: str, exc: sqlite3.Error) -> ReceiptStoreError:
-    safe = sanitize_sensitive_text(str(exc))
-    return ReceiptStoreError(f"RECEIPT_STORE_{operation}_FAILED: {safe}")
-
-
-class ExecutionStatus(str, Enum):
-    """Lifecycle status of a tool execution."""
-
-    SUCCESS = "SUCCESS"
-    ERROR = "ERROR"
-    BLOCKED = "BLOCKED"
-    APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
-    TIMEOUT = "TIMEOUT"
-
-
-class ExecutionMode(str, Enum):
-    """Execution environment mode for capability runs."""
-
-    REAL = "REAL"
-    MOCK = "MOCK"
-    SANDBOX = "SANDBOX"
-
-
-class ExecutionIntentState(str, Enum):
-    """Durable lifecycle for a consequential external action."""
-
-    PREPARED = "PREPARED"
-    DISPATCHING = "DISPATCHING"
-    FINALIZED = "FINALIZED"
-    AMBIGUOUS = "AMBIGUOUS"
-
-
-class ReconciliationOutcome(str, Enum):
-    """Evidence-only side-effect reconciliation classification."""
-
-    NOT_DISPATCHED = "NOT_DISPATCHED"
-    CONFIRMED_FINALIZED = "CONFIRMED_FINALIZED"
-    AMBIGUOUS_EXTERNAL_ACTION_OUTCOME = "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME"
-    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
-
-
-class ExecutionReceipt(BaseModel):
-    """Immutable record produced for every capability execution request."""
-
-    execution_id: str = Field(default_factory=lambda: f"EXEC-{uuid.uuid4().hex[:12].upper()}")
-    run_id: str = Field(..., description="Unique campaign or workflow run identifier")
-    agent_id: str = Field(..., description="Requesting agent (e.g. 'intelligence', 'cmo')")
-    capability_id: str = Field(..., description="Executed capability identifier")
-    provider: str = Field(..., description="Provider adapter used")
-    request_hash: str = Field(..., description="SHA-256 hash of input parameters and context")
-    started_at: datetime = Field(default_factory=_utc_now)
-    completed_at: datetime = Field(default_factory=_utc_now)
-    status: ExecutionStatus = Field(default=ExecutionStatus.SUCCESS)
-    execution_mode: ExecutionMode = Field(default=ExecutionMode.MOCK)
-    error_class: Optional[str] = Field(default=None, description="Normalized error category if failed")
-    error_message: Optional[str] = Field(default=None)
-    cost_or_token_usage: Dict[str, Any] = Field(default_factory=dict)
-    artifact_references: List[str] = Field(default_factory=list)
-    approval_reference: Optional[str] = Field(default=None, description="Non-replayable approval audit reference")
-    business_id: Optional[str] = Field(default=None, description="Originating business/tenant scope")
-    project_id: Optional[str] = Field(default=None, description="Originating project scope")
-    chat_id: Optional[str] = Field(default=None, description="Originating chat session scope")
-    result_hash: str = Field(default="", description="SHA-256 hash of execution payload data")
-    data: Optional[Dict[str, Any]] = Field(default=None)
-    output: Any = Field(default=None)
-    observation_record: Optional[Dict[str, Any]] = Field(
+    mission_id: Optional[str] = Field(
         default=None,
-        description="Canonical serialized ObservationRecord from observation execution path, if available.",
+        description="Originating durable Mission identity when Mission-bound",
+    )
+    commitment_id: Optional[str] = Field(
+        default=None,
+        description="Originating Mission commitment identity when Mission-bound",
     )
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if self.error_message is not None:
-            self.error_message = sanitize_tool_payload(self.error_message)
-        if self.data is not None:
-            self.data = sanitize_tool_payload(self.data)
-        if self.output is not None:
-            self.output = sanitize_tool_payload(self.output)
-
-    def calculate_result_hash(self) -> str:
-        """Compute SHA-256 hash of result data."""
-        if self.data is None:
-            return hashlib.sha256(b"NULL_RESULT").hexdigest()
-        raw = json.dumps(self.data, sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        has_mission = self.mission_id is not None
+        has_commitment = self.commitment_id is not None
+        if has_mission != has_commitment:
+            raise ValueError("EXECUTION_RECEIPT_MISSION_COMMITMENT_LINEAGE_INCOMPLETE")
+        if has_mission:
+            if not isinstance(self.mission_id, str) or not self.mission_id.strip():
+                raise ValueError("EXECUTION_RECEIPT_MISSION_ID_REQUIRED")
+            if not isinstance(self.commitment_id, str) or not self.commitment_id.strip():
+                raise ValueError("EXECUTION_RECEIPT_COMMITMENT_ID_REQUIRED")
+            self.mission_id = self.mission_id.strip()
+            self.commitment_id = self.commitment_id.strip()
 
 
 @dataclass(frozen=True)
-class ExecutionIntent:
-    """Persisted pre-dispatch evidence for one consequential tool action."""
+class ExecutionIntent(_BaseExecutionIntent):
+    """Execution intent with schema-v3 Mission/Commitment authority binding."""
 
-    intent_id: str
-    request_id: str
-    run_id: str
-    agent_id: str
-    capability_id: str
-    provider: str
-    request_hash: str
-    execution_mode: Optional[ExecutionMode] = None
-    state: ExecutionIntentState = ExecutionIntentState.PREPARED
-    business_id: Optional[str] = None
-    project_id: Optional[str] = None
-    chat_id: Optional[str] = None
-    approval_reference: Optional[str] = None
-    dispatch_count: int = 0
-    receipt_execution_id: Optional[str] = None
-    last_error_class: Optional[str] = None
-    last_error_message: Optional[str] = None
-    created_at: str = ""
-    updated_at: str = ""
-    schema_version: int = 1
-    record_hash: str = ""
+    mission_id: Optional[str] = None
+    commitment_id: Optional[str] = None
 
     def normalized(self) -> "ExecutionIntent":
-        required = {
-            "intent_id": self.intent_id,
-            "request_id": self.request_id,
-            "run_id": self.run_id,
-            "agent_id": self.agent_id,
-            "capability_id": self.capability_id,
-            "provider": self.provider,
-            "request_hash": self.request_hash,
-        }
-        for name, value in required.items():
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{name.upper()}_REQUIRED: execution intent {name} is required")
-        if not isinstance(self.dispatch_count, int) or isinstance(self.dispatch_count, bool) or self.dispatch_count < 0:
-            raise ValueError("INVALID_DISPATCH_COUNT: dispatch_count must be a non-negative integer")
-        if not isinstance(self.schema_version, int) or isinstance(self.schema_version, bool) or self.schema_version < 1:
-            raise ValueError("INVALID_SCHEMA_VERSION: schema_version must be a positive integer")
-
-        state = self.state
-        if not isinstance(state, ExecutionIntentState):
-            state = ExecutionIntentState(str(state).strip().upper())
-
-        execution_mode = self.execution_mode
-        if execution_mode is not None and not isinstance(execution_mode, ExecutionMode):
-            execution_mode = ExecutionMode(str(execution_mode).strip().upper())
-        if self.schema_version >= 2 and execution_mode is None:
-            raise ValueError(
-                "EXECUTION_MODE_REQUIRED: schema v2 execution intents must bind execution mode"
+        prepared = self
+        if self.schema_version >= 3:
+            if not isinstance(self.mission_id, str) or not self.mission_id.strip():
+                raise ValueError(
+                    "MISSION_ID_REQUIRED: schema v3 execution intents must bind mission_id"
+                )
+            if not isinstance(self.commitment_id, str) or not self.commitment_id.strip():
+                raise ValueError(
+                    "COMMITMENT_ID_REQUIRED: schema v3 execution intents must bind commitment_id"
+                )
+            prepared = replace(
+                self,
+                mission_id=self.mission_id.strip(),
+                commitment_id=self.commitment_id.strip(),
+                record_hash="",
             )
-
-        created_at = self.created_at or _utc_now_iso()
-        normalized = replace(
-            self,
-            intent_id=self.intent_id.strip(),
-            request_id=self.request_id.strip(),
-            run_id=self.run_id.strip(),
-            agent_id=self.agent_id.strip(),
-            capability_id=self.capability_id.strip(),
-            provider=self.provider.strip(),
-            request_hash=self.request_hash.strip(),
-            execution_mode=execution_mode,
-            state=state,
-            approval_reference=_safe_approval_reference(self.approval_reference),
-            last_error_class=sanitize_sensitive_text(self.last_error_class) if self.last_error_class else None,
-            last_error_message=sanitize_sensitive_text(self.last_error_message) if self.last_error_message else None,
-            created_at=created_at,
-            updated_at=self.updated_at or created_at,
-            record_hash="",
-        )
-        return replace(normalized, record_hash=normalized.calculate_hash())
+        elif self.mission_id is not None or self.commitment_id is not None:
+            raise ValueError(
+                "MISSION_LINEAGE_REQUIRES_SCHEMA_V3: historical intent schemas cannot claim Mission authority"
+            )
+        return _BaseExecutionIntent.normalized(prepared)
 
     def hash_payload(self) -> Dict[str, Any]:
-        payload = {
-            "schema_version": self.schema_version,
-            "intent_id": self.intent_id,
-            "request_id": self.request_id,
-            "run_id": self.run_id,
-            "agent_id": self.agent_id,
-            "capability_id": self.capability_id,
-            "provider": self.provider,
-            "request_hash": self.request_hash,
-            "state": self.state.value if isinstance(self.state, ExecutionIntentState) else str(self.state),
-            "business_id": self.business_id,
-            "project_id": self.project_id,
-            "chat_id": self.chat_id,
-            "approval_reference": self.approval_reference,
-            "dispatch_count": self.dispatch_count,
-            "receipt_execution_id": self.receipt_execution_id,
-            "last_error_class": self.last_error_class,
-            "last_error_message": self.last_error_message,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        }
-        if self.schema_version >= 2:
-            payload["execution_mode"] = (
-                self.execution_mode.value
-                if isinstance(self.execution_mode, ExecutionMode)
-                else str(self.execution_mode)
-            )
+        payload = _BaseExecutionIntent.hash_payload(self)
+        if self.schema_version >= 3:
+            payload["mission_id"] = self.mission_id
+            payload["commitment_id"] = self.commitment_id
         return payload
 
-    def calculate_hash(self) -> str:
-        return _payload_hash(self.hash_payload())
 
-    def verify_integrity(self) -> bool:
-        return bool(self.record_hash) and self.record_hash == self.calculate_hash()
+def _receipt_matches_intent_binding(
+    receipt: ExecutionReceipt,
+    intent: ExecutionIntent,
+) -> bool:
+    """Require exact legacy authority plus schema-v3 Mission lineage."""
 
-
-@dataclass(frozen=True)
-class ReconciliationAssessment:
-    """Evidence classification only; never an instruction to replay a tool action."""
-
-    intent_id: str
-    outcome: ReconciliationOutcome
-    receipt_execution_id: Optional[str] = None
-    reason: str = ""
-
-
-def _receipt_from_payload(payload: Dict[str, Any]) -> ExecutionReceipt:
-    data = dict(payload)
-    for key in ("started_at", "completed_at"):
-        value = data.get(key)
-        if isinstance(value, str):
-            data[key] = datetime.fromisoformat(value)
-    if not isinstance(data.get("status"), ExecutionStatus):
-        data["status"] = ExecutionStatus(str(data["status"]).strip().upper())
-    if not isinstance(data.get("execution_mode"), ExecutionMode):
-        data["execution_mode"] = ExecutionMode(str(data["execution_mode"]).strip().upper())
-    return ExecutionReceipt(**data)
-
-
-def _normalize_receipt(receipt: ExecutionReceipt) -> ExecutionReceipt:
-    payload = sanitize_sensitive_payload(receipt.model_dump())
-    payload["approval_reference"] = _safe_approval_reference(payload.get("approval_reference"))
-    normalized = _receipt_from_payload(payload)
-    if not normalized.result_hash and normalized.data is not None:
-        normalized.result_hash = normalized.calculate_result_hash()
-    return normalized
-
-
-def _receipt_matches_intent_binding(receipt: ExecutionReceipt, intent: ExecutionIntent) -> bool:
-    """Require exact agreement across immutable execution authority dimensions."""
-    return (
-        receipt.run_id == intent.run_id
-        and receipt.agent_id == intent.agent_id
-        and receipt.capability_id == intent.capability_id
-        and receipt.provider == intent.provider
-        and receipt.request_hash == intent.request_hash
-        and (
-            intent.execution_mode is None
-            or receipt.execution_mode == intent.execution_mode
+    if not _base_receipt_matches_intent_binding(receipt, intent):
+        return False
+    if intent.schema_version >= 3:
+        return (
+            receipt.mission_id == intent.mission_id
+            and receipt.commitment_id == intent.commitment_id
         )
-        and receipt.business_id == intent.business_id
-        and receipt.project_id == intent.project_id
-        and receipt.chat_id == intent.chat_id
-        and receipt.approval_reference == intent.approval_reference
-    )
+    return receipt.mission_id is None and receipt.commitment_id is None
 
 
-class ExecutionReceiptRepository:
-    """Receipt repository with optional crash-safe SQLite durability.
-
-    ``ExecutionReceiptRepository()`` preserves the historic in-memory behavior.
-    ``ExecutionReceiptRepository(database_path=...)`` enables durable receipts and
-    a pre-dispatch journal for consequential external actions.
-    """
-
-    def __init__(self, database_path: Optional[str | Path] = None) -> None:
-        self._lock = threading.RLock()
-        self._receipts: Dict[str, ExecutionReceipt] = {}
-        self._intents: Dict[str, ExecutionIntent] = {}
-        self.database_path: Optional[Path] = None
-        self._conn: Optional[sqlite3.Connection] = None
-        self._closed = False
-
-        if database_path is not None:
-            raw_path = str(database_path)
-            if raw_path == ":memory:":
-                db_target = raw_path
-            else:
-                self.database_path = Path(database_path).expanduser().resolve()
-                self.database_path.parent.mkdir(parents=True, exist_ok=True)
-                db_target = str(self.database_path)
-            self._conn = sqlite3.connect(db_target, timeout=5.0, check_same_thread=False)
-            self._conn.row_factory = sqlite3.Row
-            try:
-                with self._lock:
-                    self._conn.execute("PRAGMA journal_mode=WAL")
-                    self._conn.execute("PRAGMA synchronous=FULL")
-                    self._conn.execute("PRAGMA foreign_keys=ON")
-                    self._conn.execute("PRAGMA busy_timeout=5000")
-                    self._initialize_schema()
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("INIT", exc) from exc
-
-    @property
-    def durable(self) -> bool:
-        return self._conn is not None
-
-    def _ensure_open(self) -> None:
-        if self._closed:
-            raise ReceiptStoreError("RECEIPT_STORE_CLOSED: repository is closed")
+class ExecutionReceiptRepository(_BaseExecutionReceiptRepository):
+    """Durable receipt journal extended with backward-compatible Mission lineage."""
 
     def _initialize_schema(self) -> None:
+        super()._initialize_schema()
         assert self._conn is not None
+        intent_columns = {
+            str(row["name"])
+            for row in self._conn.execute("PRAGMA table_info(execution_intents)").fetchall()
+        }
         with self._conn:
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS execution_receipts (
-                    execution_id TEXT PRIMARY KEY,
-                    run_id TEXT NOT NULL,
-                    agent_id TEXT NOT NULL,
-                    capability_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    payload_hash TEXT NOT NULL
-                )
-                """
-            )
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS execution_intents (
-                    intent_id TEXT PRIMARY KEY,
-                    request_id TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    agent_id TEXT NOT NULL,
-                    capability_id TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    request_hash TEXT NOT NULL,
-                    execution_mode TEXT,
-                    state TEXT NOT NULL,
-                    business_id TEXT,
-                    project_id TEXT,
-                    chat_id TEXT,
-                    approval_reference TEXT,
-                    dispatch_count INTEGER NOT NULL DEFAULT 0,
-                    receipt_execution_id TEXT,
-                    last_error_class TEXT,
-                    last_error_message TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    schema_version INTEGER NOT NULL DEFAULT 1,
-                    record_hash TEXT NOT NULL,
-                    FOREIGN KEY(receipt_execution_id) REFERENCES execution_receipts(execution_id)
-                )
-                """
-            )
-            intent_columns = {
-                str(row["name"])
-                for row in self._conn.execute("PRAGMA table_info(execution_intents)").fetchall()
-            }
-            if "execution_mode" not in intent_columns:
+            if "mission_id" not in intent_columns:
                 self._conn.execute(
-                    "ALTER TABLE execution_intents ADD COLUMN execution_mode TEXT"
+                    "ALTER TABLE execution_intents ADD COLUMN mission_id TEXT"
                 )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_receipts_run ON execution_receipts(run_id, execution_id)"
-            )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_receipts_agent ON execution_receipts(agent_id, execution_id)"
-            )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_receipts_status ON execution_receipts(status, execution_id)"
-            )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_intents_run ON execution_intents(run_id, intent_id)"
-            )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_intents_state ON execution_intents(state, intent_id)"
-            )
-            self._conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_intents_receipt_owner "
-                "ON execution_intents(receipt_execution_id) WHERE receipt_execution_id IS NOT NULL"
-            )
+            if "commitment_id" not in intent_columns:
+                self._conn.execute(
+                    "ALTER TABLE execution_intents ADD COLUMN commitment_id TEXT"
+                )
 
     @staticmethod
     def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:
-        normalized = _normalize_receipt(receipt)
+        normalized = _core._normalize_receipt(receipt)
         payload = normalized.model_dump()
-        return normalized, payload, _payload_hash(payload)
+        if normalized.mission_id is None and normalized.commitment_id is None:
+            # Preserve the exact historical payload/hash shape for unbound receipts.
+            payload.pop("mission_id", None)
+            payload.pop("commitment_id", None)
+        return normalized, payload, _core._payload_hash(payload)
 
     @staticmethod
     def _intent_from_row(row: sqlite3.Row) -> ExecutionIntent:
@@ -477,43 +166,14 @@ class ExecutionReceiptRepository:
             updated_at=row["updated_at"],
             schema_version=int(row["schema_version"]),
             record_hash=row["record_hash"],
+            mission_id=row["mission_id"],
+            commitment_id=row["commitment_id"],
         )
         if not intent.verify_integrity():
             raise ReceiptStoreIntegrityError(
                 f"EXECUTION_INTENT_INTEGRITY_MISMATCH: intent_id={intent.intent_id}"
             )
         return intent
-
-    @staticmethod
-    def _decode_receipt_row(row: sqlite3.Row) -> ExecutionReceipt:
-        try:
-            payload = json.loads(row["payload_json"])
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise ReceiptStoreIntegrityError(
-                f"EXECUTION_RECEIPT_INVALID_JSON: execution_id={row['execution_id']}"
-            ) from exc
-        if _payload_hash(payload) != row["payload_hash"]:
-            raise ReceiptStoreIntegrityError(
-                f"EXECUTION_RECEIPT_INTEGRITY_MISMATCH: execution_id={row['execution_id']}"
-            )
-        receipt = _receipt_from_payload(payload)
-        if receipt.execution_id != row["execution_id"]:
-            raise ReceiptStoreIntegrityError(
-                f"EXECUTION_RECEIPT_ID_MISMATCH: execution_id={row['execution_id']}"
-            )
-        indexed_metadata = {
-            "run_id": receipt.run_id,
-            "agent_id": receipt.agent_id,
-            "capability_id": receipt.capability_id,
-            "status": receipt.status.value,
-        }
-        for field, payload_value in indexed_metadata.items():
-            if row[field] != payload_value:
-                raise ReceiptStoreIntegrityError(
-                    f"EXECUTION_RECEIPT_INDEX_METADATA_MISMATCH: "
-                    f"execution_id={row['execution_id']} field={field}"
-                )
-        return receipt
 
     @staticmethod
     def _intent_values(intent: ExecutionIntent) -> tuple[Any, ...]:
@@ -529,6 +189,8 @@ class ExecutionReceiptRepository:
             intent.state.value,
             intent.business_id,
             intent.project_id,
+            intent.mission_id,
+            intent.commitment_id,
             intent.chat_id,
             intent.approval_reference,
             intent.dispatch_count,
@@ -540,125 +202,6 @@ class ExecutionReceiptRepository:
             intent.schema_version,
             intent.record_hash,
         )
-
-    def _insert_receipt_locked(self, receipt: ExecutionReceipt) -> ExecutionReceipt:
-        normalized, payload, digest = self._receipt_payload(receipt)
-        if self._conn is None:
-            existing = self._receipts.get(normalized.execution_id)
-            if existing is not None:
-                _, existing_payload, _ = self._receipt_payload(existing)
-                if _payload_hash(existing_payload) != digest:
-                    raise ReceiptStoreConflictError(
-                        f"EXECUTION_RECEIPT_IMMUTABLE_CONFLICT: execution_id={normalized.execution_id}"
-                    )
-                return copy.deepcopy(existing)
-            self._receipts[normalized.execution_id] = copy.deepcopy(normalized)
-            return copy.deepcopy(normalized)
-
-        existing = self._conn.execute(
-            "SELECT payload_hash, payload_json FROM execution_receipts WHERE execution_id=?",
-            (normalized.execution_id,),
-        ).fetchone()
-        if existing is not None:
-            if existing["payload_hash"] != digest:
-                raise ReceiptStoreConflictError(
-                    f"EXECUTION_RECEIPT_IMMUTABLE_CONFLICT: execution_id={normalized.execution_id}"
-                )
-            return self._decode_receipt_row(
-                self._conn.execute(
-                    "SELECT * FROM execution_receipts WHERE execution_id=?",
-                    (normalized.execution_id,),
-                ).fetchone()
-            )
-        self._conn.execute(
-            """
-            INSERT INTO execution_receipts(
-                execution_id, run_id, agent_id, capability_id, status, payload_json, payload_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                normalized.execution_id,
-                normalized.run_id,
-                normalized.agent_id,
-                normalized.capability_id,
-                normalized.status.value,
-                _canonical_json(payload),
-                digest,
-            ),
-        )
-        return normalized
-
-    def save_receipt(self, receipt: ExecutionReceipt) -> ExecutionReceipt:
-        """Persist a receipt immutably and return a defensive copy."""
-        self._ensure_open()
-        with self._lock:
-            try:
-                if self._conn is None:
-                    return self._insert_receipt_locked(receipt)
-                with self._conn:
-                    stored = self._insert_receipt_locked(receipt)
-                return copy.deepcopy(stored)
-            except ReceiptStoreError:
-                raise
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("SAVE_RECEIPT", exc) from exc
-
-    def get_receipt(self, execution_id: str) -> Optional[ExecutionReceipt]:
-        self._ensure_open()
-        with self._lock:
-            if self._conn is None:
-                receipt = self._receipts.get(execution_id)
-                return copy.deepcopy(receipt) if receipt is not None else None
-            try:
-                row = self._conn.execute(
-                    "SELECT * FROM execution_receipts WHERE execution_id=?",
-                    (execution_id,),
-                ).fetchone()
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("GET_RECEIPT", exc) from exc
-            return self._decode_receipt_row(row) if row is not None else None
-
-    def _list_receipts(self, where: str, value: Any) -> List[ExecutionReceipt]:
-        self._ensure_open()
-        with self._lock:
-            if self._conn is None:
-                receipts = list(self._receipts.values())
-                if where == "run_id":
-                    receipts = [r for r in receipts if r.run_id == value]
-                elif where == "agent_id":
-                    receipts = [r for r in receipts if r.agent_id.lower() == str(value).lower()]
-                elif where == "status":
-                    receipts = [r for r in receipts if r.status == value]
-                return copy.deepcopy(receipts)
-            try:
-                query_value = value.value if isinstance(value, Enum) else value
-                rows = self._conn.execute(
-                    f"SELECT * FROM execution_receipts WHERE {where}=? ORDER BY rowid",
-                    (query_value,),
-                ).fetchall()
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("LIST_RECEIPTS", exc) from exc
-            return [self._decode_receipt_row(row) for row in rows]
-
-    def list_receipts_for_run(self, run_id: str) -> List[ExecutionReceipt]:
-        return self._list_receipts("run_id", run_id)
-
-    def list_receipts_for_agent(self, agent_id: str) -> List[ExecutionReceipt]:
-        self._ensure_open()
-        if self._conn is None:
-            return self._list_receipts("agent_id", agent_id)
-        with self._lock:
-            try:
-                rows = self._conn.execute(
-                    "SELECT * FROM execution_receipts WHERE lower(agent_id)=lower(?) ORDER BY rowid",
-                    (agent_id,),
-                ).fetchall()
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("LIST_RECEIPTS", exc) from exc
-            return [self._decode_receipt_row(row) for row in rows]
-
-    def list_receipts_by_status(self, status: ExecutionStatus) -> List[ExecutionReceipt]:
-        return self._list_receipts("status", status)
 
     def prepare_execution_intent(
         self,
@@ -674,9 +217,13 @@ class ExecutionReceiptRepository:
         project_id: Optional[str] = None,
         chat_id: Optional[str] = None,
         approval_reference: Optional[str] = None,
+        mission_id: Optional[str] = None,
+        commitment_id: Optional[str] = None,
     ) -> ExecutionIntent:
-        """Persist PREPARED evidence before any consequential adapter dispatch."""
+        """Persist PREPARED evidence, using schema v3 only for Mission-bound work."""
+
         self._ensure_open()
+        lineage_requested = mission_id is not None or commitment_id is not None
         intent = ExecutionIntent(
             intent_id=f"INTENT-{uuid.uuid4().hex[:16].upper()}",
             request_id=request_id,
@@ -690,7 +237,9 @@ class ExecutionReceiptRepository:
             project_id=project_id,
             chat_id=chat_id,
             approval_reference=approval_reference,
-            schema_version=2,
+            mission_id=mission_id,
+            commitment_id=commitment_id,
+            schema_version=3 if lineage_requested else 2,
         ).normalized()
 
         with self._lock:
@@ -703,11 +252,11 @@ class ExecutionReceiptRepository:
                         """
                         INSERT INTO execution_intents(
                             intent_id, request_id, run_id, agent_id, capability_id, provider,
-                            request_hash, execution_mode, state, business_id, project_id, chat_id,
-                            approval_reference, dispatch_count, receipt_execution_id,
-                            last_error_class, last_error_message, created_at, updated_at,
-                            schema_version, record_hash
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            request_hash, execution_mode, state, business_id, project_id,
+                            mission_id, commitment_id, chat_id, approval_reference,
+                            dispatch_count, receipt_execution_id, last_error_class,
+                            last_error_message, created_at, updated_at, schema_version, record_hash
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         self._intent_values(intent),
                     )
@@ -717,36 +266,7 @@ class ExecutionReceiptRepository:
                     f"EXECUTION_INTENT_ALREADY_EXISTS: intent_id={intent.intent_id}"
                 ) from exc
             except sqlite3.Error as exc:
-                raise _sqlite_failure("PREPARE_INTENT", exc) from exc
-
-    def get_execution_intent(self, intent_id: str) -> Optional[ExecutionIntent]:
-        self._ensure_open()
-        with self._lock:
-            if self._conn is None:
-                intent = self._intents.get(intent_id)
-                return copy.deepcopy(intent) if intent is not None else None
-            try:
-                row = self._conn.execute(
-                    "SELECT * FROM execution_intents WHERE intent_id=?",
-                    (intent_id,),
-                ).fetchone()
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("GET_INTENT", exc) from exc
-            return self._intent_from_row(row) if row is not None else None
-
-    def list_execution_intents_for_run(self, run_id: str) -> List[ExecutionIntent]:
-        self._ensure_open()
-        with self._lock:
-            if self._conn is None:
-                return copy.deepcopy([i for i in self._intents.values() if i.run_id == run_id])
-            try:
-                rows = self._conn.execute(
-                    "SELECT * FROM execution_intents WHERE run_id=? ORDER BY rowid",
-                    (run_id,),
-                ).fetchall()
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("LIST_INTENTS", exc) from exc
-            return [self._intent_from_row(row) for row in rows]
+                raise _core._sqlite_failure("PREPARE_INTENT", exc) from exc
 
     def _replace_intent_locked(self, intent: ExecutionIntent) -> ExecutionIntent:
         normalized = intent.normalized()
@@ -762,10 +282,10 @@ class ExecutionReceiptRepository:
             """
             UPDATE execution_intents SET
                 request_id=?, run_id=?, agent_id=?, capability_id=?, provider=?,
-                request_hash=?, execution_mode=?, state=?, business_id=?, project_id=?, chat_id=?,
-                approval_reference=?, dispatch_count=?, receipt_execution_id=?,
-                last_error_class=?, last_error_message=?, created_at=?, updated_at=?,
-                schema_version=?, record_hash=?
+                request_hash=?, execution_mode=?, state=?, business_id=?, project_id=?,
+                mission_id=?, commitment_id=?, chat_id=?, approval_reference=?,
+                dispatch_count=?, receipt_execution_id=?, last_error_class=?,
+                last_error_message=?, created_at=?, updated_at=?, schema_version=?, record_hash=?
             WHERE intent_id=?
             """,
             (
@@ -779,6 +299,8 @@ class ExecutionReceiptRepository:
                 normalized.state.value,
                 normalized.business_id,
                 normalized.project_id,
+                normalized.mission_id,
+                normalized.commitment_id,
                 normalized.chat_id,
                 normalized.approval_reference,
                 normalized.dispatch_count,
@@ -798,283 +320,17 @@ class ExecutionReceiptRepository:
             )
         return normalized
 
-    def _assert_receipt_owner_locked(self, *, intent_id: str, execution_id: str) -> None:
-        if self._conn is None:
-            owner_intent_id = next(
-                (
-                    candidate.intent_id
-                    for candidate in self._intents.values()
-                    if candidate.intent_id != intent_id
-                    and candidate.receipt_execution_id == execution_id
-                ),
-                None,
-            )
-        else:
-            row = self._conn.execute(
-                "SELECT intent_id FROM execution_intents "
-                "WHERE receipt_execution_id=? AND intent_id<>? LIMIT 1",
-                (execution_id, intent_id),
-            ).fetchone()
-            owner_intent_id = row["intent_id"] if row is not None else None
-        if owner_intent_id is not None:
-            raise ReceiptStoreConflictError(
-                "EXECUTION_RECEIPT_ALREADY_LINKED_TO_OTHER_INTENT: "
-                f"execution_id={execution_id} intent_id={intent_id} "
-                f"owner_intent_id={owner_intent_id}"
-            )
 
-    def mark_execution_intent_dispatching(self, intent_id: str) -> ExecutionIntent:
-        """Persist DISPATCHING before entering adapter code."""
-        self._ensure_open()
-        with self._lock:
-            try:
-                current = self.get_execution_intent(intent_id)
-                if current is None:
-                    raise ReceiptStoreConflictError(
-                        f"EXECUTION_INTENT_NOT_FOUND: intent_id={intent_id}"
-                    )
-                if current.execution_mode is None or current.schema_version < 2:
-                    raise ReceiptStoreIntegrityError(
-                        f"EXECUTION_INTENT_EXECUTION_MODE_UNBOUND: intent_id={intent_id}"
-                    )
-                if current.state != ExecutionIntentState.PREPARED or current.dispatch_count != 0:
-                    raise ReceiptStoreConflictError(
-                        f"EXECUTION_INTENT_INVALID_DISPATCH_TRANSITION: intent_id={intent_id} "
-                        f"state={current.state.value} dispatch_count={current.dispatch_count}"
-                    )
-                updated = replace(
-                    current,
-                    state=ExecutionIntentState.DISPATCHING,
-                    dispatch_count=1,
-                    updated_at=_utc_now_iso(),
-                    record_hash="",
-                )
-                if self._conn is None:
-                    return copy.deepcopy(self._replace_intent_locked(updated))
-                with self._conn:
-                    stored = self._replace_intent_locked(updated)
-                return copy.deepcopy(stored)
-            except ReceiptStoreError:
-                raise
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("MARK_DISPATCHING", exc) from exc
+# Core helper functions resolve these globals at runtime. Point them at the
+# Mission-aware models/binding while retaining the already-qualified algorithms.
+_core.ExecutionReceipt = ExecutionReceipt
+_core.ExecutionIntent = ExecutionIntent
+_core._receipt_matches_intent_binding = _receipt_matches_intent_binding
 
-    def finalize_execution_intent(
-        self,
-        intent_id: str,
-        receipt: ExecutionReceipt,
-        *,
-        ambiguous: bool = False,
-    ) -> ExecutionReceipt:
-        """Atomically persist receipt and settle the associated intent."""
-        self._ensure_open()
-        with self._lock:
-            try:
-                current = self.get_execution_intent(intent_id)
-                if current is None:
-                    raise ReceiptStoreConflictError(
-                        f"EXECUTION_INTENT_NOT_FOUND: intent_id={intent_id}"
-                    )
-                if current.execution_mode is None or current.schema_version < 2:
-                    raise ReceiptStoreIntegrityError(
-                        f"EXECUTION_INTENT_EXECUTION_MODE_UNBOUND: intent_id={intent_id}"
-                    )
-                normalized_receipt, _, _ = self._receipt_payload(receipt)
-                if not _receipt_matches_intent_binding(normalized_receipt, current):
-                    raise ReceiptStoreIntegrityError(
-                        f"EXECUTION_INTENT_RECEIPT_BINDING_MISMATCH: intent_id={intent_id}"
-                    )
-                self._assert_receipt_owner_locked(
-                    intent_id=intent_id,
-                    execution_id=normalized_receipt.execution_id,
-                )
-
-                target_state = (
-                    ExecutionIntentState.AMBIGUOUS if ambiguous else ExecutionIntentState.FINALIZED
-                )
-                if current.state in (ExecutionIntentState.FINALIZED, ExecutionIntentState.AMBIGUOUS):
-                    if (
-                        current.state != target_state
-                        or current.receipt_execution_id != normalized_receipt.execution_id
-                    ):
-                        raise ReceiptStoreConflictError(
-                            f"EXECUTION_INTENT_IMMUTABLE_CONFLICT: intent_id={intent_id}"
-                        )
-                    existing = self.get_receipt(normalized_receipt.execution_id)
-                    if existing is None:
-                        raise ReceiptStoreIntegrityError(
-                            f"EXECUTION_INTENT_RECEIPT_MISSING: intent_id={intent_id}"
-                        )
-                    self._insert_receipt_locked(normalized_receipt)
-                    return existing
-
-                if current.state != ExecutionIntentState.DISPATCHING or current.dispatch_count < 1:
-                    raise ReceiptStoreConflictError(
-                        f"EXECUTION_INTENT_INVALID_FINALIZE_TRANSITION: intent_id={intent_id} "
-                        f"state={current.state.value}"
-                    )
-
-                updated = replace(
-                    current,
-                    state=target_state,
-                    receipt_execution_id=normalized_receipt.execution_id,
-                    last_error_class=normalized_receipt.error_class,
-                    last_error_message=normalized_receipt.error_message,
-                    updated_at=_utc_now_iso(),
-                    record_hash="",
-                )
-                if self._conn is None:
-                    stored_receipt = self._insert_receipt_locked(normalized_receipt)
-                    self._replace_intent_locked(updated)
-                    return copy.deepcopy(stored_receipt)
-
-                with self._conn:
-                    stored_receipt = self._insert_receipt_locked(normalized_receipt)
-                    self._replace_intent_locked(updated)
-                return copy.deepcopy(stored_receipt)
-            except ReceiptStoreError:
-                raise
-            except sqlite3.Error as exc:
-                raise _sqlite_failure("FINALIZE_INTENT", exc) from exc
-
-    def assess_execution_intent(self, intent_id: str) -> ReconciliationAssessment:
-        """Classify persisted evidence without dispatching or retrying anything."""
-        self._ensure_open()
-        intent = self.get_execution_intent(intent_id)
-        if intent is None:
-            return ReconciliationAssessment(
-                intent_id=intent_id,
-                outcome=ReconciliationOutcome.INSUFFICIENT_EVIDENCE,
-                reason="No durable execution intent exists for this identifier.",
-            )
-
-        receipt = (
-            self.get_receipt(intent.receipt_execution_id)
-            if intent.receipt_execution_id
-            else None
-        )
-        if intent.state == ExecutionIntentState.PREPARED and intent.dispatch_count == 0:
-            if receipt is not None:
-                raise ReceiptStoreIntegrityError(
-                    f"PREPARED_INTENT_HAS_RECEIPT: intent_id={intent_id}"
-                )
-            return ReconciliationAssessment(
-                intent_id=intent_id,
-                outcome=ReconciliationOutcome.NOT_DISPATCHED,
-                reason="Durable intent remained PREPARED with dispatch_count=0.",
-            )
-
-        if intent.state == ExecutionIntentState.AMBIGUOUS:
-            if intent.receipt_execution_id and receipt is None:
-                raise ReceiptStoreIntegrityError(
-                    f"AMBIGUOUS_INTENT_RECEIPT_MISSING: intent_id={intent_id}"
-                )
-            if receipt is not None and not _receipt_matches_intent_binding(receipt, intent):
-                raise ReceiptStoreIntegrityError(
-                    f"AMBIGUOUS_INTENT_RECEIPT_BINDING_MISMATCH: intent_id={intent_id}"
-                )
-            return ReconciliationAssessment(
-                intent_id=intent_id,
-                outcome=ReconciliationOutcome.AMBIGUOUS_EXTERNAL_ACTION_OUTCOME,
-                receipt_execution_id=intent.receipt_execution_id,
-                reason="External side-effect outcome is intentionally classified as ambiguous; automatic replay is forbidden.",
-            )
-
-        if intent.state == ExecutionIntentState.DISPATCHING:
-            if receipt is not None:
-                raise ReceiptStoreIntegrityError(
-                    f"DISPATCHING_INTENT_HAS_LINKED_RECEIPT: intent_id={intent_id}"
-                )
-            return ReconciliationAssessment(
-                intent_id=intent_id,
-                outcome=ReconciliationOutcome.AMBIGUOUS_EXTERNAL_ACTION_OUTCOME,
-                reason="Dispatch began but no final receipt exists; absence of a receipt does not prove the external action did not run.",
-            )
-
-        if intent.state == ExecutionIntentState.FINALIZED:
-            if receipt is None:
-                raise ReceiptStoreIntegrityError(
-                    f"FINALIZED_INTENT_RECEIPT_MISSING: intent_id={intent_id}"
-                )
-            if intent.execution_mode is None or intent.schema_version < 2:
-                return ReconciliationAssessment(
-                    intent_id=intent_id,
-                    outcome=ReconciliationOutcome.INSUFFICIENT_EVIDENCE,
-                    receipt_execution_id=receipt.execution_id,
-                    reason=(
-                        "Historical schema v1 intent lacks execution-mode authority binding; "
-                        "the receipt is readable but cannot be confirmed against that provenance dimension."
-                    ),
-                )
-            if not _receipt_matches_intent_binding(receipt, intent):
-                raise ReceiptStoreIntegrityError(
-                    f"FINALIZED_INTENT_RECEIPT_BINDING_MISMATCH: intent_id={intent_id}"
-                )
-            return ReconciliationAssessment(
-                intent_id=intent_id,
-                outcome=ReconciliationOutcome.CONFIRMED_FINALIZED,
-                receipt_execution_id=receipt.execution_id,
-                reason="Durable intent and immutable receipt are integrity-bound and finalized.",
-            )
-
-        return ReconciliationAssessment(
-            intent_id=intent_id,
-            outcome=ReconciliationOutcome.INSUFFICIENT_EVIDENCE,
-            reason="Persisted execution state is not classifiable.",
-        )
-
-    def reconcile_unfinished_intents(self) -> List[ReconciliationAssessment]:
-        """On restart, conservatively seal DISPATCHING intents as AMBIGUOUS.
-
-        PREPARED intents remain PREPARED because they are durable evidence that
-        adapter dispatch had not begun. This method never invokes a tool adapter.
-        """
-        self._ensure_open()
-        assessments: List[ReconciliationAssessment] = []
-        with self._lock:
-            if self._conn is None:
-                candidates = list(self._intents.values())
-            else:
-                try:
-                    rows = self._conn.execute(
-                        "SELECT * FROM execution_intents WHERE state IN (?, ?) ORDER BY rowid",
-                        (
-                            ExecutionIntentState.PREPARED.value,
-                            ExecutionIntentState.DISPATCHING.value,
-                        ),
-                    ).fetchall()
-                except sqlite3.Error as exc:
-                    raise _sqlite_failure("RECONCILE_INTENTS", exc) from exc
-                candidates = [self._intent_from_row(row) for row in rows]
-
-            for intent in candidates:
-                if intent.state == ExecutionIntentState.DISPATCHING:
-                    updated = replace(
-                        intent,
-                        state=ExecutionIntentState.AMBIGUOUS,
-                        last_error_class="AMBIGUOUS_EXTERNAL_ACTION_OUTCOME",
-                        last_error_message=(
-                            "Recovered after dispatch began without a finalized receipt; "
-                            "automatic replay is forbidden."
-                        ),
-                        updated_at=_utc_now_iso(),
-                        record_hash="",
-                    )
-                    try:
-                        if self._conn is None:
-                            self._replace_intent_locked(updated)
-                        else:
-                            with self._conn:
-                                self._replace_intent_locked(updated)
-                    except sqlite3.Error as exc:
-                        raise _sqlite_failure("RECONCILE_INTENTS", exc) from exc
-                assessments.append(self.assess_execution_intent(intent.intent_id))
-        return assessments
-
-    def close(self) -> None:
-        with self._lock:
-            if self._closed:
-                return
-            if self._conn is not None:
-                self._conn.close()
-            self._closed = True
+# Preserve selected private compatibility entrypoints used by older tests/code.
+_receipt_from_payload = _core._receipt_from_payload
+_normalize_receipt = _core._normalize_receipt
+_payload_hash = _core._payload_hash
+_canonical_json = _core._canonical_json
+_safe_approval_reference = _core._safe_approval_reference
+_sqlite_failure = _core._sqlite_failure
