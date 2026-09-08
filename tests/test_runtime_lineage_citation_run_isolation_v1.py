@@ -12,6 +12,7 @@ ownership authority.
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from knowledge.models import KnowledgeCitation
 from runtime.context import RuntimeContext, RuntimeStatus
@@ -142,6 +143,38 @@ class TestRuntimeLineageCitationRunIsolation(unittest.TestCase):
             "STILL PRESENT: citation ownership disappears when the owner's artifact leaves the bounded cache.",
         )
         self.assertEqual(artifact_c.lineage_summary["citations"], [])
+
+    def test_failed_artifact_seal_does_not_claim_citation_ownership(self) -> None:
+        runtime = FiveAgentDepartmentRuntime()
+        citation = self._citation("CIT-FAILED-SEAL", "KNOW-FAILED-SEAL")
+        runtime.lineage_inspector.add_citation(citation)
+
+        with patch(
+            "runtime.engine.DepartmentRunArtifact.compute_artifact_hash",
+            side_effect=RuntimeError("forced seal failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "forced seal failure"):
+                runtime.complete_run(
+                    self._context(
+                        "RUN-FAILED-SEAL-A",
+                        "BIZ-FAILED-SEAL-A",
+                        [citation.citation_id],
+                    )
+                )
+
+        artifact_b = runtime.complete_run(
+            self._context(
+                "RUN-AFTER-FAILED-SEAL-B",
+                "BIZ-AFTER-FAILED-SEAL-B",
+                [citation.citation_id],
+            )
+        )
+        self.assertEqual(
+            artifact_b.knowledge_used,
+            [citation.citation_id],
+            "STILL PRESENT: a failed artifact seal can poison citation ownership for a later valid run.",
+        )
+        self.assertEqual(artifact_b.lineage_summary["citations"], [citation.citation_id])
 
     def test_unreferenced_runtime_global_citation_never_enters_artifact(self) -> None:
         runtime = FiveAgentDepartmentRuntime()
