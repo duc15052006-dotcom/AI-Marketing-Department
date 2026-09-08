@@ -113,7 +113,69 @@ class BrainCollaborationIntelligenceV1Tests(unittest.TestCase):
             "reviews": list(reviews),
             "minimum_supporting_reviewers": 1,
         }
+        explicit_proposal_request = "proposal_evidence_request" in updates
         values.update(updates)
+
+        if not explicit_proposal_request:
+            verdict = values["proposal_verdict"]
+            if isinstance(verdict, str):
+                verdict = ClaimVerdict(verdict.upper())
+            refs = list(values["proposal_evidence_refs"])
+            raw_signals = []
+            if verdict == ClaimVerdict.SUPPORTED and refs:
+                raw_signals = [
+                    EvidenceSignal(
+                        evidence_id=evidence_id,
+                        goal_id=values["goal_id"],
+                        claim_id=values["proposal_id"],
+                        source_id=f"SRC-PROPOSAL-{index}",
+                        relation=EvidenceRelation.SUPPORTS,
+                        strength=EvidenceStrength.STRONG,
+                        origin=EvidenceOrigin.OBSERVED,
+                    )
+                    for index, evidence_id in enumerate(refs)
+                ]
+            elif verdict == ClaimVerdict.REFUTED and refs:
+                raw_signals = [
+                    EvidenceSignal(
+                        evidence_id=evidence_id,
+                        goal_id=values["goal_id"],
+                        claim_id=values["proposal_id"],
+                        source_id=f"SRC-PROPOSAL-{index}",
+                        relation=EvidenceRelation.CONTRADICTS,
+                        strength=EvidenceStrength.STRONG,
+                        origin=EvidenceOrigin.OBSERVED,
+                    )
+                    for index, evidence_id in enumerate(refs)
+                ]
+            elif verdict == ClaimVerdict.CONTESTED and refs:
+                raw_signals = [
+                    EvidenceSignal(
+                        evidence_id=evidence_id,
+                        goal_id=values["goal_id"],
+                        claim_id=values["proposal_id"],
+                        source_id=f"SRC-PROPOSAL-{index}",
+                        relation=(
+                            EvidenceRelation.SUPPORTS
+                            if index == 0
+                            else EvidenceRelation.CONTRADICTS
+                        ),
+                        strength=EvidenceStrength.STRONG,
+                        origin=EvidenceOrigin.OBSERVED,
+                    )
+                    for index, evidence_id in enumerate(refs)
+                ]
+
+            if verdict == ClaimVerdict.SUPPORTED and not refs:
+                values["proposal_evidence_request"] = None
+            else:
+                values["proposal_evidence_request"] = ClaimEvidenceRequest(
+                    assessment_id="EA-PROPOSAL",
+                    goal_id=values["goal_id"],
+                    claim_id=values["proposal_id"],
+                    agent_id=values["author_agent"],
+                    evidence=raw_signals,
+                )
         return CollaborationAssessment(**values)
 
     def test_supported_proposal_with_independent_supported_review_is_accepted(self) -> None:
@@ -126,6 +188,22 @@ class BrainCollaborationIntelligenceV1Tests(unittest.TestCase):
         decision = evaluate_collaboration(
             self._assessment([self._review()], proposal_evidence_refs=[])
         )
+        self.assertEqual(decision.disposition, CollaborationDisposition.INCONCLUSIVE)
+
+    def test_caller_asserted_supported_proposal_without_raw_evidence_fails_closed(self) -> None:
+        decision = evaluate_collaboration(
+            self._assessment(
+                [self._review()],
+                proposal_evidence_refs=["FABRICATED-REF"],
+                proposal_evidence_request=None,
+            )
+        )
+        self.assertEqual(decision.disposition, CollaborationDisposition.INCONCLUSIVE)
+
+    def test_mutated_proposal_evidence_cannot_retain_supported_authority(self) -> None:
+        assessment = self._assessment([self._review()])
+        assessment.proposal_evidence_request.evidence[0].relation = EvidenceRelation.CONTRADICTS
+        decision = evaluate_collaboration(assessment)
         self.assertEqual(decision.disposition, CollaborationDisposition.INCONCLUSIVE)
 
     def test_self_review_cannot_create_independent_consensus(self) -> None:
