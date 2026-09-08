@@ -133,7 +133,10 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         self.assertEqual(ctx.objective, "Test Campaign Launch")
         self.assertEqual(ctx.business_id, "BIZ_TEST")
         self.assertIn(ctx.run_id, rt._completed_runs)
-        self.assertIs(rt._completed_runs[ctx.run_id], artifact)
+        cached = rt._completed_runs[ctx.run_id]
+        self.assertIsNot(cached, artifact)
+        self.assertEqual(cached.model_dump(), artifact.model_dump())
+        self.assertEqual(cached.compute_artifact_hash(), cached.final_artifact_hash)
 
     def test_03_same_run_id_propagated_through_all_six_stages(self) -> None:
         """The exact same run_id and object identity are preserved across all 6 stages."""
@@ -747,7 +750,6 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         mgr = RunManager(runtime=rt, max_workers=0)
         rid = rt.reserve_run_id()
         item = mgr.enqueue_run(objective="Approval resume queue test", run_id=rid)
-
         ctx = rt.start_run(objective="Approval wait", reserved_run_id=rid)
         rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(mgr.get_run(rid).status, RunQueueStatus.WAITING_APPROVAL)
@@ -888,7 +890,11 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
 
         art = rt.complete_run(ctx)
         self.assertIsNone(rt.get_active_context(ctx.run_id))
-        self.assertIs(rt.get_completed_run(ctx.run_id), art)
+        completed = rt.get_completed_run(ctx.run_id)
+        self.assertIsNotNone(completed)
+        self.assertIsNot(completed, art)
+        self.assertEqual(completed.model_dump(), art.model_dump())
+        self.assertEqual(completed.compute_artifact_hash(), completed.final_artifact_hash)
 
 
 if __name__ == "__main__":
