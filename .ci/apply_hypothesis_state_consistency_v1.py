@@ -170,21 +170,20 @@ class BrainHypothesisStateConsistencyV4Tests(unittest.TestCase):
             prioritize_research_agenda(request)
 
     def test_forged_leader_cannot_exist_while_competitor_is_unresolved(self):
-        portfolio = HypothesisPortfolioDecision(
-            portfolio_id="HP-V4-LEADER",
-            goal_id="G-V4",
-            owner_agent=BrainAgentId.CMO,
-            assessments=[
-                self._assessment("H-A", ClaimVerdict.SUPPORTED),
-                self._assessment("H-B", ClaimVerdict.INSUFFICIENT),
-            ],
-            active_hypothesis_ids=["H-A", "H-B"],
-            refuted_hypothesis_ids=[],
-            leading_hypothesis_id="H-A",
-            reasons=["forged leader despite unresolved competitor"],
-        )
         with self.assertRaises(ValidationError):
-            self._agenda(portfolio)
+            HypothesisPortfolioDecision(
+                portfolio_id="HP-V4-LEADER",
+                goal_id="G-V4",
+                owner_agent=BrainAgentId.CMO,
+                assessments=[
+                    self._assessment("H-A", ClaimVerdict.SUPPORTED),
+                    self._assessment("H-B", ClaimVerdict.INSUFFICIENT),
+                ],
+                active_hypothesis_ids=["H-A", "H-B"],
+                refuted_hypothesis_ids=[],
+                leading_hypothesis_id="H-A",
+                reasons=["forged leader despite unresolved competitor"],
+            )
 
     def test_missing_required_leader_is_rejected(self):
         with self.assertRaises(ValidationError):
