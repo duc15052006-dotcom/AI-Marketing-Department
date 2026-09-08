@@ -131,7 +131,17 @@ def _canonical_evidence_request(raw: object) -> ClaimEvidenceRequest:
         EvidenceSignal(**_payload(item, EvidenceSignal, "evidence"))
         for item in raw_evidence
     ]
-    return ClaimEvidenceRequest(**data, evidence=evidence)
+    request = ClaimEvidenceRequest(**data, evidence=evidence)
+    for signal in request.evidence:
+        if signal.goal_id != request.goal_id:
+            raise ValidationError(
+                "reflection evidence signal goal_id must match its enclosing evidence request"
+            )
+        if signal.claim_id != request.claim_id:
+            raise ValidationError(
+                "reflection evidence signal claim_id must match its enclosing evidence request"
+            )
+    return request
 
 
 def _canonical_world_state(raw: object) -> WorldStateSnapshot:
