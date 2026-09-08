@@ -254,10 +254,14 @@ class DesktopAgentService(BaseCapabilityAdapter):
             elif action=='pause' and session and job['status'] not in TERMINAL:
                 session.pause();job['status']='PAUSED'
             elif action=='resume' and session and job['status']=='PAUSED' and not job['stop'].is_set():
+                generation=session.generation
                 job['status']='RESUMING'
                 def resume():
-                    if not job['stop'].wait(5) and not session._stop.is_set():
-                        session.resume();job['status']='RUNNING'
+                    if job['stop'].wait(5):return
+                    with self._lock:
+                        if (job['status']=='RESUMING' and not session._stop.is_set()
+                                and session.generation==generation):
+                            session.resume();job['status']='RUNNING'
                 threading.Thread(target=resume,daemon=True).start()
             else:raise ValueError('DESKTOP_CONTROL_INVALID')
             return {'status':job['status']}
