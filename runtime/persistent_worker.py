@@ -14,10 +14,11 @@ separate authority boundaries.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Callable, Dict, Optional, Any
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from runtime.mission_checkpoint import (
     DurableMissionCheckpointStore,
@@ -32,7 +33,7 @@ from runtime.mission_dispatch import (
     MissionWakeDispatcher,
 )
 from runtime.mission_lease import DurableMissionLeaseStore
-from runtime.mission_scheduler import DurableMissionScheduler
+from runtime.mission_scheduler import DurableMissionScheduler, WakeState
 from runtime.mission_store import MissionStore
 
 
@@ -93,7 +94,15 @@ class PersistentMissionWorker:
     callback. Authority is revalidated after callback execution and again by the
     underlying checkpoint/acknowledgement boundaries before durable progress is
     committed.
+
+    The source-wake identity and continuation delivery specification are also
+    persisted atomically with the checkpoint.  If a process dies after that
+    checkpoint but before scheduling/acknowledgement completes, recovery repairs
+    only the missing control-plane work and never invokes the semantic executor
+    for the same source wake twice.
     """
+
+    _WORKER_CYCLE_VERSION = 1
 
     def __init__(
         self,
@@ -139,7 +148,7 @@ class PersistentMissionWorker:
         """Preserve omitted authority time until the downstream authority layer.
 
         A caller-injected clock is an explicit deterministic authority seam and
-        is propagated.  The worker's ordinary default wall clock is not sampled
+        is propagated. The worker's ordinary default wall clock is not sampled
         early and converted into caller-controlled time before Dispatcher /
         Scheduler / Mission-lease authority is reached.
         """
@@ -203,6 +212,147 @@ class PersistentMissionWorker:
         except (MissionDispatchLeaseLostError, MissionDispatchAuthorityError) as exc:
             raise self._authority_error(exc) from exc
 
+    @classmethod
+    def _build_worker_cycle(
+        cls,
+        *,
+        result: PersistentWorkerCycleResult,
+        next_wake_id: Optional[str],
+    ) -> Dict[str, Any]:
+        return {
+            "version": cls._WORKER_CYCLE_VERSION,
+            "next_wake_id": next_wake_id,
+            "next_wake_at": (
+                None
+                if result.next_wake_at is None
+                else result.next_wake_at.astimezone(timezone.utc).isoformat()
+            ),
+            "next_wake_reason": (
+                None
+                if result.next_wake_reason is None
+                else result.next_wake_reason.strip()
+            ),
+        }
+
+    @classmethod
+    def _parse_worker_cycle(
+        cls,
+        checkpoint: MissionCheckpointRecord,
+    ) -> Tuple[Optional[str], Optional[datetime], Optional[str]]:
+        cycle = checkpoint.worker_cycle
+        if not isinstance(cycle, dict):
+            raise PersistentWorkerStateError(
+                "PERSISTENT_WORKER_RECOVERY_METADATA_MISSING"
+            )
+        if cycle.get("version") != cls._WORKER_CYCLE_VERSION:
+            raise PersistentWorkerStateError(
+                "PERSISTENT_WORKER_RECOVERY_METADATA_VERSION_INVALID"
+            )
+
+        next_wake_id = cycle.get("next_wake_id")
+        raw_next_wake_at = cycle.get("next_wake_at")
+        next_wake_reason = cycle.get("next_wake_reason")
+
+        if next_wake_id is None:
+            if raw_next_wake_at is not None or next_wake_reason is not None:
+                raise PersistentWorkerStateError(
+                    "PERSISTENT_WORKER_RECOVERY_TERMINAL_METADATA_INVALID"
+                )
+            return None, None, None
+
+        if not isinstance(next_wake_id, str) or not next_wake_id.strip():
+            raise PersistentWorkerStateError(
+                "PERSISTENT_WORKER_RECOVERY_NEXT_WAKE_ID_INVALID"
+            )
+        if not isinstance(raw_next_wake_at, str) or not raw_next_wake_at:
+            raise PersistentWorkerStateError(
+                "PERSISTENT_WORKER_RECOVERY_NEXT_WAKE_AT_INVALID"
+            )
+        if not isinstance(next_wake_reason, str) or not next_wake_reason.strip():
+            raise PersistentWorkerStateError(
+                "PERSISTENT_WORKER_RECOVERY_NEXT_WAKE_REASON_INVALID"
+            )
+        try:
+            parsed_at = datetime.fromisoformat(raw_next_wake_at)
+        except ValueError as exc:
+            raise PersistentWorkerStateError(
+                "PERSISTENT_WORKER_RECOVERY_NEXT_WAKE_AT_INVALID"
+            ) from exc
+        if parsed_at.tzinfo is None or parsed_at.utcoffset() is None:
+            raise PersistentWorkerStateError(
+                "PERSISTENT_WORKER_RECOVERY_NEXT_WAKE_AT_NOT_TIMEZONE_AWARE"
+            )
+        return (
+            next_wake_id.strip(),
+            parsed_at.astimezone(timezone.utc),
+            next_wake_reason.strip(),
+        )
+
+    def _recover_checkpointed_delivery(
+        self,
+        *,
+        grant: MissionExecutionGrant,
+        checkpoint: MissionCheckpointRecord,
+    ) -> PersistentWorkerRunReport:
+        """Repair post-checkpoint delivery work without replaying semantics."""
+
+        grant = self._validate_grant(grant)
+        next_wake_id, next_wake_at, next_wake_reason = self._parse_worker_cycle(
+            checkpoint
+        )
+
+        if next_wake_id is not None:
+            assert next_wake_at is not None
+            assert next_wake_reason is not None
+            existing = self._scheduler.get_wake(
+                next_wake_id,
+                business_id=grant.business_id,
+                project_id=grant.project_id,
+            )
+            if existing is None:
+                self._scheduler.schedule_wake(
+                    wake_id=next_wake_id,
+                    mission_id=grant.mission_id,
+                    business_id=grant.business_id,
+                    project_id=grant.project_id,
+                    due_at=next_wake_at,
+                    reason=next_wake_reason,
+                    now=self._now(),
+                )
+            else:
+                if (
+                    existing.mission_id != grant.mission_id
+                    or existing.business_id != grant.business_id
+                    or existing.project_id != grant.project_id
+                    or existing.due_at != next_wake_at
+                    or existing.reason != next_wake_reason
+                ):
+                    raise PersistentWorkerStateError(
+                        "PERSISTENT_WORKER_RECOVERY_CONTINUATION_CONFLICT"
+                    )
+                if existing.state == WakeState.CANCELLED:
+                    raise PersistentWorkerStateError(
+                        "PERSISTENT_WORKER_RECOVERY_CONTINUATION_CANCELLED"
+                    )
+
+        try:
+            self._dispatcher.finish_delivery(grant, now=self._authority_now())
+        except (MissionDispatchLeaseLostError, MissionDispatchAuthorityError) as exc:
+            raise self._authority_error(exc) from exc
+
+        status = (
+            PersistentWorkerCycleStatus.CONTINUED
+            if next_wake_id is not None
+            else PersistentWorkerCycleStatus.FINISHED
+        )
+        return PersistentWorkerRunReport(
+            status=status,
+            mission_id=grant.mission_id,
+            wake_id=grant.wake.wake_id,
+            checkpoint_sequence=checkpoint.checkpoint_sequence,
+            next_wake_id=next_wake_id,
+        )
+
     def run_once(
         self,
         *,
@@ -230,6 +380,21 @@ class PersistentMissionWorker:
         if grant is None:
             return PersistentWorkerRunReport(status=PersistentWorkerCycleStatus.IDLE)
 
+        # Recovery lookup is by exact source wake, not merely "latest". A later
+        # continuation may already have advanced the Mission checkpoint sequence
+        # before an older unacknowledged source wake is reclaimed.
+        checkpointed_source = self._checkpoints.get_by_source_wake(
+            mission_id=grant.mission_id,
+            business_id=grant.business_id,
+            project_id=grant.project_id,
+            source_wake_id=grant.wake.wake_id,
+        )
+        if checkpointed_source is not None:
+            return self._recover_checkpointed_delivery(
+                grant=grant,
+                checkpoint=checkpointed_source,
+            )
+
         restored = self._checkpoints.get_latest(
             mission_id=grant.mission_id,
             business_id=grant.business_id,
@@ -253,6 +418,18 @@ class PersistentMissionWorker:
         # pre-callback grant as proof that execution authority is still current.
         grant = self._validate_grant(grant)
 
+        next_wake_id: Optional[str] = None
+        if result.next_wake_at is not None:
+            # Generate the continuation identity before the semantic checkpoint.
+            # The exact ID/spec becomes durable with that checkpoint, so a crash
+            # before/after scheduling can be repaired idempotently.
+            next_wake_id = f"WAKE-{uuid.uuid4().hex.upper()}"
+
+        worker_cycle = self._build_worker_cycle(
+            result=result,
+            next_wake_id=next_wake_id,
+        )
+
         try:
             checkpoint = self._checkpoints.save_checkpoint(
                 mission_id=grant.mission_id,
@@ -264,17 +441,20 @@ class PersistentMissionWorker:
                 checkpoint_sequence=next_sequence,
                 resume_cursor=result.resume_cursor.strip(),
                 state=result.state,
+                source_wake_id=grant.wake.wake_id,
+                worker_cycle=worker_cycle,
             )
         except (MissionCheckpointAuthorityError, MissionCheckpointStateError) as exc:
             raise self._authority_error(exc) from exc
 
-        next_wake_id: Optional[str] = None
-        if result.next_wake_at is not None:
+        if next_wake_id is not None:
+            assert result.next_wake_at is not None
             # Scheduling continuation is authority-bearing control-plane work.
             # Revalidate after checkpoint persistence instead of assuming the
             # previous validation remains current.
             grant = self._validate_grant(grant)
-            next_wake = self._scheduler.schedule_wake(
+            self._scheduler.schedule_wake(
+                wake_id=next_wake_id,
                 mission_id=grant.mission_id,
                 business_id=grant.business_id,
                 project_id=grant.project_id,
@@ -282,7 +462,6 @@ class PersistentMissionWorker:
                 reason=(result.next_wake_reason or "").strip(),
                 now=self._now(),
             )
-            next_wake_id = next_wake.wake_id
 
         try:
             self._dispatcher.finish_delivery(grant, now=self._authority_now())
