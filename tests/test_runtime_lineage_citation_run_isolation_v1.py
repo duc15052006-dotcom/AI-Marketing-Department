@@ -65,6 +65,33 @@ class TestRuntimeLineageCitationRunIsolation(unittest.TestCase):
         )
         self.assertNotIn(citation_a.citation_id, artifact_b.lineage_summary["citations"])
 
+    def test_previous_run_owned_citation_cannot_be_reinjected_via_mutable_refs(self) -> None:
+        runtime = FiveAgentDepartmentRuntime()
+        citation_a = self._citation("CIT-OWNED-RUN-A", "KNOW-OWNED-RUN-A")
+        runtime.lineage_inspector.add_citation(citation_a)
+
+        artifact_a = runtime.complete_run(
+            self._context("RUN-OWNER-A", "BIZ-OWNER-A", [citation_a.citation_id])
+        )
+        self.assertEqual(artifact_a.knowledge_used, [citation_a.citation_id])
+        self.assertEqual(artifact_a.lineage_summary["citations"], [citation_a.citation_id])
+
+        # Adversarial mutation: current-run refs are not an ownership authority.
+        artifact_b = runtime.complete_run(
+            self._context("RUN-OWNER-B", "BIZ-OWNER-B", [citation_a.citation_id])
+        )
+
+        self.assertEqual(
+            artifact_b.knowledge_used,
+            [],
+            "STILL PRESENT: mutable run-B refs can claim a citation already owned by run A.",
+        )
+        self.assertEqual(
+            artifact_b.lineage_summary["citations"],
+            [],
+            "STILL PRESENT: mutable run-B refs can reinject run A citation into sealed lineage.",
+        )
+
     def test_unreferenced_runtime_global_citation_never_enters_artifact(self) -> None:
         runtime = FiveAgentDepartmentRuntime()
         referenced = self._citation("CIT-REFERENCED", "KNOW-REFERENCED")
