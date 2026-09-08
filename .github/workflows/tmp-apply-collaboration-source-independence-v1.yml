@@ -1,0 +1,63 @@
+name: Temporary Apply Collaboration Source Independence V1
+
+on:
+  push:
+    branches:
+      - fix/brain-collaboration-source-independence-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/brain-collaboration-source-independence-v1
+          fetch-depth: 0
+      - name: Apply minimal production patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('brain/collaboration.py')
+          text = path.read_text()
+
+          anchor = '''class CollaborationDecision(BaseModel):\n'''
+          helper = '''def _canonical_support_source_ids(\n    request: Optional[ClaimEvidenceRequest],\n    assessment: Optional[ClaimEvidenceAssessment],\n) -> set[str]:\n    \"\"\"Return only source identities that canonically support the claim.\"\"\"\n\n    if request is None or assessment is None:\n        return set()\n    supporting_refs = set(assessment.supporting_evidence_refs)\n    return {\n        signal.source_id\n        for signal in request.evidence\n        if signal.evidence_id in supporting_refs\n    }\n\n\ndef _max_epistemically_independent_support(\n    supporting: List[\"PeerReview\"],\n    canonical_by_review_id: Dict[str, Optional[ClaimEvidenceAssessment]],\n    proposal_source_ids: set[str],\n) -> int:\n    \"\"\"Compute reviewer quorum using independent underlying evidence sources.\n\n    Reviewer identity alone is not epistemic independence.  A reviewer can count\n    toward quorum only when at least one of its canonical supporting sources is\n    distinct from the proposal's sources and from the source assigned to every\n    other counted reviewer.  Maximum bipartite matching keeps the result\n    deterministic and independent of review ordering.\n    \"\"\"\n\n    candidates: Dict[str, List[str]] = {}\n    for review in supporting:\n        canonical = canonical_by_review_id.get(review.review_id)\n        sources = (\n            _canonical_support_source_ids(review.evidence_request, canonical)\n            - proposal_source_ids\n        )\n        if sources:\n            candidates[review.review_id] = sorted(sources)\n\n    source_owner: Dict[str, str] = {}\n\n    def assign(review_id: str, seen_sources: set[str]) -> bool:\n        for source_id in candidates.get(review_id, []):\n            if source_id in seen_sources:\n                continue\n            seen_sources.add(source_id)\n            prior_review = source_owner.get(source_id)\n            if prior_review is None or assign(prior_review, seen_sources):\n                source_owner[source_id] = review_id\n                return True\n        return False\n\n    independent = 0\n    for review_id in sorted(candidates):\n        if assign(review_id, set()):\n            independent += 1\n    return independent\n\n\n'''
+          if helper not in text:
+              if anchor not in text:
+                  raise SystemExit('CollaborationDecision anchor not found')
+              text = text.replace(anchor, helper + anchor, 1)
+
+          old = '''    supporting_ids = [review.review_id for review in supporting]\n    dissenting_ids = [review.review_id for review in dissenting]\n\n'''
+          new = '''    supporting_ids = [review.review_id for review in supporting]\n    dissenting_ids = [review.review_id for review in dissenting]\n    proposal_source_ids = _canonical_support_source_ids(\n        assessment.proposal_evidence_request, canonical_proposal\n    )\n    independent_support_count = _max_epistemically_independent_support(\n        supporting, canonical_by_review_id, proposal_source_ids\n    )\n\n'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('supporting_ids anchor not found')
+              text = text.replace(old, new, 1)
+
+          old = '''    elif len(supporting) >= assessment.minimum_supporting_reviewers:\n        reasons.append(\n            f\"proposal is canonically evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}\"\n        )\n        disposition = CollaborationDisposition.ACCEPT\n    else:\n        reasons.append(\n            f\"independent raw-evidence-backed peer support {len(supporting)} is below required quorum {assessment.minimum_supporting_reviewers}\"\n        )\n        disposition = CollaborationDisposition.INCONCLUSIVE\n'''
+          new = '''    elif independent_support_count >= assessment.minimum_supporting_reviewers:\n        reasons.append(\n            f\"proposal is canonically evidence-supported and has {independent_support_count} epistemically independent raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}\"\n        )\n        disposition = CollaborationDisposition.ACCEPT\n    else:\n        reasons.append(\n            f\"epistemically independent raw-evidence-backed peer support {independent_support_count} is below required quorum {assessment.minimum_supporting_reviewers}; shared/common-mode sources do not manufacture independence\"\n        )\n        disposition = CollaborationDisposition.INCONCLUSIVE\n'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('quorum disposition anchor not found')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit production patch
+        shell: bash
+        run: |
+          if git diff --quiet -- brain/collaboration.py; then
+            echo 'No source change required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add brain/collaboration.py
+          git commit -m 'fix(brain): require epistemically independent review sources'
+          git push origin HEAD:fix/brain-collaboration-source-independence-v1
