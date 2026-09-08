@@ -379,16 +379,18 @@ class DurableMissionScheduler:
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 100:
             raise ValueError("MISSION_SCHEDULER_LIMIT_INVALID")
 
-        reference = _require_aware_datetime(
-            now or datetime.now(timezone.utc),
-            code="MISSION_SCHEDULER_NOW_MUST_BE_TIMEZONE_AWARE",
-        )
-        encoded_now = _encode_time(reference)
-        lease_expiry = _encode_time(reference + timedelta(seconds=float(lease_seconds)))
         claimed: List[WakeRecord] = []
 
         with self._lock:
             self._require_open()
+            reference = _require_aware_datetime(
+                now if now is not None else datetime.now(timezone.utc),
+                code="MISSION_SCHEDULER_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
+            encoded_now = _encode_time(reference)
+            lease_expiry = _encode_time(
+                reference + timedelta(seconds=float(lease_seconds))
+            )
             try:
                 self._connection.execute("BEGIN IMMEDIATE")
                 candidates = self._connection.execute(
@@ -510,14 +512,14 @@ class DurableMissionScheduler:
 
         if not wake_id or not worker_id or not lease_token:
             raise MissionSchedulerLeaseError("MISSION_SCHEDULER_LEASE_AUTHORITY_REQUIRED")
-        reference = _require_aware_datetime(
-            now or datetime.now(timezone.utc),
-            code="MISSION_SCHEDULER_NOW_MUST_BE_TIMEZONE_AWARE",
-        )
-        encoded_now = _encode_time(reference)
 
         with self._lock:
             self._require_open()
+            reference = _require_aware_datetime(
+                now if now is not None else datetime.now(timezone.utc),
+                code="MISSION_SCHEDULER_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
+            encoded_now = _encode_time(reference)
             with self._connection:
                 updated = self._connection.execute(
                     """
@@ -563,14 +565,14 @@ class DurableMissionScheduler:
             raise ValueError("MISSION_SCHEDULER_LEASE_SECONDS_INVALID")
         if lease_seconds <= 0:
             raise ValueError("MISSION_SCHEDULER_LEASE_SECONDS_INVALID")
-        reference = _require_aware_datetime(
-            now or datetime.now(timezone.utc),
-            code="MISSION_SCHEDULER_NOW_MUST_BE_TIMEZONE_AWARE",
-        )
-        encoded_now = _encode_time(reference)
 
         with self._lock:
             self._require_open()
+            reference = _require_aware_datetime(
+                now if now is not None else datetime.now(timezone.utc),
+                code="MISSION_SCHEDULER_NOW_MUST_BE_TIMEZONE_AWARE",
+            )
+            encoded_now = _encode_time(reference)
             row = self._get_row_locked(wake_id)
             if row is None:
                 raise MissionSchedulerLeaseError("MISSION_SCHEDULER_WAKE_NOT_FOUND")
