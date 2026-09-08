@@ -4,6 +4,12 @@ This package intentionally owns only semantic cognition contracts. It must not
 import runtime, tools, provider integrations, persistence, or connector code.
 """
 
+from brain.adaptive_replanning import (
+    AdaptiveReplanRequest,
+    AdaptiveReplanResult,
+    ReplanSignal,
+    apply_adaptive_replan,
+)
 from brain.contracts import (
     ActionIntent,
     BrainAgentId,
@@ -118,6 +124,8 @@ from brain.world_state import (
 
 __all__ = [
     "ActionIntent",
+    "AdaptiveReplanRequest",
+    "AdaptiveReplanResult",
     "BeliefRevision",
     "BeliefStatus",
     "BrainAgentId",
@@ -173,6 +181,7 @@ __all__ = [
     "ReflectionDirective",
     "ReflectionFinding",
     "ReflectionFindingKind",
+    "ReplanSignal",
     "ResearchAgenda",
     "ResearchAgendaRequest",
     "ResearchProbe",
@@ -193,6 +202,7 @@ __all__ = [
     "WorldStateRequest",
     "WorldStateSnapshot",
     "analyze_learning_episode",
+    "apply_adaptive_replan",
     "apply_plan_revision",
     "assess_hypothesis_portfolio",
     "assess_metacognition",
