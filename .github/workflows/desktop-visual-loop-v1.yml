@@ -4,6 +4,7 @@ on:
     paths:
       - 'desktop/**'
       - 'requirements-desktop.txt'
+      - 'tests/test_desktop_agent_integration_v1.py'
       - 'tests/test_desktop_visual_loop_v1.py'
       - 'tests/test_desktop_live_v1.py'
       - 'tests/test_local_desktop_windows_smoke_v1.py'
