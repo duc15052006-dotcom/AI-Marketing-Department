@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from typing import Any, Dict
 
-from tools.adapters import AdapterResult, BaseCapabilityAdapter
+from tools.adapters import AdapterResult, BaseCapabilityAdapter, PublishingAdapter
 from tools.capabilities import (
     CapabilityCategory,
     CapabilityDescriptor,
@@ -180,6 +180,50 @@ class ToolGatewayDurableIntentLifecycleV1Tests(unittest.TestCase):
         self.assertEqual("AMBIGUOUS_EXTERNAL_ACTION_OUTCOME", receipt.error_class)
         self.assertEqual(1, len(intents))
         self.assertEqual(ExecutionIntentState.AMBIGUOUS, intents[0].state)
+        self.assertEqual(receipt.execution_id, intents[0].receipt_execution_id)
+
+    def test_publishing_adapter_binds_sandbox_mode_before_dispatch(self) -> None:
+        adapter = PublishingAdapter(name="durable_sandbox_publish_adapter")
+        self.gateway.register_adapter(adapter)
+        self.registry.register_capability(
+            CapabilityDescriptor(
+                capability_id="durable_sandbox_publish",
+                name="Durable Sandbox Publish",
+                category=CapabilityCategory.PUBLISH,
+                description="Default publishing adapter must expose SANDBOX authority pre-dispatch.",
+                provider=adapter.adapter_name,
+                supported_agents=["cmo"],
+                required_permissions=[PermissionLevel.PUBLISH],
+                risk_level=RiskLevel.HIGH,
+                human_approval_required=True,
+                retry_policy={"max_retries": 0},
+            )
+        )
+        parameters = {"platform": "sandbox", "content": "authority-probe"}
+        approval = self.policy.create_server_approval(
+            capability_id="durable_sandbox_publish",
+            parameters=parameters,
+            run_id="RUN-INTENT-SANDBOX",
+            approved_by="sandbox execution-mode regression",
+            risk_level=RiskLevel.HIGH,
+        )
+        request = ToolRequest(
+            request_id="REQ-INTENT-SANDBOX",
+            run_id="RUN-INTENT-SANDBOX",
+            agent_id="cmo",
+            capability_id="durable_sandbox_publish",
+            parameters=parameters,
+            approval_token=approval.approval_token,
+        )
+
+        receipt = self.gateway.execute(request)
+        intents = self.receipts.list_execution_intents_for_run(request.run_id)
+
+        self.assertEqual(ExecutionStatus.SUCCESS, receipt.status)
+        self.assertEqual(ExecutionMode.SANDBOX, receipt.execution_mode)
+        self.assertEqual(1, len(intents))
+        self.assertEqual(ExecutionIntentState.FINALIZED, intents[0].state)
+        self.assertEqual(ExecutionMode.SANDBOX, intents[0].execution_mode)
         self.assertEqual(receipt.execution_id, intents[0].receipt_execution_id)
 
     def test_read_only_control_does_not_require_consequential_intent(self) -> None:
