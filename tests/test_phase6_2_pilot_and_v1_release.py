@@ -212,8 +212,8 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 "Replaces emergency 911 care",
             ],
             default_constraints=["Strict FDA disclaimers on all assets", "No unverified medical claims"],
-            knowledge_scope="SCOPE_PILOT_CARDIO",
-            memory_scope="SCOPE_PILOT_CARDIO",
+            knowledge_scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
+            memory_scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
         )
         self.biz_registry.register_workspace(pilot_biz)
         self.assertIsNotNone(self.biz_registry.get_workspace("BIZ_PILOT_CARDIOVITAL_360"))
@@ -229,7 +229,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 source_name="CardioVital Brand Brief 2026",
                 source_type=SourceType.BRAND_GUIDELINE,
                 content_or_path="# Brand Brief\nCardioVital 360 delivers physician-guided preventive cardiology.",
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 authority_level=AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
             )
         )
@@ -240,7 +240,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 source_type=SourceType.PRODUCT_GROUND_TRUTH,
                 content_or_path=json.dumps({"subscription_price": 149.00, "sensor_tier": "FDA_CLEARED_ECG", "physician_sla_hours": 24}),
                 format=IngestionFormat.JSON,
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 authority_level=AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
             )
         )
@@ -250,7 +250,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 source_name="ICP Executive Survey",
                 source_type=SourceType.CUSTOMER_RESEARCH,
                 content_or_path="Primary buyer: High-stress executives seeking early metabolic and coronary detection.",
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 authority_level=AuthorityLevel.TIER_2_VERIFIED_RESEARCH,
             )
         )
@@ -260,7 +260,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 source_name="Competitor Cardiology Telehealth Analysis",
                 source_type=SourceType.COMPETITOR_INTELLIGENCE,
                 content_or_path="Competitors focus heavily on fitness wearables rather than physician diagnosis.",
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 authority_level=AuthorityLevel.TIER_2_VERIFIED_RESEARCH,
             )
         )
@@ -271,7 +271,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 source_type=SourceType.HISTORICAL_REPORT,
                 content_or_path="channel,benchmark_cac,benchmark_cvr\npaid_social,165.0,0.038\npaid_search,140.0,0.052",
                 format=IngestionFormat.CSV,
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 authority_level=AuthorityLevel.TIER_2_VERIFIED_RESEARCH,
             )
         )
@@ -291,7 +291,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 memory_type=MemoryType.DECISION_MEMORY,
                 agent_source="cmo",
                 content="Prior campaign proved physician-led messaging reduced CAC by 35%.",
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 confidence=0.90,
                 promotion_level=PromotionState.PROMOTED_LEARNING,
             )
@@ -301,7 +301,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 memory_type=MemoryType.EXPERIMENT_MEMORY,
                 agent_source="performance",
                 content="EXP-Q3-01: Physician telemetry video landing page lifted checkout completion from 2.1% to 3.8%.",
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 evidence_refs=["EXPERIMENT:EXP-Q3-01"],
                 confidence=0.85,
                 promotion_level=PromotionState.VERIFIED_MEMORY,
@@ -312,7 +312,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 memory_type=MemoryType.EXPERIMENT_MEMORY,
                 agent_source="performance",
                 content="EXP-Q3-02: Fear-based heart attack statistics caused elevated ad fatigue.",
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 evidence_refs=["EXPERIMENT:EXP-Q3-02"],
                 confidence=0.82,
                 promotion_level=PromotionState.VERIFIED_MEMORY,
@@ -323,7 +323,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
                 memory_type=MemoryType.USER_BRAND_PREFERENCE_MEMORY,
                 agent_source="cmo",
                 content="Leadership mandates dark navy & clinical white visual palette with zero sensationalist imagery.",
-                scope="SCOPE_PILOT_CARDIO",
+                scope="SCOPE_BIZ_PILOT_CARDIOVITAL_360",
                 confidence=0.95,
                 promotion_level=PromotionState.PROMOTED_LEARNING,
             )
