@@ -2,6 +2,7 @@ name: ToolGateway business approval scope V1
 on:
   pull_request:
     paths:
+      - 'app_api/server.py'
       - 'tools/security.py'
       - 'tools/tool_gateway.py'
       - 'tests/test_tool_gateway_business_approval_scope_v1.py'
