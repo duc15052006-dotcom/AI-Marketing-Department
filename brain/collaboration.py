@@ -7,9 +7,9 @@ read runtime handoffs, persist state, or select model/provider implementations.
 
 Core invariants:
 - peer agreement never upgrades a proposal whose own evidence verdict is weak;
+- proposal authority and supporting peer evidence are re-derived from raw evidence;
 - self-review never counts as independent review;
 - reviews are bound to one exact goal and proposal;
-- supporting peer evidence must be re-derived from raw evidence, never trusted from refs alone;
 - duplicate reviewer identities cannot manufacture quorum or erase dissent;
 - contradictions and refutations are preserved rather than averaged away;
 - exactly five permanent Brain agents remain authoritative.
@@ -131,12 +131,7 @@ def _canonical_review_refs(assessment: ClaimEvidenceAssessment) -> List[str]:
 def _canonical_review_assessment(
     review: "PeerReview",
 ) -> Optional[ClaimEvidenceAssessment]:
-    """Re-evaluate raw peer evidence at the use boundary.
-
-    PeerReview records are mutable BaseModel objects, so construction-time checks
-    alone are insufficient authority. Recompute from raw evidence every time a
-    review could influence collaboration disposition and fail closed on any drift.
-    """
+    """Re-evaluate raw peer evidence at the use boundary."""
 
     if review.evidence_request is None:
         return None
@@ -147,7 +142,10 @@ def _canonical_review_assessment(
         or request.agent_id != review.reviewer_agent
     ):
         return None
-    canonical = assess_claim_evidence(request)
+    try:
+        canonical = assess_claim_evidence(request)
+    except (ValidationError, TypeError, AttributeError):
+        return None
     if canonical.verdict != review.verdict:
         return None
     if _canonical_review_refs(canonical) != review.evidence_refs:
@@ -156,13 +154,7 @@ def _canonical_review_assessment(
 
 
 class PeerReview(BaseModel):
-    """One semantic review of one exact proposal by a permanent peer agent.
-
-    `evidence_refs` are audit output only. A review can count as evidence-backed
-    support/refutation only when `evidence_request` is present, exactly bound to
-    the reviewer/goal/proposal, and independently re-evaluates to the declared
-    verdict and references.
-    """
+    """One semantic review of one exact proposal by a permanent peer agent."""
 
     review_id: str
     goal_id: str
@@ -223,6 +215,7 @@ class CollaborationAssessment(BaseModel):
     author_agent: BrainAgentId
     proposal_verdict: ClaimVerdict
     proposal_evidence_refs: List[str] = Field(default_factory=list)
+    proposal_evidence_request: Optional[ClaimEvidenceRequest] = None
     reviews: List[PeerReview] = Field(default_factory=list)
     minimum_supporting_reviewers: int = 1
 
@@ -238,9 +231,36 @@ class CollaborationAssessment(BaseModel):
         self.proposal_evidence_refs = _unique_text_list(
             self.proposal_evidence_refs, "proposal_evidence_refs"
         )
+        self.proposal_evidence_request = _claim_evidence_request(
+            self.proposal_evidence_request, "proposal_evidence_request"
+        )
         self.minimum_supporting_reviewers = _review_quorum(
             self.minimum_supporting_reviewers
         )
+
+        if self.proposal_evidence_request is not None:
+            request = self.proposal_evidence_request
+            if request.goal_id != self.goal_id:
+                raise ValidationError(
+                    "proposal_evidence_request goal_id must match assessment goal_id"
+                )
+            if request.claim_id != self.proposal_id:
+                raise ValidationError(
+                    "proposal_evidence_request claim_id must match proposal_id"
+                )
+            if request.agent_id != self.author_agent:
+                raise ValidationError(
+                    "proposal_evidence_request agent_id must match author_agent"
+                )
+            canonical = assess_claim_evidence(request)
+            if canonical.verdict != self.proposal_verdict:
+                raise ValidationError(
+                    "proposal verdict must match canonical raw evidence assessment"
+                )
+            if _canonical_review_refs(canonical) != self.proposal_evidence_refs:
+                raise ValidationError(
+                    "proposal evidence refs must exactly match canonical raw evidence references"
+                )
 
         if not isinstance(self.reviews, list):
             raise ValidationError("reviews must be a list of PeerReview objects")
@@ -258,6 +278,31 @@ class CollaborationAssessment(BaseModel):
             seen_review_ids.add(review.review_id)
             normalized.append(review)
         self.reviews = normalized
+
+
+def _canonical_proposal_assessment(
+    assessment: CollaborationAssessment,
+) -> Optional[ClaimEvidenceAssessment]:
+    """Re-derive proposal authority from raw evidence at the use boundary."""
+
+    request = assessment.proposal_evidence_request
+    if request is None:
+        return None
+    if (
+        request.goal_id != assessment.goal_id
+        or request.claim_id != assessment.proposal_id
+        or request.agent_id != assessment.author_agent
+    ):
+        return None
+    try:
+        canonical = assess_claim_evidence(request)
+    except (ValidationError, TypeError, AttributeError):
+        return None
+    if canonical.verdict != assessment.proposal_verdict:
+        return None
+    if _canonical_review_refs(canonical) != assessment.proposal_evidence_refs:
+        return None
+    return canonical
 
 
 class CollaborationDecision(BaseModel):
@@ -295,20 +340,12 @@ class CollaborationDecision(BaseModel):
 def evaluate_collaboration(
     assessment: CollaborationAssessment,
 ) -> CollaborationDecision:
-    """Evaluate proposal review without allowing consensus to replace evidence.
-
-    Review independence is established by permanent reviewer identity, not by the
-    number of review records. Structurally invalid reviews are ignored. A
-    supported proposal can be accepted only when its own evidence lineage is
-    retained and the configured number of distinct peers provide support that is
-    canonically re-derived from raw peer evidence. Any credible refutation
-    dominates supportive votes; unresolved contradiction is escalated instead of
-    being averaged into a majority result.
-    """
+    """Evaluate proposal review without allowing consensus to replace evidence."""
 
     if not isinstance(assessment, CollaborationAssessment):
         raise ValidationError("assessment must be a CollaborationAssessment")
 
+    canonical_proposal = _canonical_proposal_assessment(assessment)
     reasons: List[str] = []
     ignored_review_ids: List[str] = []
     structurally_eligible: List[PeerReview] = []
@@ -406,6 +443,11 @@ def evaluate_collaboration(
             "SUPPORTED proposal did not retain evidence references and therefore fails closed"
         )
         disposition = CollaborationDisposition.INCONCLUSIVE
+    elif canonical_proposal is None:
+        reasons.append(
+            "SUPPORTED proposal lacks canonically re-derived raw evidence authority and therefore fails closed"
+        )
+        disposition = CollaborationDisposition.INCONCLUSIVE
     elif duplicated_reviewers:
         reasons.append(
             "duplicate reviewer identity makes peer evidence ambiguous; acceptance is blocked until duplicate reviews are resolved"
@@ -428,7 +470,7 @@ def evaluate_collaboration(
         disposition = CollaborationDisposition.ESCALATE
     elif len(supporting) >= assessment.minimum_supporting_reviewers:
         reasons.append(
-            f"proposal is evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}"
+            f"proposal is canonically evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}"
         )
         disposition = CollaborationDisposition.ACCEPT
     else:
