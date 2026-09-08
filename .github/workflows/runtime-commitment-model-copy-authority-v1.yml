@@ -26,7 +26,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout exact PR head with full history
         uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
           python -m pip check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Compile touched source and RED regression
+      - name: Compile touched source and regression
         shell: pwsh
         run: |
           python -m py_compile runtime/mission.py tests/test_runtime_commitment_model_copy_authority_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
@@ -81,7 +81,15 @@ jobs:
           python -m unittest -v tests.test_runtime_commitment_authority_revision_v1 tests.test_runtime_commitment_deep_authority_immutability_v1 tests.test_runtime_commitment_identity_scope_immutability_v1 tests.test_structure 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload exact-head RED evidence
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows'
+        timeout-minutes: 45
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload exact-head qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
