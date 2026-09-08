@@ -137,6 +137,7 @@ class DurableMissionLeaseStore:
             "ON mission_leases(business_id, project_id, mission_id)"
         )
         self._connection.commit()
+        self._mission_store.bind_execution_lease_database(self._database_path)
 
     @property
     def durable(self) -> bool:
