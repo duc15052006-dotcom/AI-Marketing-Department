@@ -67,14 +67,12 @@ class BrainMetaLearningUseBoundaryRevalidationV1Tests(unittest.TestCase):
         self.assertEqual(result.disposition, MetaLearningDisposition.PREFER_STRATEGY)
         self.assertEqual(result.preferred_strategy, LearningStrategy.RESEARCH)
 
-    def test_strategy_relabel_post_validation_is_revalidated(self) -> None:
+    def test_strategy_relabel_post_validation_fails_closed(self) -> None:
         request = self._request_set()
         for trial in request.trials:
             trial.strategy = LearningStrategy.EXPERIMENT
-        result = evaluate_meta_learning(request)
-        self.assertEqual(result.preferred_strategy, LearningStrategy.EXPERIMENT)
-        # The key invariant is that the mutated history is revalidated as a new
-        # semantic envelope rather than bypassing enum/shape validation.
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
 
     def test_foreign_problem_family_post_validation_fails_closed(self) -> None:
         request = self._request_set()
@@ -97,6 +95,18 @@ class BrainMetaLearningUseBoundaryRevalidationV1Tests(unittest.TestCase):
     def test_nested_goal_mutation_fails_closed(self) -> None:
         request = self._request_set()
         request.trials[0].before_request.goal_id = "G-FOREIGN"
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_request_problem_family_relabel_fails_closed(self) -> None:
+        request = self._request_set()
+        request.problem_family_id = "PF-RELABELED"
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_trial_history_replacement_fails_closed(self) -> None:
+        request = self._request_set()
+        request.trials = request.trials[:2]
         with self.assertRaises(ValidationError):
             evaluate_meta_learning(request)
 
