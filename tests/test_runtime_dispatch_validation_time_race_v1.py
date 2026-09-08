@@ -9,8 +9,14 @@ from unittest.mock import patch
 import runtime.mission_dispatch as mission_dispatch_module
 from runtime.mission import CommitmentRecord, MissionRecord
 from runtime.mission_dispatch import MissionDispatchLeaseLostError, MissionWakeDispatcher
-from runtime.mission_lease import DurableMissionLeaseStore
-from runtime.mission_scheduler import DurableMissionScheduler
+from runtime.mission_lease import (
+    DurableMissionLeaseStore,
+    MissionLeaseLostError,
+)
+from runtime.mission_scheduler import (
+    DurableMissionScheduler,
+    MissionSchedulerLeaseError,
+)
 from runtime.mission_store import MissionStore
 
 
@@ -84,6 +90,17 @@ class MissionDispatchValidationTimeRaceV1Tests(unittest.TestCase):
         self.missions.close()
         self._tmp.cleanup()
 
+    def _claim(self, *, lease_seconds: float = 10.0):
+        grant = self.dispatcher.claim_next(
+            worker_id="worker-a",
+            now=self.base,
+            wake_lease_seconds=lease_seconds,
+            mission_lease_seconds=lease_seconds,
+        )
+        self.assertIsNotNone(grant)
+        assert grant is not None
+        return grant
+
     def test_claim_next_cannot_return_composed_grant_already_expired_after_contention(self) -> None:
         original_claim_due = self.scheduler.claim_due
 
@@ -119,15 +136,7 @@ class MissionDispatchValidationTimeRaceV1Tests(unittest.TestCase):
         )
 
     def test_validate_cannot_accept_grant_that_expires_during_composed_validation(self) -> None:
-        grant = self.dispatcher.claim_next(
-            worker_id="worker-a",
-            now=self.base,
-            wake_lease_seconds=10,
-            mission_lease_seconds=10,
-        )
-        self.assertIsNotNone(grant)
-        assert grant is not None
-
+        grant = self._claim()
         original_get_wake = self.scheduler.get_wake
 
         def get_after_wait(*args, **kwargs):
@@ -140,6 +149,70 @@ class MissionDispatchValidationTimeRaceV1Tests(unittest.TestCase):
         with patch.object(mission_dispatch_module, "datetime", _ControlledDateTime):
             with self.assertRaises(MissionDispatchLeaseLostError):
                 self.dispatcher.validate(grant)
+
+    def test_renew_cannot_resurrect_grant_that_expires_before_downstream_renewal(self) -> None:
+        grant = self._claim()
+        original_renew = self.leases.renew
+
+        def renew_after_wait(*args, **kwargs):
+            _ControlledDateTime.current = self.base + timedelta(seconds=11)
+            return original_renew(*args, **kwargs)
+
+        self.leases.renew = renew_after_wait
+        _ControlledDateTime.current = self.base + timedelta(seconds=1)
+
+        with patch.object(mission_dispatch_module, "datetime", _ControlledDateTime):
+            with self.assertRaises((MissionDispatchLeaseLostError, MissionLeaseLostError)):
+                self.dispatcher.renew(
+                    grant,
+                    wake_lease_seconds=60,
+                    mission_lease_seconds=60,
+                )
+
+    def test_acknowledge_cannot_commit_delivery_after_grant_expires_downstream(self) -> None:
+        grant = self._claim()
+        original_ack = self.scheduler.acknowledge_wake
+
+        def acknowledge_after_wait(*args, **kwargs):
+            _ControlledDateTime.current = self.base + timedelta(seconds=11)
+            return original_ack(*args, **kwargs)
+
+        self.scheduler.acknowledge_wake = acknowledge_after_wait
+        _ControlledDateTime.current = self.base + timedelta(seconds=1)
+
+        with patch.object(mission_dispatch_module, "datetime", _ControlledDateTime):
+            with self.assertRaises((MissionDispatchLeaseLostError, MissionSchedulerLeaseError)):
+                self.dispatcher.acknowledge_wake(grant)
+
+    def test_release_mission_cannot_use_timestamp_sampled_before_downstream_wait(self) -> None:
+        grant = self._claim()
+        original_release = self.leases.release
+
+        def release_after_wait(*args, **kwargs):
+            _ControlledDateTime.current = self.base + timedelta(seconds=11)
+            return original_release(*args, **kwargs)
+
+        self.leases.release = release_after_wait
+        _ControlledDateTime.current = self.base + timedelta(seconds=1)
+
+        with patch.object(mission_dispatch_module, "datetime", _ControlledDateTime):
+            with self.assertRaises(MissionLeaseLostError):
+                self.dispatcher.release_mission(grant)
+
+    def test_finish_delivery_cannot_acknowledge_after_authority_expires_mid_composition(self) -> None:
+        grant = self._claim()
+        original_ack = self.scheduler.acknowledge_wake
+
+        def acknowledge_after_wait(*args, **kwargs):
+            _ControlledDateTime.current = self.base + timedelta(seconds=11)
+            return original_ack(*args, **kwargs)
+
+        self.scheduler.acknowledge_wake = acknowledge_after_wait
+        _ControlledDateTime.current = self.base + timedelta(seconds=1)
+
+        with patch.object(mission_dispatch_module, "datetime", _ControlledDateTime):
+            with self.assertRaises((MissionDispatchLeaseLostError, MissionSchedulerLeaseError)):
+                self.dispatcher.finish_delivery(grant)
 
 
 if __name__ == "__main__":
