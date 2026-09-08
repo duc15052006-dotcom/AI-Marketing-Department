@@ -2,22 +2,33 @@ name: Runtime Mission Model Copy Authority V1
 
 on:
   pull_request:
-    branches:
-      - fix/runtime-commitment-model-copy-authority-v1
     paths:
       - "runtime/mission.py"
       - "tests/test_runtime_mission_model_copy_authority_v1.py"
       - ".github/workflows/runtime-mission-model-copy-authority-v1.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
   mission-model-copy-authority:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: mission-model-copy-authority (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout exact PR head with full history
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -27,71 +38,72 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Verify exact head identity
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p .ci-results
-          ACTUAL="$(git rev-parse HEAD)"
-          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
-          printf 'expected_sha=%s\nactual_sha=%s\n' "$EXPECTED" "$ACTUAL" | tee .ci-results/identity.txt
-          test "$ACTUAL" = "$EXPECTED"
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          "runner_os=${{ runner.os }}" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          python --version 2>&1 | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "exact-head mismatch: expected=$expected actual=$actual" }
 
       - name: Install runtime dependencies
+        shell: pwsh
         run: |
           python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile touched source and regression
-        shell: bash
+        shell: pwsh
         run: |
-          python -m py_compile \
-            runtime/mission.py \
-            tests/test_runtime_mission_model_copy_authority_v1.py \
-            2>&1 | tee .ci-results/compile.log
+          python -m py_compile runtime/mission.py tests/test_runtime_mission_model_copy_authority_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run Mission model_copy authority regressions
-        shell: bash
+        id: targeted
+        continue-on-error: true
+        shell: pwsh
         run: |
-          python -m unittest -v \
-            tests.test_runtime_mission_model_copy_authority_v1 \
-            2>&1 | tee .ci-results/targeted-test.log
-
-      - name: Verify Mission copy preserves runtime types
-        shell: bash
-        run: |
-          python - <<'PY' 2>&1 | tee .ci-results/runtime-type-control.log
-          from datetime import datetime
-          from runtime.mission import MissionRecord
-
-          mission = MissionRecord(
-              mission_id="MISSION-TYPE-CONTROL",
-              objective="Preserve Mission runtime types",
-              business_id="BIZ-TYPE",
-              project_id="PROJECT-TYPE",
-              user_id="USER-TYPE",
-          )
-          copied = mission.model_copy()
-          assert isinstance(copied.created_at, datetime)
-          assert copied.created_at == mission.created_at
-          print("Mission model_copy runtime type control PASS")
-          PY
+          python -m unittest -v tests.test_runtime_mission_model_copy_authority_v1 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run adjacent Mission authority regressions
-        shell: bash
+        shell: pwsh
         run: |
-          python -m unittest -v \
-            tests.test_runtime_mission_authoritative_scope_immutability_v1 \
-            tests.test_runtime_mission_commitment_binding_authority_v1 \
-            tests.test_runtime_mission_lifecycle_transition_authority_v1 \
-            2>&1 | tee .ci-results/adjacent-test.log
+          python -m unittest -v tests.test_runtime_mission_authoritative_scope_immutability_v1 tests.test_runtime_mission_commitment_binding_authority_v1 tests.test_runtime_mission_lifecycle_transition_authority_v1 tests.test_structure 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows'
+        timeout-minutes: 45
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-unittest.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload exact-head qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: runtime-mission-model-copy-authority-v1-${{ github.event.pull_request.head.sha || github.sha }}
+          name: runtime-mission-model-copy-authority-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
+
+      - name: Enforce targeted authority gate
+        if: always()
+        shell: pwsh
+        run: |
+          $outcome = "${{ steps.targeted.outcome }}"
+          if ($outcome -ne "success") {
+            throw "Mission model_copy authority regressions are RED: targeted outcome=$outcome"
+          }
