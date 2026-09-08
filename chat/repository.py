@@ -268,6 +268,34 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             conn.rollback()
             raise
 
+    def _migrate_plaintext_attachment_filenames(self, conn: sqlite3.Connection) -> None:
+        """Atomically protect legacy attachment filename/URL metadata."""
+        marker = conn.execute(
+            "SELECT 1 FROM chat_payload_migrations WHERE migration_key = ?",
+            ("attachment_filename_at_rest_v1",),
+        ).fetchone()
+        if marker:
+            return
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for row in conn.execute(
+                "SELECT attachment_id, filename FROM chat_attachments"
+            ).fetchall():
+                conn.execute(
+                    "UPDATE chat_attachments SET filename = ? WHERE attachment_id = ?",
+                    (self._protect_text(row["filename"]), row["attachment_id"]),
+                )
+
+            conn.execute(
+                "INSERT INTO chat_payload_migrations (migration_key, applied_at) VALUES (?, ?)",
+                ("attachment_filename_at_rest_v1", datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(
@@ -360,6 +388,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
 
             self._migrate_v1_plaintext_payloads(conn)
             self._migrate_plaintext_session_titles(conn)
+            self._migrate_plaintext_attachment_filenames(conn)
 
     # =========================================================================
     # ChatSession Methods
@@ -626,7 +655,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
             (
                 attachment.attachment_id,
                 attachment.chat_id,
-                attachment.filename_or_url,
+                self._protect_text(attachment.filename_or_url),
                 type_str,
                 self._protect_text(attachment.content),
                 attachment.content_hash,
@@ -725,7 +754,7 @@ class SQLiteChatRepository(ChatRepository, MessageRepository, ChatAttachmentRepo
         att = ChatAttachment(
             attachment_id=row["attachment_id"],
             chat_id=row["chat_id"],
-            filename_or_url=row["filename"],
+            filename_or_url=self._unprotect_text(row["filename"]) or "",
             attachment_type=type_enum,
             content=self._unprotect_text(row["content"]) or "",
             content_hash=row["content_hash"],
