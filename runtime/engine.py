@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from concurrent.futures import Future
+import copy
 import hashlib
 import json
 import logging
@@ -444,9 +445,10 @@ class FiveAgentDepartmentRuntime:
             return self._active_contexts.get(run_id)
 
     def get_completed_run(self, run_id: str) -> Optional[DepartmentRunArtifact]:
-        """Retrieve a completed run artifact from the bounded cache."""
+        """Retrieve an isolated snapshot of a completed run artifact."""
         with self._lock:
-            return self._completed_runs.get(run_id)
+            artifact = self._completed_runs.get(run_id)
+            return copy.deepcopy(artifact) if artifact is not None else None
 
     def cancel_run(self, run_id: str) -> bool:
         """Mark an active run as CANCELLED to prevent subsequent stage execution."""
@@ -2865,7 +2867,7 @@ class FiveAgentDepartmentRuntime:
             )
             artifact.final_artifact_hash = artifact.compute_artifact_hash()
 
-            self._completed_runs[context.run_id] = artifact
+            self._completed_runs[context.run_id] = copy.deepcopy(artifact)
             while len(self._completed_runs) > self.max_completed_runs_cache:
                 self._completed_runs.popitem(last=False)
 
