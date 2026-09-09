@@ -49,3 +49,5 @@ jobs:
           git diff --cached --check
           git commit -m "fix(models): close provider stream on consumer cancellation"
           git push origin HEAD:test/model-gateway-stream-consumer-cancel-v1
+
+# staged deliberately after hosted RED was observed
