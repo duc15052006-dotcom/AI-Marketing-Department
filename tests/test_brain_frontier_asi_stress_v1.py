@@ -112,7 +112,7 @@ class BrainFrontierASIStressV1Tests(unittest.TestCase):
             assessment_id="CA-ASI",
             goal_id="G-ASI",
             proposal_id="D-ASI",
-            author_agent=BrainAgentId.STRATEGIST,
+            author_agent=BrainAgentId.CONTENT,
             proposal_verdict=ClaimVerdict.SUPPORTED,
             proposal_evidence_refs=["E-P"],
             proposal_evidence_request=raw,
@@ -151,7 +151,7 @@ class BrainFrontierASIStressV1Tests(unittest.TestCase):
         return ReasoningAssessment(
             assessment_id="RA-ASI",
             goal_id="G-ASI",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             complexity=SignalLevel.HIGH,
             uncertainty=SignalLevel.HIGH,
             consequence=SignalLevel.CRITICAL,
@@ -169,7 +169,7 @@ class BrainFrontierASIStressV1Tests(unittest.TestCase):
             decision=DecisionRecord(
                 decision_id="D-ASI",
                 goal_id="G-ASI",
-                agent_id=BrainAgentId.STRATEGIST,
+                agent_id=BrainAgentId.CONTENT,
                 statement="Execute a consequential irreversible decision.",
                 rationale="Only canonical evidence and independent review may authorize this.",
                 disposition=DecisionDisposition.PROCEED,
@@ -312,7 +312,7 @@ class BrainFrontierASIStressV1Tests(unittest.TestCase):
                 PlanStep(
                     step_id="S-CHILD",
                     goal_id="G-DAG",
-                    owner_agent=BrainAgentId.STRATEGIST,
+                    owner_agent=BrainAgentId.CONTENT,
                     objective="Act only after prerequisite",
                     depends_on=["S-ROOT"],
                     state=PlanStepState.PENDING,
@@ -339,7 +339,7 @@ class BrainFrontierASIStressV1Tests(unittest.TestCase):
             assessment_id="CA-SHARED",
             goal_id="G-ASI",
             proposal_id="D-ASI",
-            author_agent=BrainAgentId.STRATEGIST,
+            author_agent=BrainAgentId.CONTENT,
             proposal_verdict=ClaimVerdict.SUPPORTED,
             proposal_evidence_refs=["E-P-SHARED"],
             proposal_evidence_request=proposal_raw,
@@ -365,7 +365,7 @@ class BrainFrontierASIStressV1Tests(unittest.TestCase):
             ClaimVerdict.INSUFFICIENT,
         )
         self_review = self._peer(
-            BrainAgentId.STRATEGIST,
+            BrainAgentId.CONTENT,
             review_id="R-SELF",
             evidence_id="E-SELF",
             source_id="SRC-SELF",
