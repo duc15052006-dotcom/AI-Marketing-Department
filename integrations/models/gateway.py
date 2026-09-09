@@ -836,6 +836,9 @@ class UniversalModelGateway:
         Non-streaming providers are handled via synchronous generate() degradation:
         the complete response is emitted as a single StreamDelta.
         """
+        # Total streaming timeout covers governance validation, normalization,
+        # routing/model-policy resolution, provider dispatch, and result consumption.
+        start_time = time.perf_counter()
         try:
             allow_paid = validate_strict_bool(allow_paid, "allow_paid")
             policy_free_only = (
@@ -913,7 +916,6 @@ class UniversalModelGateway:
         else:
             total_timeout = 180.0
 
-        start_time = time.perf_counter()
         has_emitted_visible_content = False
         last_error: Optional[ModelStreamError] = None
         last_error_provider: Optional[str] = None
