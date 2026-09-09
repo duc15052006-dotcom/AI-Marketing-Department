@@ -4,18 +4,17 @@ on:
   push:
     branches:
       - test/model-gateway-stream-timeout-budget-v1
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: model-gateway-stream-timeout-budget-v1-${{ github.ref }}
+  group: model-gateway-stream-timeout-budget-v1-fix-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  causal-red:
-    name: Ubuntu Python 3.12 causal RED
+  one-shot-fix:
+    name: Apply minimal stream timeout budget fix
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -36,43 +35,50 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Record CI identity
-        run: |
-          mkdir -p .ci-results
-          {
-            echo "github_sha=${{ github.sha }}"
-            echo "github_ref=${{ github.ref }}"
-            echo "runner_os=${{ runner.os }}"
-            python --version
-            git rev-parse HEAD
-          } | tee .ci-results/identity.txt
-
       - name: Install runtime dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Run stream timeout budget regression and capture result
+      - name: Apply deterministic minimal patch
         run: |
-          set +e
-          set -o pipefail
-          python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1 2>&1 | tee .ci-results/causal-red.log
-          status=${PIPESTATUS[0]}
-          echo "$status" > .ci-results/test-exit-code.txt
-          exit 0
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Upload CI evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: model-gateway-stream-timeout-budget-v1-${{ github.sha }}
-          path: .ci-results/
-          if-no-files-found: error
-          retention-days: 14
+          path = Path("integrations/models/gateway.py")
+          text = path.read_text(encoding="utf-8")
+          needle = '''            elapsed = time.perf_counter() - start_time
+            remaining_timeout = total_timeout - elapsed
 
-      - name: Preserve regression conclusion
-        if: always()
+            # 1. Retrieve Provider Definition
+          '''
+          replacement = '''            elapsed = time.perf_counter() - start_time
+            remaining_timeout = total_timeout - elapsed
+            if remaining_timeout <= 0.001 and cand_idx > 0:
+                logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")
+                break
+
+            # 1. Retrieve Provider Definition
+          '''
+          count = text.count(needle)
+          if count != 1:
+              raise SystemExit(f"expected exactly one stream timeout insertion point, found {count}")
+          path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+          PY
+
+      - name: Verify causal regression
         run: |
-          status=$(cat .ci-results/test-exit-code.txt)
-          exit "$status"
+          python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1
+          python -m compileall -q integrations/models/gateway.py tests/test_model_gateway_stream_timeout_budget_v1.py
+          git diff --check
+
+      - name: Commit minimal production fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/models/gateway.py
+          git diff --cached --stat
+          git diff --cached --exit-code && { echo "expected production diff missing"; exit 1; } || true
+          git commit -m "fix(models): stop stream fallback after timeout budget"
+          git push origin HEAD:test/model-gateway-stream-timeout-budget-v1
