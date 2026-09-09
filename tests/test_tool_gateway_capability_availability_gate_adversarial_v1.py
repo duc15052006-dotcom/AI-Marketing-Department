@@ -87,6 +87,22 @@ class TestToolGatewayCapabilityAvailabilityGateAdversarialV1(unittest.TestCase):
         self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
         self.assertEqual(len(self.adapter.calls), 1)
 
+    def test_unrecognized_agent_precedes_unavailable_control_plane_state(self):
+        self._set_availability("UNAVAILABLE")
+
+        receipt = self.gateway.execute(
+            ToolRequest(
+                run_id="RUN-VIDEO-AVAILABILITY-002",
+                agent_id="agent_6",
+                capability_id="video_generation",
+                parameters={"prompt": "must never dispatch"},
+            )
+        )
+
+        self.assertEqual(receipt.status, ExecutionStatus.BLOCKED)
+        self.assertEqual(receipt.error_class, "UNRECOGNIZED_AGENT")
+        self.assertEqual(self.adapter.calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()
