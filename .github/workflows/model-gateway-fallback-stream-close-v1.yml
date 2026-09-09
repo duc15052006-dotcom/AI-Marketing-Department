@@ -121,3 +121,52 @@ jobs:
       - name: Verify clean checkout after tests
         if: always()
         run: git diff --exit-code
+
+  windows-parent-control:
+    name: Windows parent #334 full hermetic control
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact parent #334
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: a59090280b4862c9c8d39537e86057566602672e
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Record parent-control identity
+        shell: pwsh
+        run: |
+          Write-Host "expected_parent=a59090280b4862c9c8d39537e86057566602672e"
+          python --version
+          $actual = git rev-parse HEAD
+          Write-Host "actual_parent=$actual"
+          if ($actual -ne "a59090280b4862c9c8d39537e86057566602672e") { throw "Parent-control checkout mismatch" }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile Python sources
+        run: python -m compileall -q .
+
+      - name: Run parent full hermetic unittest discovery
+        run: python -m unittest discover -s tests -p "test*.py"
+
+      - name: Verify clean parent checkout after tests
+        if: always()
+        run: git diff --exit-code
