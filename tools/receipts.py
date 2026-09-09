@@ -13,6 +13,8 @@ import copy
 import sqlite3
 import uuid
 from dataclasses import dataclass, replace
+from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from schemas.base import Field
@@ -24,6 +26,23 @@ _BaseExecutionReceipt = _core.ExecutionReceipt
 _BaseExecutionIntent = _core.ExecutionIntent
 _BaseExecutionReceiptRepository = _core.ExecutionReceiptRepository
 _base_receipt_matches_intent_binding = _core._receipt_matches_intent_binding
+
+
+class MissionReconciliationResolution(str, Enum):
+    """Evidence-backed terminal classifications for an ambiguous external effect."""
+
+    CONFIRMED_EXTERNAL_ACTION_APPLIED = "CONFIRMED_EXTERNAL_ACTION_APPLIED"
+    CONFIRMED_EXTERNAL_ACTION_NOT_APPLIED = "CONFIRMED_EXTERNAL_ACTION_NOT_APPLIED"
+
+
+# Preserve the established ReconciliationOutcome enum object used by legacy callers
+# while exposing the two Phase-4 evidence-resolution outcomes on that public surface.
+ReconciliationOutcome.CONFIRMED_EXTERNAL_ACTION_APPLIED = (  # type: ignore[attr-defined]
+    MissionReconciliationResolution.CONFIRMED_EXTERNAL_ACTION_APPLIED
+)
+ReconciliationOutcome.CONFIRMED_EXTERNAL_ACTION_NOT_APPLIED = (  # type: ignore[attr-defined]
+    MissionReconciliationResolution.CONFIRMED_EXTERNAL_ACTION_NOT_APPLIED
+)
 
 
 class ExecutionReceipt(_BaseExecutionReceipt):
@@ -91,6 +110,97 @@ class ExecutionIntent(_BaseExecutionIntent):
         return payload
 
 
+@dataclass(frozen=True)
+class ExecutionReconciliationRecord:
+    """Immutable evidence that resolves one already-ambiguous Mission effect."""
+
+    reconciliation_id: str
+    intent_id: str
+    outcome: MissionReconciliationResolution
+    evidence_hash: str
+    evidence_source: str
+    business_id: str
+    project_id: str
+    mission_id: str
+    commitment_id: str
+    created_at: str = ""
+    record_hash: str = ""
+
+    def normalized(self) -> "ExecutionReconciliationRecord":
+        required = {
+            "reconciliation_id": self.reconciliation_id,
+            "intent_id": self.intent_id,
+            "evidence_hash": self.evidence_hash,
+            "evidence_source": self.evidence_source,
+            "business_id": self.business_id,
+            "project_id": self.project_id,
+            "mission_id": self.mission_id,
+            "commitment_id": self.commitment_id,
+        }
+        normalized_strings: Dict[str, str] = {}
+        for name, value in required.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"{name.upper()}_REQUIRED: reconciliation {name} is required"
+                )
+            normalized_strings[name] = value.strip()
+
+        evidence_hash = normalized_strings["evidence_hash"].lower()
+        if len(evidence_hash) != 64 or any(ch not in "0123456789abcdef" for ch in evidence_hash):
+            raise ValueError(
+                "INVALID_RECONCILIATION_EVIDENCE_HASH: evidence_hash must be SHA-256 hex"
+            )
+        evidence_source = _core.sanitize_sensitive_text(
+            normalized_strings["evidence_source"]
+        ).strip()
+        if not evidence_source:
+            raise ValueError(
+                "EVIDENCE_SOURCE_REQUIRED: reconciliation evidence_source is required"
+            )
+
+        outcome = self.outcome
+        if not isinstance(outcome, MissionReconciliationResolution):
+            raw_outcome = outcome.value if isinstance(outcome, Enum) else str(outcome)
+            outcome = MissionReconciliationResolution(raw_outcome)
+
+        created_at = self.created_at or _core._utc_now_iso()
+        normalized = replace(
+            self,
+            reconciliation_id=normalized_strings["reconciliation_id"],
+            intent_id=normalized_strings["intent_id"],
+            outcome=outcome,
+            evidence_hash=evidence_hash,
+            evidence_source=evidence_source,
+            business_id=normalized_strings["business_id"],
+            project_id=normalized_strings["project_id"],
+            mission_id=normalized_strings["mission_id"],
+            commitment_id=normalized_strings["commitment_id"],
+            created_at=created_at,
+            record_hash="",
+        )
+        return replace(normalized, record_hash=normalized.calculate_hash())
+
+    def hash_payload(self) -> Dict[str, Any]:
+        return {
+            "reconciliation_id": self.reconciliation_id,
+            "intent_id": self.intent_id,
+            "outcome": self.outcome.value,
+            "evidence_hash": self.evidence_hash,
+            "evidence_source": self.evidence_source,
+            "business_id": self.business_id,
+            "project_id": self.project_id,
+            "mission_id": self.mission_id,
+            "commitment_id": self.commitment_id,
+            "created_at": self.created_at,
+        }
+
+    def calculate_hash(self) -> str:
+        return _core._payload_hash(self.hash_payload())
+
+    def verify_integrity(self) -> bool:
+        return bool(self.record_hash) and self.record_hash == self.calculate_hash()
+
+
 def _receipt_matches_intent_binding(
     receipt: ExecutionReceipt,
     intent: ExecutionIntent,
@@ -107,8 +217,30 @@ def _receipt_matches_intent_binding(
     return receipt.mission_id is None and receipt.commitment_id is None
 
 
+def _same_reconciliation_resolution(
+    left: ExecutionReconciliationRecord,
+    right: ExecutionReconciliationRecord,
+) -> bool:
+    """Compare immutable decision/evidence semantics, excluding generated identity/time."""
+
+    return (
+        left.intent_id == right.intent_id
+        and left.outcome == right.outcome
+        and left.evidence_hash == right.evidence_hash
+        and left.evidence_source == right.evidence_source
+        and left.business_id == right.business_id
+        and left.project_id == right.project_id
+        and left.mission_id == right.mission_id
+        and left.commitment_id == right.commitment_id
+    )
+
+
 class ExecutionReceiptRepository(_BaseExecutionReceiptRepository):
-    """Durable receipt journal extended with backward-compatible Mission lineage."""
+    """Durable receipt journal extended with Mission lineage and reconciliation evidence."""
+
+    def __init__(self, database_path: Optional[str | Path] = None) -> None:
+        self._reconciliations: Dict[str, ExecutionReconciliationRecord] = {}
+        super().__init__(database_path=database_path)
 
     def _initialize_schema(self) -> None:
         super()._initialize_schema()
@@ -126,6 +258,43 @@ class ExecutionReceiptRepository(_BaseExecutionReceiptRepository):
                 self._conn.execute(
                     "ALTER TABLE execution_intents ADD COLUMN commitment_id TEXT"
                 )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS execution_reconciliations (
+                    intent_id TEXT PRIMARY KEY,
+                    reconciliation_id TEXT NOT NULL UNIQUE,
+                    outcome TEXT NOT NULL,
+                    evidence_hash TEXT NOT NULL,
+                    evidence_source TEXT NOT NULL,
+                    business_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    mission_id TEXT NOT NULL,
+                    commitment_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    record_hash TEXT NOT NULL,
+                    FOREIGN KEY(intent_id) REFERENCES execution_intents(intent_id)
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_execution_reconciliations_outcome "
+                "ON execution_reconciliations(outcome, intent_id)"
+            )
+
+    def list_receipts(self) -> list[ExecutionReceipt]:
+        """Return all receipts from the authoritative backing store."""
+
+        self._ensure_open()
+        with self._lock:
+            if self._conn is None:
+                return copy.deepcopy(list(self._receipts.values()))
+            try:
+                rows = self._conn.execute(
+                    "SELECT * FROM execution_receipts ORDER BY rowid"
+                ).fetchall()
+            except sqlite3.Error as exc:
+                raise _core._sqlite_failure("LIST_RECEIPTS", exc) from exc
+            return [self._decode_receipt_row(row) for row in rows]
 
     @staticmethod
     def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:
@@ -319,6 +488,203 @@ class ExecutionReceiptRepository(_BaseExecutionReceiptRepository):
                 f"EXECUTION_INTENT_NOT_FOUND: intent_id={normalized.intent_id}"
             )
         return normalized
+
+    @staticmethod
+    def _reconciliation_from_row(row: sqlite3.Row) -> ExecutionReconciliationRecord:
+        record = ExecutionReconciliationRecord(
+            reconciliation_id=row["reconciliation_id"],
+            intent_id=row["intent_id"],
+            outcome=MissionReconciliationResolution(row["outcome"]),
+            evidence_hash=row["evidence_hash"],
+            evidence_source=row["evidence_source"],
+            business_id=row["business_id"],
+            project_id=row["project_id"],
+            mission_id=row["mission_id"],
+            commitment_id=row["commitment_id"],
+            created_at=row["created_at"],
+            record_hash=row["record_hash"],
+        )
+        if not record.verify_integrity():
+            raise ReceiptStoreIntegrityError(
+                "EXECUTION_RECONCILIATION_INTEGRITY_MISMATCH: "
+                f"intent_id={record.intent_id}"
+            )
+        return record
+
+    def get_execution_reconciliation(
+        self,
+        intent_id: str,
+    ) -> Optional[ExecutionReconciliationRecord]:
+        """Read immutable evidence resolution for an ambiguous execution intent."""
+
+        self._ensure_open()
+        with self._lock:
+            if self._conn is None:
+                record = self._reconciliations.get(intent_id)
+                return copy.deepcopy(record) if record is not None else None
+            try:
+                row = self._conn.execute(
+                    "SELECT * FROM execution_reconciliations WHERE intent_id=?",
+                    (intent_id,),
+                ).fetchone()
+            except sqlite3.Error as exc:
+                raise _core._sqlite_failure("GET_RECONCILIATION", exc) from exc
+            return self._reconciliation_from_row(row) if row is not None else None
+
+    def record_execution_reconciliation(
+        self,
+        intent_id: str,
+        *,
+        outcome: MissionReconciliationResolution,
+        evidence_hash: str,
+        evidence_source: str,
+        business_id: str,
+        project_id: str,
+        mission_id: str,
+        commitment_id: str,
+    ) -> ExecutionReconciliationRecord:
+        """Immutably resolve AMBIGUOUS evidence without replaying the external action."""
+
+        self._ensure_open()
+        with self._lock:
+            current = self.get_execution_intent(intent_id)
+            if current is None:
+                raise ReceiptStoreConflictError(
+                    f"EXECUTION_INTENT_NOT_FOUND: intent_id={intent_id}"
+                )
+            if current.state != ExecutionIntentState.AMBIGUOUS:
+                raise ReceiptStoreConflictError(
+                    "EXECUTION_RECONCILIATION_REQUIRES_AMBIGUOUS_INTENT: "
+                    f"intent_id={intent_id} state={current.state.value}"
+                )
+            if current.schema_version < 3:
+                raise ReceiptStoreIntegrityError(
+                    "EXECUTION_RECONCILIATION_MISSION_AUTHORITY_UNBOUND: "
+                    f"intent_id={intent_id}"
+                )
+
+            authority = {
+                "business_id": current.business_id,
+                "project_id": current.project_id,
+                "mission_id": current.mission_id,
+                "commitment_id": current.commitment_id,
+            }
+            supplied = {
+                "business_id": business_id,
+                "project_id": project_id,
+                "mission_id": mission_id,
+                "commitment_id": commitment_id,
+            }
+            for name, expected in authority.items():
+                candidate = supplied[name]
+                if not isinstance(expected, str) or not expected.strip():
+                    raise ReceiptStoreIntegrityError(
+                        "EXECUTION_RECONCILIATION_AUTHORITY_UNBOUND: "
+                        f"intent_id={intent_id} field={name}"
+                    )
+                if not isinstance(candidate, str) or candidate.strip() != expected:
+                    raise ReceiptStoreIntegrityError(
+                        "EXECUTION_RECONCILIATION_AUTHORITY_MISMATCH: "
+                        f"intent_id={intent_id} field={name}"
+                    )
+
+            candidate = ExecutionReconciliationRecord(
+                reconciliation_id=f"RECON-{uuid.uuid4().hex[:16].upper()}",
+                intent_id=intent_id,
+                outcome=outcome,
+                evidence_hash=evidence_hash,
+                evidence_source=evidence_source,
+                business_id=business_id,
+                project_id=project_id,
+                mission_id=mission_id,
+                commitment_id=commitment_id,
+            ).normalized()
+
+            existing = self.get_execution_reconciliation(intent_id)
+            if existing is not None:
+                if _same_reconciliation_resolution(existing, candidate):
+                    return existing
+                raise ReceiptStoreConflictError(
+                    "EXECUTION_RECONCILIATION_IMMUTABLE_CONFLICT: "
+                    f"intent_id={intent_id}"
+                )
+
+            if self._conn is None:
+                self._reconciliations[intent_id] = candidate
+                return copy.deepcopy(candidate)
+
+            try:
+                with self._conn:
+                    cur = self._conn.execute(
+                        """
+                        INSERT OR IGNORE INTO execution_reconciliations(
+                            intent_id, reconciliation_id, outcome, evidence_hash,
+                            evidence_source, business_id, project_id, mission_id,
+                            commitment_id, created_at, record_hash
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            candidate.intent_id,
+                            candidate.reconciliation_id,
+                            candidate.outcome.value,
+                            candidate.evidence_hash,
+                            candidate.evidence_source,
+                            candidate.business_id,
+                            candidate.project_id,
+                            candidate.mission_id,
+                            candidate.commitment_id,
+                            candidate.created_at,
+                            candidate.record_hash,
+                        ),
+                    )
+                if cur.rowcount == 1:
+                    return candidate
+                raced = self.get_execution_reconciliation(intent_id)
+                if raced is not None and _same_reconciliation_resolution(raced, candidate):
+                    return raced
+                raise ReceiptStoreConflictError(
+                    "EXECUTION_RECONCILIATION_IMMUTABLE_CONFLICT: "
+                    f"intent_id={intent_id}"
+                )
+            except ReceiptStoreError:
+                raise
+            except sqlite3.IntegrityError as exc:
+                raise ReceiptStoreConflictError(
+                    "EXECUTION_RECONCILIATION_INSERT_CONFLICT: "
+                    f"intent_id={intent_id}"
+                ) from exc
+            except sqlite3.Error as exc:
+                raise _core._sqlite_failure("SAVE_RECONCILIATION", exc) from exc
+
+    def assess_execution_intent(self, intent_id: str) -> ReconciliationAssessment:
+        """Overlay immutable reconciliation evidence on the established assessment."""
+
+        base = super().assess_execution_intent(intent_id)
+        intent = self.get_execution_intent(intent_id)
+        if intent is None or intent.state != ExecutionIntentState.AMBIGUOUS:
+            return base
+        record = self.get_execution_reconciliation(intent_id)
+        if record is None:
+            return base
+        if (
+            record.business_id != intent.business_id
+            or record.project_id != intent.project_id
+            or record.mission_id != intent.mission_id
+            or record.commitment_id != intent.commitment_id
+        ):
+            raise ReceiptStoreIntegrityError(
+                "EXECUTION_RECONCILIATION_AUTHORITY_MISMATCH: "
+                f"intent_id={intent_id}"
+            )
+        return ReconciliationAssessment(
+            intent_id=intent_id,
+            outcome=record.outcome,
+            receipt_execution_id=intent.receipt_execution_id,
+            reason=(
+                "Ambiguous external effect resolved by immutable, Mission-bound "
+                "reconciliation evidence; the original intent remains non-redispatchable."
+            ),
+        )
 
 
 # Core helper functions resolve these globals at runtime. Point them at the
