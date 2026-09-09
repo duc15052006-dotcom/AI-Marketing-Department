@@ -8,6 +8,8 @@ on:
       - "tools/tool_gateway.py"
       - "tests/test_runtime_effect_authority_stack_v2.py"
       - "tests/test_runtime_mission_effect_journal_v1.py"
+      - "tests/test_runtime_mission_reconciliation_engine_v1.py"
+      - "tests/test_runtime_durable_activity_receipts_listing_v1.py"
       - "tests/test_tool_gateway_durable_intent_lifecycle_v1.py"
       - "tests/test_runtime_default_effect_journal_durability_v1.py"
       - "tests/test_runtime_consequential_request_idempotency_v1.py"
@@ -86,7 +88,7 @@ jobs:
       - name: Run adjacent effect journal and governance contracts
         shell: pwsh
         run: |
-          python -m unittest -v tests.test_runtime_mission_effect_journal_v1 tests.test_tool_gateway_durable_intent_lifecycle_v1 tests.test_runtime_default_effect_journal_durability_v1 tests.test_runtime_consequential_request_idempotency_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          python -m unittest -v tests.test_runtime_mission_effect_journal_v1 tests.test_runtime_mission_reconciliation_engine_v1 tests.test_runtime_durable_activity_receipts_listing_v1 tests.test_tool_gateway_durable_intent_lifecycle_v1 tests.test_runtime_default_effect_journal_durability_v1 tests.test_runtime_consequential_request_idempotency_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run canonical full hermetic unittest discovery
