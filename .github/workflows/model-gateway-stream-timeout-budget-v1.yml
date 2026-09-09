@@ -121,8 +121,13 @@ jobs:
         timeout-minutes: 35
         shell: pwsh
         run: |
-          python -m unittest discover -s tests -p "test_*.py" -v
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $outputFile = Join-Path $env:RUNNER_TEMP "full-hermetic-unittest.log"
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath $outputFile
+          $testExit = $LASTEXITCODE
+          Get-Content $outputFile |
+            Select-String -Pattern '^Ran \d+ tests', '^OK(?: \(skipped=\d+\))?$' |
+            ForEach-Object { Write-Host "CANONICAL_TEST_SUMMARY=$($_.Line)" }
+          if ($testExit -ne 0) { exit $testExit }
 
       - name: Verify clean checkout after tests
         shell: pwsh
