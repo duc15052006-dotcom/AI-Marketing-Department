@@ -116,3 +116,5 @@ jobs:
           if ("${{ steps.targeted.outcome }}" -ne "success") {
             throw "Composed effect authority stack contract failed"
           }
+
+# qualification sync after helper cleanup
