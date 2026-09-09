@@ -227,15 +227,55 @@ class HypothesisPortfolioDecision(BaseModel):
         self.refuted_hypothesis_ids = _unique_text_list(
             self.refuted_hypothesis_ids, "refuted_hypothesis_ids"
         )
-        overlap = set(self.active_hypothesis_ids) & set(self.refuted_hypothesis_ids)
-        if overlap:
-            raise ValidationError("active and refuted hypotheses cannot overlap")
+        expected_active = {
+            item.hypothesis_id
+            for item in self.assessments
+            if item.verdict != ClaimVerdict.REFUTED
+        }
+        expected_refuted = {
+            item.hypothesis_id
+            for item in self.assessments
+            if item.verdict == ClaimVerdict.REFUTED
+        }
+        actual_active = set(self.active_hypothesis_ids)
+        actual_refuted = set(self.refuted_hypothesis_ids)
+        if actual_active != expected_active:
+            raise ValidationError(
+                "active_hypothesis_ids must exactly match non-refuted assessments"
+            )
+        if actual_refuted != expected_refuted:
+            raise ValidationError(
+                "refuted_hypothesis_ids must exactly match REFUTED assessments"
+            )
+
+        supported = [
+            item.hypothesis_id
+            for item in self.assessments
+            if item.verdict == ClaimVerdict.SUPPORTED
+        ]
+        unresolved = [
+            item.hypothesis_id
+            for item in self.assessments
+            if item.verdict in {ClaimVerdict.CONTESTED, ClaimVerdict.INSUFFICIENT}
+        ]
+        expected_leader: Optional[str] = None
+        if len(supported) == 1 and not unresolved:
+            candidate = supported[0]
+            if all(
+                item.hypothesis_id == candidate
+                or item.verdict == ClaimVerdict.REFUTED
+                for item in self.assessments
+            ):
+                expected_leader = candidate
+
         if self.leading_hypothesis_id is not None:
             self.leading_hypothesis_id = _required_text(
                 self.leading_hypothesis_id, "leading_hypothesis_id"
             )
-            if self.leading_hypothesis_id not in self.active_hypothesis_ids:
-                raise ValidationError("leading hypothesis must remain active")
+        if self.leading_hypothesis_id != expected_leader:
+            raise ValidationError(
+                "leading_hypothesis_id must match the uniquely supported hypothesis only when every competitor is refuted"
+            )
         self.reasons = _unique_text_list(self.reasons, "reasons")
         if not self.reasons:
             raise ValidationError("reasons must contain at least one portfolio reason")
