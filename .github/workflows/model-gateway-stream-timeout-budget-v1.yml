@@ -53,14 +53,46 @@ jobs:
         run: |
           python -m compileall -q integrations/models tests/test_model_gateway_stream_timeout_budget_v1.py
 
-      - name: Run causal and adjacent model regressions
+      - name: Causal — stream timeout budget
+        id: causal
+        continue-on-error: true
+        run: python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1
+
+      - name: Adjacent — provider registry
+        id: provider_registry
+        continue-on-error: true
+        run: python -m unittest -v tests.test_prod_model_gateway_01_provider_registry
+
+      - name: Adjacent — model streaming
+        id: model_streaming
+        continue-on-error: true
+        run: python -m unittest -v tests.test_prod_model_streaming_01
+
+      - name: Adjacent — structured provider stream error
+        id: structured_stream_error
+        continue-on-error: true
+        run: python -m unittest -v tests.test_prod_structured_provider_stream_error_01
+
+      - name: Adjacent — model settings
+        id: model_settings
+        continue-on-error: true
+        run: python -m unittest -v tests.test_prod_model_settings_01
+
+      - name: Gate focused regressions
+        if: always()
         run: |
-          python -m unittest -v \
-            tests.test_model_gateway_stream_timeout_budget_v1 \
-            tests.test_prod_model_gateway_01_provider_registry \
-            tests.test_prod_model_streaming_01 \
-            tests.test_prod_structured_provider_stream_error_01 \
-            tests.test_prod_model_settings_01
+          echo "causal=${{ steps.causal.outcome }}"
+          echo "provider_registry=${{ steps.provider_registry.outcome }}"
+          echo "model_streaming=${{ steps.model_streaming.outcome }}"
+          echo "structured_stream_error=${{ steps.structured_stream_error.outcome }}"
+          echo "model_settings=${{ steps.model_settings.outcome }}"
+          if [[ "${{ steps.causal.outcome }}" != "success" || \
+                "${{ steps.provider_registry.outcome }}" != "success" || \
+                "${{ steps.model_streaming.outcome }}" != "success" || \
+                "${{ steps.structured_stream_error.outcome }}" != "success" || \
+                "${{ steps.model_settings.outcome }}" != "success" ]]; then
+            exit 1
+          fi
 
       - name: Verify clean checkout after tests
         run: git diff --exit-code
