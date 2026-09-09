@@ -4,19 +4,20 @@ on:
   push:
     branches:
       - test/model-gateway-stream-timeout-budget-v1
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: model-gateway-stream-timeout-budget-v1-fix-${{ github.ref }}
+  group: model-gateway-stream-timeout-budget-v1-qualify-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  one-shot-fix:
-    name: Apply minimal stream timeout budget fix
+  focused-regression:
+    name: Ubuntu Python 3.12 focused model regressions
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -35,68 +36,88 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
+      - name: Record exact-head identity
+        run: |
+          echo "github_sha=${{ github.sha }}"
+          echo "github_ref=${{ github.ref }}"
+          python --version
+          git rev-parse HEAD
+
       - name: Install runtime dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Apply deterministic minimal patch
+      - name: Compile model and regression sources
         run: |
-          python - <<'PY'
-          from pathlib import Path
+          python -m compileall -q integrations/models tests/test_model_gateway_stream_timeout_budget_v1.py
 
-          path = Path("integrations/models/gateway.py")
-          text = path.read_text(encoding="utf-8")
-          lines = text.splitlines(keepends=True)
-
-          loop_matches = [
-              i for i, line in enumerate(lines)
-              if line.strip() == "for cand_idx, (cand_provider, cand_model) in enumerate(candidates):"
-          ]
-          if len(loop_matches) != 1:
-              raise SystemExit(f"expected exactly one streaming candidate loop, found {len(loop_matches)}")
-
-          loop_idx = loop_matches[0]
-          window_end = min(len(lines), loop_idx + 20)
-          if any("Gateway stream timeout budget exhausted across fallback candidates." in line for line in lines[loop_idx:window_end]):
-              raise SystemExit("stream timeout guard already present; refusing duplicate patch")
-
-          remaining_matches = [
-              i for i in range(loop_idx + 1, window_end)
-              if lines[i].strip() == "remaining_timeout = total_timeout - elapsed"
-          ]
-          if len(remaining_matches) != 1:
-              raise SystemExit(
-                  f"expected exactly one remaining-time calculation in streaming loop, found {len(remaining_matches)}"
-              )
-
-          idx = remaining_matches[0]
-          indent = lines[idx][: len(lines[idx]) - len(lines[idx].lstrip())]
-          guard = [
-              f"{indent}if remaining_timeout <= 0.001 and cand_idx > 0:\n",
-              f"{indent}    logger.warning(\"Gateway stream timeout budget exhausted across fallback candidates.\")\n",
-              f"{indent}    break\n",
-          ]
-          lines[idx + 1:idx + 1] = guard
-          path.write_text("".join(lines), encoding="utf-8")
-          PY
-
-      - name: Verify causal regression
+      - name: Run causal and adjacent model regressions
         run: |
-          python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1
-          python -m compileall -q integrations/models/gateway.py tests/test_model_gateway_stream_timeout_budget_v1.py
-          git diff --check
+          python -m unittest -v \
+            tests.test_model_gateway_stream_timeout_budget_v1 \
+            tests.test_prod_model_gateway_01_provider_registry \
+            tests.test_prod_model_streaming_01 \
+            tests.test_prod_structured_provider_stream_error_01 \
+            tests.test_prod_model_settings_01
 
-      - name: Commit minimal production fix
+      - name: Verify clean checkout after tests
+        run: git diff --exit-code
+
+  full-hermetic-windows:
+    name: Windows Python 3.12 full hermetic discovery
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Record exact-head identity
+        shell: pwsh
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/models/gateway.py
-          git diff --cached --stat
-          if git diff --cached --quiet; then
-            echo "expected production diff missing"
-            exit 1
-          fi
-          git commit -m "fix(models): stop stream fallback after timeout budget"
-          git push origin HEAD:test/model-gateway-stream-timeout-budget-v1
+          "github_sha=${{ github.sha }}"
+          "github_ref=${{ github.ref }}"
+          python --version
+          git rev-parse HEAD
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify clean checkout after tests
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
