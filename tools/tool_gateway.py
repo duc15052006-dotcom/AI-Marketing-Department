@@ -343,6 +343,7 @@ class ToolGateway:
             run_id=request.run_id,
             business_id=request.business_id,
             parameters=request.parameters,
+            project_id=request.project_id,
         )
         if not decision.allowed:
             completed_time = datetime.now(timezone.utc)
@@ -355,6 +356,7 @@ class ToolGateway:
                     parameters=request.parameters,
                     run_id=request.run_id,
                     business_id=request.business_id,
+                    project_id=request.project_id,
                     scope="",
                     risk_level=cap.risk_level,
                 )

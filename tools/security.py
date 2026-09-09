@@ -52,10 +52,14 @@ def compute_request_fingerprint(
     parameters: Optional[Dict[str, Any]] = None,
     run_id: Optional[str] = None,
     business_id: Optional[str] = None,
+    project_id: Optional[str] = None,
 ) -> str:
     """Compute deterministic canonical SHA-256 fingerprint of a consequential tool request."""
     norm_params = json.dumps(parameters or {}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    raw = f"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{norm_params}"
+    scope = f"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}"
+    if project_id:
+        scope = f"{scope}:{project_id}"
+    raw = f"{scope}:{norm_params}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -75,6 +79,7 @@ class HumanApprovalRecord(BaseModel):
     capability_id: str = ""
     run_id: str = ""
     business_id: Optional[str] = None
+    project_id: Optional[str] = None
     request_fingerprint: str = ""
     approved_by: str = "Human Operator"
     approved_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -115,6 +120,7 @@ class PendingApprovalRecord(BaseModel):
     request_fingerprint: str = ""
     run_id: str = ""
     business_id: Optional[str] = None
+    project_id: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     expires_at: Optional[str] = None
     status: PendingApprovalStatus = PendingApprovalStatus.PENDING
@@ -148,6 +154,7 @@ class PolicyEngine:
         parameters: Optional[Dict[str, Any]] = None,
         run_id: str = "",
         business_id: Optional[str] = None,
+        project_id: Optional[str] = None,
         ttl_seconds: int = 300,
         scope: str = "",
         risk_level: RiskLevel = RiskLevel.CRITICAL,
@@ -159,6 +166,7 @@ class PolicyEngine:
             parameters=params,
             run_id=run_id,
             business_id=business_id,
+            project_id=project_id,
         )
         now = datetime.now(timezone.utc)
         expires_at = datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=timezone.utc).isoformat()
@@ -193,6 +201,7 @@ class PolicyEngine:
                 request_fingerprint=fp,
                 run_id=run_id,
                 business_id=business_id,
+                project_id=project_id,
                 created_at=now.isoformat(),
                 expires_at=expires_at,
                 status=PendingApprovalStatus.PENDING,
@@ -287,6 +296,7 @@ class PolicyEngine:
                 capability_id=rec.capability_id,
                 run_id=rec.run_id,
                 business_id=rec.business_id,
+                project_id=rec.project_id,
                 request_fingerprint=rec.request_fingerprint,
                 approved_by=approved_by,
                 approved_at=now.isoformat(),
@@ -334,6 +344,7 @@ class PolicyEngine:
         parameters: Optional[Dict[str, Any]] = None,
         run_id: str = "",
         business_id: Optional[str] = None,
+        project_id: Optional[str] = None,
         approved_by: str = "Human Operator",
         ttl_seconds: int = 300,
         risk_level: RiskLevel = RiskLevel.CRITICAL,
@@ -348,6 +359,7 @@ class PolicyEngine:
             parameters=parameters or {},
             run_id=run_id,
             business_id=business_id,
+            project_id=project_id,
         )
         record = HumanApprovalRecord(
             approval_token=token,
@@ -355,6 +367,7 @@ class PolicyEngine:
             capability_id=capability_id,
             run_id=run_id,
             business_id=business_id,
+            project_id=project_id,
             request_fingerprint=fp,
             approved_by=approved_by,
             approved_at=now.isoformat(),
@@ -413,6 +426,7 @@ class PolicyEngine:
         run_id: Optional[str] = None,
         business_id: Optional[str] = None,
         parameters: Optional[Dict[str, Any]] = None,
+        project_id: Optional[str] = None,
     ) -> PolicyDecision:
         """Evaluate if an agent is authorized to execute a capability."""
         aid = agent_id.lower()
@@ -533,6 +547,22 @@ class PolicyEngine:
                     reason=f"APPROVAL_BUSINESS_MISMATCH: Approval is bound to business '{record.business_id}', not '{business_id}'.",
                 )
 
+            if record.project_id and not project_id:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_PROJECT_SCOPE_REQUIRED",
+                    reason=f"APPROVAL_PROJECT_SCOPE_REQUIRED: Approval is bound to project '{record.project_id}', but the request has no project scope.",
+                )
+
+            if record.project_id and record.project_id != project_id:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_PROJECT_MISMATCH",
+                    reason=f"APPROVAL_PROJECT_MISMATCH: Approval is bound to project '{record.project_id}', not '{project_id}'.",
+                )
+
             # Check request fingerprint match (if present on record)
             if record.request_fingerprint and parameters is not None:
                 expected_fp = compute_request_fingerprint(
@@ -540,6 +570,7 @@ class PolicyEngine:
                     parameters=parameters,
                     run_id=run_id or record.run_id,
                     business_id=business_id or record.business_id,
+                    project_id=record.project_id,
                 )
                 if record.request_fingerprint != expected_fp:
                     return PolicyDecision(
