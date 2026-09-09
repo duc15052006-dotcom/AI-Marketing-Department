@@ -116,9 +116,10 @@ class ModelGatewayStreamTimeoutBudgetV1Tests(unittest.TestCase):
             timeout_seconds=1.0,
         )
 
-        # t=0: stream start; t=0: candidate #1 starts; t=2: candidate #2
-        # would start only after the 1s total gateway budget is already exhausted.
-        clock = _ScriptedClock([0.0, 0.0, 2.0])
+        # t=0: stream start; t=0: candidate #1 pre-dispatch; t=0: its
+        # structured RATE_LIMITED result arrives within budget; t=2: candidate
+        # #2 would start only after the 1s total gateway budget is exhausted.
+        clock = _ScriptedClock([0.0, 0.0, 0.0, 2.0])
         with patch.object(gateway_module, "time", clock):
             deltas = list(gateway.generate_stream(request))
 
