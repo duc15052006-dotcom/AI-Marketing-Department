@@ -1,0 +1,113 @@
+name: Brain Abandoned Plan Routing V1
+
+on:
+  pull_request:
+    paths:
+      - "brain/cognitive_loop.py"
+      - "tests/test_brain_abandoned_plan_routing_v1.py"
+      - ".github/workflows/brain-abandoned-plan-routing-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    name: Abandoned plan routing gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact CI identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          printf 'expected_head_sha=%s\nactual_head_sha=%s\n' "$expected" "$actual" | tee .ci-results/identity.txt
+          test "$expected" = "$actual"
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile abandoned-plan regression
+        shell: bash
+        run: |
+          python -m compileall -q tests/test_brain_abandoned_plan_routing_v1.py brain/cognitive_loop.py brain/planning.py
+
+      - name: Run abandoned-plan routing adversarial regression
+        id: targeted
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          python -m unittest -v tests.test_brain_abandoned_plan_routing_v1 2>&1 | tee .ci-results/targeted.log
+          code=${PIPESTATUS[0]}
+          printf '%s\n' "$code" > .ci-results/targeted-exit.txt
+          exit "$code"
+
+      - name: Run adjacent Brain planning and cognition regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v \
+            tests.test_brain_unified_cognitive_loop_v1 \
+            tests.test_brain_blocked_goal_fail_closed_v1 \
+            tests.test_brain_action_intent_evidence_required_v1 \
+            tests.test_brain_plan_evidence_need_binding_v1 \
+            tests.test_brain_plan_action_intent_provenance_v1 \
+            tests.test_brain_adaptive_replanning_v1 \
+            tests.test_brain_cognitive_reflection_v1 \
+            tests.test_brain_stop_intelligence_v1 \
+            2>&1 | tee .ci-results/adjacent.log
+
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows' && steps.targeted.outcome == 'success'
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | tee .ci-results/full-unittest.log
+
+      - name: Upload exact-head qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-abandoned-plan-routing-v1-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Enforce targeted abandoned-plan gate
+        if: always()
+        shell: bash
+        run: |
+          test -f .ci-results/targeted-exit.txt
+          test "$(cat .ci-results/targeted-exit.txt)" = "0"
