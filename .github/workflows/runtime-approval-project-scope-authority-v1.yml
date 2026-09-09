@@ -110,3 +110,5 @@ jobs:
           if ("${{ steps.targeted.outcome }}" -ne "success") {
             throw "Approval project-scope authority contract failed"
           }
+
+# Qualification-only touch after removing the temporary self-patch helper; no runtime behavior change.
