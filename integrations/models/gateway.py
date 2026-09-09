@@ -902,6 +902,9 @@ class UniversalModelGateway:
 
             elapsed = time.perf_counter() - start_time
             remaining_timeout = total_timeout - elapsed
+            if remaining_timeout <= 0.001 and cand_idx > 0:
+                logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")
+                break
 
             # 1. Retrieve Provider Definition
             if provider_snapshot is not None:
