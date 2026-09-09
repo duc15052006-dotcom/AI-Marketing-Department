@@ -1,0 +1,55 @@
+name: Apply Runtime Durable Activity Receipt Patch
+
+on:
+  push:
+    branches:
+      - test/runtime-durable-activity-receipts-listing-v1
+    paths:
+      - ".github/workflows/_apply-runtime-durable-activity-receipts-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-exact-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: test/runtime-durable-activity-receipts-listing-v1
+          fetch-depth: 0
+
+      - name: Patch durable activity receipt boundary
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app_api/server.py")
+          text = path.read_text(encoding="utf-8")
+
+          old_listing = """            else:\n                receipts = list(APP_BACKEND.receipt_repo._receipts.values())"""
+          new_listing = """            else:\n                receipts = APP_BACKEND.receipt_repo.list_receipts()"""
+          if text.count(old_listing) != 1:
+              raise SystemExit(f"expected exactly one legacy receipt listing boundary, found {text.count(old_listing)}")
+          text = text.replace(old_listing, new_listing, 1)
+
+          old_latency = '                    "latency_ms": r.latency_ms,'
+          new_latency = """                    \"latency_ms\": max(\n                        0,\n                        int((r.completed_at - r.started_at).total_seconds() * 1000),\n                    ),"""
+          if text.count(old_latency) != 1:
+              raise SystemExit(f"expected exactly one stale latency serializer, found {text.count(old_latency)}")
+          text = text.replace(old_latency, new_latency, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Commit production patch and remove helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/_apply-runtime-durable-activity-receipts-patch.yml
+          git add app_api/server.py
+          git diff --cached --check
+          git commit -m "fix(runtime): list durable receipts through repository API"
+          git push origin HEAD:test/runtime-durable-activity-receipts-listing-v1
