@@ -1137,6 +1137,9 @@ class UniversalModelGateway:
                 # 1. Check for stream_unsupported degradation
                 if first_delta.finish_reason == "stream_unsupported" and first_delta.content == "" and not candidate_visible_content:
                     try:
+                        close_stream = getattr(stream_gen, "close", None)
+                        if callable(close_stream):
+                            close_stream()
                         sync_resp = adapter.generate(req_copy)
                         if (time.perf_counter() - start_time) >= total_timeout:
                             yield normalize_public_stream_delta(
@@ -1268,6 +1271,10 @@ class UniversalModelGateway:
                     elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                         self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
 
+                    close_stream = getattr(stream_gen, "close", None)
+                    if callable(close_stream):
+                        close_stream()
+
                     if strict_model_pin or len(candidates) == 1:
                         yield normalize_public_stream_delta(first_delta, cand_provider, cand_model)
                         return
@@ -1286,6 +1293,9 @@ class UniversalModelGateway:
                     last_error = empty_err
                     last_error_provider = cand_provider
                     last_error_model = cand_model
+                    close_stream = getattr(stream_gen, "close", None)
+                    if callable(close_stream):
+                        close_stream()
                     if strict_model_pin or len(candidates) == 1:
                         yield normalize_public_stream_delta(
                             StreamDelta(content="", finish_reason="error", error=empty_err),
