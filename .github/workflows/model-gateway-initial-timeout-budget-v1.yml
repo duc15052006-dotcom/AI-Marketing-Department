@@ -7,64 +7,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: model-gateway-initial-timeout-budget-v1-qualify-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-production-fix:
-    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci(models) apply initial timeout fix')
-    name: Apply minimal gateway deadline fix
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout exact pushed head
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: test/model-gateway-initial-timeout-budget-v1
-
-      - name: Patch exact timeout guards
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('integrations/models/gateway.py')
-          text = path.read_text(encoding='utf-8')
-
-          old_sync = '''            if remaining_timeout <= 0.001 and attempt_count > 0:\n                logger.warning("Gateway timeout budget exhausted across fallback candidates.")\n                break\n\n            attempt_count += 1\n'''
-          new_sync = '''            if remaining_timeout <= 0.001:\n                if attempt_count > 0:\n                    logger.warning("Gateway timeout budget exhausted across fallback candidates.")\n                    break\n                return ModelResponse(\n                    request_id=norm_req.request_id,\n                    provider="gateway",\n                    model_name=norm_req.model_name,\n                    status=ModelResponseStatus.TIMEOUT,\n                    error="TIMEOUT: Total gateway timeout budget exhausted before provider dispatch.",\n                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),\n                    latency_ms=(time.perf_counter() - start_time) * 1000.0,\n                )\n\n            attempt_count += 1\n'''
-
-          old_stream = '''            if remaining_timeout <= 0.001 and cand_idx > 0:\n                logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")\n                break\n\n            # 1. Retrieve Provider Definition\n'''
-          new_stream = '''            if remaining_timeout <= 0.001:\n                if cand_idx > 0:\n                    logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")\n                    break\n                yield normalize_public_stream_delta(\n                    StreamDelta(\n                        content="",\n                        finish_reason="error",\n                        error=ModelStreamError(\n                            code="TIMEOUT",\n                            category="TIMEOUT",\n                            safe_message="TIMEOUT: Total gateway timeout budget exhausted before provider dispatch.",\n                            retryable=False,\n                            http_status=408,\n                        ),\n                    ),\n                    "gateway",\n                    norm_req.model_name,\n                )\n                return\n\n            # 1. Retrieve Provider Definition\n'''
-
-          if text.count(old_sync) != 1:
-              raise SystemExit(f'sync locator count={text.count(old_sync)}; refusing patch')
-          if text.count(old_stream) != 1:
-              raise SystemExit(f'stream locator count={text.count(old_stream)}; refusing patch')
-
-          text = text.replace(old_sync, new_sync, 1).replace(old_stream, new_stream, 1)
-          path.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Verify targeted causal regression before commit
-        run: |
-          python -m compileall -q integrations/models/gateway.py tests/test_model_gateway_initial_timeout_budget_v1.py
-          python -m unittest -v tests.test_model_gateway_initial_timeout_budget_v1
-
-      - name: Commit production fix
-        shell: bash
-        run: |
-          git diff -- integrations/models/gateway.py
-          test -z "$(git status --porcelain --untracked-files=no | grep -v '^ M integrations/models/gateway.py$')"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/models/gateway.py
-          git commit -m "fix(models): stop dispatch after initial timeout budget"
-          git push origin HEAD:test/model-gateway-initial-timeout-budget-v1
-
   focused-regression:
     name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
     runs-on: ubuntu-latest
