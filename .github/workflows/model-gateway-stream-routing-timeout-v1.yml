@@ -7,14 +7,63 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: model-gateway-stream-routing-timeout-v1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  apply-production-fix:
+    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci(models): apply stream routing timeout fix')
+    name: Apply minimal stream-routing deadline fix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: test/model-gateway-stream-routing-timeout-v1
+      - name: Move stream deadline start before routing
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('integrations/models/gateway.py')
+          text = path.read_text(encoding='utf-8')
+
+          old_entry = '''        Non-streaming providers are handled via synchronous generate() degradation:\n        the complete response is emitted as a single StreamDelta.\n        \"\"\"\n        try:\n'''
+          new_entry = '''        Non-streaming providers are handled via synchronous generate() degradation:\n        the complete response is emitted as a single StreamDelta.\n        \"\"\"\n        # Total streaming timeout covers governance validation, normalization,\n        # routing/model-policy resolution, provider dispatch, and result consumption.\n        start_time = time.perf_counter()\n        try:\n'''
+          old_late_start = '''        start_time = time.perf_counter()\n        has_emitted_visible_content = False\n'''
+          new_late_start = '''        has_emitted_visible_content = False\n'''
+
+          if text.count(old_entry) != 1:
+              raise SystemExit(f'entry locator count={text.count(old_entry)}; refusing patch')
+          if text.count(old_late_start) != 1:
+              raise SystemExit(f'late-start locator count={text.count(old_late_start)}; refusing patch')
+
+          text = text.replace(old_entry, new_entry, 1)
+          text = text.replace(old_late_start, new_late_start, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify causal regression before commit
+        run: |
+          python -m compileall -q integrations/models/gateway.py tests/test_model_gateway_stream_routing_timeout_v1.py
+          python -m unittest -v tests.test_model_gateway_stream_routing_timeout_v1
+      - name: Commit production fix only
+        shell: bash
+        run: |
+          git diff -- integrations/models/gateway.py
+          test -z "$(git status --porcelain --untracked-files=no | grep -v '^ M integrations/models/gateway.py$')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/models/gateway.py
+          git commit -m "fix(models): include stream routing in total timeout budget"
+          git push origin HEAD:test/model-gateway-stream-routing-timeout-v1
+
   focused-regression:
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'ci(models): apply stream routing timeout fix')
     name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
