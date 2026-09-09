@@ -36,9 +36,14 @@ jobs:
               text = text.replace(old, new, 1)
 
           replace_once(
-              """def compute_request_fingerprint(\n    capability_id: str,\n    parameters: Optional[Dict[str, Any]] = None,\n    run_id: Optional[str] = None,\n    business_id: Optional[str] = None,\n) -> str:\n    \"\"\"Compute deterministic canonical SHA-256 fingerprint of a consequential tool request.\"\"\"\n    norm_params = json.dumps(parameters or {}, sort_keys=True, ensure_ascii=False, separators=(\",\", \":\"))\n    raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{norm_params}\"\n    return hashlib.sha256(raw.encode(\"utf-8\")).hexdigest()\n""",
-              """def compute_request_fingerprint(\n    capability_id: str,\n    parameters: Optional[Dict[str, Any]] = None,\n    run_id: Optional[str] = None,\n    business_id: Optional[str] = None,\n    project_id: Optional[str] = None,\n) -> str:\n    \"\"\"Compute deterministic canonical SHA-256 fingerprint of a consequential tool request.\n\n    Preserve the historical fingerprint layout when no project authority is\n    bound. Project-scoped approvals opt into the extended immutable scope.\n    \"\"\"\n    norm_params = json.dumps(parameters or {}, sort_keys=True, ensure_ascii=False, separators=(\",\", \":\"))\n    if project_id is None:\n        raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{norm_params}\"\n    else:\n        raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{project_id}:{norm_params}\"\n    return hashlib.sha256(raw.encode(\"utf-8\")).hexdigest()\n""",
-              "fingerprint",
+              "    business_id: Optional[str] = None,\n) -> str:\n    \"\"\"Compute deterministic canonical SHA-256 fingerprint of a consequential tool request.\"\"\"",
+              "    business_id: Optional[str] = None,\n    project_id: Optional[str] = None,\n) -> str:\n    \"\"\"Compute deterministic canonical SHA-256 fingerprint of a consequential tool request.\"\"\"",
+              "fingerprint signature",
+          )
+          replace_once(
+              "    raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{norm_params}\"",
+              "    if project_id is None:\n        raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{norm_params}\"\n    else:\n        raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{project_id}:{norm_params}\"",
+              "fingerprint project scope",
           )
 
           old = "    business_id: Optional[str] = None\n    request_fingerprint: str = \"\""
@@ -60,10 +65,11 @@ jobs:
               raise SystemExit(f"fingerprint project binding: expected 2 matches, found {text.count(old)}")
           text = text.replace(old, "            business_id=business_id,\n            project_id=project_id,\n        )")
 
-          old = "                business_id=business_id,\n                created_at=now.isoformat(),"
-          if text.count(old) != 1:
-              raise SystemExit(f"pending record project binding: expected 1 match, found {text.count(old)}")
-          text = text.replace(old, "                business_id=business_id,\n                project_id=project_id,\n                created_at=now.isoformat(),", 1)
+          replace_once(
+              "                business_id=business_id,\n                created_at=now.isoformat(),",
+              "                business_id=business_id,\n                project_id=project_id,\n                created_at=now.isoformat(),",
+              "pending record project binding",
+          )
 
           replace_once(
               """                run_id=rec.run_id,\n                business_id=rec.business_id,\n                request_fingerprint=rec.request_fingerprint,""",
@@ -77,10 +83,11 @@ jobs:
               "server approval signature",
           )
 
-          old = "            business_id=business_id,\n            request_fingerprint=fp,"
-          if text.count(old) != 1:
-              raise SystemExit(f"server approval record project binding: expected 1 match, found {text.count(old)}")
-          text = text.replace(old, "            business_id=business_id,\n            project_id=project_id,\n            request_fingerprint=fp,", 1)
+          replace_once(
+              "            business_id=business_id,\n            request_fingerprint=fp,",
+              "            business_id=business_id,\n            project_id=project_id,\n            request_fingerprint=fp,",
+              "server approval record project binding",
+          )
 
           replace_once(
               """    def evaluate(\n        self,\n        agent_id: str,\n        capability: CapabilityDescriptor,\n        approval_token: Optional[str] = None,\n        run_id: Optional[str] = None,\n        business_id: Optional[str] = None,\n        parameters: Optional[Dict[str, Any]] = None,""",
