@@ -125,7 +125,7 @@ class PendingApprovalStatus(str, Enum):
 
 
 class PendingApprovalRecord(BaseModel):
-    """Immutable server-originated proposal for a consequential action awaiting human review."""
+    """Immutable server-originated proposal for a consequential action awaiting explicit human review."""
     pending_approval_id: str
     capability_id: str
     action_type: str = ""
