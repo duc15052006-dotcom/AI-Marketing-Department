@@ -66,5 +66,6 @@ class RuntimeApprovalRunScopeCanonicalV1Tests(unittest.TestCase):
         self.assertFalse(stored.consumed)
 
 
+# Connector-authored sync keeps the final qualification head user-triggered.
 if __name__ == "__main__":
     unittest.main()
