@@ -1,13 +1,8 @@
 """Evidence-authoritative learning consolidation for the five-ASI Brain.
 
-This module turns repeated canonical ``LearningEpisode`` objects into one
-scoped ``MemoryCandidate``. It does not trust caller-authored run counts,
-evidence summaries, confidence scores, or promotion decisions. Every run is
-revalidated through ``analyze_learning_episode`` and durable disposition remains
-owned by ``brain.memory_policy``.
-
-The module is semantic-only: it performs no persistence, provider calls, tool
-execution, connector access, or runtime effects.
+Repeated canonical LearningEpisodes can become one scoped memory candidate, but
+callers never author run counts, evidence summaries, or promotion authority.
+This module is semantic-only and performs no persistence or runtime effects.
 """
 
 from __future__ import annotations
@@ -16,12 +11,7 @@ import copy
 from typing import List
 
 from brain.contracts import BrainAgentId
-from brain.evidence import (
-    ClaimEvidenceRequest,
-    ClaimVerdict,
-    EvidenceOrigin,
-    EvidenceSignal,
-)
+from brain.evidence import ClaimEvidenceRequest, ClaimVerdict, EvidenceOrigin, EvidenceSignal
 from brain.learning import (
     LearningClaimKind,
     LearningDisposition,
@@ -46,23 +36,41 @@ def _required_text(value: object, field_name: str) -> str:
     return value.strip()
 
 
-def _canonical_evidence_request(request: ClaimEvidenceRequest) -> ClaimEvidenceRequest:
-    if not isinstance(request, ClaimEvidenceRequest):
+def _evidence_signal(raw: object) -> EvidenceSignal:
+    if isinstance(raw, EvidenceSignal):
+        raw = raw.model_dump()
+    if not isinstance(raw, dict):
+        raise ValidationError("evidence must contain only EvidenceSignal items")
+    return EvidenceSignal(**copy.deepcopy(raw))
+
+
+def _evidence_request(raw: object) -> ClaimEvidenceRequest:
+    """Rebuild nested evidence from serialized or typed semantic input."""
+    if isinstance(raw, ClaimEvidenceRequest):
+        raw = raw.model_dump()
+    if not isinstance(raw, dict):
         raise ValidationError("evidence_request must be a ClaimEvidenceRequest")
-    evidence: List[EvidenceSignal] = []
-    if not isinstance(request.evidence, list):
+    payload = copy.deepcopy(raw)
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, list):
         raise ValidationError("evidence must be a list of EvidenceSignal")
-    for raw in request.evidence:
-        if not isinstance(raw, EvidenceSignal):
-            raise ValidationError("evidence must contain only EvidenceSignal items")
-        evidence.append(EvidenceSignal(**copy.deepcopy(raw.model_dump())))
-    return ClaimEvidenceRequest(
-        assessment_id=request.assessment_id,
-        goal_id=request.goal_id,
-        claim_id=request.claim_id,
-        agent_id=request.agent_id,
-        evidence=evidence,
-    )
+    payload["evidence"] = [_evidence_signal(item) for item in evidence]
+    return ClaimEvidenceRequest(**payload)
+
+
+def _learning_episode(raw: object) -> LearningEpisode:
+    """Rebuild a complete LearningEpisode without trusting serialized types."""
+    if isinstance(raw, LearningEpisode):
+        raw = raw.model_dump()
+    if not isinstance(raw, dict):
+        raise ValidationError("episode must be a LearningEpisode")
+    payload = copy.deepcopy(raw)
+    payload["evidence_request"] = _evidence_request(payload.get("evidence_request"))
+    return LearningEpisode(**payload)
+
+
+def _canonical_evidence_request(request: ClaimEvidenceRequest) -> ClaimEvidenceRequest:
+    return _evidence_request(request)
 
 
 class LearningRunRecord(BaseModel):
@@ -74,11 +82,7 @@ class LearningRunRecord(BaseModel):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.run_id = _required_text(self.run_id, "run_id")
-        if isinstance(self.episode, dict):
-            self.episode = LearningEpisode(**copy.deepcopy(self.episode))
-        if not isinstance(self.episode, LearningEpisode):
-            raise ValidationError("episode must be a LearningEpisode")
-        self.episode = copy.deepcopy(self.episode)
+        self.episode = _learning_episode(self.episode)
         self._semantic_snapshot = copy.deepcopy(self.model_dump())
 
 
@@ -108,9 +112,7 @@ class LearningConsolidationRequest(BaseModel):
                 raise ValidationError("origin_scope must be a MemoryScopeLevel")
         if not isinstance(self.requested_scope, MemoryScopeLevel):
             try:
-                self.requested_scope = MemoryScopeLevel(
-                    str(self.requested_scope).strip().upper()
-                )
+                self.requested_scope = MemoryScopeLevel(str(self.requested_scope).strip().upper())
             except (TypeError, ValueError):
                 raise ValidationError("requested_scope must be a MemoryScopeLevel")
         if not isinstance(self.runs, list) or not self.runs:
@@ -119,11 +121,11 @@ class LearningConsolidationRequest(BaseModel):
         normalized: List[LearningRunRecord] = []
         seen_run_ids = set()
         for raw in self.runs:
-            if isinstance(raw, dict):
-                raw = LearningRunRecord(**copy.deepcopy(raw))
-            if not isinstance(raw, LearningRunRecord):
+            if isinstance(raw, LearningRunRecord):
+                raw = raw.model_dump()
+            if not isinstance(raw, dict):
                 raise ValidationError("runs must contain only LearningRunRecord items")
-            record = copy.deepcopy(raw)
+            record = LearningRunRecord(**copy.deepcopy(raw))
             if record.run_id in seen_run_ids:
                 raise ValidationError("duplicate run_id cannot represent independent runs")
             seen_run_ids.add(record.run_id)
@@ -175,23 +177,18 @@ def _validate_request_snapshot(request: LearningConsolidationRequest) -> None:
     original = getattr(request, "_semantic_snapshot", None)
     current = copy.deepcopy(request.model_dump())
     if original is None or current != original:
-        raise ValidationError(
-            "learning consolidation request semantic state changed after validation"
-        )
+        raise ValidationError("learning consolidation request semantic state changed after validation")
     for record in request.runs:
         original_record = getattr(record, "_semantic_snapshot", None)
         current_record = copy.deepcopy(record.model_dump())
         if original_record is None or current_record != original_record:
-            raise ValidationError(
-                "learning run record semantic state changed after validation"
-            )
+            raise ValidationError("learning run record semantic state changed after validation")
 
 
 def consolidate_learning(request: LearningConsolidationRequest) -> LearningConsolidation:
     """Derive one memory-policy decision from repeated canonical learning runs."""
 
     _validate_request_snapshot(request)
-
     run_ids: List[str] = []
     episode_ids: List[str] = []
     assessment_ids = set()
@@ -199,7 +196,6 @@ def consolidate_learning(request: LearningConsolidationRequest) -> LearningConso
     evidence_refs: List[str] = []
     seen_evidence_refs = set()
     canonical_requests: List[ClaimEvidenceRequest] = []
-
     canonical_semantics = None
     hypothesis_id = None
     all_experimental = True
@@ -211,15 +207,11 @@ def consolidate_learning(request: LearningConsolidationRequest) -> LearningConso
         if episode.agent_id != request.agent_id:
             raise ValidationError("learning run agent_id must match consolidation agent_id")
         if episode.evidence_request.agent_id != request.agent_id:
-            raise ValidationError(
-                "evidence assessor must match the learning consolidation owner"
-            )
+            raise ValidationError("evidence assessor must match the learning consolidation owner")
 
         decision = analyze_learning_episode(episode)
         if decision.disposition != LearningDisposition.CANDIDATE_LESSON:
-            raise ValidationError(
-                "only canonical CANDIDATE_LESSON runs may contribute to consolidation"
-            )
+            raise ValidationError("only canonical CANDIDATE_LESSON runs may contribute to consolidation")
         if decision.evidence_verdict != ClaimVerdict.SUPPORTED:
             raise ValidationError("consolidated learning requires supported evidence")
 
@@ -235,26 +227,19 @@ def consolidate_learning(request: LearningConsolidationRequest) -> LearningConso
             canonical_semantics = semantics
             hypothesis_id = episode.hypothesis_id
         elif semantics != canonical_semantics:
-            raise ValidationError(
-                "all consolidated runs must share exact lesson semantics and method"
-            )
+            raise ValidationError("all consolidated runs must share exact lesson semantics and method")
 
-        if episode.claim_kind == LearningClaimKind.CAUSAL:
-            if (
-                episode.method != LearningMethod.EXPERIMENT
-                or episode.intervention_id is None
-                or episode.control_ref is None
-            ):
-                raise ValidationError(
-                    "causal learning consolidation requires controlled experiments"
-                )
+        if episode.claim_kind == LearningClaimKind.CAUSAL and (
+            episode.method != LearningMethod.EXPERIMENT
+            or episode.intervention_id is None
+            or episode.control_ref is None
+        ):
+            raise ValidationError("causal learning consolidation requires controlled experiments")
 
         if episode.episode_id in episode_ids:
             raise ValidationError("duplicate episode_id cannot establish independent learning")
         if episode.evidence_request.assessment_id in assessment_ids:
-            raise ValidationError(
-                "duplicate evidence assessment_id cannot establish independent learning"
-            )
+            raise ValidationError("duplicate evidence assessment_id cannot establish independent learning")
 
         observed_sources = {
             signal.source_id
@@ -264,16 +249,13 @@ def consolidate_learning(request: LearningConsolidationRequest) -> LearningConso
         if not observed_sources:
             raise ValidationError("each consolidated run requires observed evidence")
         if used_observed_sources & observed_sources:
-            raise ValidationError(
-                "replayed observed source cannot manufacture independent runs"
-            )
+            raise ValidationError("replayed observed source cannot manufacture independent runs")
         used_observed_sources.update(observed_sources)
 
         run_ids.append(record.run_id)
         episode_ids.append(episode.episode_id)
         assessment_ids.add(episode.evidence_request.assessment_id)
         all_experimental = all_experimental and episode.method == LearningMethod.EXPERIMENT
-
         for ref in decision.evidence_refs:
             if ref not in seen_evidence_refs:
                 seen_evidence_refs.add(ref)
@@ -288,7 +270,7 @@ def consolidate_learning(request: LearningConsolidationRequest) -> LearningConso
         goal_id=request.goal_id,
         claim_id=hypothesis_id,
         agent_id=request.agent_id,
-        memory_kind=(MemoryKind.EXPERIMENT if all_experimental else MemoryKind.SUCCESS_FAILURE),
+        memory_kind=MemoryKind.EXPERIMENT if all_experimental else MemoryKind.SUCCESS_FAILURE,
         authority=MemoryAuthority.OBSERVED,
         origin_scope=request.origin_scope,
         requested_scope=request.requested_scope,
