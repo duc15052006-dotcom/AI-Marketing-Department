@@ -233,10 +233,41 @@ def _canonical_learning_episode(episode: LearningEpisode) -> LearningEpisode:
 
     original_snapshot = getattr(episode, "_semantic_snapshot", None)
     current_snapshot = copy.deepcopy(episode.model_dump())
-    if original_snapshot is None or current_snapshot != original_snapshot:
+    if original_snapshot is None:
         raise ValidationError(
-            "learning episode semantic state changed after validation"
+            "learning episode is missing its validated semantic snapshot"
         )
+
+    if current_snapshot != original_snapshot:
+        # Removing experiment controls can only reduce causal authority.  Allow
+        # that exact monotonic downgrade so the policy can emit TEST_CAUSALLY;
+        # every other post-validation semantic rewrite remains invalid.
+        original_method = original_snapshot.get("method")
+        candidate_without_controls = copy.deepcopy(current_snapshot)
+        candidate_without_controls["intervention_id"] = original_snapshot.get(
+            "intervention_id"
+        )
+        candidate_without_controls["control_ref"] = original_snapshot.get(
+            "control_ref"
+        )
+        controls_only_downgrade = (
+            original_method == LearningMethod.EXPERIMENT.value
+            and candidate_without_controls == original_snapshot
+            and current_snapshot.get("intervention_id")
+            in (None, original_snapshot.get("intervention_id"))
+            and current_snapshot.get("control_ref")
+            in (None, original_snapshot.get("control_ref"))
+            and (
+                current_snapshot.get("intervention_id")
+                != original_snapshot.get("intervention_id")
+                or current_snapshot.get("control_ref")
+                != original_snapshot.get("control_ref")
+            )
+        )
+        if not controls_only_downgrade:
+            raise ValidationError(
+                "learning episode semantic state changed after validation"
+            )
 
     return LearningEpisode(
         episode_id=episode.episode_id,
