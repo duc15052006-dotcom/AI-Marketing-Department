@@ -187,6 +187,128 @@ class ToolGateway:
 
         return ExecutionMode.MOCK
 
+    def _existing_consequential_request_result(
+        self,
+        *,
+        request: ToolRequest,
+        adapter: BaseCapabilityAdapter,
+        request_hash: str,
+        start_time: datetime,
+        execution_mode: ExecutionMode,
+    ) -> Optional[ExecutionReceipt]:
+        """Return durable evidence for a previously journaled request without replaying I/O.
+
+        ``request_id`` is a one-shot idempotency authority within a run for
+        consequential effects. A retry may observe the existing receipt, but it
+        may never create another external dispatch for the same durable request.
+        """
+        matching = [
+            intent
+            for intent in self.receipt_repository.list_execution_intents_for_run(request.run_id)
+            if intent.request_id == request.request_id
+        ]
+        if not matching:
+            return None
+
+        completed_time = datetime.now(timezone.utc)
+        if len(matching) != 1:
+            receipt = ExecutionReceipt(
+                run_id=request.run_id,
+                agent_id=request.agent_id,
+                capability_id=request.capability_id,
+                provider=adapter.adapter_name,
+                request_hash=request_hash,
+                started_at=start_time,
+                completed_at=completed_time,
+                status=ExecutionStatus.ERROR,
+                execution_mode=execution_mode,
+                error_class="CONSEQUENTIAL_REQUEST_ID_MULTIPLE_INTENTS",
+                error_message=(
+                    "CONSEQUENTIAL_REQUEST_ID_MULTIPLE_INTENTS: Durable journal contains multiple intents "
+                    "for the same run_id/request_id; replay is blocked pending reconciliation."
+                ),
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
+            )
+            return self.receipt_repository.save_receipt(receipt)
+
+        existing = matching[0]
+        binding_matches = (
+            existing.agent_id.lower() == request.agent_id.lower()
+            and existing.capability_id.lower() == request.capability_id.lower()
+            and existing.provider.lower() == adapter.adapter_name.lower()
+            and existing.request_hash == request_hash
+            and existing.execution_mode == execution_mode
+            and existing.business_id == request.business_id
+            and existing.project_id == request.project_id
+            and existing.chat_id == request.chat_id
+        )
+        if not binding_matches:
+            receipt = ExecutionReceipt(
+                run_id=request.run_id,
+                agent_id=request.agent_id,
+                capability_id=request.capability_id,
+                provider=adapter.adapter_name,
+                request_hash=request_hash,
+                started_at=start_time,
+                completed_at=completed_time,
+                status=ExecutionStatus.ERROR,
+                execution_mode=execution_mode,
+                error_class="CONSEQUENTIAL_REQUEST_ID_BINDING_CONFLICT",
+                error_message=(
+                    "CONSEQUENTIAL_REQUEST_ID_BINDING_CONFLICT: request_id is already bound to different "
+                    "immutable consequential authority; provider replay is forbidden."
+                ),
+                business_id=request.business_id,
+                project_id=request.project_id,
+                chat_id=request.chat_id,
+            )
+            return self.receipt_repository.save_receipt(receipt)
+
+        if existing.receipt_execution_id:
+            durable_receipt = self.receipt_repository.get_receipt(existing.receipt_execution_id)
+            if durable_receipt is None:
+                raise RuntimeError(
+                    "CONSEQUENTIAL_REQUEST_DURABLE_RECEIPT_MISSING: "
+                    f"intent_id={existing.intent_id} execution_id={existing.receipt_execution_id}"
+                )
+            return durable_receipt
+
+        assessment = self.receipt_repository.assess_execution_intent(existing.intent_id)
+        outcome = getattr(assessment.outcome, "value", str(assessment.outcome))
+        if outcome == "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME":
+            error_class = "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME"
+            error_message = (
+                "AMBIGUOUS_EXTERNAL_ACTION_OUTCOME: durable evidence shows that dispatch may already have "
+                "reached the provider; replay of the same request_id is forbidden."
+            )
+        else:
+            error_class = "CONSEQUENTIAL_REQUEST_REPLAY_BLOCKED"
+            error_message = (
+                "CONSEQUENTIAL_REQUEST_REPLAY_BLOCKED: request_id already has durable intent evidence "
+                f"({outcome}); a second provider dispatch is forbidden."
+            )
+
+        receipt = ExecutionReceipt(
+            run_id=request.run_id,
+            agent_id=request.agent_id,
+            capability_id=request.capability_id,
+            provider=adapter.adapter_name,
+            request_hash=request_hash,
+            started_at=start_time,
+            completed_at=completed_time,
+            status=ExecutionStatus.ERROR,
+            execution_mode=execution_mode,
+            error_class=error_class,
+            error_message=error_message,
+            approval_reference=existing.approval_reference,
+            business_id=request.business_id,
+            project_id=request.project_id,
+            chat_id=request.chat_id,
+        )
+        return self.receipt_repository.save_receipt(receipt)
+
     def execute(self, request: ToolRequest) -> ExecutionReceipt:
         """Execute a tool capability with complete governance, permissions, and receipt creation."""
         start_time = datetime.now(timezone.utc)
@@ -276,10 +398,22 @@ class ToolGateway:
             )
             return self.receipt_repository.save_receipt(receipt)
 
-        # 4. Atomic One-Shot Approval Claim for Consequential Actions
+        # 4. Durable request-id idempotency and atomic one-shot approval claim.
         cap_is_consequential = self._is_consequential_capability(cap)
         is_consequential = bool(request.approval_token and cap_is_consequential)
         approval_reference = _safe_approval_reference(request.approval_token)
+        adapter_execution_mode = self._resolve_execution_mode(adapter, cap.capability_id)
+
+        if cap_is_consequential:
+            existing_result = self._existing_consequential_request_result(
+                request=request,
+                adapter=adapter,
+                request_hash=req_hash,
+                start_time=start_time,
+                execution_mode=adapter_execution_mode,
+            )
+            if existing_result is not None:
+                return existing_result
 
         if is_consequential:
             claimed = self.policy_engine.claim_approval(request.approval_token)
@@ -318,7 +452,6 @@ class ToolGateway:
         exception_error_code: Optional[str] = None
         ambiguous_external_outcome = False
         execution_intent = None
-        adapter_execution_mode = self._resolve_execution_mode(adapter, cap.capability_id)
 
         try:
             if cap_is_consequential:
