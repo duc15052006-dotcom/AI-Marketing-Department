@@ -341,6 +341,7 @@ class ToolGateway:
             capability=cap,
             approval_token=request.approval_token,
             run_id=request.run_id,
+            business_id=request.business_id,
             parameters=request.parameters,
         )
         if not decision.allowed:
