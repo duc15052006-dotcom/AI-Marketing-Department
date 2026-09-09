@@ -1088,6 +1088,7 @@ class UniversalModelGateway:
             # 5. Execute Streaming with Fallback Semantics
             candidate_visible_content = False
             candidate_terminal_seen = False
+            stream_gen = None
 
             try:
                 stream_gen = adapter.generate_stream(req_copy)
@@ -1415,6 +1416,22 @@ class UniversalModelGateway:
                         continue
 
                 return
+
+            except GeneratorExit:
+                # Consumer cancellation must propagate to the active provider stream
+                # so abandoned provider I/O cannot continue consuming tokens/cost.
+                close_stream = getattr(stream_gen, "close", None) if stream_gen is not None else None
+                if callable(close_stream):
+                    try:
+                        close_stream()
+                    except Exception:
+                        logger.debug(
+                            "Provider stream close failed during consumer cancellation for %s::%s",
+                            cand_provider,
+                            cand_model,
+                            exc_info=True,
+                        )
+                raise
 
             except Exception as e:
                 is_timeout = is_timeout_exception(e)
