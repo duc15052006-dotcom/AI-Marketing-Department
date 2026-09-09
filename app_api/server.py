@@ -1023,7 +1023,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
         # 10. Activity Receipts
         elif path == "/api/activity/receipts":
             run_id = query.get("run_id", [""])[0]
-            receipts = APP_BACKEND.receipt_repo.list_receipts_for_run(run_id) if run_id else list(APP_BACKEND.receipt_repo._receipts.values())
+            receipts = APP_BACKEND.receipt_repo.list_receipts_for_run(run_id) if run_id else APP_BACKEND.receipt_repo.list_receipts()
             out = []
             for r in receipts:
                 out.append(
@@ -1034,7 +1034,10 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                         "capability_id": r.capability_id,
                         "provider": r.provider,
                         "status": r.status.value,
-                        "latency_ms": r.latency_ms,
+                        "latency_ms": max(
+                            0,
+                            int((r.completed_at - r.started_at).total_seconds() * 1000),
+                        ),
                         "completed_at": r.completed_at.isoformat(),
                     }
                 )

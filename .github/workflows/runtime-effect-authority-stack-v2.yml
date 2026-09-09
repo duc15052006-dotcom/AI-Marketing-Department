@@ -1,0 +1,120 @@
+name: Runtime Effect Authority Stack V2
+
+on:
+  pull_request:
+    paths:
+      - "tools/receipts.py"
+      - "app_api/server.py"
+      - "tools/tool_gateway.py"
+      - "tests/test_runtime_effect_authority_stack_v2.py"
+      - "tests/test_runtime_mission_effect_journal_v1.py"
+      - "tests/test_runtime_mission_reconciliation_engine_v1.py"
+      - "tests/test_runtime_durable_activity_receipts_listing_v1.py"
+      - "tests/test_tool_gateway_durable_intent_lifecycle_v1.py"
+      - "tests/test_runtime_default_effect_journal_durability_v1.py"
+      - "tests/test_runtime_consequential_request_idempotency_v1.py"
+      - "tests/test_runtime_approval_business_scope_authority_v1.py"
+      - "tests/test_runtime_continuity_authority_stack_v1.py"
+      - ".github/workflows/runtime-effect-authority-stack-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+  AI_MARKETING_MEMORY_EPHEMERAL: "1"
+  PYTHONUTF8: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  effect-authority-stack:
+    name: effect-authority-stack (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact head identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          "expected=$expected" | Tee-Object -FilePath .ci-results/identity.txt
+          "actual=$actual" | Tee-Object -FilePath .ci-results/identity.txt -Append
+          if ($actual -ne $expected) { throw "exact-head mismatch: expected=$expected actual=$actual" }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile composed effect authority boundary
+        shell: pwsh
+        run: |
+          python -m py_compile tools/receipts.py app_api/server.py tools/tool_gateway.py tests/test_runtime_effect_authority_stack_v2.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run composed production effect authority contract
+        id: targeted
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_effect_authority_stack_v2 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run adjacent effect journal and governance contracts
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_runtime_mission_effect_journal_v1 tests.test_runtime_mission_reconciliation_engine_v1 tests.test_runtime_durable_activity_receipts_listing_v1 tests.test_tool_gateway_durable_intent_lifecycle_v1 tests.test_runtime_default_effect_journal_durability_v1 tests.test_runtime_consequential_request_idempotency_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows' && steps.targeted.outcome == 'success'
+        timeout-minutes: 75
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/full-hermetic.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload exact-head effect authority evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-effect-authority-stack-v2-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Enforce composed effect authority gate
+        if: always()
+        shell: pwsh
+        run: |
+          if ("${{ steps.targeted.outcome }}" -ne "success") {
+            throw "Composed effect authority stack contract failed"
+          }
+
+# qualification sync after helper cleanup
