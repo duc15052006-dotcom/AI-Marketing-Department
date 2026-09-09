@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "brain/hypotheses.py"
-      - "tests/test_brain_research_agenda_uselkjf_USE_BOUNDARY_revalidation_v1.py"
+      - "tests/test_brain_research_agenda_use_boundary_revalidation_v1.py"
       - ".github/workflows/brain-research-agenda-use-boundary-convergence-v2.yml"
   workflow_dispatch:
 
