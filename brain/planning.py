@@ -189,6 +189,7 @@ class PlanSnapshot(BaseModel):
         self.steps = normalized_steps
         self._validate_graph()
         self._validate_state_consistency()
+        self._semantic_snapshot = copy.deepcopy(self.model_dump())
 
     def _validate_graph(self) -> None:
         by_id: Dict[str, PlanStep] = {}
@@ -395,12 +396,19 @@ def ready_step_ids(plan: PlanSnapshot) -> List[str]:
 
     if not isinstance(plan, PlanSnapshot):
         raise ValidationError("plan must be a PlanSnapshot")
-    if plan.status != PlanStatus.ACTIVE:
+    snapshot = getattr(plan, "_semantic_snapshot", None)
+    if snapshot is None:
+        raise ValidationError("plan is missing its validated semantic snapshot")
+    # Readiness is derived from the construction-time DAG.  Callers must use an
+    # explicit PlanRevision to change dependency authority; direct mutations of
+    # the mutable model cannot unlock work.
+    canonical_plan = PlanSnapshot(**copy.deepcopy(snapshot))
+    if canonical_plan.status != PlanStatus.ACTIVE:
         return []
-    by_id = {step.step_id: step for step in plan.steps}
+    by_id = {step.step_id: step for step in canonical_plan.steps}
     return [
         step.step_id
-        for step in plan.steps
+        for step in canonical_plan.steps
         if step.state == PlanStepState.PENDING
         and all(
             by_id[dependency].state == PlanStepState.COMPLETED
