@@ -79,7 +79,6 @@ jobs:
           set -o pipefail
           python -m unittest -v \
             tests.test_brain_hypothesis_portfolio_v1 \
-            tests.test_brain_hypothesis_semantic_state_revalidation_v1 \
             2>&1 | tee .ci-results/adjacent.log
 
       - name: Run canonical full hermetic unittest discovery
