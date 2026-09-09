@@ -7,17 +7,33 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: model-gateway-stream-degradation-timeout-budget-v1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-and-verify:
-    name: Ubuntu Python 3.12 apply stream degradation timeout fix
+  focused-regression:
+    name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: causal-stream-degradation-timeout
+            module: tests.test_model_gateway_stream_degradation_timeout_budget_v1
+          - label: stream-total-timeout-fallback
+            module: tests.test_model_gateway_stream_timeout_budget_v1
+          - label: delayed-precontent-fallback
+            module: tests.test_model_gateway_stream_delayed_precontent_error_fallback_v1
+          - label: model-streaming
+            module: tests.test_prod_model_streaming_01
+          - label: structured-provider-stream-error
+            module: tests.test_prod_structured_provider_stream_error_01
+          - label: provider-registry
+            module: tests.test_prod_model_gateway_01_provider_registry
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -40,6 +56,7 @@ jobs:
         run: |
           echo "github_sha=${{ github.sha }}"
           echo "github_ref=${{ github.ref }}"
+          echo "module=${{ matrix.module }}"
           python --version
           git rev-parse HEAD
 
@@ -49,43 +66,75 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Apply exact minimal gateway patch
+      - name: Compile model and regression sources
         run: |
-          python - <<'PY'
-          from pathlib import Path
+          python -m compileall -q integrations/models tests/test_model_gateway_stream_degradation_timeout_budget_v1.py tests/test_model_gateway_stream_timeout_budget_v1.py tests/test_model_gateway_stream_delayed_precontent_error_fallback_v1.py
 
-          path = Path("integrations/models/gateway.py")
-          text = path.read_text(encoding="utf-8")
-          marker = "degradation_remaining_timeout = total_timeout - (time.perf_counter() - start_time)"
-          if marker in text:
-              print("Production fix already present; no patch needed.")
-              raise SystemExit(0)
+      - name: Run focused regression — ${{ matrix.label }}
+        run: python -m unittest -v ${{ matrix.module }}
 
-          old = '''                if first_delta.finish_reason == "stream_unsupported" and first_delta.content == "" and not candidate_visible_content:\n                    try:\n                        sync_resp = adapter.generate(req_copy)\n'''
-          new = '''                if first_delta.finish_reason == "stream_unsupported" and first_delta.content == "" and not candidate_visible_content:\n                    degradation_remaining_timeout = total_timeout - (time.perf_counter() - start_time)\n                    if degradation_remaining_timeout <= 0.001:\n                        timeout_err = ModelStreamError(\n                            code="TIMEOUT",\n                            category="TIMEOUT",\n                            safe_message=f"TIMEOUT: Gateway timeout budget exhausted before synchronous degradation for '{cand_provider}'.",\n                            retryable=True,\n                            http_status=408,\n                        )\n                        last_error = timeout_err\n                        last_error_provider = cand_provider\n                        last_error_model = cand_model\n                        if strict_model_pin or len(candidates) == 1:\n                            yield normalize_public_stream_delta(\n                                StreamDelta(content="", finish_reason="error", error=timeout_err),\n                                cand_provider,\n                                cand_model,\n                            )\n                            return\n                        continue\n\n                    req_copy.timeout_seconds = max(\n                        min(float(req_copy.timeout_seconds), degradation_remaining_timeout),\n                        0.001,\n                    )\n                    try:\n                        sync_resp = adapter.generate(req_copy)\n'''
-          if old not in text:
-              raise SystemExit("stream_unsupported degradation locator not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          print("Applied stream degradation timeout budget patch.")
-          PY
+      - name: Verify clean checkout after tests
+        if: always()
+        run: git diff --exit-code
 
-      - name: Compile causal sources
-        run: python -m compileall -q integrations/models tests/test_model_gateway_stream_degradation_timeout_budget_v1.py
+  full-hermetic-windows:
+    name: Windows Python 3.12 full hermetic discovery
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Run causal regression
-        run: python -m unittest -v tests.test_model_gateway_stream_degradation_timeout_budget_v1
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-      - name: Show production diff
-        run: git diff -- integrations/models/gateway.py
-
-      - name: Commit production fix when needed
+      - name: Record exact-head identity
+        shell: pwsh
         run: |
-          if git diff --quiet -- integrations/models/gateway.py; then
-            echo "Production fix already present on this exact head."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/models/gateway.py
-          git commit -m "fix(models): bound stream sync degradation by total timeout"
-          git push origin HEAD:${GITHUB_REF_NAME}
+          "github_sha=${{ github.sha }}"
+          "github_ref=${{ github.ref }}"
+          python --version
+          git rev-parse HEAD
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          $outputFile = Join-Path $env:RUNNER_TEMP "full-hermetic-unittest.log"
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath $outputFile
+          $testExit = $LASTEXITCODE
+          Get-Content $outputFile |
+            Select-String -Pattern '^Ran \d+ tests', '^OK(?: \(skipped=\d+\))?$' |
+            ForEach-Object { Write-Host "CANONICAL_TEST_SUMMARY=$($_.Line)" }
+          if ($testExit -ne 0) { exit $testExit }
+
+      - name: Verify clean checkout after tests
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
