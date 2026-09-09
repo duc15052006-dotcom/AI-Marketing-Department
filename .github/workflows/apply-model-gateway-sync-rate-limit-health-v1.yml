@@ -41,3 +41,5 @@ jobs:
           git diff --cached --check
           git commit -m "fix(models): preserve classified rate-limit provider health"
           git push origin HEAD:test/model-gateway-sync-rate-limit-health-v1
+
+# hosted causal RED observed before this workflow was triggered
