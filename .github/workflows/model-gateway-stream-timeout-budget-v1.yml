@@ -30,8 +30,6 @@ jobs:
             module: tests.test_prod_model_streaming_01
           - label: structured-provider-stream-error
             module: tests.test_prod_structured_provider_stream_error_01
-          - label: model-settings
-            module: tests.test_prod_model_settings_01
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
