@@ -5,6 +5,7 @@ on:
     paths:
       - "brain/**"
       - "tests/test_brain_*.py"
+      - "tests/test_asi_brain_expert_holdout_v1.py"
       - ".github/workflows/brain-final-convergence-cert-v1.yml"
   workflow_dispatch:
 
@@ -19,7 +20,7 @@ jobs:
   brain-convergence-linux:
     name: Linux full Brain adversarial convergence
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -65,10 +66,17 @@ jobs:
 
       - name: Run complete Brain test namespace
         shell: bash
-        timeout-minutes: 25
+        timeout-minutes: 28
         run: |
           set -o pipefail
           python -m unittest discover -s tests -p "test_brain_*.py" -v 2>&1 | tee .ci-results/final-brain-linux.log
+
+      - name: Run expert five-ASI holdout
+        if: always()
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v tests.test_asi_brain_expert_holdout_v1 2>&1 | tee .ci-results/final-brain-expert-holdout-linux.log
 
       - name: Upload Linux convergence evidence
         if: always()
