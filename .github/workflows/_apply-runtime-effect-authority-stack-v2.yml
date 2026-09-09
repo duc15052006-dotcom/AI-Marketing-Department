@@ -20,7 +20,7 @@ jobs:
           ref: integration/runtime-effect-authority-stack-v2
           fetch-depth: 0
 
-      - name: Compose qualified sibling fixes
+      - name: Compose qualified sibling production fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -84,35 +84,17 @@ jobs:
           if text.count(old_latency) != 1:
               raise SystemExit(f"expected one legacy latency serializer, found {text.count(old_latency)}")
           server.write_text(text.replace(old_latency, new_latency, 1), encoding="utf-8")
-
-          workflow = Path(".github/workflows/runtime-effect-authority-stack-v2.yml")
-          text = workflow.read_text(encoding="utf-8")
-          path_marker = '      - "tests/test_runtime_mission_effect_journal_v1.py"\n'
-          path_insert = (
-              path_marker
-              + '      - "tests/test_runtime_mission_reconciliation_engine_v1.py"\n'
-              + '      - "tests/test_runtime_durable_activity_receipts_listing_v1.py"\n'
-          )
-          if text.count(path_marker) != 1:
-              raise SystemExit("workflow path marker mismatch")
-          text = text.replace(path_marker, path_insert, 1)
-          old_cmd = "python -m unittest -v tests.test_runtime_mission_effect_journal_v1 tests.test_tool_gateway_durable_intent_lifecycle_v1 tests.test_runtime_default_effect_journal_durability_v1 tests.test_runtime_consequential_request_idempotency_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log"
-          new_cmd = "python -m unittest -v tests.test_runtime_mission_effect_journal_v1 tests.test_runtime_mission_reconciliation_engine_v1 tests.test_runtime_durable_activity_receipts_listing_v1 tests.test_tool_gateway_durable_intent_lifecycle_v1 tests.test_runtime_default_effect_journal_durability_v1 tests.test_runtime_consequential_request_idempotency_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log"
-          if text.count(old_cmd) != 1:
-              raise SystemExit("workflow adjacent command marker mismatch")
-          workflow.write_text(text.replace(old_cmd, new_cmd, 1), encoding="utf-8")
           PY
 
           python -m py_compile tools/receipts.py app_api/server.py tests/test_runtime_mission_reconciliation_engine_v1.py tests/test_runtime_durable_activity_receipts_listing_v1.py tests/test_runtime_effect_authority_stack_v2.py
 
-      - name: Commit integrated production stack and remove helper
+      - name: Commit production and regression composition only
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/_apply-runtime-effect-authority-stack-v2.yml
-          git add tools/receipts.py app_api/server.py tests/test_runtime_mission_reconciliation_engine_v1.py tests/test_runtime_durable_activity_receipts_listing_v1.py .github/workflows/runtime-effect-authority-stack-v2.yml
+          git add tools/receipts.py app_api/server.py tests/test_runtime_mission_reconciliation_engine_v1.py tests/test_runtime_durable_activity_receipts_listing_v1.py
           git diff --cached --check
           git commit -m "integration(runtime): compose effect authority siblings"
           git push origin HEAD:integration/runtime-effect-authority-stack-v2
