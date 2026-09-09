@@ -663,7 +663,13 @@ def evaluate_decision(request: DecisionEvaluationRequest) -> DecisionEvaluation:
     # proposal evidence request when authorizing the decision.
     collaboration_data = collaboration.model_dump()
     collaboration_data["proposal_evidence_request"] = evidence_request.model_dump()
-    authoritative_collaboration = CollaborationAssessment(**collaboration_data)
+    try:
+        authoritative_collaboration = CollaborationAssessment(**collaboration_data)
+    except (ValidationError, TypeError, AttributeError):
+        return result(
+            DecisionDisposition.ESCALATE,
+            "Collaboration authority became invalid before decision evaluation; PROCEED remains blocked.",
+        )
 
     collaboration_decision = evaluate_collaboration(authoritative_collaboration)
     collaboration_id = collaboration.assessment_id
