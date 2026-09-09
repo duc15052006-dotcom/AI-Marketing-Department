@@ -152,6 +152,7 @@ class TestProdSec01RRHumanIntentBoundary(unittest.TestCase):
             capability_id="social_publishing",
             parameters=params,
             approval_token=approval_rec.approval_token,
+            business_id="BIZ-RR-001",
         )
         receipt1 = self.gateway.execute(req)
         self.assertEqual(receipt1.status, ExecutionStatus.SUCCESS)
