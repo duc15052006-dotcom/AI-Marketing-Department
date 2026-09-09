@@ -333,6 +333,10 @@ def _validate_action_decision_provenance(
             raise ValidationError(
                 f"action intent '{intent.intent_id}' owner must match its decision"
             )
+        if intent.evidence_required and not decision.evidence_refs:
+            raise ValidationError(
+                f"action intent '{intent.intent_id}' requires explicit evidence lineage on its decision"
+            )
     return decisions
 
 
