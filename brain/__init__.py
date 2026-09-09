@@ -43,6 +43,15 @@ from brain.counterfactual import (
     compare_counterfactuals,
     simulate_counterfactual,
 )
+from brain.experimentation import (
+    ExperimentArm,
+    ExperimentArmKind,
+    ExperimentDesign,
+    ExperimentDesignDisposition,
+    ExperimentDesignRequest,
+    ExperimentProtocol,
+    design_experiments,
+)
 from brain.goal_decomposition import (
     GoalDecomposition,
     GoalDecompositionRequest,
@@ -128,15 +137,6 @@ from brain.reflection import (
     ReflectionFindingKind,
     reflect_on_decision,
 )
-from brain.world_state import (
-    BeliefRevision,
-    BeliefStatus,
-    WorldBelief,
-    WorldProposition,
-    WorldStateRequest,
-    WorldStateSnapshot,
-    build_world_state,
-)
 from brain.temporal_world_model import (
     BeliefTransition,
     CausalLink,
@@ -146,6 +146,15 @@ from brain.temporal_world_model import (
     TemporalChangeKind,
     TemporalFrame,
     build_temporal_causal_world_model,
+)
+from brain.world_state import (
+    BeliefRevision,
+    BeliefStatus,
+    WorldBelief,
+    WorldProposition,
+    WorldStateRequest,
+    WorldStateSnapshot,
+    build_world_state,
 )
 
 __all__ = [
@@ -177,6 +186,12 @@ __all__ = [
     "DecisionPremise",
     "DecisionRecord",
     "EvidenceNeed",
+    "ExperimentArm",
+    "ExperimentArmKind",
+    "ExperimentDesign",
+    "ExperimentDesignDisposition",
+    "ExperimentDesignRequest",
+    "ExperimentProtocol",
     "GapResolutionDirective",
     "GoalDecomposition",
     "GoalDecompositionRequest",
@@ -256,6 +271,7 @@ __all__ = [
     "compare_counterfactuals",
     "derive_cognitive_cycle",
     "derive_knowledge_gaps",
+    "design_experiments",
     "evaluate_meta_learning",
     "prioritize_research_agenda",
     "ready_step_ids",
