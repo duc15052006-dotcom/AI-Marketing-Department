@@ -77,8 +77,8 @@ jobs:
             tests.test_brain_meta_learning_policy_v1 \
             tests.test_brain_metacognition_intelligence_v1 \
             tests.test_brain_learning_consolidation_v1 \
-            tests.test_brain_five_agent_dna_v1 \
-            tests.test_brain_runtime_action_intent_handoff_v1 \
+            tests.test_brain_five_agent_dna_contract_v1 \
+            tests.test_brain_runtime_canonical_action_intent_handoff_v1 \
             2>&1 | tee .ci-results/adjacent.log
       - name: Run canonical full hermetic unittest discovery
         if: runner.os == 'Windows' && steps.targeted.outcome == 'success'
