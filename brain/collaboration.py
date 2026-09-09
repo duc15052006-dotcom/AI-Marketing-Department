@@ -244,6 +244,9 @@ class CollaborationAssessment(BaseModel):
         self.minimum_supporting_reviewers = _review_quorum(
             self.minimum_supporting_reviewers
         )
+        self._minimum_supporting_reviewers_snapshot = (
+            self.minimum_supporting_reviewers
+        )
 
         if self.proposal_evidence_request is not None:
             request = self.proposal_evidence_request
@@ -343,6 +346,14 @@ def evaluate_collaboration(
 
     if not isinstance(assessment, CollaborationAssessment):
         raise ValidationError("assessment must be a CollaborationAssessment")
+
+    quorum = _review_quorum(assessment.minimum_supporting_reviewers)
+    if quorum != getattr(
+        assessment, "_minimum_supporting_reviewers_snapshot", None
+    ):
+        raise ValidationError(
+            "minimum_supporting_reviewers changed after collaboration validation"
+        )
 
     canonical_proposal = _canonical_proposal_assessment(assessment)
     reasons: List[str] = []
