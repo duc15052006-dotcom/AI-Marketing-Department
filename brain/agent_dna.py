@@ -1,13 +1,13 @@
 """Provider-neutral semantic DNA for the five permanent marketing agents.
 
 The long-form ``.agents/agents/*/agent.md`` files remain rich operating prompts.
-This module deliberately does not mirror that prose.  It defines only stable,
+This module deliberately does not mirror that prose. It defines only stable,
 machine-checkable cognitive authority boundaries that must survive prompt edits,
 model/provider swaps, and future runtime implementations.
 
-The Brain owns *who is responsible for what*.  It does not grant permission to
+The Brain owns *who is responsible for what*. It does not grant permission to
 execute tools, spend money, publish campaigns, choose providers, or manipulate
-runtime state.  Live execution authority always remains outside this module.
+runtime state. Live execution authority always remains outside this module.
 """
 
 from __future__ import annotations
@@ -23,15 +23,15 @@ from schemas.base import BaseModel, Field, ValidationError
 class AgentFunction(str, Enum):
     EXECUTIVE_ORCHESTRATION = "EXECUTIVE_ORCHESTRATION"
     MARKET_INTELLIGENCE = "MARKET_INTELLIGENCE"
-    STRATEGY_AND_GROWTH = "STRATEGY_AND_GROWTH"
-    CREATIVE_COMMUNICATION = "CREATIVE_COMMUNICATION"
+    CONTENT_AND_DISTRIBUTION = "CONTENT_AND_DISTRIBUTION"
+    CREATIVE_PRODUCTION = "CREATIVE_PRODUCTION"
     PERFORMANCE_AND_MEASUREMENT = "PERFORMANCE_AND_MEASUREMENT"
 
 
 class EpistemicPosture(str, Enum):
     EVIDENCE_GOVERNANCE = "EVIDENCE_GOVERNANCE"
     EVIDENCE_DISCOVERY = "EVIDENCE_DISCOVERY"
-    EVIDENCE_DEPENDENT_STRATEGY = "EVIDENCE_DEPENDENT_STRATEGY"
+    EVIDENCE_DEPENDENT_CONTENT = "EVIDENCE_DEPENDENT_CONTENT"
     EVIDENCE_DEPENDENT_CREATION = "EVIDENCE_DEPENDENT_CREATION"
     EMPIRICAL_MEASUREMENT = "EMPIRICAL_MEASUREMENT"
 
@@ -43,15 +43,15 @@ _TAG_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
 _EXPECTED_FUNCTION: Dict[BrainAgentId, AgentFunction] = {
     BrainAgentId.CMO: AgentFunction.EXECUTIVE_ORCHESTRATION,
     BrainAgentId.INTELLIGENCE: AgentFunction.MARKET_INTELLIGENCE,
-    BrainAgentId.STRATEGIST: AgentFunction.STRATEGY_AND_GROWTH,
-    BrainAgentId.CREATIVE: AgentFunction.CREATIVE_COMMUNICATION,
+    BrainAgentId.CONTENT: AgentFunction.CONTENT_AND_DISTRIBUTION,
+    BrainAgentId.CREATIVE: AgentFunction.CREATIVE_PRODUCTION,
     BrainAgentId.PERFORMANCE: AgentFunction.PERFORMANCE_AND_MEASUREMENT,
 }
 
 _EXPECTED_EPISTEMIC_POSTURE: Dict[BrainAgentId, EpistemicPosture] = {
     BrainAgentId.CMO: EpistemicPosture.EVIDENCE_GOVERNANCE,
     BrainAgentId.INTELLIGENCE: EpistemicPosture.EVIDENCE_DISCOVERY,
-    BrainAgentId.STRATEGIST: EpistemicPosture.EVIDENCE_DEPENDENT_STRATEGY,
+    BrainAgentId.CONTENT: EpistemicPosture.EVIDENCE_DEPENDENT_CONTENT,
     BrainAgentId.CREATIVE: EpistemicPosture.EVIDENCE_DEPENDENT_CREATION,
     BrainAgentId.PERFORMANCE: EpistemicPosture.EMPIRICAL_MEASUREMENT,
 }
@@ -103,17 +103,21 @@ def _semantic_tags(value: object, field_name: str) -> List[str]:
 
 
 def resolve_permanent_agent(value: object) -> BrainAgentId:
-    """Resolve only one of the five permanent logical agent identities.
+    """Resolve one of the five canonical identities, with one legacy read alias.
 
-    Ephemeral specialists/work units intentionally have no path through this
-    function and therefore cannot be promoted into a sixth permanent agent.
+    ``STRATEGIST`` was used by historical snapshots before the product contract
+    was corrected. It is accepted only as an input compatibility label and is
+    immediately normalized to CONTENT; it never becomes a sixth identity.
     """
 
     if isinstance(value, BrainAgentId):
         return value
     if isinstance(value, str) and value.strip():
+        normalized = value.strip().upper()
+        if normalized == "STRATEGIST":
+            return BrainAgentId.CONTENT
         try:
-            return BrainAgentId(value.strip().upper())
+            return BrainAgentId(normalized)
         except ValueError:
             pass
     raise ValidationError(
@@ -213,25 +217,28 @@ _CANONICAL_PROFILES: Dict[BrainAgentId, AgentDNAProfile] = {
         agent_id=BrainAgentId.CMO,
         function=AgentFunction.EXECUTIVE_ORCHESTRATION,
         mission=(
-            "Govern commercial marketing choices, decompose goals for specialists, "
-            "audit evidence quality, and integrate specialist outputs into decisions."
+            "Own marketing strategy and commercial governance, decompose goals for "
+            "specialists, audit evidence quality, and integrate specialist outputs."
         ),
         epistemic_posture=EpistemicPosture.EVIDENCE_GOVERNANCE,
         owned_responsibilities=[
             "TASK_DECOMPOSITION",
             "COMMERCIAL_GOVERNANCE",
+            "MARKETING_STRATEGY_FORMULATION",
+            "POSITIONING_AND_GTM_GOVERNANCE",
             "SPECIALIST_QUALITY_REVIEW",
             "RESOURCE_ALLOCATION_REASONING",
         ],
         forbidden_authorities=[
             "PRIMARY_MARKET_RESEARCH",
+            "PRIMARY_CONTENT_PRODUCTION",
             "PRIMARY_CREATIVE_PRODUCTION",
             "PRIMARY_PERFORMANCE_ANALYSIS",
             "LIVE_EXECUTION",
         ],
         primary_handoff_targets=[
             BrainAgentId.INTELLIGENCE,
-            BrainAgentId.STRATEGIST,
+            BrainAgentId.CONTENT,
             BrainAgentId.CREATIVE,
             BrainAgentId.PERFORMANCE,
         ],
@@ -255,36 +262,40 @@ _CANONICAL_PROFILES: Dict[BrainAgentId, AgentDNAProfile] = {
         forbidden_authorities=[
             "FINAL_COMMERCIAL_SIGNOFF",
             "PRIMARY_STRATEGY_FORMULATION",
+            "PRIMARY_CONTENT_PRODUCTION",
             "PRIMARY_CREATIVE_PRODUCTION",
             "PRIMARY_INTERNAL_PERFORMANCE_ANALYSIS",
             "LIVE_EXECUTION",
         ],
         primary_handoff_targets=[
-            BrainAgentId.STRATEGIST,
+            BrainAgentId.CONTENT,
             BrainAgentId.CMO,
         ],
         commercial_signoff_authority=False,
         live_execution_authority=False,
     ),
-    BrainAgentId.STRATEGIST: AgentDNAProfile(
-        agent_id=BrainAgentId.STRATEGIST,
-        function=AgentFunction.STRATEGY_AND_GROWTH,
+    BrainAgentId.CONTENT: AgentDNAProfile(
+        agent_id=BrainAgentId.CONTENT,
+        function=AgentFunction.CONTENT_AND_DISTRIBUTION,
         mission=(
-            "Convert verified evidence and business goals into positioning, focused "
-            "trade-offs, growth architecture, and falsifiable strategic hypotheses."
+            "Turn verified evidence and CMO strategy into truthful messaging systems, "
+            "editorial plans, copy, scripts, SEO briefs, and channel-ready content."
         ),
-        epistemic_posture=EpistemicPosture.EVIDENCE_DEPENDENT_STRATEGY,
+        epistemic_posture=EpistemicPosture.EVIDENCE_DEPENDENT_CONTENT,
         owned_responsibilities=[
-            "SEGMENTATION_TARGETING_POSITIONING",
-            "STRATEGIC_TRADEOFFS",
-            "HYPOTHESIS_DESIGN",
-            "GROWTH_ARCHITECTURE",
+            "CONTENT_STRATEGY",
+            "MESSAGE_ARCHITECTURE",
+            "COPY_AND_SCRIPT",
+            "EDITORIAL_PLANNING",
+            "SEO_CONTENT_BRIEFING",
+            "CHANNEL_CONTENT_ADAPTATION",
         ],
         forbidden_authorities=[
             "PRIMARY_MARKET_RESEARCH",
             "FINAL_COMMERCIAL_SIGNOFF",
-            "PRIMARY_CREATIVE_PRODUCTION",
+            "PRIMARY_CREATIVE_ASSET_PRODUCTION",
             "PRIMARY_PERFORMANCE_ANALYSIS",
+            "INVENT_PRODUCT_OR_EVIDENCE_FACTS",
             "LIVE_EXECUTION",
         ],
         primary_handoff_targets=[
@@ -297,26 +308,29 @@ _CANONICAL_PROFILES: Dict[BrainAgentId, AgentDNAProfile] = {
     ),
     BrainAgentId.CREATIVE: AgentDNAProfile(
         agent_id=BrainAgentId.CREATIVE,
-        function=AgentFunction.CREATIVE_COMMUNICATION,
+        function=AgentFunction.CREATIVE_PRODUCTION,
         mission=(
-            "Translate evidence-backed strategy into truthful concepts, copy, scripts, "
-            "storyboards, and production specifications that enable learning."
+            "Translate approved evidence-backed messaging into visual concepts, "
+            "storyboards, asset systems, and production specifications."
         ),
         epistemic_posture=EpistemicPosture.EVIDENCE_DEPENDENT_CREATION,
         owned_responsibilities=[
             "CONCEPT_DEVELOPMENT",
-            "COPY_AND_SCRIPT",
+            "VISUAL_DIRECTION",
             "CREATIVE_PRODUCTION_SPECIFICATION",
-            "MESSAGE_ARCHITECTURE",
+            "ASSET_SYSTEM_DESIGN",
         ],
         forbidden_authorities=[
             "PRIMARY_MARKET_RESEARCH",
+            "PRIMARY_CONTENT_STRATEGY",
+            "PRIMARY_COPY_OWNERSHIP",
             "FINAL_COMMERCIAL_SIGNOFF",
             "PRIMARY_PERFORMANCE_ANALYSIS",
             "INVENT_PRODUCT_OR_EVIDENCE_FACTS",
             "LIVE_EXECUTION",
         ],
         primary_handoff_targets=[
+            BrainAgentId.CONTENT,
             BrainAgentId.PERFORMANCE,
             BrainAgentId.CMO,
         ],
@@ -340,12 +354,13 @@ _CANONICAL_PROFILES: Dict[BrainAgentId, AgentDNAProfile] = {
         forbidden_authorities=[
             "PRIMARY_MARKET_RESEARCH",
             "FINAL_COMMERCIAL_SIGNOFF",
+            "PRIMARY_CONTENT_PRODUCTION",
             "PRIMARY_CREATIVE_PRODUCTION",
             "LIVE_EXECUTION",
         ],
         primary_handoff_targets=[
             BrainAgentId.CMO,
-            BrainAgentId.STRATEGIST,
+            BrainAgentId.CONTENT,
             BrainAgentId.CREATIVE,
         ],
         commercial_signoff_authority=False,
@@ -367,7 +382,7 @@ def canonical_agent_profiles() -> List[AgentDNAProfile]:
     order = (
         BrainAgentId.CMO,
         BrainAgentId.INTELLIGENCE,
-        BrainAgentId.STRATEGIST,
+        BrainAgentId.CONTENT,
         BrainAgentId.CREATIVE,
         BrainAgentId.PERFORMANCE,
     )
