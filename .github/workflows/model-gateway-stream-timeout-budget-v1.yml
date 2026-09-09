@@ -48,23 +48,38 @@ jobs:
 
           path = Path("integrations/models/gateway.py")
           text = path.read_text(encoding="utf-8")
-          needle = '''            elapsed = time.perf_counter() - start_time
-            remaining_timeout = total_timeout - elapsed
+          lines = text.splitlines(keepends=True)
 
-            # 1. Retrieve Provider Definition
-          '''
-          replacement = '''            elapsed = time.perf_counter() - start_time
-            remaining_timeout = total_timeout - elapsed
-            if remaining_timeout <= 0.001 and cand_idx > 0:
-                logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")
-                break
+          loop_matches = [
+              i for i, line in enumerate(lines)
+              if line.strip() == "for cand_idx, (cand_provider, cand_model) in enumerate(candidates):"
+          ]
+          if len(loop_matches) != 1:
+              raise SystemExit(f"expected exactly one streaming candidate loop, found {len(loop_matches)}")
 
-            # 1. Retrieve Provider Definition
-          '''
-          count = text.count(needle)
-          if count != 1:
-              raise SystemExit(f"expected exactly one stream timeout insertion point, found {count}")
-          path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+          loop_idx = loop_matches[0]
+          window_end = min(len(lines), loop_idx + 20)
+          if any("Gateway stream timeout budget exhausted across fallback candidates." in line for line in lines[loop_idx:window_end]):
+              raise SystemExit("stream timeout guard already present; refusing duplicate patch")
+
+          remaining_matches = [
+              i for i in range(loop_idx + 1, window_end)
+              if lines[i].strip() == "remaining_timeout = total_timeout - elapsed"
+          ]
+          if len(remaining_matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one remaining-time calculation in streaming loop, found {len(remaining_matches)}"
+              )
+
+          idx = remaining_matches[0]
+          indent = lines[idx][: len(lines[idx]) - len(lines[idx].lstrip())]
+          guard = [
+              f"{indent}if remaining_timeout <= 0.001 and cand_idx > 0:\n",
+              f"{indent}    logger.warning(\"Gateway stream timeout budget exhausted across fallback candidates.\")\n",
+              f"{indent}    break\n",
+          ]
+          lines[idx + 1:idx + 1] = guard
+          path.write_text("".join(lines), encoding="utf-8")
           PY
 
       - name: Verify causal regression
@@ -79,6 +94,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add integrations/models/gateway.py
           git diff --cached --stat
-          git diff --cached --exit-code && { echo "expected production diff missing"; exit 1; } || true
+          if git diff --cached --quiet; then
+            echo "expected production diff missing"
+            exit 1
+          fi
           git commit -m "fix(models): stop stream fallback after timeout budget"
           git push origin HEAD:test/model-gateway-stream-timeout-budget-v1
