@@ -80,18 +80,12 @@ class StrategyTrial(BaseModel):
         self.strategy = _enum(self.strategy, LearningStrategy, "strategy")
         if self.strategy == LearningStrategy.NONE:
             raise ValidationError("strategy trials cannot use NONE")
-
         if not isinstance(self.before_request, MetacognitionRequest):
-            raise ValidationError(
-                "before_request must be a MetacognitionRequest"
-            )
+            raise ValidationError("before_request must be a MetacognitionRequest")
         if not isinstance(self.after_request, MetacognitionRequest):
-            raise ValidationError(
-                "after_request must be a MetacognitionRequest"
-            )
+            raise ValidationError("after_request must be a MetacognitionRequest")
         self.before_request = copy.deepcopy(self.before_request)
         self.after_request = copy.deepcopy(self.after_request)
-
         if self.before_request.goal_id != self.after_request.goal_id:
             raise ValidationError(
                 "before/after metacognition requests must bind to the same goal_id"
@@ -100,6 +94,7 @@ class StrategyTrial(BaseModel):
             raise ValidationError(
                 "before/after metacognition requests must bind to the same ASI"
             )
+        self._semantic_snapshot = copy.deepcopy(self.model_dump())
 
 
 class StrategyPerformance(BaseModel):
@@ -153,7 +148,6 @@ class MetaLearningRequest(BaseModel):
         )
         if not isinstance(self.trials, list):
             raise ValidationError("trials must be a list of StrategyTrial")
-
         normalized: List[StrategyTrial] = []
         trial_ids = set()
         for raw in self.trials:
@@ -169,6 +163,7 @@ class MetaLearningRequest(BaseModel):
             trial_ids.add(trial.trial_id)
             normalized.append(trial)
         self.trials = normalized
+        self._semantic_snapshot = copy.deepcopy(self.model_dump())
 
 
 class MetaLearningDecision(BaseModel):
@@ -216,48 +211,13 @@ class MetaLearningDecision(BaseModel):
                 seen.add(reason)
                 normalized_reasons.append(reason)
         self.reasons = normalized_reasons
-
         if self.disposition == MetaLearningDisposition.PREFER_STRATEGY:
             if self.preferred_strategy is None:
-                raise ValidationError(
-                    "PREFER_STRATEGY requires preferred_strategy"
-                )
+                raise ValidationError("PREFER_STRATEGY requires preferred_strategy")
         elif self.preferred_strategy is not None:
             raise ValidationError(
                 "preferred_strategy is only valid for PREFER_STRATEGY"
             )
-
-
-def _payload(raw: object, expected_type: type, field_name: str) -> dict:
-    if isinstance(raw, expected_type):
-        return copy.deepcopy(raw.model_dump())
-    if isinstance(raw, dict):
-        return copy.deepcopy(raw)
-    raise ValidationError(
-        f"{field_name} must be a {expected_type.__name__} or serialized mapping"
-    )
-
-
-def _canonical_metacognition(raw: object, field_name: str) -> MetacognitionRequest:
-    return MetacognitionRequest(**_payload(raw, MetacognitionRequest, field_name))
-
-
-def _canonical_strategy_trial(raw: object) -> StrategyTrial:
-    data = _payload(raw, StrategyTrial, "trials")
-    before = _canonical_metacognition(data.pop("before_request", None), "before_request")
-    after = _canonical_metacognition(data.pop("after_request", None), "after_request")
-    return StrategyTrial(**data, before_request=before, after_request=after)
-
-
-def _canonical_request(raw: object) -> MetaLearningRequest:
-    if not isinstance(raw, MetaLearningRequest):
-        raise ValidationError("request must be a MetaLearningRequest")
-    data = copy.deepcopy(raw.model_dump())
-    raw_trials = data.pop("trials", [])
-    if not isinstance(raw_trials, list):
-        raise ValidationError("trials must be a list of StrategyTrial")
-    trials = [_canonical_strategy_trial(item) for item in raw_trials]
-    return MetaLearningRequest(**data, trials=trials)
 
 
 _STATE_SEVERITY = {
@@ -277,6 +237,47 @@ def _unresolved_count(decision: MetacognitionDecision) -> int:
     )
 
 
+def _canonical_metacognition_request(request: MetacognitionRequest) -> MetacognitionRequest:
+    if not isinstance(request, MetacognitionRequest):
+        raise ValidationError("trial requests must be MetacognitionRequest objects")
+    return MetacognitionRequest(**copy.deepcopy(request.model_dump()))
+
+
+def _canonical_strategy_trial(trial: StrategyTrial) -> StrategyTrial:
+    if not isinstance(trial, StrategyTrial):
+        raise ValidationError("trials must contain only StrategyTrial items")
+    original_snapshot = getattr(trial, "_semantic_snapshot", None)
+    current_snapshot = copy.deepcopy(trial.model_dump())
+    if original_snapshot is None or current_snapshot != original_snapshot:
+        raise ValidationError("strategy trial semantic state changed after validation")
+    return StrategyTrial(
+        trial_id=trial.trial_id,
+        problem_family_id=trial.problem_family_id,
+        strategy=trial.strategy,
+        before_request=_canonical_metacognition_request(trial.before_request),
+        after_request=_canonical_metacognition_request(trial.after_request),
+    )
+
+
+def _canonical_meta_learning_request(request: MetaLearningRequest) -> MetaLearningRequest:
+    """Revalidate immutable policy evidence before it can update strategy authority."""
+
+    if not isinstance(request, MetaLearningRequest):
+        raise ValidationError("request must be a MetaLearningRequest")
+    if not isinstance(request.trials, list):
+        raise ValidationError("trials must be a list of StrategyTrial")
+    original_snapshot = getattr(request, "_semantic_snapshot", None)
+    current_snapshot = copy.deepcopy(request.model_dump())
+    if original_snapshot is None or current_snapshot != original_snapshot:
+        raise ValidationError("meta-learning request semantic state changed after validation")
+    return MetaLearningRequest(
+        assessment_id=request.assessment_id,
+        problem_family_id=request.problem_family_id,
+        policy_owner_agent=request.policy_owner_agent,
+        trials=[_canonical_strategy_trial(trial) for trial in request.trials],
+    )
+
+
 def _trial_effect(trial: StrategyTrial) -> TrialEffect:
     before = assess_metacognition(trial.before_request)
     after = assess_metacognition(trial.after_request)
@@ -292,7 +293,7 @@ def _trial_effect(trial: StrategyTrial) -> TrialEffect:
 def evaluate_meta_learning(request: MetaLearningRequest) -> MetaLearningDecision:
     """Evaluate which learning strategy reduces uncertainty most reliably."""
 
-    request = _canonical_request(request)
+    request = _canonical_meta_learning_request(request)
 
     counts: Dict[LearningStrategy, Dict[TrialEffect, int]] = {}
     for trial in request.trials:
