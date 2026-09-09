@@ -7,17 +7,29 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: model-gateway-delayed-precontent-error-fallback-v1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-and-verify:
-    name: Ubuntu Python 3.12 apply minimal fix and verify
+  focused-regression:
+    name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: causal-delayed-precontent-fallback
+            module: tests.test_model_gateway_stream_delayed_precontent_error_fallback_v1
+          - label: model-streaming
+            module: tests.test_prod_model_streaming_01
+          - label: structured-provider-stream-error
+            module: tests.test_prod_structured_provider_stream_error_01
+          - label: provider-registry
+            module: tests.test_prod_model_gateway_01_provider_registry
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -40,6 +52,7 @@ jobs:
         run: |
           echo "github_sha=${{ github.sha }}"
           echo "github_ref=${{ github.ref }}"
+          echo "module=${{ matrix.module }}"
           python --version
           git rev-parse HEAD
 
@@ -49,115 +62,75 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Apply minimal delayed-precontent fallback patch
+      - name: Compile model and regression sources
         run: |
-          python - <<'PY'
-          from pathlib import Path
+          python -m compileall -q integrations/models tests/test_model_gateway_stream_delayed_precontent_error_fallback_v1.py
 
-          path = Path("integrations/models/gateway.py")
-          lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+      - name: Run focused regression — ${{ matrix.label }}
+        run: python -m unittest -v ${{ matrix.module }}
 
-          marker = "candidate_fallback_error: Optional[ModelStreamError] = None"
-          if any(marker in line for line in lines):
-              print("Production fix already present; no patch needed.")
-              raise SystemExit(0)
+      - name: Verify clean checkout after tests
+        if: always()
+        run: git diff --exit-code
 
-          state_idx = next(
-              i for i in range(1, len(lines))
-              if lines[i].strip() == "candidate_terminal_seen = False"
-              and lines[i - 1].strip() == "candidate_visible_content = False"
-          )
-          state_indent = lines[state_idx][: len(lines[state_idx]) - len(lines[state_idx].lstrip())]
-          lines.insert(state_idx + 1, f"{state_indent}{marker}\n")
+  full-hermetic-windows:
+    name: Windows Python 3.12 full hermetic discovery
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-          stream_idx = next(i for i, line in enumerate(lines) if line.strip() == "for delta in stream_gen:")
-          error_idx = next(
-              i for i in range(stream_idx + 1, len(lines))
-              if lines[i].strip() == 'if delta.finish_reason == "error":'
-          )
-          error_indent = lines[error_idx][: len(lines[error_idx]) - len(lines[error_idx].lstrip())]
-          else_idx = next(
-              i for i in range(error_idx + 1, len(lines))
-              if lines[i].strip() == "else:"
-              and lines[i].startswith(error_indent)
-              and len(lines[i]) - len(lines[i].lstrip()) == len(error_indent)
-          )
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-          I = error_indent
-          J = I + "    "
-          K = J + "    "
-          L = K + "    "
-          replacement = [
-              f'{I}if delta.finish_reason == "error":\n',
-              f"{J}cand_err = normalize_public_stream_error(delta.error, default_provider=cand_provider)\n",
-              f"{J}if not candidate_visible_content:\n",
-              f"{K}last_error = cand_err\n",
-              f"{K}last_error_provider = cand_provider\n",
-              f"{K}last_error_model = cand_model\n",
-              f"{K}internal_code = stream_error_to_provider_error_code(cand_err)\n",
-              f"{K}self.config_service.record_error(cand_provider, internal_code)\n",
-              f"{K}if internal_code == ProviderErrorCode.RATE_LIMIT_429:\n",
-              f"{L}self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)\n",
-              f"{K}elif internal_code == ProviderErrorCode.AUTH_401:\n",
-              f"{L}self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)\n",
-              f"{K}elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):\n",
-              f"{L}self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)\n",
-              f"{K}if strict_model_pin or len(candidates) == 1:\n",
-              f"{L}yield normalize_public_stream_delta(delta, cand_provider, cand_model)\n",
-              f"{L}return\n",
-              f"{K}candidate_fallback_error = cand_err\n",
-              f"{K}break\n",
-              f"{J}if delta.content:\n",
-              f"{K}yield normalize_public_stream_delta(\n",
-              f"{L}StreamDelta(content=delta.content, finish_reason=None),\n",
-              f"{L}cand_provider,\n",
-              f"{L}cand_model,\n",
-              f"{K})\n",
-              f"{J}yield normalize_public_stream_delta(\n",
-              f"{K}StreamDelta(\n",
-              f'{L}content="",\n',
-              f'{L}finish_reason="error",\n',
-              f"{L}error=cand_err,\n",
-              f"{K}),\n",
-              f"{K}cand_provider,\n",
-              f"{K}cand_model,\n",
-              f"{J})\n",
-              f"{J}return\n",
-          ]
-          lines[error_idx:else_idx] = replacement
-
-          eof_idx = next(
-              i for i in range(stream_idx + 1, len(lines))
-              if "# 6. Generator finished. Check if candidate finished without a terminal delta" in lines[i]
-          )
-          eof_indent = lines[eof_idx][: len(lines[eof_idx]) - len(lines[eof_idx].lstrip())]
-          lines[eof_idx:eof_idx] = [
-              f"{eof_indent}if candidate_fallback_error is not None:\n",
-              f"{eof_indent}    continue\n",
-              "\n",
-          ]
-
-          path.write_text("".join(lines), encoding="utf-8")
-          print("Applied delayed pre-content stream error fallback patch.")
-          PY
-
-      - name: Compile causal sources
-        run: python -m compileall -q integrations/models tests/test_model_gateway_stream_delayed_precontent_error_fallback_v1.py
-
-      - name: Run causal regression
-        run: python -m unittest -v tests.test_model_gateway_stream_delayed_precontent_error_fallback_v1
-
-      - name: Show production diff
-        run: git diff -- integrations/models/gateway.py
-
-      - name: Commit production fix when needed
+      - name: Record exact-head identity
+        shell: pwsh
         run: |
-          if git diff --quiet -- integrations/models/gateway.py; then
-            echo "Production fix already present on this exact head."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/models/gateway.py
-          git commit -m "fix(models): fallback after delayed precontent stream error"
-          git push origin HEAD:${GITHUB_REF_NAME}
+          "github_sha=${{ github.sha }}"
+          "github_ref=${{ github.ref }}"
+          python --version
+          git rev-parse HEAD
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          $outputFile = Join-Path $env:RUNNER_TEMP "full-hermetic-unittest.log"
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath $outputFile
+          $testExit = $LASTEXITCODE
+          Get-Content $outputFile |
+            Select-String -Pattern '^Ran \d+ tests', '^OK(?: \(skipped=\d+\))?$' |
+            ForEach-Object { Write-Host "CANONICAL_TEST_SUMMARY=$($_.Line)" }
+          if ($testExit -ne 0) { exit $testExit }
+
+      - name: Verify clean checkout after tests
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
