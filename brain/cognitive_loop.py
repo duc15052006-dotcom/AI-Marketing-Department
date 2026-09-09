@@ -311,6 +311,22 @@ def _reflection_scrutiny(
     return sorted(research_targets), sorted(decision_targets)
 
 
+def _validate_reflection_decision_provenance(
+    request: CognitiveCycleRequest,
+) -> None:
+    decisions = {decision.decision_id: decision for decision in request.decisions}
+    for report in request.reflection_reports:
+        decision = decisions.get(report.decision_id)
+        if decision is None:
+            raise ValidationError(
+                f"reflection_report '{report.reflection_id}' references unknown decision"
+            )
+        if report.agent_id != decision.agent_id:
+            raise ValidationError(
+                f"reflection_report '{report.reflection_id}' agent_id must match its decision"
+            )
+
+
 def _validate_action_decision_provenance(
     request: CognitiveCycleRequest,
 ) -> Dict[str, DecisionRecord]:
@@ -344,6 +360,7 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
     """Derive exactly one next semantic phase without performing external effects."""
 
     request = _canonical_request(raw_request)
+    _validate_reflection_decision_provenance(request)
 
     if request.goal.status == GoalStatus.BLOCKED:
         return _result(
