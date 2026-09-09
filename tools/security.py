@@ -554,6 +554,14 @@ class PolicyEngine:
                 )
 
             # Check run_id match (if bound in record)
+            if record.run_id and not run_id:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_RUN_SCOPE_REQUIRED",
+                    reason=f"APPROVAL_RUN_SCOPE_REQUIRED: Approval is bound to run '{record.run_id}', but the request has no run scope.",
+                )
+
             if record.run_id and run_id and record.run_id != run_id:
                 return PolicyDecision(
                     allowed=False,
