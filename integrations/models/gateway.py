@@ -744,6 +744,19 @@ class UniversalModelGateway:
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
 
+            # The gateway deadline remains authoritative even if an adapter
+            # ignores its delegated timeout and returns after the budget.
+            if (time.perf_counter() - start_time) >= total_timeout:
+                return ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider=cand_provider,
+                    model_name=cand_model,
+                    status=ModelResponseStatus.TIMEOUT,
+                    error="TIMEOUT: Provider result arrived after the total gateway timeout budget.",
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
+
             # Record fallback and resolution metadata
             resp.metadata["resolved_provider"] = cand_provider
             resp.metadata["resolved_model"] = cand_model
@@ -1080,6 +1093,27 @@ class UniversalModelGateway:
                 stream_gen = adapter.generate_stream(req_copy)
                 first_delta = next(stream_gen, None)
 
+                if (time.perf_counter() - start_time) >= total_timeout:
+                    close_stream = getattr(stream_gen, "close", None)
+                    if callable(close_stream):
+                        close_stream()
+                    yield normalize_public_stream_delta(
+                        StreamDelta(
+                            content="",
+                            finish_reason="error",
+                            error=ModelStreamError(
+                                code="TIMEOUT",
+                                category="TIMEOUT",
+                                safe_message="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.",
+                                retryable=False,
+                                http_status=408,
+                            ),
+                        ),
+                        cand_provider,
+                        cand_model,
+                    )
+                    return
+
                 if first_delta is None:
                     err = ModelStreamError(
                         code="STREAM_TRUNCATED",
@@ -1104,6 +1138,23 @@ class UniversalModelGateway:
                 if first_delta.finish_reason == "stream_unsupported" and first_delta.content == "" and not candidate_visible_content:
                     try:
                         sync_resp = adapter.generate(req_copy)
+                        if (time.perf_counter() - start_time) >= total_timeout:
+                            yield normalize_public_stream_delta(
+                                StreamDelta(
+                                    content="",
+                                    finish_reason="error",
+                                    error=ModelStreamError(
+                                        code="TIMEOUT",
+                                        category="TIMEOUT",
+                                        safe_message="TIMEOUT: Provider fallback result arrived after the total gateway timeout budget.",
+                                        retryable=False,
+                                        http_status=408,
+                                    ),
+                                ),
+                                cand_provider,
+                                cand_model,
+                            )
+                            return
                         if sync_resp.status == ModelResponseStatus.SUCCESS:
                             if sync_resp.finish_reason == "error":
                                 sync_err = ModelStreamError(
@@ -1273,6 +1324,26 @@ class UniversalModelGateway:
 
                 # 5. Process remaining deltas from stream_gen
                 for delta in stream_gen:
+                    if (time.perf_counter() - start_time) >= total_timeout:
+                        close_stream = getattr(stream_gen, "close", None)
+                        if callable(close_stream):
+                            close_stream()
+                        yield normalize_public_stream_delta(
+                            StreamDelta(
+                                content="",
+                                finish_reason="error",
+                                error=ModelStreamError(
+                                    code="TIMEOUT",
+                                    category="TIMEOUT",
+                                    safe_message="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.",
+                                    retryable=False,
+                                    http_status=408,
+                                ),
+                            ),
+                            cand_provider,
+                            cand_model,
+                        )
+                        return
                     if delta.content:
                         candidate_visible_content = True
                         has_emitted_visible_content = True
