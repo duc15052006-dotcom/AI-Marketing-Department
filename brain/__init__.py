@@ -90,6 +90,12 @@ from brain.learning import (
     LearningMethod,
     analyze_learning_episode,
 )
+from brain.learning_consolidation import (
+    LearningConsolidation,
+    LearningConsolidationRequest,
+    LearningRunRecord,
+    consolidate_learning,
+)
 from brain.meta_learning import (
     MetaLearningDecision,
     MetaLearningDisposition,
@@ -213,10 +219,13 @@ __all__ = [
     "KnowledgeRelationView",
     "KnowledgeState",
     "LearningClaimKind",
+    "LearningConsolidation",
+    "LearningConsolidationRequest",
     "LearningDecision",
     "LearningDisposition",
     "LearningEpisode",
     "LearningMethod",
+    "LearningRunRecord",
     "LearningStrategy",
     "MetaLearningDecision",
     "MetaLearningDisposition",
@@ -269,6 +278,7 @@ __all__ = [
     "build_temporal_causal_world_model",
     "build_world_state",
     "compare_counterfactuals",
+    "consolidate_learning",
     "derive_cognitive_cycle",
     "derive_knowledge_gaps",
     "design_experiments",
