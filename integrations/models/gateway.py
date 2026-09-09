@@ -1076,6 +1076,31 @@ class UniversalModelGateway:
 
                 # 1. Check for stream_unsupported degradation
                 if first_delta.finish_reason == "stream_unsupported" and first_delta.content == "" and not candidate_visible_content:
+                    degradation_remaining_timeout = total_timeout - (time.perf_counter() - start_time)
+                    if degradation_remaining_timeout <= 0.001:
+                        timeout_err = ModelStreamError(
+                            code="TIMEOUT",
+                            category="TIMEOUT",
+                            safe_message=f"TIMEOUT: Gateway timeout budget exhausted before synchronous degradation for '{cand_provider}'.",
+                            retryable=True,
+                            http_status=408,
+                        )
+                        last_error = timeout_err
+                        last_error_provider = cand_provider
+                        last_error_model = cand_model
+                        if strict_model_pin or len(candidates) == 1:
+                            yield normalize_public_stream_delta(
+                                StreamDelta(content="", finish_reason="error", error=timeout_err),
+                                cand_provider,
+                                cand_model,
+                            )
+                            return
+                        continue
+
+                    req_copy.timeout_seconds = max(
+                        min(float(req_copy.timeout_seconds), degradation_remaining_timeout),
+                        0.001,
+                    )
                     try:
                         sync_resp = adapter.generate(req_copy)
                         if sync_resp.status == ModelResponseStatus.SUCCESS:
