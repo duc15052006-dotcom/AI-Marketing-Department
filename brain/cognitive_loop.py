@@ -452,13 +452,12 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
             ],
         )
 
-    decisions = _validate_action_decision_provenance(request)
-    blocked_decisions = sorted(
+    non_proceeding = sorted(
         decision.decision_id
         for decision in request.decisions
         if decision.disposition != DecisionDisposition.PROCEED
     )
-    if blocked_decisions:
+    if non_proceeding:
         return _result(
             request,
             CognitivePhase.DECISION,
@@ -466,58 +465,36 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
                 _directive(
                     request,
                     CognitiveDirectiveKind.REVISE_DECISION,
-                    blocked_decisions,
-                    "One or more canonical decisions do not authorize semantic action preparation.",
+                    non_proceeding,
+                    "Non-PROCEED decisions cannot support action preparation.",
                 )
             ],
         )
 
-    if not request.action_intents:
-        return _result(
-            request,
-            CognitivePhase.DECISION,
-            [
-                _directive(
-                    request,
-                    CognitiveDirectiveKind.MAKE_DECISION,
-                    [decision.decision_id for decision in request.decisions],
-                    "Proceed decisions exist but no canonical action intent has been defined.",
-                )
-            ],
-        )
-
-    intent_ids = {intent.intent_id for intent in request.action_intents}
-    validate_plan_action_intent_bindings(request.plan, request.action_intents)
+    _validate_action_decision_provenance(request)
     validate_plan_evidence_need_bindings(request.plan, request.evidence_needs)
+    validate_plan_action_intent_bindings(request.plan, request.action_intents)
+
     ready_steps = set(ready_step_ids(request.plan))
-    ready_intents = sorted(
-        intent_id
-        for step in request.plan.steps
-        if step.step_id in ready_steps
-        for intent_id in step.action_intent_ids
-        if intent_id in intent_ids
-    )
-    if not ready_intents:
+    ready_intent_ids: List[str] = []
+    for step in request.plan.steps:
+        if step.step_id not in ready_steps:
+            continue
+        ready_intent_ids.extend(step.action_intent_ids)
+
+    if not ready_intent_ids:
         return _result(
             request,
-            CognitivePhase.PLANNING,
+            CognitivePhase.REPLANNING,
             [
                 _directive(
                     request,
-                    CognitiveDirectiveKind.BUILD_PLAN,
+                    CognitiveDirectiveKind.REPLAN,
                     [request.plan.plan_id],
-                    "No active plan step is ready to expose a prepared semantic action.",
+                    "The active plan has no ready semantic action path.",
                 )
             ],
         )
-
-    for intent_id in ready_intents:
-        intent = next(item for item in request.action_intents if item.intent_id == intent_id)
-        decision = decisions[intent.decision_id]
-        if decision.disposition != DecisionDisposition.PROCEED:
-            raise ValidationError(
-                f"ready action intent '{intent_id}' is not backed by a proceed decision"
-            )
 
     return _result(
         request,
@@ -526,9 +503,9 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
             _directive(
                 request,
                 CognitiveDirectiveKind.PREPARE_ACTION,
-                ready_intents,
-                "Canonical plan, decision provenance, and action-intent bindings are ready for a later trusted execution boundary.",
+                ready_intent_ids,
+                "Canonical plan and decision provenance support semantic action preparation.",
             )
         ],
-        action_intent_ids=ready_intents,
+        action_intent_ids=ready_intent_ids,
     )
