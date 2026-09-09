@@ -339,6 +339,25 @@ class ToolGateway:
                 )
             )
 
+        availability = str(cap.availability or "AVAILABLE").strip().upper()
+        if availability == "UNAVAILABLE":
+            return self.receipt_repository.save_receipt(
+                self._error_receipt(
+                    request,
+                    provider=cap.provider,
+                    request_hash=req_hash,
+                    started_at=start_time,
+                    status=ExecutionStatus.ERROR,
+                    error_class="CAPABILITY_UNAVAILABLE",
+                    error_message=(
+                        f"Capability '{request.capability_id}' is marked "
+                        "UNAVAILABLE and cannot be dispatched."
+                    ),
+                    business_id=effective_business_id,
+                    project_id=effective_project_id,
+                )
+            )
+
         # 2. Permanent Five-Agent Identity Gate
         # Preserve the established ToolGateway identity contract before asking
         # the Brain to authorize an action. Unknown identities never reach the
