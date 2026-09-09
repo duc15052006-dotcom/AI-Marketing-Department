@@ -185,6 +185,51 @@ class BrainMetaLearningPolicyV1Tests(unittest.TestCase):
                 after_request=self._request("A-NONE", 0),
             )
 
+    def test_post_construction_request_scope_mutation_fails_closed(self) -> None:
+        request = MetaLearningRequest(
+            assessment_id="ML-MUT-SCOPE",
+            problem_family_id="PF-MARKET-RESEARCH",
+            policy_owner_agent=BrainAgentId.CMO,
+            trials=[
+                self._trial("M-1", LearningStrategy.RESEARCH, 2, 0),
+                self._trial("M-2", LearningStrategy.RESEARCH, 1, 0),
+                self._trial("M-3", LearningStrategy.RESEARCH, 3, 1),
+            ],
+        )
+        request.problem_family_id = "PF-MUTATED"
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_post_construction_trial_scope_mutation_fails_closed(self) -> None:
+        request = MetaLearningRequest(
+            assessment_id="ML-MUT-TRIAL-SCOPE",
+            problem_family_id="PF-MARKET-RESEARCH",
+            policy_owner_agent=BrainAgentId.CMO,
+            trials=[
+                self._trial("S-1", LearningStrategy.RESEARCH, 2, 0),
+                self._trial("S-2", LearningStrategy.RESEARCH, 1, 0),
+                self._trial("S-3", LearningStrategy.RESEARCH, 3, 1),
+            ],
+        )
+        request.trials[0].problem_family_id = "PF-MUTATED"
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_post_construction_duplicate_trial_id_mutation_fails_closed(self) -> None:
+        request = MetaLearningRequest(
+            assessment_id="ML-MUT-DUPLICATE",
+            problem_family_id="PF-MARKET-RESEARCH",
+            policy_owner_agent=BrainAgentId.CMO,
+            trials=[
+                self._trial("D-1", LearningStrategy.RESEARCH, 2, 0),
+                self._trial("D-2", LearningStrategy.RESEARCH, 1, 0),
+                self._trial("D-3", LearningStrategy.RESEARCH, 3, 1),
+            ],
+        )
+        request.trials[1].trial_id = request.trials[0].trial_id
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
 
 if __name__ == "__main__":
     unittest.main()
