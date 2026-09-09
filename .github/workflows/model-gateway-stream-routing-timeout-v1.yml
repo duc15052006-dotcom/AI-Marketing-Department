@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   apply-production-fix:
-    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci(models): apply stream routing timeout fix')
+    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci(models) apply stream routing timeout fix')
     name: Apply minimal stream-routing deadline fix
     runs-on: ubuntu-latest
     steps:
@@ -63,7 +63,7 @@ jobs:
           git push origin HEAD:test/model-gateway-stream-routing-timeout-v1
 
   focused-regression:
-    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'ci(models): apply stream routing timeout fix')
+    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'ci(models) apply stream routing timeout fix')
     name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
