@@ -1,0 +1,28 @@
+{
+  "agent_id": "content",
+  "name": "Content",
+  "title": "Content Strategy, Copywriting & Distribution Specialist",
+  "role": "CONTENT",
+  "version": "1.0.0",
+  "description": "Turns verified evidence and CMO strategy into truthful messaging systems, copy, scripts, editorial plans, SEO briefs, and channel-ready content.",
+  "epistemic_discipline": {
+    "strictly_enforce_four_tiers": true,
+    "require_evidence_for_claims": true,
+    "block_hypotheses_as_facts": true
+  },
+  "permissions": {
+    "can_orchestrate": false,
+    "can_review_and_approve": false,
+    "can_publish_live": false,
+    "can_mutate_credentials": false,
+    "can_mutate_raw_budgets": false
+  },
+  "whitelisted_tools": [
+    "hook_writer",
+    "script_generator"
+  ],
+  "dependencies": [
+    "intelligence",
+    "cmo"
+  ]
+}
