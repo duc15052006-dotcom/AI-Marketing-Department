@@ -1048,6 +1048,7 @@ class UniversalModelGateway:
             # 5. Execute Streaming with Fallback Semantics
             candidate_visible_content = False
             candidate_terminal_seen = False
+            candidate_fallback_error: Optional[ModelStreamError] = None
 
             try:
                 stream_gen = adapter.generate_stream(req_copy)
@@ -1253,6 +1254,24 @@ class UniversalModelGateway:
                     if delta.finish_reason:
                         candidate_terminal_seen = True
                         if delta.finish_reason == "error":
+                            cand_err = normalize_public_stream_error(delta.error, default_provider=cand_provider)
+                            if not candidate_visible_content:
+                                last_error = cand_err
+                                last_error_provider = cand_provider
+                                last_error_model = cand_model
+                                internal_code = stream_error_to_provider_error_code(cand_err)
+                                self.config_service.record_error(cand_provider, internal_code)
+                                if internal_code == ProviderErrorCode.RATE_LIMIT_429:
+                                    self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
+                                elif internal_code == ProviderErrorCode.AUTH_401:
+                                    self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                                elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
+                                if strict_model_pin or len(candidates) == 1:
+                                    yield normalize_public_stream_delta(delta, cand_provider, cand_model)
+                                    return
+                                candidate_fallback_error = cand_err
+                                break
                             if delta.content:
                                 yield normalize_public_stream_delta(
                                     StreamDelta(content=delta.content, finish_reason=None),
@@ -1263,7 +1282,7 @@ class UniversalModelGateway:
                                 StreamDelta(
                                     content="",
                                     finish_reason="error",
-                                    error=normalize_public_stream_error(delta.error, default_provider=cand_provider),
+                                    error=cand_err,
                                 ),
                                 cand_provider,
                                 cand_model,
@@ -1274,6 +1293,9 @@ class UniversalModelGateway:
                             return
                     else:
                         yield normalize_public_stream_delta(delta, cand_provider, cand_model)
+
+                if candidate_fallback_error is not None:
+                    continue
 
                 # 6. Generator finished. Check if candidate finished without a terminal delta (Silent EOF)!
                 if not candidate_terminal_seen:
