@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   apply-production-fix:
-    if: github.event_name == 'push' && github.event.head_commit.message == 'ci(models): apply initial timeout fix'
+    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci(models) apply initial timeout fix')
     name: Apply minimal gateway deadline fix
     runs-on: ubuntu-latest
     steps:
