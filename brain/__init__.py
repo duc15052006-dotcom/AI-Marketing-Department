@@ -143,6 +143,14 @@ from brain.reflection import (
     ReflectionFindingKind,
     reflect_on_decision,
 )
+from brain.safe_self_improvement import (
+    LearningPolicySnapshot,
+    LearningStrategyChangeProposal,
+    SafeSelfImprovementDecision,
+    SafeSelfImprovementDisposition,
+    SafeSelfImprovementRequest,
+    propose_safe_self_improvement,
+)
 from brain.temporal_world_model import (
     BeliefTransition,
     CausalLink,
@@ -225,8 +233,10 @@ __all__ = [
     "LearningDisposition",
     "LearningEpisode",
     "LearningMethod",
+    "LearningPolicySnapshot",
     "LearningRunRecord",
     "LearningStrategy",
+    "LearningStrategyChangeProposal",
     "MetaLearningDecision",
     "MetaLearningDisposition",
     "MetaLearningRequest",
@@ -251,6 +261,9 @@ __all__ = [
     "ResearchRecommendation",
     "Reversibility",
     "RevisionTrigger",
+    "SafeSelfImprovementDecision",
+    "SafeSelfImprovementDisposition",
+    "SafeSelfImprovementRequest",
     "ScenarioPredictionView",
     "SignalLevel",
     "StopDecision",
@@ -284,6 +297,7 @@ __all__ = [
     "design_experiments",
     "evaluate_meta_learning",
     "prioritize_research_agenda",
+    "propose_safe_self_improvement",
     "ready_step_ids",
     "reflect_on_decision",
     "select_reasoning_depth",
