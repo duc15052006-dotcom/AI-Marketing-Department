@@ -177,6 +177,34 @@ class UnifiedCognitiveLoopV1Tests(unittest.TestCase):
         self.assertFalse(hasattr(cycle, "provider_id"))
         self.assertFalse(hasattr(cycle, "tool_id"))
 
+    def test_blocked_goal_routes_to_replanning_without_action_authority(self):
+        cycle = derive_cognitive_cycle(
+            self.request(goal=self.goal(status=GoalStatus.BLOCKED))
+        )
+        self.assertEqual(cycle.phase, CognitivePhase.REPLANNING)
+        self.assertEqual(
+            [directive.kind for directive in cycle.directives],
+            [CognitiveDirectiveKind.REPLAN],
+        )
+        self.assertEqual(cycle.directives[0].target_ids, ["goal-1"])
+        self.assertEqual(cycle.action_intent_ids, [])
+        self.assertNotIn(
+            CognitiveDirectiveKind.PREPARE_ACTION,
+            [directive.kind for directive in cycle.directives],
+        )
+
+    def test_post_construction_goal_status_mutation_to_blocked_fails_closed(self):
+        req = self.request()
+        req.goal.status = GoalStatus.BLOCKED
+        cycle = derive_cognitive_cycle(req)
+        self.assertEqual(cycle.phase, CognitivePhase.REPLANNING)
+        self.assertEqual(
+            [directive.kind for directive in cycle.directives],
+            [CognitiveDirectiveKind.REPLAN],
+        )
+        self.assertEqual(cycle.directives[0].target_ids, ["goal-1"])
+        self.assertEqual(cycle.action_intent_ids, [])
+
     def test_satisfied_goal_stops_without_action_authority(self):
         cycle = derive_cognitive_cycle(self.request(
             goal=self.goal(status=GoalStatus.SATISFIED),
