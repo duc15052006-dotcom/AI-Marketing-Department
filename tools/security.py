@@ -186,7 +186,6 @@ class PolicyEngine:
         expires_at = datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=timezone.utc).isoformat()
 
         with self._lock:
-            # Check for existing active PENDING record with identical fingerprint and run
             for existing in self._pending_approvals.values():
                 if (
                     existing.status == PendingApprovalStatus.PENDING
@@ -194,7 +193,6 @@ class PolicyEngine:
                     and existing.run_id == run_id
                     and existing.request_fingerprint == fp
                 ):
-                    # Check if expired
                     if existing.expires_at:
                         try:
                             exp_dt = datetime.fromisoformat(existing.expires_at)
@@ -226,7 +224,6 @@ class PolicyEngine:
             return record
 
     def get_pending_approval(self, pending_approval_id: str) -> Optional[PendingApprovalRecord]:
-        """Retrieve a pending approval record by ID."""
         with self._lock:
             return self._pending_approvals.get(pending_approval_id)
 
@@ -235,12 +232,10 @@ class PolicyEngine:
         run_id: Optional[str] = None,
         status: Optional[PendingApprovalStatus] = None,
     ) -> List[PendingApprovalRecord]:
-        """List all pending approval records matching optional run_id or status filters."""
         now = datetime.now(timezone.utc)
         with self._lock:
             results = []
             for p in self._pending_approvals.values():
-                # Auto-expire if past expiry date
                 if p.status == PendingApprovalStatus.PENDING and p.expires_at:
                     try:
                         exp_dt = datetime.fromisoformat(p.expires_at)
@@ -250,7 +245,6 @@ class PolicyEngine:
                             p.status = PendingApprovalStatus.EXPIRED
                     except Exception:
                         pass
-
                 if run_id and p.run_id != run_id:
                     continue
                 if status and p.status != status:
@@ -264,14 +258,11 @@ class PolicyEngine:
         approved_by: str = "Human Operator",
         decision_metadata: Optional[Dict[str, Any]] = None,
     ) -> Tuple[bool, Optional[HumanApprovalRecord], str]:
-        """Explicitly approve a server-originated pending action, issuing a one-shot execution authority."""
         now = datetime.now(timezone.utc)
         with self._lock:
             rec = self._pending_approvals.get(pending_approval_id)
             if not rec:
                 return False, None, "PENDING_ACTION_NOT_FOUND"
-
-            # Check expiration
             if rec.expires_at:
                 try:
                     exp_dt = datetime.fromisoformat(rec.expires_at)
@@ -282,17 +273,11 @@ class PolicyEngine:
                         return False, None, "PENDING_ACTION_EXPIRED"
                 except Exception as ex:
                     return False, None, f"CORRUPT_EXPIRY: {ex}"
-
-            # Check current status
             if rec.status != PendingApprovalStatus.PENDING:
                 return False, None, f"INVALID_STATUS_{rec.status.value}"
-
-            # Transition state
             rec.status = PendingApprovalStatus.APPROVED
             rec.approved_by = approved_by
             rec.approved_at = now.isoformat()
-
-            # Issue cryptographic one-shot execution authority
             token = f"appr_{secrets.token_urlsafe(32)}"
             ttl_sec = 300
             if rec.expires_at:
@@ -303,7 +288,6 @@ class PolicyEngine:
                     ttl_sec = max(10, int((exp_dt - now).total_seconds()))
                 except Exception:
                     pass
-
             approval_record = HumanApprovalRecord(
                 approval_token=token,
                 action_type=rec.capability_id,
@@ -330,21 +314,17 @@ class PolicyEngine:
         pending_approval_id: str,
         reason: str = "Rejected by human operator",
     ) -> Tuple[bool, str]:
-        """Explicitly reject a server-originated pending action."""
         with self._lock:
             rec = self._pending_approvals.get(pending_approval_id)
             if not rec:
                 return False, "PENDING_ACTION_NOT_FOUND"
-
             if rec.status != PendingApprovalStatus.PENDING:
                 return False, f"INVALID_STATUS_{rec.status.value}"
-
             rec.status = PendingApprovalStatus.REJECTED
             rec.decision_reason = reason
             return True, "REJECTED"
 
     def register_approval(self, approval: HumanApprovalRecord) -> None:
-        """Register a human approval record."""
         if not approval.capability_id and approval.action_type:
             approval.capability_id = approval.action_type
         if not approval.action_type and approval.capability_id:
@@ -364,7 +344,6 @@ class PolicyEngine:
         risk_level: RiskLevel = RiskLevel.CRITICAL,
         scope: str = "",
     ) -> HumanApprovalRecord:
-        """Issue a cryptographically secure, server-generated human approval record (>=256 bits entropy)."""
         token = f"appr_{secrets.token_urlsafe(32)}"
         now = datetime.now(timezone.utc)
         expires_at = datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=timezone.utc).isoformat()
@@ -398,12 +377,10 @@ class PolicyEngine:
         return record
 
     def revoke_approval(self, approval_token: str) -> None:
-        """Revoke a human approval token."""
         with self._lock:
             self._approved_tokens.pop(approval_token, None)
 
     def claim_approval(self, approval_token: Optional[str]) -> bool:
-        """Atomically claim an approval token BEFORE consequential connector dispatch (one-shot)."""
         if not approval_token:
             return False
         with self._lock:
@@ -417,7 +394,6 @@ class PolicyEngine:
             return True
 
     def consume_approval(self, approval_token: Optional[str]) -> bool:
-        """Finalize consumption of an approval token after consequential dispatch."""
         if not approval_token:
             return False
         with self._lock:
@@ -443,48 +419,25 @@ class PolicyEngine:
         parameters: Optional[Dict[str, Any]] = None,
         project_id: Optional[str] = None,
     ) -> PolicyDecision:
-        """Evaluate if an agent is authorized to execute a capability."""
         try:
             request_project_scope = _canonical_project_scope(project_id)
         except ValueError as exc:
-            return PolicyDecision(
-                allowed=False,
-                error_code="PROJECT_SCOPE_INVALID",
-                reason=str(exc),
-            )
+            return PolicyDecision(allowed=False, error_code="PROJECT_SCOPE_INVALID", reason=str(exc))
 
         aid = agent_id.lower()
-
-        # 1. Agent Role Recognition Gate
         if aid not in self._agent_permissions:
-            return PolicyDecision(
-                allowed=False,
-                error_code="UNRECOGNIZED_AGENT",
-                reason=f"UNRECOGNIZED_AGENT: Agent '{agent_id}' is not an authorized member of the Five-Agent Department.",
-            )
+            return PolicyDecision(allowed=False, error_code="UNRECOGNIZED_AGENT", reason=f"UNRECOGNIZED_AGENT: Agent '{agent_id}' is not an authorized member of the Five-Agent Department.")
 
-        # 2. RBAC Permission Level Check
         agent_perms = self._agent_permissions[aid]
         missing = [p.value for p in capability.required_permissions if p not in agent_perms]
         if missing:
-            return PolicyDecision(
-                allowed=False,
-                error_code="PERMISSION_DENIED",
-                missing_permissions=missing,
-                reason=f"PERMISSION_DENIED: Agent '{agent_id}' lacks required permissions: {', '.join(missing)}.",
-            )
+            return PolicyDecision(allowed=False, error_code="PERMISSION_DENIED", missing_permissions=missing, reason=f"PERMISSION_DENIED: Agent '{agent_id}' lacks required permissions: {', '.join(missing)}.")
 
-        # 3. Supported Agents Check on Descriptor
         if capability.supported_agents:
             allowed_agents = [sa.lower() for sa in capability.supported_agents]
             if "all" not in allowed_agents and aid not in allowed_agents:
-                return PolicyDecision(
-                    allowed=False,
-                    error_code="ROLE_NOT_SUPPORTED",
-                    reason=f"ROLE_NOT_SUPPORTED: Capability '{capability.capability_id}' is not supported for agent '{agent_id}'.",
-                )
+                return PolicyDecision(allowed=False, error_code="ROLE_NOT_SUPPORTED", reason=f"ROLE_NOT_SUPPORTED: Capability '{capability.capability_id}' is not supported for agent '{agent_id}'.")
 
-        # 4. Human Approval Gate
         requires_approval = (
             capability.human_approval_required
             or capability.risk_level in (RiskLevel.HIGH, RiskLevel.CRITICAL)
@@ -495,137 +448,51 @@ class PolicyEngine:
 
         if requires_approval:
             if not approval_token:
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="HUMAN_APPROVAL_REQUIRED",
-                    reason=f"HUMAN_APPROVAL_REQUIRED: Capability '{capability.capability_id}' has risk level {capability.risk_level.value} and requires human approval token.",
-                )
-
-            # Verify token exists in server-side registry
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="HUMAN_APPROVAL_REQUIRED", reason=f"HUMAN_APPROVAL_REQUIRED: Capability '{capability.capability_id}' has risk level {capability.risk_level.value} and requires human approval token.")
             if approval_token not in self._approved_tokens:
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="INVALID_APPROVAL_TOKEN",
-                    reason=f"INVALID_APPROVAL_TOKEN: Provided approval token '{approval_token}' is not registered or has been revoked.",
-                )
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="INVALID_APPROVAL_TOKEN", reason=f"INVALID_APPROVAL_TOKEN: Provided approval token '{approval_token}' is not registered or has been revoked.")
 
             record = self._approved_tokens[approval_token]
-
-            # Check claimed / consumed state (one-time replay prevention)
             if record.consumed or record.claimed:
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="APPROVAL_ALREADY_CONSUMED" if record.consumed else "APPROVAL_ALREADY_CLAIMED",
-                    reason=f"APPROVAL_ALREADY_CONSUMED: Approval token '{approval_token}' has already been claimed or consumed and cannot be replayed.",
-                )
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_ALREADY_CONSUMED" if record.consumed else "APPROVAL_ALREADY_CLAIMED", reason=f"APPROVAL_ALREADY_CONSUMED: Approval token '{approval_token}' has already been claimed or consumed and cannot be replayed.")
 
-            # Check expiration
             if record.expires_at:
                 try:
                     exp_dt = datetime.fromisoformat(record.expires_at)
                     if exp_dt.tzinfo is None:
                         exp_dt = exp_dt.replace(tzinfo=timezone.utc)
                     if datetime.now(timezone.utc) > exp_dt:
-                        return PolicyDecision(
-                            allowed=False,
-                            requires_human_approval=True,
-                            error_code="APPROVAL_EXPIRED",
-                            reason=f"APPROVAL_EXPIRED: Approval token '{approval_token}' expired at {record.expires_at}.",
-                        )
+                        return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_EXPIRED", reason=f"APPROVAL_EXPIRED: Approval token '{approval_token}' expired at {record.expires_at}.")
                 except Exception as ex:
-                    return PolicyDecision(
-                        allowed=False,
-                        requires_human_approval=True,
-                        error_code="APPROVAL_RECORD_CORRUPT",
-                        reason=f"APPROVAL_RECORD_CORRUPT: Invalid expires_at format in approval record: {ex}",
-                    )
+                    return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_RECORD_CORRUPT", reason=f"APPROVAL_RECORD_CORRUPT: Invalid expires_at format in approval record: {ex}")
 
-            # Check capability / action match
             rec_cap = record.capability_id or record.action_type
             if rec_cap and rec_cap.strip().lower() != capability.capability_id.strip().lower():
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="APPROVAL_CAPABILITY_MISMATCH",
-                    reason=f"APPROVAL_CAPABILITY_MISMATCH: Approval was granted for '{rec_cap}' but request is for '{capability.capability_id}'.",
-                )
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_CAPABILITY_MISMATCH", reason=f"APPROVAL_CAPABILITY_MISMATCH: Approval was granted for '{rec_cap}' but request is for '{capability.capability_id}'.")
 
-            # Check run_id match (if bound in record)
             if record.run_id and not run_id:
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="APPROVAL_RUN_SCOPE_REQUIRED",
-                    reason=f"APPROVAL_RUN_SCOPE_REQUIRED: Approval is bound to run '{record.run_id}', but the request has no run scope.",
-                )
-
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_RUN_SCOPE_REQUIRED", reason=f"APPROVAL_RUN_SCOPE_REQUIRED: Approval is bound to run '{record.run_id}', but the request has no run scope.")
             if record.run_id and run_id and record.run_id != run_id:
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="APPROVAL_RUN_MISMATCH",
-                    reason=f"APPROVAL_RUN_MISMATCH: Approval is bound to run '{record.run_id}', not '{run_id}'.",
-                )
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_RUN_MISMATCH", reason=f"APPROVAL_RUN_MISMATCH: Approval is bound to run '{record.run_id}', not '{run_id}'.")
 
-            # Check business_id match (if bound in record)
-            if record.business_id and business_id and record.business_id != business_id:
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="APPROVAL_BUSINESS_MISMATCH",
-                    reason=f"APPROVAL_BUSINESS_MISMATCH: Approval is bound to business '{record.business_id}', not '{business_id}'.",
-                )
+            if record.business_id and not business_id:
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_BUSINESS_SCOPE_REQUIRED", reason=f"APPROVAL_BUSINESS_SCOPE_REQUIRED: Approval is bound to business '{record.business_id}', but the request has no business scope.")
+            if record.business_id and record.business_id != business_id:
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_BUSINESS_MISMATCH", reason=f"APPROVAL_BUSINESS_MISMATCH: Approval is bound to business '{record.business_id}', not '{business_id}'.")
 
             try:
                 approval_project_scope = _canonical_project_scope(record.project_id)
             except ValueError as exc:
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="APPROVAL_PROJECT_SCOPE_INVALID",
-                    reason=f"APPROVAL_PROJECT_SCOPE_INVALID: {exc}",
-                )
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_PROJECT_SCOPE_INVALID", reason=f"APPROVAL_PROJECT_SCOPE_INVALID: {exc}")
 
             if approval_project_scope != request_project_scope:
                 if approval_project_scope is None or request_project_scope is None:
-                    return PolicyDecision(
-                        allowed=False,
-                        requires_human_approval=True,
-                        error_code="APPROVAL_PROJECT_SCOPE_REQUIRED",
-                        reason=(
-                            "APPROVAL_PROJECT_SCOPE_REQUIRED: Project-scoped consequential authority must be "
-                            "bound symmetrically; approval and request project scopes differ."
-                        ),
-                    )
-                return PolicyDecision(
-                    allowed=False,
-                    requires_human_approval=True,
-                    error_code="APPROVAL_PROJECT_MISMATCH",
-                    reason=f"APPROVAL_PROJECT_MISMATCH: Approval is bound to project '{approval_project_scope}', not '{request_project_scope}'.",
-                )
+                    return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_PROJECT_SCOPE_REQUIRED", reason="APPROVAL_PROJECT_SCOPE_REQUIRED: Project-scoped consequential authority must be bound symmetrically; approval and request project scopes differ.")
+                return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_PROJECT_MISMATCH", reason=f"APPROVAL_PROJECT_MISMATCH: Approval is bound to project '{approval_project_scope}', not '{request_project_scope}'.")
 
-            # Check request fingerprint match (if present on record)
             if record.request_fingerprint and parameters is not None:
-                expected_fp = compute_request_fingerprint(
-                    capability_id=capability.capability_id,
-                    parameters=parameters,
-                    run_id=run_id or record.run_id,
-                    business_id=business_id or record.business_id,
-                    project_id=approval_project_scope,
-                )
+                expected_fp = compute_request_fingerprint(capability.capability_id, parameters, run_id or record.run_id, business_id or record.business_id, approval_project_scope)
                 if record.request_fingerprint != expected_fp:
-                    return PolicyDecision(
-                        allowed=False,
-                        requires_human_approval=True,
-                        error_code="APPROVAL_FINGERPRINT_MISMATCH",
-                        reason=f"APPROVAL_FINGERPRINT_MISMATCH: Request parameters/scope fingerprint do not match approval record.",
-                    )
+                    return PolicyDecision(allowed=False, requires_human_approval=True, error_code="APPROVAL_FINGERPRINT_MISMATCH", reason="APPROVAL_FINGERPRINT_MISMATCH: Request parameters/scope fingerprint do not match approval record.")
 
-        return PolicyDecision(
-            allowed=True,
-            requires_human_approval=requires_approval,
-            reason="AUTHORIZED",
-        )
+        return PolicyDecision(allowed=True, requires_human_approval=requires_approval, reason="AUTHORIZED")
