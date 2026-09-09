@@ -494,16 +494,6 @@ def evaluate_collaboration(
             "proposal evidence verdict is INSUFFICIENT; peer agreement cannot substitute for proposal evidence"
         )
         disposition = CollaborationDisposition.INCONCLUSIVE
-    elif not assessment.proposal_evidence_refs:
-        reasons.append(
-            "SUPPORTED proposal did not retain evidence references and therefore fails closed"
-        )
-        disposition = CollaborationDisposition.INCONCLUSIVE
-    elif canonical_proposal is None:
-        reasons.append(
-            "SUPPORTED proposal lacks canonically re-derived raw evidence authority and therefore fails closed"
-        )
-        disposition = CollaborationDisposition.INCONCLUSIVE
     elif duplicated_reviewers:
         reasons.append(
             "duplicate reviewer identity makes peer evidence ambiguous; acceptance is blocked until duplicate reviews are resolved"
@@ -524,6 +514,16 @@ def evaluate_collaboration(
             "an independent peer raised a refutation without canonical raw evidence provenance; acceptance is blocked until the challenge is resolved"
         )
         disposition = CollaborationDisposition.ESCALATE
+    elif not assessment.proposal_evidence_refs:
+        reasons.append(
+            "SUPPORTED proposal did not retain evidence references and therefore fails closed"
+        )
+        disposition = CollaborationDisposition.INCONCLUSIVE
+    elif canonical_proposal is None:
+        reasons.append(
+            "SUPPORTED proposal lacks canonically re-derived raw evidence authority and therefore fails closed"
+        )
+        disposition = CollaborationDisposition.INCONCLUSIVE
     elif len(supporting) >= assessment.minimum_supporting_reviewers:
         reasons.append(
             f"proposal is canonically evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}"
