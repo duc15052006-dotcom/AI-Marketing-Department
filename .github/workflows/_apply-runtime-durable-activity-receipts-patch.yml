@@ -28,8 +28,8 @@ jobs:
           path = Path("app_api/server.py")
           text = path.read_text(encoding="utf-8")
 
-          old_listing = """            else:\n                receipts = list(APP_BACKEND.receipt_repo._receipts.values())"""
-          new_listing = """            else:\n                receipts = APP_BACKEND.receipt_repo.list_receipts()"""
+          old_listing = "receipts = APP_BACKEND.receipt_repo.list_receipts_for_run(run_id) if run_id else list(APP_BACKEND.receipt_repo._receipts.values())"
+          new_listing = "receipts = APP_BACKEND.receipt_repo.list_receipts_for_run(run_id) if run_id else APP_BACKEND.receipt_repo.list_receipts()"
           if text.count(old_listing) != 1:
               raise SystemExit(f"expected exactly one legacy receipt listing boundary, found {text.count(old_listing)}")
           text = text.replace(old_listing, new_listing, 1)
