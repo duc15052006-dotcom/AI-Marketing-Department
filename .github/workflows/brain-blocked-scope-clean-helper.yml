@@ -1,0 +1,65 @@
+name: Brain Blocked Scope Clean Helper
+
+on:
+  push:
+    branches:
+      - fix/brain-blocked-goal-fail-closed-v1
+    paths:
+      - ".github/workflows/brain-blocked-scope-clean-helper.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild cognitive loop from exact qualified base plus BLOCKED delta
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          base_sha = "985d56b7d9904997eaed8646c42811455f33e277"
+          path = Path("brain/cognitive_loop.py")
+          text = subprocess.check_output(
+              ["git", "show", f"{base_sha}:brain/cognitive_loop.py"],
+              text=True,
+          )
+
+          enum_old = '    ACTION_READY = "ACTION_READY"\n    COMPLETE = "COMPLETE"\n'
+          enum_new = '    ACTION_READY = "ACTION_READY"\n    BLOCKED = "BLOCKED"\n    COMPLETE = "COMPLETE"\n'
+          if text.count(enum_old) != 1:
+              raise SystemExit("BLOCKED_SCOPE_CLEAN_ENUM_ANCHOR_MISMATCH")
+          text = text.replace(enum_old, enum_new, 1)
+
+          anchor = '    request = _canonical_request(raw_request)\n\n'
+          blocked = '''    request = _canonical_request(raw_request)\n\n    if request.goal.status == GoalStatus.BLOCKED:\n        return _result(\n            request,\n            CognitivePhase.BLOCKED,\n            [\n                _directive(\n                    request,\n                    CognitiveDirectiveKind.STOP,\n                    [request.goal.goal_id],\n                    "The canonical goal is blocked; no semantic planning or action is prepared until it is unblocked.",\n                )\n            ],\n        )\n\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit("BLOCKED_SCOPE_CLEAN_DERIVE_ANCHOR_MISMATCH")
+          text = text.replace(anchor, blocked, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify only canonical BLOCKED production delta remains
+        shell: bash
+        run: |
+          git diff -- brain/cognitive_loop.py
+          python -m compileall -q brain/cognitive_loop.py tests/test_brain_blocked_goal_fail_closed_v1.py
+          python -m unittest -v tests.test_brain_blocked_goal_fail_closed_v1
+
+      - name: Commit scope cleanup and remove helper
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/brain-blocked-scope-clean-helper.yml
+          git add brain/cognitive_loop.py
+          git commit -m "fix(brain): isolate blocked goal semantic delta"
+          git push origin HEAD:fix/brain-blocked-goal-fail-closed-v1
