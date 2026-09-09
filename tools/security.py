@@ -59,6 +59,18 @@ def _canonical_project_scope(project_id: Optional[str]) -> Optional[str]:
     return canonical
 
 
+def _canonical_run_scope(run_id: Optional[str]) -> str:
+    """Return one canonical run scope while preserving the legacy unbound empty value."""
+    if run_id is None or run_id == "":
+        return ""
+    if not isinstance(run_id, str):
+        raise ValueError("RUN_SCOPE_INVALID: run_id must be a canonical string or an unbound empty value")
+    canonical = run_id.strip()
+    if not canonical or canonical != run_id:
+        raise ValueError("RUN_SCOPE_INVALID: run_id must contain no surrounding whitespace")
+    return canonical
+
+
 def compute_request_fingerprint(
     capability_id: str,
     parameters: Optional[Dict[str, Any]] = None,
@@ -68,7 +80,8 @@ def compute_request_fingerprint(
 ) -> str:
     """Compute deterministic canonical SHA-256 fingerprint of a consequential tool request."""
     norm_params = json.dumps(parameters or {}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    scope = f"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}"
+    run_scope = _canonical_run_scope(run_id)
+    scope = f"{capability_id.strip().lower()}:{run_scope}:{business_id or ''}"
     project_scope = _canonical_project_scope(project_id)
     if project_scope is not None:
         scope = f"{scope}:{project_scope}"
@@ -174,11 +187,12 @@ class PolicyEngine:
     ) -> PendingApprovalRecord:
         """Create an immutable server-side pending approval record for a proposed consequential action."""
         params = parameters or {}
+        run_scope = _canonical_run_scope(run_id)
         project_scope = _canonical_project_scope(project_id)
         fp = compute_request_fingerprint(
             capability_id=capability_id,
             parameters=params,
-            run_id=run_id,
+            run_id=run_scope,
             business_id=business_id,
             project_id=project_scope,
         )
@@ -191,7 +205,7 @@ class PolicyEngine:
                 if (
                     existing.status == PendingApprovalStatus.PENDING
                     and existing.capability_id == capability_id
-                    and existing.run_id == run_id
+                    and existing.run_id == run_scope
                     and existing.request_fingerprint == fp
                 ):
                     # Check if expired
@@ -213,7 +227,7 @@ class PolicyEngine:
                 action_type=capability_id,
                 parameters=params,
                 request_fingerprint=fp,
-                run_id=run_id,
+                run_id=run_scope,
                 business_id=business_id,
                 project_id=project_scope,
                 created_at=now.isoformat(),
@@ -368,11 +382,12 @@ class PolicyEngine:
         token = f"appr_{secrets.token_urlsafe(32)}"
         now = datetime.now(timezone.utc)
         expires_at = datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=timezone.utc).isoformat()
+        run_scope = _canonical_run_scope(run_id)
         project_scope = _canonical_project_scope(project_id)
         fp = compute_request_fingerprint(
             capability_id=capability_id,
             parameters=parameters or {},
-            run_id=run_id,
+            run_id=run_scope,
             business_id=business_id,
             project_id=project_scope,
         )
@@ -380,7 +395,7 @@ class PolicyEngine:
             approval_token=token,
             action_type=capability_id,
             capability_id=capability_id,
-            run_id=run_id,
+            run_id=run_scope,
             business_id=business_id,
             project_id=project_scope,
             request_fingerprint=fp,
@@ -494,6 +509,16 @@ class PolicyEngine:
         )
 
         if requires_approval:
+            try:
+                request_run_scope = _canonical_run_scope(run_id)
+            except ValueError as exc:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="RUN_SCOPE_INVALID",
+                    reason=str(exc),
+                )
+
             if not approval_token:
                 return PolicyDecision(
                     allowed=False,
@@ -554,20 +579,30 @@ class PolicyEngine:
                 )
 
             # Check run_id match (if bound in record)
-            if record.run_id and not run_id:
+            try:
+                approval_run_scope = _canonical_run_scope(record.run_id)
+            except ValueError as exc:
+                return PolicyDecision(
+                    allowed=False,
+                    requires_human_approval=True,
+                    error_code="APPROVAL_RUN_SCOPE_INVALID",
+                    reason=f"APPROVAL_RUN_SCOPE_INVALID: {exc}",
+                )
+
+            if approval_run_scope and not request_run_scope:
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
                     error_code="APPROVAL_RUN_SCOPE_REQUIRED",
-                    reason=f"APPROVAL_RUN_SCOPE_REQUIRED: Approval is bound to run '{record.run_id}', but the request has no run scope.",
+                    reason=f"APPROVAL_RUN_SCOPE_REQUIRED: Approval is bound to run '{approval_run_scope}', but the request has no run scope.",
                 )
 
-            if record.run_id and run_id and record.run_id != run_id:
+            if approval_run_scope and request_run_scope and approval_run_scope != request_run_scope:
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
                     error_code="APPROVAL_RUN_MISMATCH",
-                    reason=f"APPROVAL_RUN_MISMATCH: Approval is bound to run '{record.run_id}', not '{run_id}'.",
+                    reason=f"APPROVAL_RUN_MISMATCH: Approval is bound to run '{approval_run_scope}', not '{request_run_scope}'.",
                 )
 
             # Check business_id match (if bound in record)
@@ -612,7 +647,7 @@ class PolicyEngine:
                 expected_fp = compute_request_fingerprint(
                     capability_id=capability.capability_id,
                     parameters=parameters,
-                    run_id=run_id or record.run_id,
+                    run_id=request_run_scope or approval_run_scope,
                     business_id=business_id or record.business_id,
                     project_id=approval_project_scope,
                 )
