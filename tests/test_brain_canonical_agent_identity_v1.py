@@ -1,7 +1,7 @@
 """Regression coverage for the five permanent Brain identities.
 
 The product contract is exactly CMO, Intelligence, Content, Creative, and
-Performance.  ``STRATEGIST`` may only be accepted as a legacy serialized input;
+Performance. ``STRATEGIST`` may only be accepted as a legacy serialized input;
 it must never remain a canonical Brain identity or permanent agent package.
 """
 
@@ -47,6 +47,43 @@ class TestCanonicalBrainAgentIdentityV1(unittest.TestCase):
         )
         self.assertIs(goal.owner_agent, BrainAgentId.CONTENT)
         self.assertEqual(goal.owner_agent.value, "CONTENT")
+
+    def test_no_python_code_references_removed_strategist_enum_member(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        forbidden = "BrainAgentId." + "STRATEGIST"
+        offenders = []
+        for path in repo_root.rglob("*.py"):
+            if path == Path(__file__).resolve():
+                continue
+            parts = set(path.parts)
+            if {".venv", "venv", "site-packages"} & parts:
+                continue
+            try:
+                source = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            if forbidden in source:
+                offenders.append(str(path.relative_to(repo_root)))
+        self.assertEqual(
+            offenders,
+            [],
+            "Removed canonical STRATEGIST enum is still referenced in: " + ", ".join(offenders),
+        )
+
+    def test_agent_manifests_do_not_depend_on_removed_strategist_package(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        manifests = repo_root / ".agents" / "agents"
+        forbidden = '"' + "strategist" + '"'
+        offenders = []
+        for path in manifests.glob("*/manifest.json"):
+            if forbidden in path.read_text(encoding="utf-8").lower():
+                offenders.append(str(path.relative_to(repo_root)))
+        self.assertEqual(
+            offenders,
+            [],
+            "Permanent agent manifests still reference removed strategist package: "
+            + ", ".join(offenders),
+        )
 
 
 if __name__ == "__main__":
