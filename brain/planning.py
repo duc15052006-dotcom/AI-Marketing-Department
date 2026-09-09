@@ -324,8 +324,17 @@ def validate_plan_action_intent_bindings(
             raise ValidationError(f"duplicate action intent id: {intent.intent_id}")
         by_id[intent.intent_id] = intent
 
+    bound_step_by_intent_id: Dict[str, str] = {}
     for step in plan.steps:
         for intent_id in step.action_intent_ids:
+            previous_step_id = bound_step_by_intent_id.get(intent_id)
+            if previous_step_id is not None and previous_step_id != step.step_id:
+                raise ValidationError(
+                    f"action intent '{intent_id}' cannot be bound to multiple plan steps: "
+                    f"'{previous_step_id}' and '{step.step_id}'"
+                )
+            bound_step_by_intent_id[intent_id] = step.step_id
+
             intent = by_id.get(intent_id)
             if intent is None:
                 raise ValidationError(
