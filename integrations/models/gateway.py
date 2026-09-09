@@ -772,7 +772,7 @@ class UniversalModelGateway:
             err_code = classify_error(resp.error)
             self.config_service.record_error(cand_provider, err_code)
 
-            if resp.status == ModelResponseStatus.RATE_LIMITED:
+            if resp.status == ModelResponseStatus.RATE_LIMITED or err_code == ProviderErrorCode.RATE_LIMIT_429:
                 self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED, detail=resp.error)
             elif "AUTH_ERROR" in str(resp.error) or err_code == ProviderErrorCode.AUTH_401:
                 self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR, detail=resp.error)
