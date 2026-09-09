@@ -210,6 +210,11 @@ def evaluate_stop(request: StopEvaluationRequest) -> StopDecision:
     if not isinstance(request, StopEvaluationRequest):
         raise ValidationError("request must be a StopEvaluationRequest")
 
+    # Reconstruct the complete mutable envelope before consuming blockers or
+    # trajectory authority.  A late type/value rewrite must not make an
+    # outstanding unknown or evidence need disappear from the stopping gate.
+    request = StopEvaluationRequest(**copy.deepcopy(request.model_dump()))
+
     open_questions = [item.question for item in request.outstanding_unknowns]
     open_questions.extend(item.question for item in request.outstanding_evidence_needs)
 
