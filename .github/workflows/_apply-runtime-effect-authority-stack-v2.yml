@@ -1,0 +1,116 @@
+name: Apply Runtime Effect Authority Stack V2 Patch
+
+on:
+  push:
+    branches:
+      - integration/runtime-effect-authority-stack-v2
+    paths:
+      - ".github/workflows/_apply-runtime-effect-authority-stack-v2.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-exact-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration head
+        uses: actions/checkout@v4
+        with:
+          ref: integration/runtime-effect-authority-stack-v2
+          fetch-depth: 0
+
+      - name: Compose qualified sibling fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(git hash-object tools/receipts.py)" = "d271691b83d480581a3d95b814ae86380bfc629d"
+          test "$(git hash-object app_api/server.py)" = "c858303952bbd3d4cc13edefba193ca844cc247a"
+
+          git cat-file -e fb4b02273c801407a77230ced86a4bddfc813af7^{commit}
+          git cat-file -e d57b389b7f60a20d76a607a610dc3e8e02d8ec9b^{commit}
+
+          git show fb4b02273c801407a77230ced86a4bddfc813af7:tools/receipts.py > tools/receipts.py
+          git show fb4b02273c801407a77230ced86a4bddfc813af7:tests/test_runtime_mission_reconciliation_engine_v1.py > tests/test_runtime_mission_reconciliation_engine_v1.py
+          git show d57b389b7f60a20d76a607a610dc3e8e02d8ec9b:tests/test_runtime_durable_activity_receipts_listing_v1.py > tests/test_runtime_durable_activity_receipts_listing_v1.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          receipts = Path("tools/receipts.py")
+          text = receipts.read_text(encoding="utf-8")
+          if "    def list_receipts(self) -> list[ExecutionReceipt]:" in text:
+              raise SystemExit("list_receipts already present unexpectedly")
+          marker = """    @staticmethod
+              def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:
+          """
+          if text.count(marker) != 1:
+              raise SystemExit(f"expected one receipt payload marker, found {text.count(marker)}")
+          list_method = """    def list_receipts(self) -> list[ExecutionReceipt]:
+              \"\"\"Return all receipts from the authoritative backing store.\"\"\"
+
+              self._ensure_open()
+              with self._lock:
+                  if self._conn is None:
+                      return copy.deepcopy(list(self._receipts.values()))
+                  try:
+                      rows = self._conn.execute(
+                          \"SELECT * FROM execution_receipts ORDER BY rowid\"
+                      ).fetchall()
+                  except sqlite3.Error as exc:
+                      raise _core._sqlite_failure(\"LIST_RECEIPTS\", exc) from exc
+                  return [self._decode_receipt_row(row) for row in rows]
+
+          """
+          text = text.replace(marker, list_method + marker, 1)
+          receipts.write_text(text, encoding="utf-8")
+
+          server = Path("app_api/server.py")
+          text = server.read_text(encoding="utf-8")
+          old_listing = "            receipts = APP_BACKEND.receipt_repo.list_receipts_for_run(run_id) if run_id else list(APP_BACKEND.receipt_repo._receipts.values())"
+          new_listing = "            receipts = APP_BACKEND.receipt_repo.list_receipts_for_run(run_id) if run_id else APP_BACKEND.receipt_repo.list_receipts()"
+          if text.count(old_listing) != 1:
+              raise SystemExit(f"expected one legacy activity listing, found {text.count(old_listing)}")
+          text = text.replace(old_listing, new_listing, 1)
+          old_latency = '                        "latency_ms": r.latency_ms,'
+          new_latency = '''                        "latency_ms": max(
+                              0,
+                              int((r.completed_at - r.started_at).total_seconds() * 1000),
+                          ),'''
+          if text.count(old_latency) != 1:
+              raise SystemExit(f"expected one legacy latency serializer, found {text.count(old_latency)}")
+          text = text.replace(old_latency, new_latency, 1)
+          server.write_text(text, encoding="utf-8")
+
+          workflow = Path(".github/workflows/runtime-effect-authority-stack-v2.yml")
+          text = workflow.read_text(encoding="utf-8")
+          path_marker = '      - "tests/test_runtime_mission_effect_journal_v1.py"\n'
+          path_insert = (
+              path_marker
+              + '      - "tests/test_runtime_mission_reconciliation_engine_v1.py"\n'
+              + '      - "tests/test_runtime_durable_activity_receipts_listing_v1.py"\n'
+          )
+          if text.count(path_marker) != 1:
+              raise SystemExit("workflow path marker mismatch")
+          text = text.replace(path_marker, path_insert, 1)
+          old_cmd = "python -m unittest -v tests.test_runtime_mission_effect_journal_v1 tests.test_tool_gateway_durable_intent_lifecycle_v1 tests.test_runtime_default_effect_journal_durability_v1 tests.test_runtime_consequential_request_idempotency_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log"
+          new_cmd = "python -m unittest -v tests.test_runtime_mission_effect_journal_v1 tests.test_runtime_mission_reconciliation_engine_v1 tests.test_runtime_durable_activity_receipts_listing_v1 tests.test_tool_gateway_durable_intent_lifecycle_v1 tests.test_runtime_default_effect_journal_durability_v1 tests.test_runtime_consequential_request_idempotency_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_continuity_authority_stack_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log"
+          if text.count(old_cmd) != 1:
+              raise SystemExit("workflow adjacent command marker mismatch")
+          workflow.write_text(text.replace(old_cmd, new_cmd, 1), encoding="utf-8")
+          PY
+
+          python -m py_compile tools/receipts.py app_api/server.py tests/test_runtime_mission_reconciliation_engine_v1.py tests/test_runtime_durable_activity_receipts_listing_v1.py tests/test_runtime_effect_authority_stack_v2.py
+
+      - name: Commit integrated production stack and remove helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/_apply-runtime-effect-authority-stack-v2.yml
+          git add tools/receipts.py app_api/server.py tests/test_runtime_mission_reconciliation_engine_v1.py tests/test_runtime_durable_activity_receipts_listing_v1.py .github/workflows/runtime-effect-authority-stack-v2.yml
+          git diff --cached --check
+          git commit -m "integration(runtime): compose effect authority siblings"
+          git push origin HEAD:integration/runtime-effect-authority-stack-v2
