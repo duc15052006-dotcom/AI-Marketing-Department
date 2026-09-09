@@ -179,6 +179,91 @@ class RuntimeApprovalProjectScopeAuthorityV1Tests(unittest.TestCase):
         )
         self.assertFalse(stored.consumed)
 
+    def test_blank_or_whitespace_project_scope_is_rejected_before_pending_approval(self) -> None:
+        parameters = {
+            "platform": "linkedin",
+            "content": "malformed project scope must fail closed",
+        }
+        for project_id in ("", "   "):
+            with self.subTest(project_id=repr(project_id)):
+                gateway, policy, adapter = self._make_gateway()
+                run_id = f"RUN-BLANK-PROJECT-{len(project_id)}"
+                receipt = gateway.execute(
+                    ToolRequest(
+                        request_id=f"REQ-BLANK-PROJECT-{len(project_id)}",
+                        run_id=run_id,
+                        agent_id="cmo",
+                        capability_id="social_publishing",
+                        parameters=parameters,
+                        business_id="BIZ_PROJECT_SCOPE",
+                        project_id=project_id,
+                    )
+                )
+
+                self.assertEqual(
+                    ExecutionStatus.BLOCKED,
+                    receipt.status,
+                    "EMPTY_PROJECT_SCOPE_ACCEPTED: malformed project scope reached the approval workflow",
+                )
+                self.assertEqual("PROJECT_SCOPE_INVALID", receipt.error_class)
+                self.assertEqual([], policy.list_pending_approvals(run_id=run_id))
+                self.assertEqual(0, adapter.invocations)
+
+    def test_unscoped_approval_cannot_authorize_project_scoped_request(self) -> None:
+        gateway, policy, adapter = self._make_gateway()
+        run_id = "RUN-UNSCOPED-APPROVAL-ATTACK"
+        business_id = "BIZ_PROJECT_SCOPE"
+        parameters = {
+            "platform": "linkedin",
+            "content": "unscoped approval must not widen into a project",
+        }
+        approval = policy.create_server_approval(
+            capability_id="social_publishing",
+            parameters=parameters,
+            run_id=run_id,
+            business_id=business_id,
+            project_id=None,
+            approved_by="Project Scope Authority Regression Test",
+        )
+
+        receipt = gateway.execute(
+            ToolRequest(
+                request_id="REQ-UNSCOPED-APPROVAL-ATTACK",
+                run_id=run_id,
+                agent_id="cmo",
+                capability_id="social_publishing",
+                parameters=parameters,
+                approval_token=approval.approval_token,
+                business_id=business_id,
+                project_id="PROJECT_BETA",
+            )
+        )
+
+        self.assertEqual(
+            ExecutionStatus.APPROVAL_REQUIRED,
+            receipt.status,
+            "UNSCOPED_APPROVAL_WIDENED: project-scoped action accepted authority that was not project-bound",
+        )
+        self.assertEqual("APPROVAL_PROJECT_SCOPE_REQUIRED", receipt.error_class)
+        self.assertEqual(0, adapter.invocations)
+        stored = policy.get_approval(approval.approval_token)
+        self.assertIsNotNone(stored)
+        self.assertFalse(stored.claimed)
+        self.assertFalse(stored.consumed)
+
+    def test_server_approval_rejects_blank_or_whitespace_project_scope(self) -> None:
+        policy = PolicyEngine()
+        for project_id in ("", "   "):
+            with self.subTest(project_id=repr(project_id)):
+                with self.assertRaisesRegex(ValueError, "PROJECT_SCOPE_INVALID"):
+                    policy.create_server_approval(
+                        capability_id="social_publishing",
+                        parameters={"content": "scope validation"},
+                        run_id="RUN-SERVER-APPROVAL-SCOPE",
+                        business_id="BIZ_PROJECT_SCOPE",
+                        project_id=project_id,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
