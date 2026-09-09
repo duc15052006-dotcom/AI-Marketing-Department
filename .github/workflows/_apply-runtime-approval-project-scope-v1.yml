@@ -1,0 +1,134 @@
+name: Apply Runtime Approval Project Scope V1 Patch
+
+on:
+  push:
+    branches:
+      - test/runtime-approval-project-scope-authority-v1
+    paths:
+      - ".github/workflows/_apply-runtime-approval-project-scope-v1.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-exact-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@v4
+        with:
+          ref: test/runtime-approval-project-scope-authority-v1
+          fetch-depth: 0
+
+      - name: Bind project authority into approval lifecycle
+        shell: python
+        run: |
+          from pathlib import Path
+
+          security = Path("tools/security.py")
+          text = security.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected 1 match, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              """def compute_request_fingerprint(\n    capability_id: str,\n    parameters: Optional[Dict[str, Any]] = None,\n    run_id: Optional[str] = None,\n    business_id: Optional[str] = None,\n) -> str:\n    \"\"\"Compute deterministic canonical SHA-256 fingerprint of a consequential tool request.\"\"\"\n    norm_params = json.dumps(parameters or {}, sort_keys=True, ensure_ascii=False, separators=(\",\", \":\"))\n    raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{norm_params}\"\n    return hashlib.sha256(raw.encode(\"utf-8\")).hexdigest()\n""",
+              """def compute_request_fingerprint(\n    capability_id: str,\n    parameters: Optional[Dict[str, Any]] = None,\n    run_id: Optional[str] = None,\n    business_id: Optional[str] = None,\n    project_id: Optional[str] = None,\n) -> str:\n    \"\"\"Compute deterministic canonical SHA-256 fingerprint of a consequential tool request.\n\n    Preserve the historical fingerprint layout when no project authority is\n    bound. Project-scoped approvals opt into the extended immutable scope.\n    \"\"\"\n    norm_params = json.dumps(parameters or {}, sort_keys=True, ensure_ascii=False, separators=(\",\", \":\"))\n    if project_id is None:\n        raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{norm_params}\"\n    else:\n        raw = f\"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}:{project_id}:{norm_params}\"\n    return hashlib.sha256(raw.encode(\"utf-8\")).hexdigest()\n""",
+              "fingerprint",
+          )
+
+          old = "    business_id: Optional[str] = None\n    request_fingerprint: str = \"\""
+          if text.count(old) != 2:
+              raise SystemExit(f"approval record project fields: expected 2 matches, found {text.count(old)}")
+          text = text.replace(
+              old,
+              "    business_id: Optional[str] = None\n    project_id: Optional[str] = None\n    request_fingerprint: str = \"\"",
+          )
+
+          replace_once(
+              """    def create_pending_approval(\n        self,\n        capability_id: str,\n        parameters: Optional[Dict[str, Any]] = None,\n        run_id: str = \"\",\n        business_id: Optional[str] = None,\n        ttl_seconds: int = 300,""",
+              """    def create_pending_approval(\n        self,\n        capability_id: str,\n        parameters: Optional[Dict[str, Any]] = None,\n        run_id: str = \"\",\n        business_id: Optional[str] = None,\n        project_id: Optional[str] = None,\n        ttl_seconds: int = 300,""",
+              "pending signature",
+          )
+
+          old = "            business_id=business_id,\n        )"
+          if text.count(old) != 2:
+              raise SystemExit(f"fingerprint project binding: expected 2 matches, found {text.count(old)}")
+          text = text.replace(old, "            business_id=business_id,\n            project_id=project_id,\n        )")
+
+          old = "                business_id=business_id,\n                created_at=now.isoformat(),"
+          if text.count(old) != 1:
+              raise SystemExit(f"pending record project binding: expected 1 match, found {text.count(old)}")
+          text = text.replace(old, "                business_id=business_id,\n                project_id=project_id,\n                created_at=now.isoformat(),", 1)
+
+          replace_once(
+              """                run_id=rec.run_id,\n                business_id=rec.business_id,\n                request_fingerprint=rec.request_fingerprint,""",
+              """                run_id=rec.run_id,\n                business_id=rec.business_id,\n                project_id=rec.project_id,\n                request_fingerprint=rec.request_fingerprint,""",
+              "approved pending project propagation",
+          )
+
+          replace_once(
+              """    def create_server_approval(\n        self,\n        capability_id: str,\n        parameters: Optional[Dict[str, Any]] = None,\n        run_id: str = \"\",\n        business_id: Optional[str] = None,\n        approved_by: str = \"Human Operator\",""",
+              """    def create_server_approval(\n        self,\n        capability_id: str,\n        parameters: Optional[Dict[str, Any]] = None,\n        run_id: str = \"\",\n        business_id: Optional[str] = None,\n        project_id: Optional[str] = None,\n        approved_by: str = \"Human Operator\",""",
+              "server approval signature",
+          )
+
+          old = "            business_id=business_id,\n            request_fingerprint=fp,"
+          if text.count(old) != 1:
+              raise SystemExit(f"server approval record project binding: expected 1 match, found {text.count(old)}")
+          text = text.replace(old, "            business_id=business_id,\n            project_id=project_id,\n            request_fingerprint=fp,", 1)
+
+          replace_once(
+              """    def evaluate(\n        self,\n        agent_id: str,\n        capability: CapabilityDescriptor,\n        approval_token: Optional[str] = None,\n        run_id: Optional[str] = None,\n        business_id: Optional[str] = None,\n        parameters: Optional[Dict[str, Any]] = None,""",
+              """    def evaluate(\n        self,\n        agent_id: str,\n        capability: CapabilityDescriptor,\n        approval_token: Optional[str] = None,\n        run_id: Optional[str] = None,\n        business_id: Optional[str] = None,\n        project_id: Optional[str] = None,\n        parameters: Optional[Dict[str, Any]] = None,""",
+              "evaluate signature",
+          )
+
+          business_block = """            # Check business_id match (if bound in record)\n            if record.business_id and business_id and record.business_id != business_id:\n                return PolicyDecision(\n                    allowed=False,\n                    requires_human_approval=True,\n                    error_code=\"APPROVAL_BUSINESS_MISMATCH\",\n                    reason=f\"APPROVAL_BUSINESS_MISMATCH: Approval is bound to business '{record.business_id}', not '{business_id}'.\",\n                )\n\n"""
+          project_block = business_block + """            # Check project_id match when project authority is bound in the approval.\n            if record.project_id is not None and record.project_id != project_id:\n                return PolicyDecision(\n                    allowed=False,\n                    requires_human_approval=True,\n                    error_code=\"APPROVAL_PROJECT_MISMATCH\",\n                    reason=f\"APPROVAL_PROJECT_MISMATCH: Approval is bound to project '{record.project_id}', not '{project_id}'.\",\n                )\n\n"""
+          replace_once(business_block, project_block, "project mismatch gate")
+
+          replace_once(
+              """                    run_id=run_id or record.run_id,\n                    business_id=business_id or record.business_id,\n                )""",
+              """                    run_id=run_id or record.run_id,\n                    business_id=business_id or record.business_id,\n                    project_id=record.project_id,\n                )""",
+              "fingerprint revalidation project authority",
+          )
+
+          security.write_text(text, encoding="utf-8")
+
+          gateway = Path("tools/tool_gateway.py")
+          text = gateway.read_text(encoding="utf-8")
+
+          old = """            run_id=request.run_id,\n            business_id=request.business_id,\n            parameters=request.parameters,"""
+          new = """            run_id=request.run_id,\n            business_id=request.business_id,\n            project_id=request.project_id,\n            parameters=request.parameters,"""
+          if text.count(old) != 1:
+              raise SystemExit(f"gateway evaluate project binding: expected 1 match, found {text.count(old)}")
+          text = text.replace(old, new, 1)
+
+          old = """                    run_id=request.run_id,\n                    business_id=request.business_id,\n                    scope=\"\","""
+          new = """                    run_id=request.run_id,\n                    business_id=request.business_id,\n                    project_id=request.project_id,\n                    scope=\"\","""
+          if text.count(old) != 1:
+              raise SystemExit(f"gateway pending project binding: expected 1 match, found {text.count(old)}")
+          text = text.replace(old, new, 1)
+          gateway.write_text(text, encoding="utf-8")
+
+      - name: Compile patched authority boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/security.py tools/tool_gateway.py tests/test_runtime_approval_project_scope_authority_v1.py
+
+      - name: Commit production patch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/security.py tools/tool_gateway.py
+          git diff --cached --check
+          git commit -m "fix(runtime): bind approvals to project scope"
+          git push origin HEAD:test/runtime-approval-project-scope-authority-v1
