@@ -127,6 +127,26 @@ class ExecutionReceiptRepository(_BaseExecutionReceiptRepository):
                     "ALTER TABLE execution_intents ADD COLUMN commitment_id TEXT"
                 )
 
+    def list_receipts(self) -> list[ExecutionReceipt]:
+        """Return all receipts from the authoritative backing store.
+
+        The legacy private ``_receipts`` mapping remains untouched because core
+        in-memory compatibility paths depend on normal dict semantics. Durable
+        callers read SQLite directly instead of mirroring it into that cache.
+        """
+
+        self._ensure_open()
+        with self._lock:
+            if self._conn is None:
+                return copy.deepcopy(list(self._receipts.values()))
+            try:
+                rows = self._conn.execute(
+                    "SELECT * FROM execution_receipts ORDER BY rowid"
+                ).fetchall()
+            except sqlite3.Error as exc:
+                raise _core._sqlite_failure("LIST_RECEIPTS", exc) from exc
+            return [self._decode_receipt_row(row) for row in rows]
+
     @staticmethod
     def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:
         normalized = _core._normalize_receipt(receipt)
