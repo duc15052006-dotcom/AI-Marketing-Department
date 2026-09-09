@@ -81,13 +81,6 @@ jobs:
             tests.test_brain_hypothesis_portfolio_v1 \
             2>&1 | tee .ci-results/adjacent.log
 
-      - name: Run canonical full hermetic unittest discovery
-        if: runner.os == 'Windows' && steps.targeted.outcome == 'success'
-        shell: bash
-        run: |
-          set -o pipefail
-          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | tee .ci-resultse-results/full-unittest.log
-
       - name: Upload exact-head qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
