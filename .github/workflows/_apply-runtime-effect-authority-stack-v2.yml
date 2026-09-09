@@ -42,29 +42,30 @@ jobs:
           text = receipts.read_text(encoding="utf-8")
           if "    def list_receipts(self) -> list[ExecutionReceipt]:" in text:
               raise SystemExit("list_receipts already present unexpectedly")
-          marker = """    @staticmethod
-              def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:
-          """
+          marker = (
+              "    @staticmethod\n"
+              "    def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:\n"
+          )
           if text.count(marker) != 1:
               raise SystemExit(f"expected one receipt payload marker, found {text.count(marker)}")
-          list_method = """    def list_receipts(self) -> list[ExecutionReceipt]:
-              \"\"\"Return all receipts from the authoritative backing store.\"\"\"
-
-              self._ensure_open()
-              with self._lock:
-                  if self._conn is None:
-                      return copy.deepcopy(list(self._receipts.values()))
-                  try:
-                      rows = self._conn.execute(
-                          \"SELECT * FROM execution_receipts ORDER BY rowid\"
-                      ).fetchall()
-                  except sqlite3.Error as exc:
-                      raise _core._sqlite_failure(\"LIST_RECEIPTS\", exc) from exc
-                  return [self._decode_receipt_row(row) for row in rows]
-
-          """
-          text = text.replace(marker, list_method + marker, 1)
-          receipts.write_text(text, encoding="utf-8")
+          list_method = (
+              "    def list_receipts(self) -> list[ExecutionReceipt]:\n"
+              "        \"\"\"Return all receipts from the authoritative backing store.\"\"\"\n"
+              "\n"
+              "        self._ensure_open()\n"
+              "        with self._lock:\n"
+              "            if self._conn is None:\n"
+              "                return copy.deepcopy(list(self._receipts.values()))\n"
+              "            try:\n"
+              "                rows = self._conn.execute(\n"
+              "                    \"SELECT * FROM execution_receipts ORDER BY rowid\"\n"
+              "                ).fetchall()\n"
+              "            except sqlite3.Error as exc:\n"
+              "                raise _core._sqlite_failure(\"LIST_RECEIPTS\", exc) from exc\n"
+              "            return [self._decode_receipt_row(row) for row in rows]\n"
+              "\n"
+          )
+          receipts.write_text(text.replace(marker, list_method + marker, 1), encoding="utf-8")
 
           server = Path("app_api/server.py")
           text = server.read_text(encoding="utf-8")
@@ -74,14 +75,15 @@ jobs:
               raise SystemExit(f"expected one legacy activity listing, found {text.count(old_listing)}")
           text = text.replace(old_listing, new_listing, 1)
           old_latency = '                        "latency_ms": r.latency_ms,'
-          new_latency = '''                        "latency_ms": max(
-                              0,
-                              int((r.completed_at - r.started_at).total_seconds() * 1000),
-                          ),'''
+          new_latency = (
+              '                        "latency_ms": max(\n'
+              '                            0,\n'
+              '                            int((r.completed_at - r.started_at).total_seconds() * 1000),\n'
+              '                        ),'
+          )
           if text.count(old_latency) != 1:
               raise SystemExit(f"expected one legacy latency serializer, found {text.count(old_latency)}")
-          text = text.replace(old_latency, new_latency, 1)
-          server.write_text(text, encoding="utf-8")
+          server.write_text(text.replace(old_latency, new_latency, 1), encoding="utf-8")
 
           workflow = Path(".github/workflows/runtime-effect-authority-stack-v2.yml")
           text = workflow.read_text(encoding="utf-8")
