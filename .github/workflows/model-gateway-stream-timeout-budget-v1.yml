@@ -15,9 +15,23 @@ concurrency:
 
 jobs:
   focused-regression:
-    name: Ubuntu Python 3.12 focused model regressions
+    name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: causal-stream-timeout-budget
+            module: tests.test_model_gateway_stream_timeout_budget_v1
+          - label: provider-registry
+            module: tests.test_prod_model_gateway_01_provider_registry
+          - label: model-streaming
+            module: tests.test_prod_model_streaming_01
+          - label: structured-provider-stream-error
+            module: tests.test_prod_structured_provider_stream_error_01
+          - label: model-settings
+            module: tests.test_prod_model_settings_01
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -40,6 +54,7 @@ jobs:
         run: |
           echo "github_sha=${{ github.sha }}"
           echo "github_ref=${{ github.ref }}"
+          echo "module=${{ matrix.module }}"
           python --version
           git rev-parse HEAD
 
@@ -53,48 +68,11 @@ jobs:
         run: |
           python -m compileall -q integrations/models tests/test_model_gateway_stream_timeout_budget_v1.py
 
-      - name: Causal — stream timeout budget
-        id: causal
-        continue-on-error: true
-        run: python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1
-
-      - name: Adjacent — provider registry
-        id: provider_registry
-        continue-on-error: true
-        run: python -m unittest -v tests.test_prod_model_gateway_01_provider_registry
-
-      - name: Adjacent — model streaming
-        id: model_streaming
-        continue-on-error: true
-        run: python -m unittest -v tests.test_prod_model_streaming_01
-
-      - name: Adjacent — structured provider stream error
-        id: structured_stream_error
-        continue-on-error: true
-        run: python -m unittest -v tests.test_prod_structured_provider_stream_error_01
-
-      - name: Adjacent — model settings
-        id: model_settings
-        continue-on-error: true
-        run: python -m unittest -v tests.test_prod_model_settings_01
-
-      - name: Gate focused regressions
-        if: always()
-        run: |
-          echo "causal=${{ steps.causal.outcome }}"
-          echo "provider_registry=${{ steps.provider_registry.outcome }}"
-          echo "model_streaming=${{ steps.model_streaming.outcome }}"
-          echo "structured_stream_error=${{ steps.structured_stream_error.outcome }}"
-          echo "model_settings=${{ steps.model_settings.outcome }}"
-          if [[ "${{ steps.causal.outcome }}" != "success" || \
-                "${{ steps.provider_registry.outcome }}" != "success" || \
-                "${{ steps.model_streaming.outcome }}" != "success" || \
-                "${{ steps.structured_stream_error.outcome }}" != "success" || \
-                "${{ steps.model_settings.outcome }}" != "success" ]]; then
-            exit 1
-          fi
+      - name: Run focused regression — ${{ matrix.label }}
+        run: python -m unittest -v ${{ matrix.module }}
 
       - name: Verify clean checkout after tests
+        if: always()
         run: git diff --exit-code
 
   full-hermetic-windows:
