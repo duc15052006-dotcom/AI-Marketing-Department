@@ -1,0 +1,109 @@
+name: Brain Collective Cognition V1
+
+on:
+  pull_request:
+    paths:
+      - "brain/__init__.py"
+      - "brain/collective_cognition.py"
+      - "tests/test_brain_collective_cognition_v1.py"
+      - ".github/workflows/brain-collective-cognition-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    name: Collective cognition (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact CI identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          printf 'expected_head_sha=%s\nactual_head_sha=%s\n' "$expected" "$actual" | tee .ci-results/identity.txt
+          test "$expected" = "$actual"
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile collective cognition regression
+        shell: bash
+        run: |
+          python -m compileall -q tests/test_brain_collective_cognition_v1.py
+          if [ -f brain/collective_cognition.py ]; then python -m compileall -q brain/collective_cognition.py brain/__init__.py; fi
+
+      - name: Run collective cognition adversarial regression
+        id: targeted
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          python -m unittest -v tests.test_brain_collective_cognition_v1 2>&1 | tee .ci-results/targeted.log
+          code=${PIPESTATUS[0]}
+          printf '%s\n' "$code" > .ci-results/targeted-exit.txt
+          exit "$code"
+
+      - name: Run adjacent five-ASI collaboration/DNA regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v \
+            tests.test_brain_collaboration_intelligence_v1 \
+            tests.test_brain_five_agent_dna_contract_v1 \
+            2>&1 | tee .ci-results/adjacent.log
+
+      - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows' && steps.targeted.outcome == 'success'
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | tee .ci-results/full-unittest.log
+
+      - name: Upload exact-head qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-collective-cognition-v1-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+      - name: Enforce targeted collective cognition authority gate
+        if: always()
+        shell: bash
+        run: |
+          test -f .ci-results/targeted-exit.txt
+          test "$(cat .ci-results/targeted-exit.txt)" = "0"
