@@ -206,7 +206,10 @@ class DepartmentAppBackend:
     def __init__(self) -> None:
         self.cap_registry = CapabilityRegistry()
         self.policy_engine = PolicyEngine()
-        self.receipt_repo = ExecutionReceiptRepository()
+        self.receipt_repo = ExecutionReceiptRepository(
+            database_path=get_backend_state_file_path().with_name("execution_receipts.sqlite3")
+        )
+        self.receipt_repo.reconcile_unfinished_intents()
         self.tool_gateway = ToolGateway(
             capability_registry=self.cap_registry,
             policy_engine=self.policy_engine,
