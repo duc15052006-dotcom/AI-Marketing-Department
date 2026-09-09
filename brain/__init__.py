@@ -137,6 +137,16 @@ from brain.world_state import (
     WorldStateSnapshot,
     build_world_state,
 )
+from brain.temporal_world_model import (
+    BeliefTransition,
+    CausalLink,
+    CausalRelationSpec,
+    TemporalCausalWorldModel,
+    TemporalCausalWorldModelRequest,
+    TemporalChangeKind,
+    TemporalFrame,
+    build_temporal_causal_world_model,
+)
 
 __all__ = [
     "ActionIntent",
@@ -144,7 +154,10 @@ __all__ = [
     "AdaptiveReplanResult",
     "BeliefRevision",
     "BeliefStatus",
+    "BeliefTransition",
     "BrainAgentId",
+    "CausalLink",
+    "CausalRelationSpec",
     "CognitiveCycle",
     "CognitiveCycleRequest",
     "CognitiveDirective",
@@ -221,6 +234,10 @@ __all__ = [
     "StrategyPerformance",
     "StrategyTrial",
     "SuccessCriterionTrace",
+    "TemporalCausalWorldModel",
+    "TemporalCausalWorldModelRequest",
+    "TemporalChangeKind",
+    "TemporalFrame",
     "TrialEffect",
     "UnknownRecord",
     "WorldBelief",
@@ -234,6 +251,7 @@ __all__ = [
     "assess_metacognition",
     "build_goal_decomposition",
     "build_knowledge_graph",
+    "build_temporal_causal_world_model",
     "build_world_state",
     "compare_counterfactuals",
     "derive_cognitive_cycle",
