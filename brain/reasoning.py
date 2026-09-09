@@ -8,6 +8,7 @@ actually supported by the selected model.
 
 from __future__ import annotations
 
+import copy
 from enum import Enum
 from typing import List, Type, TypeVar
 
@@ -153,6 +154,12 @@ def select_reasoning_depth(assessment: ReasoningAssessment) -> ReasoningDecision
 
     if not isinstance(assessment, ReasoningAssessment):
         raise ValidationError("assessment must be a ReasoningAssessment")
+
+    # BaseModel instances remain mutable after construction.  Reconstruct the
+    # complete assessment at this authority-bearing use boundary so a caller
+    # cannot replace validated enum/bool values before the reasoning policy is
+    # evaluated.
+    assessment = ReasoningAssessment(**copy.deepcopy(assessment.model_dump()))
 
     signals = (
         assessment.complexity,
