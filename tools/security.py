@@ -47,6 +47,18 @@ AGENT_DEFAULT_PERMISSIONS: Dict[str, Set[PermissionLevel]] = {
 }
 
 
+def _canonical_project_scope(project_id: Optional[str]) -> Optional[str]:
+    """Return one canonical optional project scope or fail closed on malformed input."""
+    if project_id is None:
+        return None
+    if not isinstance(project_id, str):
+        raise ValueError("PROJECT_SCOPE_INVALID: project_id must be a non-empty canonical string or None")
+    canonical = project_id.strip()
+    if not canonical or canonical != project_id:
+        raise ValueError("PROJECT_SCOPE_INVALID: project_id must be non-empty and contain no surrounding whitespace")
+    return canonical
+
+
 def compute_request_fingerprint(
     capability_id: str,
     parameters: Optional[Dict[str, Any]] = None,
@@ -57,8 +69,9 @@ def compute_request_fingerprint(
     """Compute deterministic canonical SHA-256 fingerprint of a consequential tool request."""
     norm_params = json.dumps(parameters or {}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     scope = f"{capability_id.strip().lower()}:{run_id or ''}:{business_id or ''}"
-    if project_id:
-        scope = f"{scope}:{project_id}"
+    project_scope = _canonical_project_scope(project_id)
+    if project_scope is not None:
+        scope = f"{scope}:{project_scope}"
     raw = f"{scope}:{norm_params}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -161,12 +174,13 @@ class PolicyEngine:
     ) -> PendingApprovalRecord:
         """Create an immutable server-side pending approval record for a proposed consequential action."""
         params = parameters or {}
+        project_scope = _canonical_project_scope(project_id)
         fp = compute_request_fingerprint(
             capability_id=capability_id,
             parameters=params,
             run_id=run_id,
             business_id=business_id,
-            project_id=project_id,
+            project_id=project_scope,
         )
         now = datetime.now(timezone.utc)
         expires_at = datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=timezone.utc).isoformat()
@@ -201,7 +215,7 @@ class PolicyEngine:
                 request_fingerprint=fp,
                 run_id=run_id,
                 business_id=business_id,
-                project_id=project_id,
+                project_id=project_scope,
                 created_at=now.isoformat(),
                 expires_at=expires_at,
                 status=PendingApprovalStatus.PENDING,
@@ -354,12 +368,13 @@ class PolicyEngine:
         token = f"appr_{secrets.token_urlsafe(32)}"
         now = datetime.now(timezone.utc)
         expires_at = datetime.fromtimestamp(now.timestamp() + ttl_seconds, tz=timezone.utc).isoformat()
+        project_scope = _canonical_project_scope(project_id)
         fp = compute_request_fingerprint(
             capability_id=capability_id,
             parameters=parameters or {},
             run_id=run_id,
             business_id=business_id,
-            project_id=project_id,
+            project_id=project_scope,
         )
         record = HumanApprovalRecord(
             approval_token=token,
@@ -367,7 +382,7 @@ class PolicyEngine:
             capability_id=capability_id,
             run_id=run_id,
             business_id=business_id,
-            project_id=project_id,
+            project_id=project_scope,
             request_fingerprint=fp,
             approved_by=approved_by,
             approved_at=now.isoformat(),
@@ -429,6 +444,15 @@ class PolicyEngine:
         project_id: Optional[str] = None,
     ) -> PolicyDecision:
         """Evaluate if an agent is authorized to execute a capability."""
+        try:
+            request_project_scope = _canonical_project_scope(project_id)
+        except ValueError as exc:
+            return PolicyDecision(
+                allowed=False,
+                error_code="PROJECT_SCOPE_INVALID",
+                reason=str(exc),
+            )
+
         aid = agent_id.lower()
 
         # 1. Agent Role Recognition Gate
@@ -547,20 +571,32 @@ class PolicyEngine:
                     reason=f"APPROVAL_BUSINESS_MISMATCH: Approval is bound to business '{record.business_id}', not '{business_id}'.",
                 )
 
-            if record.project_id and not project_id:
+            try:
+                approval_project_scope = _canonical_project_scope(record.project_id)
+            except ValueError as exc:
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
-                    error_code="APPROVAL_PROJECT_SCOPE_REQUIRED",
-                    reason=f"APPROVAL_PROJECT_SCOPE_REQUIRED: Approval is bound to project '{record.project_id}', but the request has no project scope.",
+                    error_code="APPROVAL_PROJECT_SCOPE_INVALID",
+                    reason=f"APPROVAL_PROJECT_SCOPE_INVALID: {exc}",
                 )
 
-            if record.project_id and record.project_id != project_id:
+            if approval_project_scope != request_project_scope:
+                if approval_project_scope is None or request_project_scope is None:
+                    return PolicyDecision(
+                        allowed=False,
+                        requires_human_approval=True,
+                        error_code="APPROVAL_PROJECT_SCOPE_REQUIRED",
+                        reason=(
+                            "APPROVAL_PROJECT_SCOPE_REQUIRED: Project-scoped consequential authority must be "
+                            "bound symmetrically; approval and request project scopes differ."
+                        ),
+                    )
                 return PolicyDecision(
                     allowed=False,
                     requires_human_approval=True,
                     error_code="APPROVAL_PROJECT_MISMATCH",
-                    reason=f"APPROVAL_PROJECT_MISMATCH: Approval is bound to project '{record.project_id}', not '{project_id}'.",
+                    reason=f"APPROVAL_PROJECT_MISMATCH: Approval is bound to project '{approval_project_scope}', not '{request_project_scope}'.",
                 )
 
             # Check request fingerprint match (if present on record)
@@ -570,7 +606,7 @@ class PolicyEngine:
                     parameters=parameters,
                     run_id=run_id or record.run_id,
                     business_id=business_id or record.business_id,
-                    project_id=record.project_id,
+                    project_id=approval_project_scope,
                 )
                 if record.request_fingerprint != expected_fp:
                     return PolicyDecision(

@@ -114,6 +114,7 @@ class ToolGatewayDurableIntentLifecycleV1Tests(unittest.TestCase):
             parameters=parameters,
             run_id=run_id,
             business_id="BIZ-INTENT-1",
+            project_id="PROJ-INTENT-1",
             approved_by="durable intent lifecycle regression",
             risk_level=RiskLevel.CRITICAL,
         )
