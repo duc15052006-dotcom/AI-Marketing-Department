@@ -128,6 +128,14 @@ def _canonical_review_refs(assessment: ClaimEvidenceAssessment) -> List[str]:
     )
 
 
+def _evidence_source_ids(request: Optional[ClaimEvidenceRequest]) -> set[str]:
+    """Return normalized source identities from a canonically validated request."""
+
+    if request is None:
+        return set()
+    return {signal.source_id for signal in request.evidence}
+
+
 def _canonical_review_assessment(
     review: "PeerReview",
 ) -> Optional[ClaimEvidenceAssessment]:
@@ -403,6 +411,44 @@ def evaluate_collaboration(
     canonical_by_review_id = {
         review.review_id: _canonical_review_assessment(review) for review in eligible
     }
+
+    # Reviewer identity alone is not evidence independence.  A review is
+    # common-mode when any of its sources are also used by the proposal or by
+    # another eligible peer.  Such evidence cannot satisfy quorum; a common-mode
+    # challenge still blocks acceptance through the unsubstantiated-dissent path.
+    proposal_sources = _evidence_source_ids(
+        assessment.proposal_evidence_request if canonical_proposal is not None else None
+    )
+    source_review_ids: Dict[str, set[str]] = {}
+    review_sources: Dict[str, set[str]] = {}
+    for review in eligible:
+        canonical = canonical_by_review_id[review.review_id]
+        sources = _evidence_source_ids(
+            review.evidence_request if canonical is not None else None
+        )
+        review_sources[review.review_id] = sources
+        for source_id in sources:
+            source_review_ids.setdefault(source_id, set()).add(review.review_id)
+
+    common_mode_review_ids = {
+        review.review_id
+        for review in eligible
+        if review_sources[review.review_id] & proposal_sources
+        or any(
+            len(source_review_ids[source_id]) > 1
+            for source_id in review_sources[review.review_id]
+        )
+    }
+    for review in eligible:
+        if review.review_id not in common_mode_review_ids:
+            continue
+        canonical_by_review_id[review.review_id] = None
+        if review.review_id not in ignored_review_ids:
+            ignored_review_ids.append(review.review_id)
+        reasons.append(
+            f"review {review.review_id} ignored for quorum: evidence sources are not independent"
+        )
+
     supporting = [
         review
         for review in eligible
