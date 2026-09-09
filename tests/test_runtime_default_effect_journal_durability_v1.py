@@ -23,46 +23,48 @@ class RuntimeDefaultEffectJournalDurabilityV1Tests(unittest.TestCase):
 
             with patch("app_api.server.get_backend_state_file_path", return_value=state_file):
                 first = DepartmentAppBackend()
-                self.addCleanup(lambda: first.receipt_repo.close())
+                try:
+                    self.assertTrue(
+                        first.receipt_repo.durable,
+                        "PRODUCTION_EFFECT_JOURNAL_NOT_DURABLE: DepartmentAppBackend uses an in-memory receipt repository",
+                    )
+                    self.assertEqual(db_path.resolve(), first.receipt_repo.database_path)
 
-                self.assertTrue(
-                    first.receipt_repo.durable,
-                    "PRODUCTION_EFFECT_JOURNAL_NOT_DURABLE: DepartmentAppBackend uses an in-memory receipt repository",
-                )
-                self.assertEqual(db_path.resolve(), first.receipt_repo.database_path)
-
-                intent = first.receipt_repo.prepare_execution_intent(
-                    request_id="REQ-RUNTIME-CRASH-1",
-                    run_id="RUN-RUNTIME-CRASH-1",
-                    agent_id="cmo",
-                    capability_id="social_publishing",
-                    provider="sandbox_publisher",
-                    request_hash="runtime-crash-hash-1",
-                    execution_mode=ExecutionMode.SANDBOX,
-                    business_id="BIZ-RUNTIME-1",
-                    project_id="PROJ-RUNTIME-1",
-                )
-                first.receipt_repo.mark_execution_intent_dispatching(intent.intent_id)
-                first.receipt_repo.close()
+                    intent = first.receipt_repo.prepare_execution_intent(
+                        request_id="REQ-RUNTIME-CRASH-1",
+                        run_id="RUN-RUNTIME-CRASH-1",
+                        agent_id="cmo",
+                        capability_id="social_publishing",
+                        provider="sandbox_publisher",
+                        request_hash="runtime-crash-hash-1",
+                        execution_mode=ExecutionMode.SANDBOX,
+                        business_id="BIZ-RUNTIME-1",
+                        project_id="PROJ-RUNTIME-1",
+                    )
+                    first.receipt_repo.mark_execution_intent_dispatching(intent.intent_id)
+                finally:
+                    first.receipt_repo.close()
 
                 restarted = DepartmentAppBackend()
-                self.addCleanup(lambda: restarted.receipt_repo.close())
-                restored = restarted.receipt_repo.get_execution_intent(intent.intent_id)
+                try:
+                    restored = restarted.receipt_repo.get_execution_intent(intent.intent_id)
 
-                self.assertIsNotNone(restored)
-                assert restored is not None
-                self.assertEqual(
-                    ExecutionIntentState.AMBIGUOUS,
-                    restored.state,
-                    "RESTART_DISPATCH_AUTHORITY_NOT_RECONCILED: a crash after DISPATCHING must be sealed AMBIGUOUS before continuation",
-                )
-                assessment = restarted.receipt_repo.assess_execution_intent(intent.intent_id)
-                self.assertEqual(
-                    ReconciliationOutcome.AMBIGUOUS_EXTERNAL_ACTION_OUTCOME,
-                    assessment.outcome,
-                )
-                self.assertEqual(1, restored.dispatch_count)
-                self.assertEqual(ExecutionMode.SANDBOX, restored.execution_mode)
+                    self.assertIsNotNone(restored)
+                    assert restored is not None
+                    self.assertEqual(
+                        ExecutionIntentState.AMBIGUOUS,
+                        restored.state,
+                        "RESTART_DISPATCH_AUTHORITY_NOT_RECONCILED: a crash after DISPATCHING must be sealed AMBIGUOUS before continuation",
+                    )
+                    assessment = restarted.receipt_repo.assess_execution_intent(intent.intent_id)
+                    self.assertEqual(
+                        ReconciliationOutcome.AMBIGUOUS_EXTERNAL_ACTION_OUTCOME,
+                        assessment.outcome,
+                    )
+                    self.assertEqual(1, restored.dispatch_count)
+                    self.assertEqual(ExecutionMode.SANDBOX, restored.execution_mode)
+                finally:
+                    restarted.receipt_repo.close()
 
 
 if __name__ == "__main__":
