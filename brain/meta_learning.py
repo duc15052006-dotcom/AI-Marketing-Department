@@ -228,6 +228,38 @@ class MetaLearningDecision(BaseModel):
             )
 
 
+def _payload(raw: object, expected_type: type, field_name: str) -> dict:
+    if isinstance(raw, expected_type):
+        return copy.deepcopy(raw.model_dump())
+    if isinstance(raw, dict):
+        return copy.deepcopy(raw)
+    raise ValidationError(
+        f"{field_name} must be a {expected_type.__name__} or serialized mapping"
+    )
+
+
+def _canonical_metacognition(raw: object, field_name: str) -> MetacognitionRequest:
+    return MetacognitionRequest(**_payload(raw, MetacognitionRequest, field_name))
+
+
+def _canonical_strategy_trial(raw: object) -> StrategyTrial:
+    data = _payload(raw, StrategyTrial, "trials")
+    before = _canonical_metacognition(data.pop("before_request", None), "before_request")
+    after = _canonical_metacognition(data.pop("after_request", None), "after_request")
+    return StrategyTrial(**data, before_request=before, after_request=after)
+
+
+def _canonical_request(raw: object) -> MetaLearningRequest:
+    if not isinstance(raw, MetaLearningRequest):
+        raise ValidationError("request must be a MetaLearningRequest")
+    data = copy.deepcopy(raw.model_dump())
+    raw_trials = data.pop("trials", [])
+    if not isinstance(raw_trials, list):
+        raise ValidationError("trials must be a list of StrategyTrial")
+    trials = [_canonical_strategy_trial(item) for item in raw_trials]
+    return MetaLearningRequest(**data, trials=trials)
+
+
 _STATE_SEVERITY = {
     KnowledgeState.SUFFICIENT: 0,
     KnowledgeState.INCOMPLETE: 1,
@@ -260,9 +292,7 @@ def _trial_effect(trial: StrategyTrial) -> TrialEffect:
 def evaluate_meta_learning(request: MetaLearningRequest) -> MetaLearningDecision:
     """Evaluate which learning strategy reduces uncertainty most reliably."""
 
-    if not isinstance(request, MetaLearningRequest):
-        raise ValidationError("request must be a MetaLearningRequest")
-    request = copy.deepcopy(request)
+    request = _canonical_request(request)
 
     counts: Dict[LearningStrategy, Dict[TrialEffect, int]] = {}
     for trial in request.trials:
