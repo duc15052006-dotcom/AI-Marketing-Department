@@ -31,7 +31,7 @@ from tools.adapters import (
     SearchAdapter,
 )
 from tools.capabilities import CapabilityCategory, CapabilityDescriptor, CapabilityRegistry, PermissionLevel, RiskLevel
-from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
+from tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus, _safe_approval_reference
 from tools.security import PolicyDecision, PolicyEngine
 
 logger = logging.getLogger("tool_gateway")
@@ -279,6 +279,7 @@ class ToolGateway:
         # 4. Atomic One-Shot Approval Claim for Consequential Actions
         cap_is_consequential = self._is_consequential_capability(cap)
         is_consequential = bool(request.approval_token and cap_is_consequential)
+        approval_reference = _safe_approval_reference(request.approval_token)
 
         if is_consequential:
             claimed = self.policy_engine.claim_approval(request.approval_token)
@@ -295,7 +296,7 @@ class ToolGateway:
                     status=ExecutionStatus.APPROVAL_REQUIRED,
                     error_class="APPROVAL_ALREADY_CLAIMED",
                     error_message="APPROVAL_ALREADY_CLAIMED: Approval token has already been claimed or consumed for execution.",
-                    approval_reference=request.approval_token,
+                    approval_reference=approval_reference,
                     business_id=request.business_id,
                     project_id=request.project_id,
                     chat_id=request.chat_id,
@@ -316,8 +317,28 @@ class ToolGateway:
         last_exc: Optional[BaseException] = None
         exception_error_code: Optional[str] = None
         ambiguous_external_outcome = False
+        execution_intent = None
+        adapter_execution_mode = self._resolve_execution_mode(adapter, cap.capability_id)
 
         try:
+            if cap_is_consequential:
+                execution_intent = self.receipt_repository.prepare_execution_intent(
+                    request_id=request.request_id,
+                    run_id=request.run_id,
+                    agent_id=request.agent_id,
+                    capability_id=request.capability_id,
+                    provider=adapter.adapter_name,
+                    request_hash=req_hash,
+                    execution_mode=adapter_execution_mode,
+                    business_id=request.business_id,
+                    project_id=request.project_id,
+                    chat_id=request.chat_id,
+                    approval_reference=approval_reference,
+                )
+                self.receipt_repository.mark_execution_intent_dispatching(
+                    execution_intent.intent_id
+                )
+
             for attempt in range(max_retries + 1):
                 try:
                     adapter_res = adapter.execute(
@@ -391,7 +412,7 @@ class ToolGateway:
                 data=adapter_res.data,
                 cost_or_token_usage=adapter_res.cost_or_tokens,
                 artifact_references=adapter_res.artifact_refs,
-                approval_reference=request.approval_token,
+                approval_reference=approval_reference,
                 business_id=request.business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
@@ -428,10 +449,16 @@ class ToolGateway:
                 error_message=err_msg,
                 cost_or_token_usage=adapter_res.cost_or_tokens if adapter_res else {},
                 artifact_references=adapter_res.artifact_refs if adapter_res else [],
-                approval_reference=request.approval_token,
+                approval_reference=approval_reference,
                 business_id=request.business_id,
                 project_id=request.project_id,
                 chat_id=request.chat_id,
             )
 
+        if execution_intent is not None:
+            return self.receipt_repository.finalize_execution_intent(
+                execution_intent.intent_id,
+                receipt,
+                ambiguous=ambiguous_external_outcome,
+            )
         return self.receipt_repository.save_receipt(receipt)
