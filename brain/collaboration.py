@@ -344,6 +344,19 @@ def evaluate_collaboration(
     if not isinstance(assessment, CollaborationAssessment):
         raise ValidationError("assessment must be a CollaborationAssessment")
 
+    # Construction-time validation is not continuing authority because Brain
+    # models are mutable. Validate the top-level authority fields consumed
+    # directly here. Nested proposal/review evidence remains canonicalized by
+    # the existing fail-closed helpers so late evidence corruption degrades to
+    # INCONCLUSIVE/ESCALATE rather than changing that public contract to an
+    # exception.
+    _required_text(assessment.assessment_id, "assessment_id")
+    _required_text(assessment.goal_id, "goal_id")
+    _required_text(assessment.proposal_id, "proposal_id")
+    _enum(assessment.author_agent, BrainAgentId, "author_agent")
+    _enum(assessment.proposal_verdict, ClaimVerdict, "proposal_verdict")
+    quorum = _review_quorum(assessment.minimum_supporting_reviewers)
+
     canonical_proposal = _canonical_proposal_assessment(assessment)
     reasons: List[str] = []
     ignored_review_ids: List[str] = []
@@ -467,14 +480,14 @@ def evaluate_collaboration(
             "an independent peer raised a refutation without canonical raw evidence provenance; acceptance is blocked until the challenge is resolved"
         )
         disposition = CollaborationDisposition.ESCALATE
-    elif len(supporting) >= assessment.minimum_supporting_reviewers:
+    elif len(supporting) >= quorum:
         reasons.append(
-            f"proposal is canonically evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}"
+            f"proposal is canonically evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {quorum}"
         )
         disposition = CollaborationDisposition.ACCEPT
     else:
         reasons.append(
-            f"independent raw-evidence-backed peer support {len(supporting)} is below required quorum {assessment.minimum_supporting_reviewers}"
+            f"independent raw-evidence-backed peer support {len(supporting)} is below required quorum {quorum}"
         )
         disposition = CollaborationDisposition.INCONCLUSIVE
 
