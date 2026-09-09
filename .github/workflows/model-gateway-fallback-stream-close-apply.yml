@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply-production-fix:
-    if: startsWith(github.event.head_commit.message, 'ci(models): apply fallback stream cleanup fix')
+    if: startsWith(github.event.head_commit.message, 'apply fallback stream cleanup fix')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
