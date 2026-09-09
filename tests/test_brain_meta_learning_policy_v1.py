@@ -54,6 +54,18 @@ class BrainMetaLearningPolicyV1Tests(unittest.TestCase):
             after_request=self._request(f"A-{trial_id}", after_gaps),
         )
 
+    def _request_set(self) -> MetaLearningRequest:
+        return MetaLearningRequest(
+            assessment_id="ML-MUTATION",
+            problem_family_id="PF-MARKET-RESEARCH",
+            policy_owner_agent=BrainAgentId.CMO,
+            trials=[
+                self._trial("M-1", LearningStrategy.RESEARCH, 2, 0),
+                self._trial("M-2", LearningStrategy.RESEARCH, 1, 0),
+                self._trial("M-3", LearningStrategy.RESEARCH, 3, 1),
+            ],
+        )
+
     def test_fewer_than_three_trials_cannot_update_policy(self) -> None:
         decision = evaluate_meta_learning(
             MetaLearningRequest(
@@ -186,47 +198,45 @@ class BrainMetaLearningPolicyV1Tests(unittest.TestCase):
             )
 
     def test_post_construction_request_scope_mutation_fails_closed(self) -> None:
-        request = MetaLearningRequest(
-            assessment_id="ML-MUT-SCOPE",
-            problem_family_id="PF-MARKET-RESEARCH",
-            policy_owner_agent=BrainAgentId.CMO,
-            trials=[
-                self._trial("M-1", LearningStrategy.RESEARCH, 2, 0),
-                self._trial("M-2", LearningStrategy.RESEARCH, 1, 0),
-                self._trial("M-3", LearningStrategy.RESEARCH, 3, 1),
-            ],
-        )
+        request = self._request_set()
         request.problem_family_id = "PF-MUTATED"
         with self.assertRaises(ValidationError):
             evaluate_meta_learning(request)
 
     def test_post_construction_trial_scope_mutation_fails_closed(self) -> None:
-        request = MetaLearningRequest(
-            assessment_id="ML-MUT-TRIAL-SCOPE",
-            problem_family_id="PF-MARKET-RESEARCH",
-            policy_owner_agent=BrainAgentId.CMO,
-            trials=[
-                self._trial("S-1", LearningStrategy.RESEARCH, 2, 0),
-                self._trial("S-2", LearningStrategy.RESEARCH, 1, 0),
-                self._trial("S-3", LearningStrategy.RESEARCH, 3, 1),
-            ],
-        )
+        request = self._request_set()
         request.trials[0].problem_family_id = "PF-MUTATED"
         with self.assertRaises(ValidationError):
             evaluate_meta_learning(request)
 
     def test_post_construction_duplicate_trial_id_mutation_fails_closed(self) -> None:
-        request = MetaLearningRequest(
-            assessment_id="ML-MUT-DUPLICATE",
-            problem_family_id="PF-MARKET-RESEARCH",
-            policy_owner_agent=BrainAgentId.CMO,
-            trials=[
-                self._trial("D-1", LearningStrategy.RESEARCH, 2, 0),
-                self._trial("D-2", LearningStrategy.RESEARCH, 1, 0),
-                self._trial("D-3", LearningStrategy.RESEARCH, 3, 1),
-            ],
-        )
+        request = self._request_set()
         request.trials[1].trial_id = request.trials[0].trial_id
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_post_construction_strategy_relabel_fails_closed(self) -> None:
+        request = self._request_set()
+        for trial in request.trials:
+            trial.strategy = LearningStrategy.EXPERIMENT
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_post_construction_invalid_strategy_fails_with_validation_error(self) -> None:
+        request = self._request_set()
+        request.trials[0].strategy = "FAKE_SUPER_STRATEGY"
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_post_construction_nested_goal_mutation_fails_closed(self) -> None:
+        request = self._request_set()
+        request.trials[0].before_request.goal_id = "G-FOREIGN"
+        with self.assertRaises(ValidationError):
+            evaluate_meta_learning(request)
+
+    def test_post_construction_trial_history_replacement_fails_closed(self) -> None:
+        request = self._request_set()
+        request.trials = request.trials[:2]
         with self.assertRaises(ValidationError):
             evaluate_meta_learning(request)
 
