@@ -53,10 +53,14 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Run stream timeout budget regression
+      - name: Run stream timeout budget regression and capture result
         run: |
+          set +e
           set -o pipefail
           python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1 2>&1 | tee .ci-results/causal-red.log
+          status=${PIPESTATUS[0]}
+          echo "$status" > .ci-results/test-exit-code.txt
+          exit 0
 
       - name: Upload CI evidence
         if: always()
@@ -66,3 +70,9 @@ jobs:
           path: .ci-results/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Preserve regression conclusion
+        if: always()
+        run: |
+          status=$(cat .ci-results/test-exit-code.txt)
+          exit "$status"
