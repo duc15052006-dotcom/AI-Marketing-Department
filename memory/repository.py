@@ -8,9 +8,29 @@ SUCCESS_FAILURE_MEMORY, and USER_BRAND_PREFERENCE_MEMORY.
 from __future__ import annotations
 
 import abc
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from memory.models import MemoryItem, MemoryType, PromotionState
+
+
+def get_default_memory_database_path() -> Path:
+    """Return the durable per-user production memory database path.
+
+    ``AI_MARKETING_MEMORY_DB_PATH`` is an explicit operations/test override.
+    Otherwise Windows uses APPDATA/LOCALAPPDATA and non-Windows systems use the
+    user's home directory. The SQLite backend creates the parent directory.
+    """
+
+    override = os.environ.get("AI_MARKETING_MEMORY_DB_PATH")
+    if override:
+        return Path(override).expanduser()
+
+    app_data = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+    if app_data:
+        return Path(app_data) / "AI-Marketing-Department" / "memory" / "memory.sqlite3"
+    return Path.home() / ".ai-marketing-department" / "memory" / "memory.sqlite3"
 
 
 class MemoryRepository(abc.ABC):
@@ -40,7 +60,21 @@ class MemoryRepository(abc.ABC):
 
 
 class LocalMemoryRepository(MemoryRepository):
-    """In-memory and local repository implementing isolated memory type partitions."""
+    """Compatibility facade for the application's local memory repository.
+
+    Normal runtime construction is durable and returns SQLiteMemoryRepository.
+    ``AI_MARKETING_MEMORY_EPHEMERAL=1`` is reserved for hermetic legacy tests
+    that intentionally exercise the historical in-memory behavior.
+    """
+
+    def __new__(cls):
+        if cls is LocalMemoryRepository and os.environ.get("AI_MARKETING_MEMORY_EPHEMERAL") != "1":
+            # Lazy import avoids a module cycle: sqlite_repository ->
+            # MemoryRepository (this module).
+            from memory.sqlite_repository import SQLiteMemoryRepository
+
+            return SQLiteMemoryRepository(get_default_memory_database_path())
+        return super().__new__(cls)
 
     def __init__(self) -> None:
         self._memories: Dict[str, MemoryItem] = {}
