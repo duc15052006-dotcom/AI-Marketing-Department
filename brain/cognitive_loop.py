@@ -209,6 +209,20 @@ class CognitiveCycleRequest(BaseModel):
             self.reflection_reports, "reflection_id", "reflection_report"
         )
 
+        decisions_by_id = {
+            decision.decision_id: decision for decision in self.decisions
+        }
+        for report in self.reflection_reports:
+            decision = decisions_by_id.get(report.decision_id)
+            if decision is None:
+                raise ValidationError(
+                    f"reflection_report '{report.reflection_id}' references unknown decision"
+                )
+            if report.agent_id != decision.agent_id:
+                raise ValidationError(
+                    f"reflection_report '{report.reflection_id}' agent_id must match its decision"
+                )
+
 
 class CognitiveCycle(BaseModel):
     """Canonical semantic result for one deterministic cognitive transition."""
