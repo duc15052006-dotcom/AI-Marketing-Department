@@ -7,63 +7,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: model-gateway-stream-routing-timeout-v1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-production-fix:
-    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'ci(models) apply stream routing timeout fix')
-    name: Apply minimal stream-routing deadline fix
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: test/model-gateway-stream-routing-timeout-v1
-      - name: Move stream deadline start before routing
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('integrations/models/gateway.py')
-          text = path.read_text(encoding='utf-8')
-
-          old_entry = '''        Non-streaming providers are handled via synchronous generate() degradation:\n        the complete response is emitted as a single StreamDelta.\n        \"\"\"\n        try:\n'''
-          new_entry = '''        Non-streaming providers are handled via synchronous generate() degradation:\n        the complete response is emitted as a single StreamDelta.\n        \"\"\"\n        # Total streaming timeout covers governance validation, normalization,\n        # routing/model-policy resolution, provider dispatch, and result consumption.\n        start_time = time.perf_counter()\n        try:\n'''
-          old_late_start = '''        start_time = time.perf_counter()\n        has_emitted_visible_content = False\n'''
-          new_late_start = '''        has_emitted_visible_content = False\n'''
-
-          if text.count(old_entry) != 1:
-              raise SystemExit(f'entry locator count={text.count(old_entry)}; refusing patch')
-          if text.count(old_late_start) != 1:
-              raise SystemExit(f'late-start locator count={text.count(old_late_start)}; refusing patch')
-
-          text = text.replace(old_entry, new_entry, 1)
-          text = text.replace(old_late_start, new_late_start, 1)
-          path.write_text(text, encoding='utf-8')
-          PY
-      - name: Verify causal regression before commit
-        run: |
-          python -m compileall -q integrations/models/gateway.py tests/test_model_gateway_stream_routing_timeout_v1.py
-          python -m unittest -v tests.test_model_gateway_stream_routing_timeout_v1
-      - name: Commit production fix only
-        shell: bash
-        run: |
-          git diff -- integrations/models/gateway.py
-          test -z "$(git status --porcelain --untracked-files=no | grep -v '^ M integrations/models/gateway.py$')"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/models/gateway.py
-          git commit -m "fix(models): include stream routing in total timeout budget"
-          git push origin HEAD:test/model-gateway-stream-routing-timeout-v1
-
   focused-regression:
-    if: github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'ci(models) apply stream routing timeout fix')
     name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -81,6 +32,10 @@ jobs:
             module: tests.test_model_gateway_stream_timeout_budget_v1
           - label: model-streaming
             module: tests.test_prod_model_streaming_01
+          - label: structured-provider-stream-error
+            module: tests.test_prod_structured_provider_stream_error_01
+          - label: provider-registry
+            module: tests.test_prod_model_gateway_01_provider_registry
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -112,6 +67,47 @@ jobs:
         run: python -m compileall -q integrations/models tests/test_model_gateway_stream_routing_timeout_v1.py
       - name: Run focused regression — ${{ matrix.label }}
         run: python -m unittest -v ${{ matrix.module }}
+      - name: Verify clean checkout after tests
+        if: always()
+        run: git diff --exit-code
+
+  windows-full-hermetic:
+    name: Windows Python 3.12 full hermetic discovery
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Record exact-head identity
+        shell: pwsh
+        run: |
+          Write-Host "github_sha=${{ github.sha }}"
+          python --version
+          git rev-parse HEAD
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Compile Python sources
+        run: python -m compileall -q .
+      - name: Run full hermetic unittest discovery
+        shell: pwsh
+        run: python -m unittest discover -s tests -p "test*.py" -v
       - name: Verify clean checkout after tests
         if: always()
         run: git diff --exit-code
