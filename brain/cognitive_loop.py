@@ -41,6 +41,7 @@ class CognitivePhase(str, Enum):
     REPLANNING = "REPLANNING"
     DECISION = "DECISION"
     ACTION_READY = "ACTION_READY"
+    BLOCKED = "BLOCKED"
     COMPLETE = "COMPLETE"
 
 
@@ -339,6 +340,20 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
     """Derive exactly one next semantic phase without performing external effects."""
 
     request = _canonical_request(raw_request)
+
+    if request.goal.status == GoalStatus.BLOCKED:
+        return _result(
+            request,
+            CognitivePhase.BLOCKED,
+            [
+                _directive(
+                    request,
+                    CognitiveDirectiveKind.STOP,
+                    [request.goal.goal_id],
+                    "The canonical goal is blocked; no semantic planning or action is prepared until it is unblocked.",
+                )
+            ],
+        )
 
     if request.goal.status in (GoalStatus.SATISFIED, GoalStatus.ABANDONED):
         return _result(
