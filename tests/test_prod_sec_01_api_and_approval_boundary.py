@@ -77,6 +77,10 @@ class ConcurrentSynchronizedAdapter(BaseCapabilityAdapter):
     def adapter_name(self) -> str:
         return self.name
 
+    def execution_mode_for(self, _capability_id: str) -> ExecutionMode:
+        """Declare the fixture's SANDBOX provenance before consequential I/O."""
+        return ExecutionMode.SANDBOX
+
     def execute(self, capability_id: str, parameters: Dict[str, Any], timeout_seconds: float = 30.0, *, run_id: str = "", business_id: str = "", project_id: str = "") -> AdapterResult:
         self.invocations += 1
         time.sleep(0.05)
