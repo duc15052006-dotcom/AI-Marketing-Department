@@ -586,9 +586,19 @@ class UniversalModelGateway:
         for cand_provider, cand_model in candidates:
             elapsed = time.perf_counter() - start_time
             remaining_timeout = total_timeout - elapsed
-            if remaining_timeout <= 0.001 and attempt_count > 0:
-                logger.warning("Gateway timeout budget exhausted across fallback candidates.")
-                break
+            if remaining_timeout <= 0.001:
+                if attempt_count > 0:
+                    logger.warning("Gateway timeout budget exhausted across fallback candidates.")
+                    break
+                return ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider="gateway",
+                    model_name=norm_req.model_name,
+                    status=ModelResponseStatus.TIMEOUT,
+                    error="TIMEOUT: Total gateway timeout budget exhausted before provider dispatch.",
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
 
             attempt_count += 1
 
@@ -902,9 +912,26 @@ class UniversalModelGateway:
 
             elapsed = time.perf_counter() - start_time
             remaining_timeout = total_timeout - elapsed
-            if remaining_timeout <= 0.001 and cand_idx > 0:
-                logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")
-                break
+            if remaining_timeout <= 0.001:
+                if cand_idx > 0:
+                    logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")
+                    break
+                yield normalize_public_stream_delta(
+                    StreamDelta(
+                        content="",
+                        finish_reason="error",
+                        error=ModelStreamError(
+                            code="TIMEOUT",
+                            category="TIMEOUT",
+                            safe_message="TIMEOUT: Total gateway timeout budget exhausted before provider dispatch.",
+                            retryable=False,
+                            http_status=408,
+                        ),
+                    ),
+                    "gateway",
+                    norm_req.model_name,
+                )
+                return
 
             # 1. Retrieve Provider Definition
             if provider_snapshot is not None:
