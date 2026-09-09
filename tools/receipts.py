@@ -107,8 +107,38 @@ def _receipt_matches_intent_binding(
     return receipt.mission_id is None and receipt.commitment_id is None
 
 
+class _DurableReceiptCompatibilityIndex(dict):
+    """Legacy private receipt view backed by the authoritative SQLite store.
+
+    Older callers still read ``repository._receipts.values()``.  Once the
+    repository is durable that in-memory dictionary is no longer authoritative,
+    so expose a live read-through view instead of mirroring durable rows into a
+    second cache.  New code should call ``list_receipts()``.
+    """
+
+    def __init__(self, repository: "ExecutionReceiptRepository") -> None:
+        super().__init__()
+        self._repository = repository
+
+    def values(self):  # type: ignore[override]
+        return self._repository.list_receipts()
+
+    def get(self, key: object, default: Any = None) -> Any:  # type: ignore[override]
+        if not isinstance(key, str):
+            return default
+        receipt = self._repository.get_receipt(key)
+        return receipt if receipt is not None else default
+
+
 class ExecutionReceiptRepository(_BaseExecutionReceiptRepository):
     """Durable receipt journal extended with backward-compatible Mission lineage."""
+
+    def __init__(self, database_path: Optional[str | _core.Path] = None) -> None:
+        super().__init__(database_path=database_path)
+        if self.durable:
+            # Keep legacy private readers correct without making the compatibility
+            # dictionary a second source of truth.
+            self._receipts = _DurableReceiptCompatibilityIndex(self)
 
     def _initialize_schema(self) -> None:
         super()._initialize_schema()
@@ -126,6 +156,21 @@ class ExecutionReceiptRepository(_BaseExecutionReceiptRepository):
                 self._conn.execute(
                     "ALTER TABLE execution_intents ADD COLUMN commitment_id TEXT"
                 )
+
+    def list_receipts(self) -> list[ExecutionReceipt]:
+        """Return all receipts from the authoritative backing store."""
+
+        self._ensure_open()
+        with self._lock:
+            if self._conn is None:
+                return copy.deepcopy(list(self._receipts.values()))
+            try:
+                rows = self._conn.execute(
+                    "SELECT * FROM execution_receipts ORDER BY rowid"
+                ).fetchall()
+            except sqlite3.Error as exc:
+                raise _core._sqlite_failure("LIST_RECEIPTS", exc) from exc
+            return [self._decode_receipt_row(row) for row in rows]
 
     @staticmethod
     def _receipt_payload(receipt: ExecutionReceipt) -> tuple[ExecutionReceipt, Dict[str, Any], str]:
