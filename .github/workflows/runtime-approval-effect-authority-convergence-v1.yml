@@ -8,6 +8,8 @@ on:
       - "tools/tool_gateway.py"
       - "app_api/server.py"
       - "tests/test_runtime_effect_authority_stack_v2.py"
+      - "tests/test_runtime_mission_reconciliation_engine_v1.py"
+      - "tests/test_runtime_durable_activity_receipts_listing_v1.py"
       - "tests/test_runtime_approval_business_scope_authority_v1.py"
       - "tests/test_runtime_approval_business_scope_required_v1.py"
       - "tests/test_runtime_approval_project_scope_authority_v1.py"
@@ -72,7 +74,7 @@ jobs:
       - name: Compile converged authority boundary
         shell: pwsh
         run: |
-          python -m py_compile tools/security.py tools/receipts.py tools/tool_gateway.py app_api/server.py tests/test_runtime_effect_authority_stack_v2.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
+          python -m py_compile tools/security.py tools/receipts.py tools/tool_gateway.py app_api/server.py tests/test_runtime_effect_authority_stack_v2.py tests/test_runtime_mission_reconciliation_engine_v1.py tests/test_runtime_durable_activity_receipts_listing_v1.py 2>&1 | Tee-Object -FilePath .ci-results/compile.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run composed effect-authority convergence contract
@@ -83,10 +85,10 @@ jobs:
           python -m unittest -v tests.test_runtime_effect_authority_stack_v2 2>&1 | Tee-Object -FilePath .ci-results/targeted.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run preserved approval-authority contracts
+      - name: Run preserved effect and approval authority contracts
         shell: pwsh
         run: |
-          python -m unittest -v tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_approval_business_scope_required_v1 tests.test_runtime_approval_project_scope_authority_v1 tests.test_runtime_approval_run_scope_required_v1 tests.test_runtime_approval_run_scope_canonical_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
+          python -m unittest -v tests.test_runtime_mission_reconciliation_engine_v1 tests.test_runtime_durable_activity_receipts_listing_v1 tests.test_runtime_approval_business_scope_authority_v1 tests.test_runtime_approval_business_scope_required_v1 tests.test_runtime_approval_project_scope_authority_v1 tests.test_runtime_approval_run_scope_required_v1 tests.test_runtime_approval_run_scope_canonical_v1 2>&1 | Tee-Object -FilePath .ci-results/adjacent.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run canonical full hermetic unittest discovery
