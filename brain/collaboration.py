@@ -244,6 +244,9 @@ class CollaborationAssessment(BaseModel):
         self.minimum_supporting_reviewers = _review_quorum(
             self.minimum_supporting_reviewers
         )
+        self._minimum_supporting_reviewers_snapshot = (
+            self.minimum_supporting_reviewers
+        )
 
         if self.proposal_evidence_request is not None:
             request = self.proposal_evidence_request
@@ -344,18 +347,13 @@ def evaluate_collaboration(
     if not isinstance(assessment, CollaborationAssessment):
         raise ValidationError("assessment must be a CollaborationAssessment")
 
-    # Construction-time validation is not continuing authority because Brain
-    # models are mutable. Validate the top-level authority fields consumed
-    # directly here. Nested proposal/review evidence remains canonicalized by
-    # the existing fail-closed helpers so late evidence corruption degrades to
-    # INCONCLUSIVE/ESCALATE rather than changing that public contract to an
-    # exception.
-    _required_text(assessment.assessment_id, "assessment_id")
-    _required_text(assessment.goal_id, "goal_id")
-    _required_text(assessment.proposal_id, "proposal_id")
-    _enum(assessment.author_agent, BrainAgentId, "author_agent")
-    _enum(assessment.proposal_verdict, ClaimVerdict, "proposal_verdict")
     quorum = _review_quorum(assessment.minimum_supporting_reviewers)
+    if quorum != getattr(
+        assessment, "_minimum_supporting_reviewers_snapshot", None
+    ):
+        raise ValidationError(
+            "minimum_supporting_reviewers changed after collaboration validation"
+        )
 
     canonical_proposal = _canonical_proposal_assessment(assessment)
     reasons: List[str] = []
@@ -480,14 +478,14 @@ def evaluate_collaboration(
             "an independent peer raised a refutation without canonical raw evidence provenance; acceptance is blocked until the challenge is resolved"
         )
         disposition = CollaborationDisposition.ESCALATE
-    elif len(supporting) >= quorum:
+    elif len(supporting) >= assessment.minimum_supporting_reviewers:
         reasons.append(
-            f"proposal is canonically evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {quorum}"
+            f"proposal is canonically evidence-supported and has {len(supporting)} distinct raw-evidence-backed peer reviewer(s), meeting quorum {assessment.minimum_supporting_reviewers}"
         )
         disposition = CollaborationDisposition.ACCEPT
     else:
         reasons.append(
-            f"independent raw-evidence-backed peer support {len(supporting)} is below required quorum {quorum}"
+            f"independent raw-evidence-backed peer support {len(supporting)} is below required quorum {assessment.minimum_supporting_reviewers}"
         )
         disposition = CollaborationDisposition.INCONCLUSIVE
 
