@@ -1,0 +1,68 @@
+name: Model Gateway Stream Timeout Budget V1
+
+on:
+  push:
+    branches:
+      - test/model-gateway-stream-timeout-budget-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-gateway-stream-timeout-budget-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  causal-red:
+    name: Ubuntu Python 3.12 causal RED
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Record CI identity
+        run: |
+          mkdir -p .ci-results
+          {
+            echo "github_sha=${{ github.sha }}"
+            echo "github_ref=${{ github.ref }}"
+            echo "runner_os=${{ runner.os }}"
+            python --version
+            git rev-parse HEAD
+          } | tee .ci-results/identity.txt
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run stream timeout budget regression
+        run: |
+          set -o pipefail
+          python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1 2>&1 | tee .ci-results/causal-red.log
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-gateway-stream-timeout-budget-v1-${{ github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          retention-days: 14
