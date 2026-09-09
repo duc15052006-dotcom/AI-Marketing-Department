@@ -49,113 +49,96 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Apply exact minimal gateway patch
+      - name: Apply minimal delayed-precontent fallback patch
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path("integrations/models/gateway.py")
-          text = path.read_text(encoding="utf-8")
-
-          state_old = '''            candidate_visible_content = False
-                      candidate_terminal_seen = False
-          '''.replace("                      candidate_terminal_seen", "            candidate_terminal_seen")
-          state_new = '''            candidate_visible_content = False
-                      candidate_terminal_seen = False
-                      candidate_fallback_error: Optional[ModelStreamError] = None
-          '''.replace("                      candidate_terminal_seen", "            candidate_terminal_seen").replace("                      candidate_fallback_error", "            candidate_fallback_error")
-
-          old = '''                    if delta.finish_reason:
-                              candidate_terminal_seen = True
-                              if delta.finish_reason == "error":
-                                  if delta.content:
-                                      yield normalize_public_stream_delta(
-                                          StreamDelta(content=delta.content, finish_reason=None),
-                                          cand_provider,
-                                          cand_model,
-                                      )
-                                  yield normalize_public_stream_delta(
-                                      StreamDelta(
-                                          content="",
-                                          finish_reason="error",
-                                          error=normalize_public_stream_error(delta.error, default_provider=cand_provider),
-                                      ),
-                                      cand_provider,
-                                      cand_model,
-                                  )
-                                  return
-                              else:
-                                  yield normalize_public_stream_delta(delta, cand_provider, cand_model)
-                                  return
-          '''
-          old = old.replace("                              candidate_terminal_seen", "                        candidate_terminal_seen").replace("                              if delta.finish_reason", "                        if delta.finish_reason").replace("                                  if delta.content", "                            if delta.content").replace("                                      yield", "                                yield").replace("                                          StreamDelta", "                                    StreamDelta").replace("                                          cand_provider", "                                    cand_provider").replace("                                          cand_model", "                                    cand_model").replace("                                      )", "                                )").replace("                                  yield", "                            yield").replace("                                      StreamDelta(", "                                StreamDelta(").replace("                                          content=", "                                    content=").replace("                                          finish_reason=", "                                    finish_reason=").replace("                                          error=", "                                    error=").replace("                                      ),", "                                ),").replace("                                  )", "                            )").replace("                                  return", "                            return").replace("                              else:", "                        else:").replace("                                  yield normalize_public_stream_delta(delta, cand_provider, cand_model)", "                            yield normalize_public_stream_delta(delta, cand_provider, cand_model)")
-
-          new = '''                    if delta.finish_reason:
-                        candidate_terminal_seen = True
-                        if delta.finish_reason == "error":
-                            cand_err = normalize_public_stream_error(delta.error, default_provider=cand_provider)
-                            if not candidate_visible_content:
-                                last_error = cand_err
-                                last_error_provider = cand_provider
-                                last_error_model = cand_model
-                                internal_code = stream_error_to_provider_error_code(cand_err)
-                                self.config_service.record_error(cand_provider, internal_code)
-                                if internal_code == ProviderErrorCode.RATE_LIMIT_429:
-                                    self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
-                                elif internal_code == ProviderErrorCode.AUTH_401:
-                                    self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
-                                elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
-                                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
-                                if strict_model_pin or len(candidates) == 1:
-                                    yield normalize_public_stream_delta(delta, cand_provider, cand_model)
-                                    return
-                                candidate_fallback_error = cand_err
-                                break
-                            if delta.content:
-                                yield normalize_public_stream_delta(
-                                    StreamDelta(content=delta.content, finish_reason=None),
-                                    cand_provider,
-                                    cand_model,
-                                )
-                            yield normalize_public_stream_delta(
-                                StreamDelta(
-                                    content="",
-                                    finish_reason="error",
-                                    error=cand_err,
-                                ),
-                                cand_provider,
-                                cand_model,
-                            )
-                            return
-                        else:
-                            yield normalize_public_stream_delta(delta, cand_provider, cand_model)
-                            return
-          '''
+          lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
 
           marker = "candidate_fallback_error: Optional[ModelStreamError] = None"
-          if marker not in text:
-              if state_old not in text:
-                  raise SystemExit("state locator not found")
-              text = text.replace(state_old, state_new, 1)
+          if any(marker in line for line in lines):
+              print("Production fix already present; no patch needed.")
+              raise SystemExit(0)
 
-          if "candidate_fallback_error = cand_err" not in text:
-              if old not in text:
-                  raise SystemExit("delayed-error locator not found")
-              text = text.replace(old, new, 1)
+          state_idx = next(
+              i for i in range(1, len(lines))
+              if lines[i].strip() == "candidate_terminal_seen = False"
+              and lines[i - 1].strip() == "candidate_visible_content = False"
+          )
+          state_indent = lines[state_idx][: len(lines[state_idx]) - len(lines[state_idx].lstrip())]
+          lines.insert(state_idx + 1, f"{state_indent}{marker}\n")
 
-          continue_old = '''                # 6. Generator finished. Check if candidate finished without a terminal delta (Silent EOF)!
-          '''
-          continue_new = '''                if candidate_fallback_error is not None:
-                      continue
+          stream_idx = next(i for i, line in enumerate(lines) if line.strip() == "for delta in stream_gen:")
+          error_idx = next(
+              i for i in range(stream_idx + 1, len(lines))
+              if lines[i].strip() == 'if delta.finish_reason == "error":'
+          )
+          error_indent = lines[error_idx][: len(lines[error_idx]) - len(lines[error_idx].lstrip())]
+          else_idx = next(
+              i for i in range(error_idx + 1, len(lines))
+              if lines[i].strip() == "else:"
+              and lines[i].startswith(error_indent)
+              and len(lines[i]) - len(lines[i].lstrip()) == len(error_indent)
+          )
 
-                      # 6. Generator finished. Check if candidate finished without a terminal delta (Silent EOF)!
-          '''.replace("                      continue", "                    continue").replace("                      # 6.", "                # 6.")
-          if "if candidate_fallback_error is not None:" not in text:
-              if continue_old not in text:
-                  raise SystemExit("post-stream locator not found")
-              text = text.replace(continue_old, continue_new, 1)
+          I = error_indent
+          J = I + "    "
+          K = J + "    "
+          L = K + "    "
+          replacement = [
+              f'{I}if delta.finish_reason == "error":\n',
+              f"{J}cand_err = normalize_public_stream_error(delta.error, default_provider=cand_provider)\n",
+              f"{J}if not candidate_visible_content:\n",
+              f"{K}last_error = cand_err\n",
+              f"{K}last_error_provider = cand_provider\n",
+              f"{K}last_error_model = cand_model\n",
+              f"{K}internal_code = stream_error_to_provider_error_code(cand_err)\n",
+              f"{K}self.config_service.record_error(cand_provider, internal_code)\n",
+              f"{K}if internal_code == ProviderErrorCode.RATE_LIMIT_429:\n",
+              f"{L}self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)\n",
+              f"{K}elif internal_code == ProviderErrorCode.AUTH_401:\n",
+              f"{L}self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)\n",
+              f"{K}elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):\n",
+              f"{L}self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)\n",
+              f"{K}if strict_model_pin or len(candidates) == 1:\n",
+              f"{L}yield normalize_public_stream_delta(delta, cand_provider, cand_model)\n",
+              f"{L}return\n",
+              f"{K}candidate_fallback_error = cand_err\n",
+              f"{K}break\n",
+              f"{J}if delta.content:\n",
+              f"{K}yield normalize_public_stream_delta(\n",
+              f"{L}StreamDelta(content=delta.content, finish_reason=None),\n",
+              f"{L}cand_provider,\n",
+              f"{L}cand_model,\n",
+              f"{K})\n",
+              f"{J}yield normalize_public_stream_delta(\n",
+              f"{K}StreamDelta(\n",
+              f'{L}content="",\n',
+              f'{L}finish_reason="error",\n',
+              f"{L}error=cand_err,\n",
+              f"{K}),\n",
+              f"{K}cand_provider,\n",
+              f"{K}cand_model,\n",
+              f"{J})\n",
+              f"{J}return\n",
+          ]
+          lines[error_idx:else_idx] = replacement
 
-          path.write_text(text, encoding="utf-8")
+          eof_idx = next(
+              i for i in range(stream_idx + 1, len(lines))
+              if "# 6. Generator finished. Check if candidate finished without a terminal delta" in lines[i]
+          )
+          eof_indent = lines[eof_idx][: len(lines[eof_idx]) - len(lines[eof_idx].lstrip())]
+          lines[eof_idx:eof_idx] = [
+              f"{eof_indent}if candidate_fallback_error is not None:\n",
+              f"{eof_indent}    continue\n",
+              "\n",
+          ]
+
+          path.write_text("".join(lines), encoding="utf-8")
+          print("Applied delayed pre-content stream error fallback patch.")
           PY
 
       - name: Compile causal sources
