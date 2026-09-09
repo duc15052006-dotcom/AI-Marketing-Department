@@ -409,7 +409,21 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
             ],
         )
 
-    if request.plan.status in (PlanStatus.NEEDS_REVISION, PlanStatus.ABANDONED):
+    if request.plan.status == PlanStatus.ABANDONED:
+        return _result(
+            request,
+            CognitivePhase.PLANNING,
+            [
+                _directive(
+                    request,
+                    CognitiveDirectiveKind.BUILD_PLAN,
+                    [request.goal.goal_id],
+                    "The canonical plan is abandoned and cannot be revised; the active goal requires a fresh plan.",
+                )
+            ],
+        )
+
+    if request.plan.status == PlanStatus.NEEDS_REVISION:
         return _result(
             request,
             CognitivePhase.REPLANNING,
@@ -418,7 +432,7 @@ def derive_cognitive_cycle(raw_request: object) -> CognitiveCycle:
                     request,
                     CognitiveDirectiveKind.REPLAN,
                     [request.plan.plan_id],
-                    "The canonical plan cannot be used as the current active path.",
+                    "The canonical plan requires revision before it can be used as the current active path.",
                 )
             ],
         )
