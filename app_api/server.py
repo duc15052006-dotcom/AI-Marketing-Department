@@ -194,6 +194,7 @@ from integrations.models.settings_manager import (
 )
 from integrations.models.provider_auth import provider_requires_api_key
 from tools.capabilities import CapabilityRegistry, RiskLevel
+from tools.dynamic_gateway.gateway import DynamicToolGateway
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import (
     HumanApprovalRecord,
@@ -217,11 +218,13 @@ class DepartmentAppBackend:
         self.cap_registry = CapabilityRegistry()
         self.policy_engine = PolicyEngine()
         self.receipt_repo = ExecutionReceiptRepository()
-        self.tool_gateway = ToolGateway(
-            capability_registry=self.cap_registry,
+        self.dynamic_tool_gateway = DynamicToolGateway(
+            base_registry=self.cap_registry,
             policy_engine=self.policy_engine,
             receipt_repository=self.receipt_repo,
         )
+        self.cap_registry = self.dynamic_tool_gateway.registry
+        self.tool_gateway = self.dynamic_tool_gateway.gateway
 
         # Register real local connectors with capability provider aliases
         self.web_conn = RealWebConnector()
