@@ -420,14 +420,26 @@ class UniversalModelGateway:
 
         # Authoritative Model Policy
         self._has_explicit_policy: bool = model_policy is not None
-        self._model_policy = model_policy or ModelPolicy(
-            global_target=ModelTarget(provider_id=default_provider or "xkiro", model_id="mistralai/mistral-large-2512"),
-            fallback_chain=[
-                ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
-                ModelTarget(provider_id="gemini", model_id="gemini-flash-latest"),
-            ],
-            free_only_mode=self._free_only_mode,
-        )
+        if model_policy is not None:
+            self._model_policy = model_policy
+        else:
+            # The implicit policy must honor the configured default provider and
+            # must not silently inject vendor-specific model IDs or fallbacks.
+            # Settings / explicit ModelPolicy remains the authority for fallback.
+            provider_definition = self.provider_registry.get_provider(self._default_provider)
+            implicit_model = (
+                provider_definition.default_model
+                if provider_definition is not None and provider_definition.default_model
+                else "default"
+            )
+            self._model_policy = ModelPolicy(
+                global_target=ModelTarget(
+                    provider_id=self._default_provider,
+                    model_id=implicit_model,
+                ),
+                fallback_chain=[],
+                free_only_mode=self._free_only_mode,
+            )
 
         # Provider health tracking
         self._health_state: Dict[str, Dict[str, Any]] = {}
@@ -586,9 +598,19 @@ class UniversalModelGateway:
         for cand_provider, cand_model in candidates:
             elapsed = time.perf_counter() - start_time
             remaining_timeout = total_timeout - elapsed
-            if remaining_timeout <= 0.001 and attempt_count > 0:
-                logger.warning("Gateway timeout budget exhausted across fallback candidates.")
-                break
+            if remaining_timeout <= 0.001:
+                if attempt_count > 0:
+                    logger.warning("Gateway timeout budget exhausted across fallback candidates.")
+                    break
+                return ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider="gateway",
+                    model_name=norm_req.model_name,
+                    status=ModelResponseStatus.TIMEOUT,
+                    error="TIMEOUT: Total gateway timeout budget exhausted before provider dispatch.",
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
 
             attempt_count += 1
 
@@ -734,6 +756,21 @@ class UniversalModelGateway:
                     latency_ms=(time.perf_counter() - start_time) * 1000.0,
                 )
 
+            # The gateway deadline remains authoritative even if an adapter
+            # ignores its delegated timeout and returns after the budget.
+            if (time.perf_counter() - start_time) >= total_timeout:
+                self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider result arrived after the total gateway timeout budget.")
+                return ModelResponse(
+                    request_id=norm_req.request_id,
+                    provider=cand_provider,
+                    model_name=cand_model,
+                    status=ModelResponseStatus.TIMEOUT,
+                    error="TIMEOUT: Provider result arrived after the total gateway timeout budget.",
+                    usage=ModelUsage(usage_source="NOT_AVAILABLE"),
+                    latency_ms=(time.perf_counter() - start_time) * 1000.0,
+                )
+
             # Record fallback and resolution metadata
             resp.metadata["resolved_provider"] = cand_provider
             resp.metadata["resolved_model"] = cand_model
@@ -749,7 +786,7 @@ class UniversalModelGateway:
             err_code = classify_error(resp.error)
             self.config_service.record_error(cand_provider, err_code)
 
-            if resp.status == ModelResponseStatus.RATE_LIMITED:
+            if resp.status == ModelResponseStatus.RATE_LIMITED or err_code == ProviderErrorCode.RATE_LIMIT_429:
                 self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED, detail=resp.error)
             elif "AUTH_ERROR" in str(resp.error) or err_code == ProviderErrorCode.AUTH_401:
                 self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR, detail=resp.error)
@@ -902,6 +939,26 @@ class UniversalModelGateway:
 
             elapsed = time.perf_counter() - start_time
             remaining_timeout = total_timeout - elapsed
+            if remaining_timeout <= 0.001:
+                if cand_idx > 0:
+                    logger.warning("Gateway stream timeout budget exhausted across fallback candidates.")
+                    break
+                yield normalize_public_stream_delta(
+                    StreamDelta(
+                        content="",
+                        finish_reason="error",
+                        error=ModelStreamError(
+                            code="TIMEOUT",
+                            category="TIMEOUT",
+                            safe_message="TIMEOUT: Total gateway timeout budget exhausted before provider dispatch.",
+                            retryable=False,
+                            http_status=408,
+                        ),
+                    ),
+                    "gateway",
+                    norm_req.model_name,
+                )
+                return
 
             # 1. Retrieve Provider Definition
             if provider_snapshot is not None:
@@ -1045,10 +1102,34 @@ class UniversalModelGateway:
             # 5. Execute Streaming with Fallback Semantics
             candidate_visible_content = False
             candidate_terminal_seen = False
+            stream_gen = None
 
             try:
                 stream_gen = adapter.generate_stream(req_copy)
                 first_delta = next(stream_gen, None)
+
+                if (time.perf_counter() - start_time) >= total_timeout:
+                    self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.")
+                    close_stream = getattr(stream_gen, "close", None)
+                    if callable(close_stream):
+                        close_stream()
+                    yield normalize_public_stream_delta(
+                        StreamDelta(
+                            content="",
+                            finish_reason="error",
+                            error=ModelStreamError(
+                                code="TIMEOUT",
+                                category="TIMEOUT",
+                                safe_message="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.",
+                                retryable=False,
+                                http_status=408,
+                            ),
+                        ),
+                        cand_provider,
+                        cand_model,
+                    )
+                    return
 
                 if first_delta is None:
                     err = ModelStreamError(
@@ -1074,6 +1155,25 @@ class UniversalModelGateway:
                 if first_delta.finish_reason == "stream_unsupported" and first_delta.content == "" and not candidate_visible_content:
                     try:
                         sync_resp = adapter.generate(req_copy)
+                        if (time.perf_counter() - start_time) >= total_timeout:
+                            self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider fallback result arrived after the total gateway timeout budget.")
+                            yield normalize_public_stream_delta(
+                                StreamDelta(
+                                    content="",
+                                    finish_reason="error",
+                                    error=ModelStreamError(
+                                        code="TIMEOUT",
+                                        category="TIMEOUT",
+                                        safe_message="TIMEOUT: Provider fallback result arrived after the total gateway timeout budget.",
+                                        retryable=False,
+                                        http_status=408,
+                                    ),
+                                ),
+                                cand_provider,
+                                cand_model,
+                            )
+                            return
                         if sync_resp.status == ModelResponseStatus.SUCCESS:
                             if sync_resp.finish_reason == "error":
                                 sync_err = ModelStreamError(
@@ -1136,6 +1236,8 @@ class UniversalModelGateway:
                                 self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
                             elif internal_code == ProviderErrorCode.AUTH_401:
                                 self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                            elif internal_code == ProviderErrorCode.PERMISSION_403:
+                                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                             elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                                 self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
 
@@ -1151,13 +1253,37 @@ class UniversalModelGateway:
                                 return
                             continue
                     except Exception as sync_e:
-                        sync_err = ModelStreamError(
-                            code="STREAM_INTERNAL_ERROR",
-                            category="INTERNAL",
-                            safe_message=f"STREAM_INTERNAL_ERROR: Internal model invocation failure on '{cand_provider}'.",
-                            retryable=False,
-                            http_status=None,
-                        )
+                        if is_timeout_exception(sync_e):
+                            sync_err = ModelStreamError(
+                                code="TIMEOUT",
+                                category="TIMEOUT",
+                                safe_message=f"TIMEOUT: Synchronous degradation call to '{cand_provider}' timed out.",
+                                retryable=True,
+                                http_status=408,
+                            )
+                            internal_code = ProviderErrorCode.TIMEOUT
+                        elif is_network_exception(sync_e):
+                            sync_err = ModelStreamError(
+                                code="NETWORK_ERROR",
+                                category="NETWORK",
+                                safe_message=f"NETWORK_ERROR: Network connection failure during synchronous degradation for '{cand_provider}'.",
+                                retryable=True,
+                                http_status=None,
+                            )
+                            internal_code = ProviderErrorCode.NETWORK_ERROR
+                        else:
+                            sync_err = ModelStreamError(
+                                code="STREAM_INTERNAL_ERROR",
+                                category="INTERNAL",
+                                safe_message=f"STREAM_INTERNAL_ERROR: Internal model invocation failure on '{cand_provider}'.",
+                                retryable=False,
+                                http_status=None,
+                            )
+                            internal_code = None
+
+                        if internal_code is not None:
+                            self.config_service.record_error(cand_provider, internal_code)
+                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=sync_err.safe_message)
                         last_error = sync_err
                         last_error_provider = cand_provider
                         last_error_model = cand_model
@@ -1184,6 +1310,8 @@ class UniversalModelGateway:
                         self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
                     elif internal_code == ProviderErrorCode.AUTH_401:
                         self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                    elif internal_code == ProviderErrorCode.PERMISSION_403:
+                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                     elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                         self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
 
@@ -1220,6 +1348,17 @@ class UniversalModelGateway:
                     has_emitted_visible_content = True
                     if first_delta.finish_reason == "error":
                         candidate_terminal_seen = True
+                        terminal_err = normalize_public_stream_error(first_delta.error, default_provider=cand_provider)
+                        internal_code = stream_error_to_provider_error_code(terminal_err)
+                        self.config_service.record_error(cand_provider, internal_code)
+                        if internal_code == ProviderErrorCode.RATE_LIMIT_429:
+                            self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
+                        elif internal_code == ProviderErrorCode.AUTH_401:
+                            self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                        elif internal_code == ProviderErrorCode.PERMISSION_403:
+                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
+                        elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                         yield normalize_public_stream_delta(
                             StreamDelta(content=first_delta.content, finish_reason=None),
                             cand_provider,
@@ -1229,7 +1368,7 @@ class UniversalModelGateway:
                             StreamDelta(
                                 content="",
                                 finish_reason="error",
-                                error=normalize_public_stream_error(first_delta.error, default_provider=cand_provider),
+                                error=terminal_err,
                             ),
                             cand_provider,
                             cand_model,
@@ -1243,6 +1382,28 @@ class UniversalModelGateway:
 
                 # 5. Process remaining deltas from stream_gen
                 for delta in stream_gen:
+                    if (time.perf_counter() - start_time) >= total_timeout:
+                        self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.")
+                        close_stream = getattr(stream_gen, "close", None)
+                        if callable(close_stream):
+                            close_stream()
+                        yield normalize_public_stream_delta(
+                            StreamDelta(
+                                content="",
+                                finish_reason="error",
+                                error=ModelStreamError(
+                                    code="TIMEOUT",
+                                    category="TIMEOUT",
+                                    safe_message="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.",
+                                    retryable=False,
+                                    http_status=408,
+                                ),
+                            ),
+                            cand_provider,
+                            cand_model,
+                        )
+                        return
                     if delta.content:
                         candidate_visible_content = True
                         has_emitted_visible_content = True
@@ -1250,6 +1411,17 @@ class UniversalModelGateway:
                     if delta.finish_reason:
                         candidate_terminal_seen = True
                         if delta.finish_reason == "error":
+                            terminal_err = normalize_public_stream_error(delta.error, default_provider=cand_provider)
+                            internal_code = stream_error_to_provider_error_code(terminal_err)
+                            self.config_service.record_error(cand_provider, internal_code)
+                            if internal_code == ProviderErrorCode.RATE_LIMIT_429:
+                                self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
+                            elif internal_code == ProviderErrorCode.AUTH_401:
+                                self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                            elif internal_code == ProviderErrorCode.PERMISSION_403:
+                                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
+                            elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                             if delta.content:
                                 yield normalize_public_stream_delta(
                                     StreamDelta(content=delta.content, finish_reason=None),
@@ -1260,7 +1432,7 @@ class UniversalModelGateway:
                                 StreamDelta(
                                     content="",
                                     finish_reason="error",
-                                    error=normalize_public_stream_error(delta.error, default_provider=cand_provider),
+                                    error=terminal_err,
                                 ),
                                 cand_provider,
                                 cand_model,
@@ -1315,6 +1487,22 @@ class UniversalModelGateway:
 
                 return
 
+            except GeneratorExit:
+                # Consumer cancellation must propagate to the active provider stream
+                # so abandoned provider I/O cannot continue consuming tokens/cost.
+                close_stream = getattr(stream_gen, "close", None) if stream_gen is not None else None
+                if callable(close_stream):
+                    try:
+                        close_stream()
+                    except Exception:
+                        logger.debug(
+                            "Provider stream close failed during consumer cancellation for %s::%s",
+                            cand_provider,
+                            cand_model,
+                            exc_info=True,
+                        )
+                raise
+
             except Exception as e:
                 is_timeout = is_timeout_exception(e)
                 is_net = is_network_exception(e)
@@ -1345,6 +1533,10 @@ class UniversalModelGateway:
                     retryable=ret,
                     http_status=st,
                 )
+                internal_code = stream_error_to_provider_error_code(err)
+                self.config_service.record_error(cand_provider, internal_code)
+                if internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=safe_msg)
                 last_error = err
                 last_error_provider = cand_provider
                 last_error_model = cand_model
