@@ -9,12 +9,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-model-gateway-post-dispatch-timeout-health-v1-windows-${{ github.ref }}
+  group: apply-model-gateway-post-dispatch-timeout-health-v1-macos-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   apply-fix:
-    runs-on: windows-latest
+    runs-on: macos-latest
     timeout-minutes: 25
     steps:
       - name: Checkout exact pushed head
