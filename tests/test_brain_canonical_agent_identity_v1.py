@@ -9,6 +9,9 @@ from pathlib import Path
 import unittest
 
 from brain.contracts import BrainAgentId, GoalSpec
+from integrations.models.registry import AgentId, ModelPolicy, ModelTarget, normalize_agent_id
+from runtime.context import RuntimeStage
+from runtime.progress import ProgressAgent, ProgressStage, runtime_stage_to_progress_stage
 
 
 EXPECTED_CANONICAL_ROLES = {
@@ -47,6 +50,27 @@ class TestCanonicalBrainAgentIdentityV1(unittest.TestCase):
         )
         self.assertIs(goal.owner_agent, BrainAgentId.CONTENT)
         self.assertEqual(goal.owner_agent.value, "CONTENT")
+
+    def test_runtime_and_progress_legacy_stage_normalize_to_content(self):
+        self.assertIs(RuntimeStage("STRATEGIST"), RuntimeStage.CONTENT)
+        self.assertIs(ProgressStage("STRATEGIST"), ProgressStage.CONTENT)
+        self.assertIs(ProgressAgent("STRATEGIST"), ProgressAgent.CONTENT)
+        self.assertIs(runtime_stage_to_progress_stage("STRATEGIST"), ProgressStage.CONTENT)
+        self.assertFalse(hasattr(RuntimeStage, "STRATEGIST"))
+        self.assertFalse(hasattr(ProgressStage, "STRATEGIST"))
+        self.assertFalse(hasattr(ProgressAgent, "STRATEGIST"))
+
+    def test_model_policy_legacy_strategist_override_routes_to_content(self):
+        target = ModelTarget(provider_id="xkiro", model_id="legacy-content-model")
+        policy = ModelPolicy(agent_overrides={"STRATEGIST": target})
+        self.assertEqual(normalize_agent_id("STRATEGIST"), AgentId.CONTENT.value)
+        self.assertFalse(hasattr(AgentId, "STRATEGIST"))
+        self.assertIn(AgentId.CONTENT.value, policy.agent_overrides)
+        self.assertNotIn("STRATEGIST", policy.agent_overrides)
+        self.assertEqual(
+            policy.resolve_target_for_agent("content").model_id,
+            "legacy-content-model",
+        )
 
     def test_no_python_code_references_removed_strategist_enum_member(self):
         repo_root = Path(__file__).resolve().parent.parent
