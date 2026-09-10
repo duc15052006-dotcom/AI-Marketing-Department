@@ -83,17 +83,10 @@ class ProviderResourceState:
 class ResourceLimiter:
     """Manages provider rate limits, cooldowns, and concurrency locks.
 
-    Unknown providers are registered automatically with a conservative default
-    limit instead of bypassing resource accounting. This matters for dynamic
-    plugin, MCP, and custom-provider backends added by the shared platform.
+    Provider names never imply resource policy. Unconfigured providers are
+    registered automatically with one conservative generic default; callers may
+    opt into provider-specific concurrency only through explicit configuration.
     """
-
-    DEFAULT_PROVIDER_LIMITS: Dict[str, int] = {
-        "xkiro": 2,
-        "gemini": 3,
-        "web": 5,
-        "analytics": 5,
-    }
 
     def __init__(
         self,
@@ -105,12 +98,11 @@ class ResourceLimiter:
         self._providers: Dict[str, ProviderResourceState] = {}
         self._lock = threading.Lock()
 
-        limits = dict(self.DEFAULT_PROVIDER_LIMITS)
-        if provider_limits:
-            limits.update(provider_limits)
+        limits = dict(provider_limits or {})
         for provider_id, max_calls in limits.items():
             self._validate_provider_id(provider_id)
             self._validate_limit(max_calls)
+            provider_id = provider_id.strip()
             self._providers[provider_id] = ProviderResourceState(
                 provider_id=provider_id,
                 max_concurrent_calls=max_calls,
