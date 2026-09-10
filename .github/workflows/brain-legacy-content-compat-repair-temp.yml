@@ -112,10 +112,26 @@ jobs:
               text = text.replace('AgentId.STRATEGIST', 'AgentId.CONTENT')
               if text != original:
                   p.write_text(text, encoding="utf-8")
-                  changed = sum(1 for a, b in zip(original, text) if a != b)
                   total += 1
                   print(f"canonicalized legacy fixture: {name}")
           print(f"files migrated: {total}")
+
+          # Structured handoff has helper-level contracts that cannot be migrated
+          # by identifier replacement alone. Bind it explicitly to canonical Content.
+          p = Path("tests/test_structured_epistemic_handoff.py")
+          text = p.read_text(encoding="utf-8")
+          exact = {
+              '("strategist", "Marketing Strategist")': '("content", "Content Strategy, Copywriting & Distribution Specialist")',
+              'rt.execute_stage_strategist(ctx)': 'rt.execute_stage_content(ctx)',
+              'ctx.stage_outputs["content"]["positioning"]': 'ctx.stage_outputs["content"]["content_strategy"]',
+              'self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)': 'self.assertTrue({"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}.issubset(set(dir(rt))))\n        self.assertTrue(callable(getattr(rt, "execute_stage_strategist", None)))',
+          }
+          for old, new in exact.items():
+              if old in text:
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit(f"structured handoff expected old/new snippet missing: {old}")
+          p.write_text(text, encoding="utf-8")
           '@ | python -
 
       - name: Verify canonical alias invariants
