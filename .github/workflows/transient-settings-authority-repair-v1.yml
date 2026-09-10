@@ -68,37 +68,42 @@ jobs:
 
           path = Path("tests/test_prod_model_settings_01.py")
           text = path.read_text(encoding="utf-8")
+          start_marker = "    def test_23_transient_test_connection_success(self):\n"
+          end_marker = "    def test_24_transient_test_connection_auth_failure_classified(self):\n"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start + len(start_marker))
+          if start < 0 or end < 0:
+              raise SystemExit(f"TEST_BOUNDARY_NOT_FOUND start={start} end={end}")
+          section = text[start:end]
 
-          anchor = '''    def test_23_transient_test_connection_success(self):
-              """Verify Test Connection executes against target without persisting or modifying policy."""
-              # Mock adapter generate response
-          '''
-          replacement = '''    def test_23_transient_test_connection_success(self):
-              """Verify Test Connection executes against target without persisting or modifying policy."""
-              expected_global_target = (
-                  self.gateway.model_policy.global_target.provider_id,
-                  self.gateway.model_policy.global_target.model_id,
-              )
-
-              # Mock adapter generate response
-          '''
+          probe_anchor = '        # Mock adapter generate response\n        with patch.object(OpenAICompatibleProviderAdapter, "generate") as mock_gen:\n'
+          snapshot = (
+              '        expected_global_target = (\n'
+              '            self.gateway.model_policy.global_target.provider_id,\n'
+              '            self.gateway.model_policy.global_target.model_id,\n'
+              '        )\n\n'
+              '        # Mock adapter generate response\n'
+              '        with patch.object(OpenAICompatibleProviderAdapter, "generate") as mock_gen:\n'
+          )
           stale_assertion = '            self.assertEqual(self.gateway.model_policy.global_target.provider_id, "gemini")\n'
-          neutral_assertion = '''            self.assertEqual(
-                  (
-                      self.gateway.model_policy.global_target.provider_id,
-                      self.gateway.model_policy.global_target.model_id,
-                  ),
-                  expected_global_target,
-              )
-          '''
+          neutral_assertion = (
+              '            self.assertEqual(\n'
+              '                (\n'
+              '                    self.gateway.model_policy.global_target.provider_id,\n'
+              '                    self.gateway.model_policy.global_target.model_id,\n'
+              '                ),\n'
+              '                expected_global_target,\n'
+              '            )\n'
+          )
 
-          if text.count(anchor) != 1:
-              raise SystemExit(f"ANCHOR_COUNT={text.count(anchor)}")
-          if text.count(stale_assertion) != 1:
-              raise SystemExit(f"STALE_ASSERTION_COUNT={text.count(stale_assertion)}")
+          if section.count(probe_anchor) != 1:
+              raise SystemExit(f"PROBE_ANCHOR_COUNT={section.count(probe_anchor)}")
+          if section.count(stale_assertion) != 1:
+              raise SystemExit(f"STALE_ASSERTION_COUNT={section.count(stale_assertion)}")
 
-          text = text.replace(anchor, replacement, 1)
-          text = text.replace(stale_assertion, neutral_assertion, 1)
+          section = section.replace(probe_anchor, snapshot, 1)
+          section = section.replace(stale_assertion, neutral_assertion, 1)
+          text = text[:start] + section + text[end:]
           path.write_text(text, encoding="utf-8")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
