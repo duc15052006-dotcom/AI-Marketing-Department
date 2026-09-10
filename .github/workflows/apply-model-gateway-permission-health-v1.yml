@@ -33,25 +33,30 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
+
           path = Path("integrations/models/gateway.py")
           text = path.read_text(encoding="utf-8")
-          old = "\n".join([
-              "                    elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):",
-              "                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)",
-          ]) + "\n"
-          new = "\n".join([
-              "                    elif internal_code in (",
-              "                        ProviderErrorCode.PERMISSION_403,",
-              "                        ProviderErrorCode.TIMEOUT,",
-              "                        ProviderErrorCode.NETWORK_ERROR,",
-              "                    ):",
-              "                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)",
-          ]) + "\n"
-          count = text.count(old)
+          pattern = re.compile(
+              r"(?m)^(?P<i>[ ]+)elif internal_code == ProviderErrorCode\.AUTH_401:\n"
+              r"(?P=i)[ ]{4}self\.update_provider_health\(cand_provider, ProviderHealth\.AUTH_ERROR\)\n"
+          )
+          matches = list(pattern.finditer(text))
+          if len(matches) != 4:
+              raise SystemExit(f"expected exactly four AUTH_401 stream health anchors, found {len(matches)}")
+
+          def repl(match):
+              indent = match.group("i")
+              return (
+                  match.group(0)
+                  + f"{indent}elif internal_code == ProviderErrorCode.PERMISSION_403:\n"
+                  + f"{indent}    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)\n"
+              )
+
+          text, count = pattern.subn(repl, text)
           if count != 4:
-              raise SystemExit(f"expected exactly four stream health anchors, found {count}")
-          text = text.replace(old, new)
+              raise SystemExit(f"expected four permission-health insertions, got {count}")
           path.write_text(text, encoding="utf-8")
           PY
           git diff --check
