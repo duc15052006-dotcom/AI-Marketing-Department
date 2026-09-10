@@ -517,6 +517,11 @@ class TestProdModelSettings01(unittest.TestCase):
 
     def test_23_transient_test_connection_success(self):
         """Verify Test Connection executes against target without persisting or modifying policy."""
+        expected_global_target = (
+            self.gateway.model_policy.global_target.provider_id,
+            self.gateway.model_policy.global_target.model_id,
+        )
+
         # Mock adapter generate response
         with patch.object(OpenAICompatibleProviderAdapter, "generate") as mock_gen:
             mock_gen.return_value = ModelResponse(
@@ -541,7 +546,13 @@ class TestProdModelSettings01(unittest.TestCase):
             # Test connection must NOT have persisted the provider or secret
             self.assertNotIn("custom_test", self.settings_manager.get_settings().providers)
             self.assertIsNone(self.secret_store.get_secret("STORE:custom_test"))
-            self.assertEqual(self.gateway.model_policy.global_target.provider_id, "gemini")
+            self.assertEqual(
+                (
+                    self.gateway.model_policy.global_target.provider_id,
+                    self.gateway.model_policy.global_target.model_id,
+                ),
+                expected_global_target,
+            )
 
     def test_24_transient_test_connection_auth_failure_classified(self):
         """Verify Test Connection classifies 401 / unauthorized as AUTH_FAILED."""
