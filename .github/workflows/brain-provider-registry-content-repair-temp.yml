@@ -1,0 +1,74 @@
+name: Brain Provider Registry Content Repair Temp
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  repair-provider-registry-content-contract:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install repository dependencies
+        shell: pwsh
+        run: python -m pip install -r requirements.txt
+
+      - name: Apply exact canonical Content test repair
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("tests/test_prod_model_gateway_01_provider_registry.py")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              "strictly 5 agents: CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE":
+                  "strictly 5 agents: CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE",
+              'self.assertEqual(normalize_agent_id("strategist"), "STRATEGIST")':
+                  'self.assertEqual(normalize_agent_id("strategist"), "CONTENT")',
+          }
+          changed = False
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count > 1:
+                  raise SystemExit(f"Refusing broad repair: {old!r} occurs {count} times")
+              if count == 1:
+                  text = text.replace(old, new, 1)
+                  changed = True
+              elif new not in text:
+                  raise SystemExit(f"Expected old or repaired text not found: {old!r}")
+          if changed:
+              path.write_text(text, encoding="utf-8")
+          '@ | python -
+
+      - name: Run certified provider registry regressions
+        shell: pwsh
+        run: python -m unittest tests.test_prod_model_gateway_01_provider_registry -v
+
+      - name: Commit verified test repair if needed
+        shell: pwsh
+        run: |
+          if (git diff --quiet -- tests/test_prod_model_gateway_01_provider_registry.py) {
+            Write-Host "Provider registry Content contract already repaired."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_prod_model_gateway_01_provider_registry.py
+          git commit -m "test(models): align legacy Strategist normalization with Content"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
