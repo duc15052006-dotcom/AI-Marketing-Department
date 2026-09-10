@@ -1,0 +1,76 @@
+name: One-shot Canonical Content Progress Contract Cleanup
+
+on:
+  push:
+    branches:
+      - fix/brain-content-canonical-role-v1
+    paths:
+      - '.github/workflows/zz-one-shot-content-progress-contract-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact gate identity
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "${GITHUB_SHA}"
+          echo "exact_gate_sha=$actual"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install repository dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Apply canonical Content progress contract cleanup
+        run: python .github/scripts/zz_content_progress_contract_cleanup.py
+
+      - name: Compile affected tests
+        run: |
+          python -m compileall -q \
+            tests/test_prod_python_streaming_endpoint_01.py \
+            tests/test_prod_runtime_progress_01.py
+
+      - name: Run certified streaming and runtime progress regressions
+        run: |
+          python -m unittest -v \
+            tests.test_prod_python_streaming_endpoint_01 \
+            tests.test_prod_runtime_progress_01
+
+      - name: Run complete Brain namespace regression
+        run: python -m unittest discover -v -s tests -p 'test_brain*.py'
+
+      - name: Remove one-shot tooling
+        run: |
+          rm .github/scripts/zz_content_progress_contract_cleanup.py
+          rm .github/workflows/zz-one-shot-content-progress-contract-cleanup.yml
+
+      - name: Commit verified test-contract cleanup atomically
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git status --short
+          git diff --cached -- tests/test_prod_python_streaming_endpoint_01.py tests/test_prod_runtime_progress_01.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 1
+          fi
+          git commit -m "test(runtime): migrate canonical Content progress expectations"
+          git push origin HEAD:fix/brain-content-canonical-role-v1
