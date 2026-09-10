@@ -68,6 +68,16 @@ def get_job_store_file_path() -> Path:
     return get_backend_state_file_path().with_name("jobs.sqlite3")
 
 
+def get_provider_preflight_store_file_path() -> Path:
+    """Return the durable provider-preflight database beside other runtime state."""
+    return get_backend_state_file_path().with_name("provider_preflights.sqlite3")
+
+
+def get_provider_operation_store_file_path() -> Path:
+    """Return the durable external-operation database beside other runtime state."""
+    return get_backend_state_file_path().with_name("provider_operations.sqlite3")
+
+
 def write_backend_state(host: str, port: int) -> None:
     state_path = get_backend_state_file_path()
     payload = {
@@ -171,6 +181,13 @@ from integrations.models.config_service import GLOBAL_PROVIDER_CONFIG, ProviderC
 from connectors.analytics_connector import RealAnalyticsConnector
 from connectors.file_connector import RealFileConnector
 from connectors.publishing_connector import SandboxPublishingConnector
+from connections.manager import ConnectionManager
+from connections.secrets import SecureStoreSecretProvider
+from connectors.control_plane import ConnectorControlPlane
+from connectors.marketing.catalog import MarketingProviderCatalog, default_live_executors
+from connectors.marketing.operations import ProviderOperationRepository
+from connectors.marketing.preflight import ProviderPreflightRepository
+from connectors.marketing.registry import MarketingConnectorRegistry
 from connectors.registry import ConnectorRegistry
 from connectors.web_connector import RealWebConnector
 from knowledge.ingestion import IngestionFormat, KnowledgeIngestionRequest, KnowledgeLifecycleManager
@@ -215,16 +232,54 @@ class DepartmentAppBackend:
     """Singleton backend managing application runtime state, chats, and workspaces."""
 
     def __init__(self) -> None:
+        self._closed = False
         self.cap_registry = CapabilityRegistry()
         self.policy_engine = PolicyEngine()
         self.receipt_repo = ExecutionReceiptRepository()
+
+        # Compose the provider-neutral marketing control plane without granting
+        # LIVE execution. Account binding, credential access, and runtime LIVE
+        # opt-in remain separate explicit authorities.
+        self.conn_registry = ConnectorRegistry()
+        self.connection_manager = ConnectionManager(SecureStoreSecretProvider())
+        self.connector_control_plane = ConnectorControlPlane(
+            self.conn_registry,
+            self.connection_manager,
+        )
+        self.marketing_registry = MarketingConnectorRegistry(
+            self.connector_control_plane,
+            allow_live_registration=True,
+        )
+        self.provider_preflight_repository = ProviderPreflightRepository(
+            get_provider_preflight_store_file_path()
+        )
+        self.provider_operation_repository = ProviderOperationRepository(
+            get_provider_operation_store_file_path()
+        )
         self.dynamic_tool_gateway = DynamicToolGateway(
             base_registry=self.cap_registry,
+            marketing_registry=self.marketing_registry,
+            allow_live_marketing_execution=False,
             policy_engine=self.policy_engine,
             receipt_repository=self.receipt_repo,
         )
         self.cap_registry = self.dynamic_tool_gateway.registry
         self.tool_gateway = self.dynamic_tool_gateway.gateway
+        self.marketing_executor_registry = (
+            self.dynamic_tool_gateway.marketing_live_executor_registry
+        )
+        self.marketing_provider_catalog = MarketingProviderCatalog(
+            connector_registry=self.conn_registry,
+            marketing_registry=self.marketing_registry,
+            executor_registry=self.marketing_executor_registry,
+        )
+        self.marketing_provider_install_report = self.marketing_provider_catalog.install(
+            executors=default_live_executors(
+                preflight_repository=self.provider_preflight_repository,
+                operation_repository=self.provider_operation_repository,
+            )
+        )
+        self.marketing_sync_report = self.dynamic_tool_gateway.sync_marketing()
 
         # Register real local connectors with capability provider aliases
         self.web_conn = RealWebConnector()
@@ -259,7 +314,6 @@ class DepartmentAppBackend:
             context_compiler=self.context_compiler,
         )
 
-        self.conn_registry = ConnectorRegistry()
         self.biz_registry = BusinessRegistry()
         self.workspace = OperatorWorkspace(
             runtime=self.runtime,
@@ -311,8 +365,20 @@ class DepartmentAppBackend:
             )
         )
 
+    def close(self) -> None:
+        """Release every process-owned runtime and SQLite authority exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        self.run_manager.shutdown(wait=True, cancel_pending=True)
+        self.job_repository.close()
+        self.provider_preflight_repository.close()
+        self.provider_operation_repository.close()
+        self.dynamic_tool_gateway.close()
+
 
 APP_BACKEND = DepartmentAppBackend()
+atexit.register(APP_BACKEND.close)
 
 
 class DepartmentAPIHandler(BaseHTTPRequestHandler):
