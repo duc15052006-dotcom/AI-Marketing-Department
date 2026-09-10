@@ -24,7 +24,7 @@ class BrainPeerReviewEvidenceProvenanceV1Tests(unittest.TestCase):
         decision = DecisionRecord(
             decision_id="D-PEER-PROV",
             goal_id="G-PEER-PROV",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             statement="Authorize a high-consequence launch.",
             rationale="Primary evidence supports the proposal, but peer evidence must be independently proven.",
             disposition=DecisionDisposition.PROCEED,
@@ -34,7 +34,7 @@ class BrainPeerReviewEvidenceProvenanceV1Tests(unittest.TestCase):
         reasoning = ReasoningAssessment(
             assessment_id="RA-PEER-PROV",
             goal_id="G-PEER-PROV",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             complexity=SignalLevel.LOW,
             uncertainty=SignalLevel.LOW,
             consequence=SignalLevel.HIGH,
@@ -75,7 +75,7 @@ class BrainPeerReviewEvidenceProvenanceV1Tests(unittest.TestCase):
             assessment_id="CA-PEER-PROV",
             goal_id="G-PEER-PROV",
             proposal_id="D-PEER-PROV",
-            author_agent=BrainAgentId.STRATEGIST,
+            author_agent=BrainAgentId.CONTENT,
             proposal_verdict=ClaimVerdict.SUPPORTED,
             proposal_evidence_refs=list(primary_assessment.supporting_evidence_refs),
             reviews=[forged_peer_review],

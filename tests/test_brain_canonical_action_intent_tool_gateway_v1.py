@@ -83,7 +83,7 @@ class BrainCanonicalActionIntentToolGatewayV1Tests(unittest.TestCase):
         return ReasoningAssessment(
             assessment_id="RA-GW-1",
             goal_id="G-GW-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             complexity=SignalLevel.LOW,
             uncertainty=SignalLevel.LOW,
             consequence=SignalLevel.LOW,
@@ -98,7 +98,7 @@ class BrainCanonicalActionIntentToolGatewayV1Tests(unittest.TestCase):
         return DecisionRecord(
             decision_id="D-GW-1",
             goal_id="G-GW-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             statement="Collect bounded market evidence",
             rationale="Canonical evidence and independent review support research.",
             disposition=DecisionDisposition.PROCEED,
@@ -119,7 +119,7 @@ class BrainCanonicalActionIntentToolGatewayV1Tests(unittest.TestCase):
             assessment_id="CA-GW-1",
             goal_id="G-GW-1",
             proposal_id="D-GW-1",
-            author_agent=BrainAgentId.STRATEGIST,
+            author_agent=BrainAgentId.CONTENT,
             proposal_verdict=ClaimVerdict.SUPPORTED,
             proposal_evidence_refs=["E-GW-1"],
             reviews=[
@@ -154,7 +154,7 @@ class BrainCanonicalActionIntentToolGatewayV1Tests(unittest.TestCase):
         *,
         decision_id: str = "D-GW-1",
         capability_need: str = "MARKET_RESEARCH",
-        owner: BrainAgentId = BrainAgentId.STRATEGIST,
+        owner: BrainAgentId = BrainAgentId.CONTENT,
     ) -> ActionIntent:
         return ActionIntent(
             intent_id="AI-GW-1",
@@ -238,7 +238,7 @@ class BrainCanonicalActionIntentToolGatewayV1Tests(unittest.TestCase):
         gateway = self._gateway(observed)
         receipt = gateway.execute(
             self._request(agent_id="intelligence"),
-            action_intent=self._intent(owner=BrainAgentId.STRATEGIST),
+            action_intent=self._intent(owner=BrainAgentId.CONTENT),
             decision_request=self._decision_request(),
         )
         self.assertEqual(observed, [])

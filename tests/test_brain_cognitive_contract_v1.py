@@ -51,7 +51,7 @@ class BrainCognitiveContractV1Tests(unittest.TestCase):
         )
         dumped = goal.model_dump()
         self.assertEqual(goal.goal_id, "G-1")
-        self.assertEqual(goal.owner_agent, BrainAgentId.STRATEGIST)
+        self.assertEqual(goal.owner_agent, BrainAgentId.CONTENT)
         self.assertEqual(goal.success_criteria, ["Evidence-backed strategy"])
         for forbidden in ("provider_id", "model_id", "tool_id", "queue_id", "connector_id"):
             self.assertNotIn(forbidden, dumped)

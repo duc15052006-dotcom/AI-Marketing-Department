@@ -115,12 +115,12 @@ class BrainMetacognitionIntelligenceV1Tests(unittest.TestCase):
         request = MetacognitionRequest(
             assessment_id="META-3",
             goal_id="G-META",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             gaps=[
                 KnowledgeGap(
                     gap_id="GAP-PROC",
                     goal_id="G-META",
-                    owner_agent=BrainAgentId.STRATEGIST,
+                    owner_agent=BrainAgentId.CONTENT,
                     kind=KnowledgeGapKind.PROCEDURAL,
                     question="How should the launch be sequenced?",
                     consequence="The plan cannot be executed safely without a procedure.",

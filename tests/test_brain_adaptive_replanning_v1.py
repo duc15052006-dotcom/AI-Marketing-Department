@@ -40,7 +40,7 @@ class BrainAdaptiveReplanningV1Tests(unittest.TestCase):
         self,
         step_id: str,
         *,
-        owner_agent: BrainAgentId = BrainAgentId.STRATEGIST,
+        owner_agent: BrainAgentId = BrainAgentId.CONTENT,
         depends_on: list[str] | None = None,
         state: PlanStepState = PlanStepState.PENDING,
         objective: str | None = None,
@@ -71,7 +71,7 @@ class BrainAdaptiveReplanningV1Tests(unittest.TestCase):
                 ),
                 self._step(
                     "step-strategy",
-                    owner_agent=BrainAgentId.STRATEGIST,
+                    owner_agent=BrainAgentId.CONTENT,
                     depends_on=["step-research"],
                 ),
                 self._step(
@@ -107,7 +107,7 @@ class BrainAdaptiveReplanningV1Tests(unittest.TestCase):
         return [
             self._step(
                 "step-strategy-v2",
-                owner_agent=BrainAgentId.STRATEGIST,
+                owner_agent=BrainAgentId.CONTENT,
                 depends_on=["step-research"],
             ),
             self._step(
@@ -232,7 +232,7 @@ class BrainAdaptiveReplanningV1Tests(unittest.TestCase):
                 ),
                 self._step(
                     "step-strategy-v2",
-                    owner_agent=BrainAgentId.STRATEGIST,
+                    owner_agent=BrainAgentId.CONTENT,
                     depends_on=["step-research-v2"],
                 ),
                 self._step(
@@ -324,7 +324,7 @@ class BrainAdaptiveReplanningV1Tests(unittest.TestCase):
             step.step_id: step.owner_agent for step in result.revised_plan.steps
         }
         self.assertEqual(owners["step-research"], BrainAgentId.INTELLIGENCE)
-        self.assertEqual(owners["step-strategy-v2"], BrainAgentId.STRATEGIST)
+        self.assertEqual(owners["step-strategy-v2"], BrainAgentId.CONTENT)
         self.assertEqual(owners["step-creative-v2"], BrainAgentId.CREATIVE)
 
     def test_signal_provenance_is_preserved_in_revision(self) -> None:

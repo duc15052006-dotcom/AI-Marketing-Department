@@ -35,7 +35,7 @@ class BrainLongHorizonGoalDecompositionV1Tests(unittest.TestCase):
         goal_id: str,
         *,
         parent_goal_id: str | None = None,
-        owner_agent: BrainAgentId = BrainAgentId.STRATEGIST,
+        owner_agent: BrainAgentId = BrainAgentId.CONTENT,
         objective: str | None = None,
         success_criteria: list[str] | None = None,
         constraints: list[str] | None = None,
@@ -97,7 +97,7 @@ class BrainLongHorizonGoalDecompositionV1Tests(unittest.TestCase):
             self._goal(
                 "goal-strategy",
                 parent_goal_id="goal-root",
-                owner_agent=BrainAgentId.STRATEGIST,
+                owner_agent=BrainAgentId.CONTENT,
                 success_criteria=["Choose growth strategy"],
             ),
             self._goal(
@@ -145,7 +145,7 @@ class BrainLongHorizonGoalDecompositionV1Tests(unittest.TestCase):
             [goal.owner_agent for goal in decomposition.subgoals],
             [
                 BrainAgentId.INTELLIGENCE,
-                BrainAgentId.STRATEGIST,
+                BrainAgentId.CONTENT,
                 BrainAgentId.CREATIVE,
             ],
         )

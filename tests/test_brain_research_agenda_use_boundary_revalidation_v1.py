@@ -30,7 +30,7 @@ class BrainResearchAgendaUseBoundaryRevalidationV1Tests(unittest.TestCase):
         return HypothesisCandidate(
             hypothesis_id=hypothesis_id,
             goal_id="G-RA",
-            owner_agent=BrainAgentId.STRATEGIST,
+            owner_agent=BrainAgentId.CONTENT,
             statement=f"Hypothesis {hypothesis_id}",
             differentiating_predictions=[f"prediction-{hypothesis_id}"],
         )

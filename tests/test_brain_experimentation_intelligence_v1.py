@@ -52,7 +52,7 @@ class BrainExperimentationIntelligenceV1Tests(unittest.TestCase):
         proposition = WorldProposition(
             proposition_id="p-offer-strength",
             goal_id="goal-growth",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             statement="The current offer strength is sufficient",
         )
         evidence = EvidenceSignal(
@@ -68,14 +68,14 @@ class BrainExperimentationIntelligenceV1Tests(unittest.TestCase):
             WorldStateRequest(
                 snapshot_id="world-baseline",
                 goal_id="goal-growth",
-                agent_id=BrainAgentId.STRATEGIST,
+                agent_id=BrainAgentId.CONTENT,
                 propositions=[proposition],
                 evidence_requests=[
                     ClaimEvidenceRequest(
                         assessment_id="a-offer-baseline",
                         goal_id="goal-growth",
                         claim_id="p-offer-strength",
-                        agent_id=BrainAgentId.STRATEGIST,
+                        agent_id=BrainAgentId.CONTENT,
                         evidence=[evidence],
                     )
                 ],
@@ -96,7 +96,7 @@ class BrainExperimentationIntelligenceV1Tests(unittest.TestCase):
             CounterfactualScenarioRequest(
                 scenario_id=scenario_id,
                 goal_id="goal-growth",
-                agent_id=BrainAgentId.STRATEGIST,
+                agent_id=BrainAgentId.CONTENT,
                 source_state=source,
                 interventions=[
                     CounterfactualIntervention(
@@ -140,7 +140,7 @@ class BrainExperimentationIntelligenceV1Tests(unittest.TestCase):
         return CounterfactualComparisonRequest(
             comparison_id="comparison-1",
             goal_id="goal-growth",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             scenarios=[
                 self._scenario(
                     scenario_id="scenario-a",
@@ -164,7 +164,7 @@ class BrainExperimentationIntelligenceV1Tests(unittest.TestCase):
         return ExperimentDesignRequest(
             design_id="experiment-design-1",
             goal_id="goal-growth",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             comparison_request=(
                 comparison_request
                 if comparison_request is not None

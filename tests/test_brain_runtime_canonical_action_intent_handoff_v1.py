@@ -99,7 +99,7 @@ class BrainRuntimeCanonicalActionIntentHandoffV1Tests(unittest.TestCase):
         return ReasoningAssessment(
             assessment_id="RA-RT-1",
             goal_id="G-RT-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             complexity=SignalLevel.LOW,
             uncertainty=SignalLevel.LOW,
             consequence=SignalLevel.LOW,
@@ -114,7 +114,7 @@ class BrainRuntimeCanonicalActionIntentHandoffV1Tests(unittest.TestCase):
         return DecisionRecord(
             decision_id="D-RT-1",
             goal_id="G-RT-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             statement="Collect bounded market evidence",
             rationale="Canonical evidence and independent review support research.",
             disposition=DecisionDisposition.PROCEED,
@@ -135,7 +135,7 @@ class BrainRuntimeCanonicalActionIntentHandoffV1Tests(unittest.TestCase):
             assessment_id="CA-RT-1",
             goal_id="G-RT-1",
             proposal_id="D-RT-1",
-            author_agent=BrainAgentId.STRATEGIST,
+            author_agent=BrainAgentId.CONTENT,
             proposal_verdict=ClaimVerdict.SUPPORTED,
             proposal_evidence_refs=["E-RT-1"],
             reviews=[
@@ -170,7 +170,7 @@ class BrainRuntimeCanonicalActionIntentHandoffV1Tests(unittest.TestCase):
         return ActionIntent(
             intent_id="AI-RT-1",
             goal_id="G-RT-1",
-            owner_agent=BrainAgentId.STRATEGIST,
+            owner_agent=BrainAgentId.CONTENT,
             purpose="Collect authoritative market evidence",
             capability_need="MARKET_RESEARCH",
             expected_observation="Grounded market observations",

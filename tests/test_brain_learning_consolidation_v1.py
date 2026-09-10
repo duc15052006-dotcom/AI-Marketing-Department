@@ -193,7 +193,7 @@ class BrainLearningConsolidationV1Tests(unittest.TestCase):
             runs=[
                 LearningRunRecord(
                     run_id="RUN-Y",
-                    episode=self._episode(1, agent_id=BrainAgentId.STRATEGIST),
+                    episode=self._episode(1, agent_id=BrainAgentId.CONTENT),
                 )
             ],
         )
