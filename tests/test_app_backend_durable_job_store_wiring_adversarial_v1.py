@@ -70,8 +70,7 @@ class AppBackendDurableJobStoreWiringAdversarialV1Tests(unittest.TestCase):
                         completed_at=now,
                     )
                 )
-                first.run_manager.shutdown(wait=True, cancel_pending=True)
-                first_repo.close()
+                first.close()
 
                 second = DepartmentAppBackend()
                 second_repo = second.run_manager.job_repository
@@ -89,9 +88,7 @@ class AppBackendDurableJobStoreWiringAdversarialV1Tests(unittest.TestCase):
                     self.assertEqual(restored.status, RunQueueStatus.COMPLETED)
                     self.assertEqual(restored.objective, "prove production queue durability")
                 finally:
-                    second.run_manager.shutdown(wait=True, cancel_pending=True)
-                    if isinstance(second_repo, SQLiteJobRepository):
-                        second_repo.close()
+                    second.close()
 
 
 if __name__ == "__main__":
