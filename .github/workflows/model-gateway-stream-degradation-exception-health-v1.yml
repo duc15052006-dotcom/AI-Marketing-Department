@@ -6,7 +6,7 @@ on:
       - test/model-gateway-stream-degradation-exception-health-v1
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: model-gateway-stream-degradation-exception-health-v1-${{ github.ref }}
@@ -19,8 +19,8 @@ env:
   PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
-  apply-and-qualify:
-    name: Ubuntu Python 3.12 apply and qualify degradation exception health
+  causal-degradation-exception-health:
+    name: Ubuntu Python 3.12 causal degradation exception health
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -45,112 +45,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
-      - name: Apply exact fail-closed production patch
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("integrations/models/gateway.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''                    except Exception as sync_e:
-                        sync_err = ModelStreamError(
-                            code="STREAM_INTERNAL_ERROR",
-                            category="INTERNAL",
-                            safe_message=f"STREAM_INTERNAL_ERROR: Internal model invocation failure on '{cand_provider}'.",
-                            retryable=False,
-                            http_status=None,
-                        )
-                        last_error = sync_err
-                        last_error_provider = cand_provider
-                        last_error_model = cand_model
-                        if strict_model_pin or len(candidates) == 1:
-                            yield normalize_public_stream_delta(
-                                StreamDelta(content="", finish_reason="error", error=sync_err),
-                                cand_provider,
-                                cand_model,
-                            )
-                            return
-                        continue
-'''
-          new = '''                    except Exception as sync_e:
-                        if is_timeout_exception(sync_e):
-                            sync_err = ModelStreamError(
-                                code="TIMEOUT",
-                                category="TIMEOUT",
-                                safe_message=f"TIMEOUT: Synchronous degradation call to '{cand_provider}' timed out.",
-                                retryable=True,
-                                http_status=408,
-                            )
-                            internal_code = ProviderErrorCode.TIMEOUT
-                        elif is_network_exception(sync_e):
-                            sync_err = ModelStreamError(
-                                code="NETWORK_ERROR",
-                                category="NETWORK",
-                                safe_message=f"NETWORK_ERROR: Network connection failure during synchronous degradation for '{cand_provider}'.",
-                                retryable=True,
-                                http_status=None,
-                            )
-                            internal_code = ProviderErrorCode.NETWORK_ERROR
-                        else:
-                            sync_err = ModelStreamError(
-                                code="STREAM_INTERNAL_ERROR",
-                                category="INTERNAL",
-                                safe_message=f"STREAM_INTERNAL_ERROR: Internal model invocation failure on '{cand_provider}'.",
-                                retryable=False,
-                                http_status=None,
-                            )
-                            internal_code = None
-
-                        if internal_code is not None:
-                            self.config_service.record_error(cand_provider, internal_code)
-                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=sync_err.safe_message)
-                        last_error = sync_err
-                        last_error_provider = cand_provider
-                        last_error_model = cand_model
-                        if strict_model_pin or len(candidates) == 1:
-                            yield normalize_public_stream_delta(
-                                StreamDelta(content="", finish_reason="error", error=sync_err),
-                                cand_provider,
-                                cand_model,
-                            )
-                            return
-                        continue
-'''
-          count = text.count(old)
-          if count == 1:
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
-              print("applied production patch")
-          elif count == 0 and text.count(new) == 1:
-              print("production patch already present")
-          else:
-              raise SystemExit(f"fail-closed: old={count}, new={text.count(new)}")
-          PY
-      - name: Compile model and regression sources
-        run: |
-          python -m compileall -q integrations/models \
-            tests/test_model_gateway_stream_degradation_exception_health_v1.py \
-            tests/test_model_gateway_post_dispatch_timeout_health_v2.py \
-            tests/test_model_gateway_stream_exception_health_v1.py \
-            tests/test_prod_structured_provider_stream_error_01.py
-      - name: Run causal and gateway regressions
-        run: |
-          python -m unittest -v \
-            tests.test_model_gateway_stream_degradation_exception_health_v1 \
-            tests.test_model_gateway_post_dispatch_timeout_health_v2 \
-            tests.test_model_gateway_stream_exception_health_v1 \
-            tests.test_prod_structured_provider_stream_error_01
-      - name: Commit production patch if changed
-        shell: bash
-        run: |
-          if git diff --quiet -- integrations/models/gateway.py; then
-            echo "No production diff to commit"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add integrations/models/gateway.py
-          git commit -m "fix(models): classify degradation transport exceptions"
-          git push origin HEAD:test/model-gateway-stream-degradation-exception-health-v1
-      - name: Verify clean checkout after commit
+      - name: Compile model and causal regression sources
+        run: python -m compileall -q integrations/models tests/test_model_gateway_stream_degradation_exception_health_v1.py
+      - name: Run causal regression — degradation-exception-health
+        run: python -m unittest -v tests.test_model_gateway_stream_degradation_exception_health_v1
+      - name: Verify clean checkout after tests
+        if: always()
         run: git diff --exit-code
