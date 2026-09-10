@@ -1463,6 +1463,10 @@ class UniversalModelGateway:
                     retryable=ret,
                     http_status=st,
                 )
+                internal_code = stream_error_to_provider_error_code(err)
+                self.config_service.record_error(cand_provider, internal_code)
+                if internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=safe_msg)
                 last_error = err
                 last_error_provider = cand_provider
                 last_error_model = cand_model
