@@ -747,6 +747,8 @@ class UniversalModelGateway:
             # The gateway deadline remains authoritative even if an adapter
             # ignores its delegated timeout and returns after the budget.
             if (time.perf_counter() - start_time) >= total_timeout:
+                self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider result arrived after the total gateway timeout budget.")
                 return ModelResponse(
                     request_id=norm_req.request_id,
                     provider=cand_provider,
@@ -1095,6 +1097,8 @@ class UniversalModelGateway:
                 first_delta = next(stream_gen, None)
 
                 if (time.perf_counter() - start_time) >= total_timeout:
+                    self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.")
                     close_stream = getattr(stream_gen, "close", None)
                     if callable(close_stream):
                         close_stream()
@@ -1140,6 +1144,8 @@ class UniversalModelGateway:
                     try:
                         sync_resp = adapter.generate(req_copy)
                         if (time.perf_counter() - start_time) >= total_timeout:
+                            self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider fallback result arrived after the total gateway timeout budget.")
                             yield normalize_public_stream_delta(
                                 StreamDelta(
                                     content="",
@@ -1335,6 +1341,8 @@ class UniversalModelGateway:
                 # 5. Process remaining deltas from stream_gen
                 for delta in stream_gen:
                     if (time.perf_counter() - start_time) >= total_timeout:
+                        self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)
+                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.")
                         close_stream = getattr(stream_gen, "close", None)
                         if callable(close_stream):
                             close_stream()
