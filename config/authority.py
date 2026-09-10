@@ -36,7 +36,7 @@ class RuntimeConfigSnapshot:
     environment: str = "development"
     autonomy_mode: str = "SUPERVISED"
     free_only_mode: bool = True
-    default_provider: str = "gemini"
+    default_provider: str = "xkiro"
     max_auto_budget_usd: float = 100.0
     max_daily_budget_change_pct: float = 15.0
     department_db_path: str = "chat_sessions.db"
@@ -213,7 +213,7 @@ class ConfigurationAuthority:
         free_only_mode = parse_bool(raw_free, default=True, setting_name="FREE_ONLY_MODE")
 
         # 6. Default Provider
-        raw_provider, prov["DEFAULT_PROVIDER"] = self._get_with_provenance("DEFAULT_PROVIDER", "gemini")
+        raw_provider, prov["DEFAULT_PROVIDER"] = self._get_with_provenance("DEFAULT_PROVIDER", "xkiro")
         default_provider = str(raw_provider).strip().lower()
 
         # 7. Budgets
