@@ -78,6 +78,11 @@ def get_provider_operation_store_file_path() -> Path:
     return get_backend_state_file_path().with_name("provider_operations.sqlite3")
 
 
+def get_connection_profile_store_file_path() -> Path:
+    """Return the durable non-secret connection-profile database."""
+    return get_backend_state_file_path().with_name("connection_profiles.sqlite3")
+
+
 def write_backend_state(host: str, port: int) -> None:
     state_path = get_backend_state_file_path()
     payload = {
@@ -241,7 +246,10 @@ class DepartmentAppBackend:
         # LIVE execution. Account binding, credential access, and runtime LIVE
         # opt-in remain separate explicit authorities.
         self.conn_registry = ConnectorRegistry()
-        self.connection_manager = ConnectionManager(SecureStoreSecretProvider())
+        self.connection_manager = ConnectionManager(
+            SecureStoreSecretProvider(),
+            database_path=get_connection_profile_store_file_path(),
+        )
         self.connector_control_plane = ConnectorControlPlane(
             self.conn_registry,
             self.connection_manager,
@@ -374,6 +382,7 @@ class DepartmentAppBackend:
         self.job_repository.close()
         self.provider_preflight_repository.close()
         self.provider_operation_repository.close()
+        self.connection_manager.close()
         self.dynamic_tool_gateway.close()
 
 
