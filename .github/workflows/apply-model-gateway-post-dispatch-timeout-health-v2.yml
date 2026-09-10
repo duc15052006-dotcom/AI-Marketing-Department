@@ -1,0 +1,71 @@
+name: Apply Model Gateway Post Dispatch Timeout Health V2
+
+on:
+  push:
+    branches:
+      - test/model-gateway-post-dispatch-timeout-health-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-model-gateway-post-dispatch-timeout-health-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Apply minimal production patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("integrations/models/gateway.py")
+          text = path.read_text(encoding="utf-8")
+          replacements = [
+              ('            if (time.perf_counter() - start_time) >= total_timeout:\n                return ModelResponse(\n', '            if (time.perf_counter() - start_time) >= total_timeout:\n                self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)\n                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider result arrived after the total gateway timeout budget.")\n                return ModelResponse(\n', 'sync late-result timeout'),
+              ('                if (time.perf_counter() - start_time) >= total_timeout:\n                    close_stream = getattr(stream_gen, "close", None)\n', '                if (time.perf_counter() - start_time) >= total_timeout:\n                    self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)\n                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.")\n                    close_stream = getattr(stream_gen, "close", None)\n', 'stream first-delta timeout'),
+              ('                        if (time.perf_counter() - start_time) >= total_timeout:\n                            yield normalize_public_stream_delta(\n', '                        if (time.perf_counter() - start_time) >= total_timeout:\n                            self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)\n                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider fallback result arrived after the total gateway timeout budget.")\n                            yield normalize_public_stream_delta(\n', 'stream degradation timeout'),
+              ('                    if (time.perf_counter() - start_time) >= total_timeout:\n                        close_stream = getattr(stream_gen, "close", None)\n', '                    if (time.perf_counter() - start_time) >= total_timeout:\n                        self.config_service.record_error(cand_provider, ProviderErrorCode.TIMEOUT)\n                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail="TIMEOUT: Provider stream result arrived after the total gateway timeout budget.")\n                        close_stream = getattr(stream_gen, "close", None)\n', 'stream midstream timeout'),
+          ]
+          for old, new, label in replacements:
+              if new in text:
+                  continue
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one {label} anchor, found {count}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+          git diff --check
+      - name: Run causal and timeout regressions after local patch
+        run: |
+          python -m unittest -v tests.test_model_gateway_post_dispatch_timeout_health_v2
+          python -m unittest -v tests.test_model_gateway_late_result_timeout_v1
+          python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1
+      - name: Commit production patch if needed
+        shell: bash
+        run: |
+          if git diff --quiet -- integrations/models/gateway.py; then
+            echo "No production diff to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/models/gateway.py
+          git commit -m "fix(models): account post-dispatch gateway timeouts"
+          git push origin HEAD:test/model-gateway-post-dispatch-timeout-health-v2
