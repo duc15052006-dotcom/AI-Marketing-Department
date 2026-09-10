@@ -1,4 +1,4 @@
-name: Brain Legacy Content Compatibility Repair Temp
+name: Brain Canonical Content Compatibility Qualification Temp
 
 on:
   pull_request:
@@ -7,18 +7,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair:
+  qualify:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'fix/brain-content-canonical-role-v1'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact PR branch
+      - name: Checkout exact pull request head
         uses: actions/checkout@v4
         with:
-          ref: fix/brain-content-canonical-role-v1
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -26,120 +25,11 @@ jobs:
           python-version: '3.12'
 
       - name: Install repository dependencies
-        shell: pwsh
         run: python -m pip install -r requirements.txt
 
-      - name: Apply guarded production compatibility repair
-        shell: pwsh
-        run: |
-          @'
-          from pathlib import Path
-
-          def replace_exact(path: str, old: str, new: str, already: str | None = None) -> None:
-              p = Path(path)
-              text = p.read_text(encoding="utf-8")
-              marker = already or new
-              if marker in text:
-                  print(f"already repaired: {path}")
-                  return
-              if old not in text:
-                  raise SystemExit(f"expected snippet not found in {path}")
-              p.write_text(text.replace(old, new, 1), encoding="utf-8")
-              print(f"repaired: {path}")
-
-          context = Path("runtime/context.py").read_text(encoding="utf-8")
-          if '    STRATEGIST = "CONTENT"' in context:
-              raise SystemExit("Refusing repair: canonical RuntimeStage must not expose STRATEGIST")
-
-          replace_exact(
-              "governance/access_matrix.py",
-              '    def get_profile(cls, agent_id: str) -> Optional[AgentAccessProfile]:\n        """Retrieve access profile for a recognized agent."""\n        return cls.PROFILES.get(agent_id.lower())',
-              '    def get_profile(cls, agent_id: str) -> Optional[AgentAccessProfile]:\n        """Retrieve a canonical profile while accepting narrow legacy role aliases."""\n        key = str(agent_id or "").strip().lower()\n        if key in {"strategist", "strategy", "copywriter"}:\n            key = "content"\n        return cls.PROFILES.get(key)',
-              '_LEGACY_AGENT_ID_ALIASES',
-          )
-
-          replace_exact(
-              "runtime/context_compiler.py",
-              '            allowed_sources = prof.allowed_knowledge_sources if prof else [SourceType.CANONICAL_FACT, SourceType.VERIFIED_EVIDENCE]',
-              '            # Unknown agents fail closed; recognized legacy aliases are normalized by AgentAccessMatrix.\n            allowed_sources = prof.allowed_knowledge_sources if prof else []',
-              'allowed_sources = prof.allowed_knowledge_sources if prof else []',
-          )
-          '@ | python -
-
-      - name: Migrate known stale canonical-identity regressions
-        shell: pwsh
-        run: |
-          @'
-          from pathlib import Path
-
-          files = [
-              "tests/test_collaboration_adversarial_final.py",
-              "tests/test_collaboration_integrity_audit.py",
-              "tests/test_structured_epistemic_handoff.py",
-              "tests/test_claim_evidence_binding.py",
-              "tests/test_material_factual_claim_coverage.py",
-              "tests/test_model_execution_bridge.py",
-              "tests/test_phase4_3c_15_rc3_architecture.py",
-              "tests/test_phase5_1_foundation.py",
-              "tests/test_phase5_2_runtime_integration.py",
-              "tests/test_phase6_1_v1_connectors_and_workspace.py",
-              "tests/test_phase6_2_pilot_and_v1_release.py",
-              "tests/test_prod_core_authority_01a.py",
-              "tests/test_prod_core_authority_01b.py",
-              "tests/test_prod_runtime_01_single_run_authority.py",
-              "tests/test_prod_workflow_failure_semantics_01.py",
-              "tests/test_runtime_agent_dna_wiring_28.py",
-              "tests/test_phase1a_runtime_integrity.py",
-              "tests/test_phase1b_grounded_context.py",
-              "tests/test_prod_scope_01_isolation.py",
-              "tests/test_conversation_router_and_gpt_mode.py",
-          ]
-
-          total = 0
-          for name in files:
-              p = Path(name)
-              text = p.read_text(encoding="utf-8")
-              original = text
-              text = text.replace('"strategist"', '"content"')
-              text = text.replace("'strategist'", "'content'")
-              text = text.replace('RuntimeStage.STRATEGIST', 'RuntimeStage.CONTENT')
-              text = text.replace('BrainAgentId.STRATEGIST', 'BrainAgentId.CONTENT')
-              text = text.replace('AgentId.STRATEGIST', 'AgentId.CONTENT')
-              if text != original:
-                  p.write_text(text, encoding="utf-8")
-                  total += 1
-                  print(f"canonicalized legacy fixture: {name}")
-          print(f"files migrated: {total}")
-
-          p = Path("tests/test_structured_epistemic_handoff.py")
-          text = p.read_text(encoding="utf-8")
-          replacements = [
-              ('("content", "Content Strategy, Copywriting & Distribution Specialist")', '("content", "Content ASI")', '("content", "Content ASI")'),
-              ('rt.execute_stage_strategist(ctx)', 'rt.execute_stage_content(ctx)', 'rt.execute_stage_content(ctx)'),
-              ('ctx.stage_outputs["content"]["positioning"]', 'ctx.stage_outputs["content"]["content_strategy"]', 'ctx.stage_outputs["content"]["content_strategy"]'),
-          ]
-          for old, new, marker in replacements:
-              if old in text:
-                  text = text.replace(old, new, 1)
-              elif marker not in text:
-                  raise SystemExit(f"structured handoff expected old/new snippet missing: {old}")
-
-          old_count = 'self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)'
-          if old_count in text:
-              text = text.replace(
-                  old_count,
-                  'stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}\n        canonical_stage_methods = {"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}\n        self.assertTrue(canonical_stage_methods.issubset(stage_methods))\n        self.assertIn("execute_stage_strategist", stage_methods)  # deprecated method shim only',
-                  1,
-              )
-          elif 'canonical_stage_methods = {' not in text:
-              raise SystemExit("structured handoff canonical stage-method assertion missing")
-          p.write_text(text, encoding="utf-8")
-          '@ | python -
-
       - name: Verify canonical compatibility invariants
-        shell: pwsh
         run: |
-          @'
+          python - <<'PY'
           from governance.access_matrix import AgentAccessMatrix, PERMANENT_FIVE_AGENTS
           from runtime.context import RuntimeStage
 
@@ -150,33 +40,18 @@ jobs:
           assert [stage.value for stage in RuntimeStage].count("CONTENT") == 1
           assert PERMANENT_FIVE_AGENTS == {"cmo", "intelligence", "content", "creative", "performance"}
           print("canonical compatibility invariants: PASS")
-          '@ | python -
+          PY
 
-      - name: Compile migrated regressions
-        shell: pwsh
-        run: python -m compileall -q runtime governance tests
+      - name: Compile focused migration surface
+        run: python -m compileall -q runtime governance integrations tests
 
       - name: Run focused canonical migration regressions
-        shell: pwsh
         run: |
-          python -m unittest `
-            tests.test_brain_canonical_agent_identity_v1 `
-            tests.test_structured_epistemic_handoff `
-            tests.test_prod_core_authority_01b.TestAgentStageInvariants.test_six_stages `
-            tests.test_phase1b_grounded_context.TestPhase1BGroundContext.test_i_truncation_metadata `
-            tests.test_prod_scope_01_isolation.TestProdScope01Isolation.test_06_project_a_sentinel_not_visible_in_project_b `
+          python -m unittest \
+            tests.test_brain_canonical_agent_identity_v1 \
+            tests.test_model_policy_content_migration \
+            tests.test_structured_epistemic_handoff \
+            tests.test_prod_core_authority_01b.TestAgentStageInvariants.test_six_stages \
+            tests.test_phase1b_grounded_context.TestPhase1BGroundContext.test_i_truncation_metadata \
+            tests.test_prod_scope_01_isolation.TestProdScope01Isolation.test_06_project_a_sentinel_not_visible_in_project_b \
             tests.test_prod_scope_01_isolation.TestProdScope01Isolation.test_42_project_knowledge_a_cannot_enter_b_grounded_context -v
-
-      - name: Commit verified repair if needed
-        shell: pwsh
-        run: |
-          git status --short
-          if (git status --porcelain) {
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add governance/access_matrix.py runtime/context_compiler.py tests
-            git commit -m "fix(brain): complete legacy Strategist to Content migration boundary"
-            git push origin HEAD:fix/brain-content-canonical-role-v1
-          } else {
-            Write-Host "No compatibility repair changes to commit."
-          }
