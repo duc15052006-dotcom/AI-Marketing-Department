@@ -231,6 +231,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["IMAGE_GENERATION"],
                 provider="image_gen_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=45.0,
             )
         )
@@ -247,6 +248,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["IMAGE_EDITING"],
                 provider="image_edit_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=30.0,
             )
         )
@@ -263,6 +265,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["VIDEO_GENERATION"],
                 provider="video_gen_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=60.0,
             )
         )
@@ -279,6 +282,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["VIDEO_EDITING"],
                 provider="video_edit_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=60.0,
             )
         )
