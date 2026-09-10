@@ -34,10 +34,13 @@ jobs:
         run: python .github/scripts/_tmp_apply_model_policy_default_fallback_authority_v1.py
       - name: Compile
         run: python -m compileall -q integrations/models tests
-      - name: Run causal and focused policy regressions
+      - name: Run causal and certified Gateway regressions
         run: |
           python -m unittest -v tests.test_model_policy_default_fallback_authority_v1
-          python -m unittest -v tests.test_model_registry tests.test_model_settings_manager tests.test_model_gateway
+          python -m unittest -v tests.test_model_gateway_implicit_policy_neutrality_v1
+          python -m unittest -v tests.test_model_gateway_stream_degradation_exception_health_v1
+          python -m unittest -v tests.test_model_gateway_post_dispatch_timeout_health_v2
+          python -m unittest -v tests.test_model_gateway_permission_health_v1
       - name: Verify production diff scope
         shell: bash
         run: |
