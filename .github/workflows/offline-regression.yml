@@ -200,6 +200,14 @@ jobs:
             2>&1 | Tee-Object -FilePath .ci-results/production-learning-restart-durability-regression.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Run creative media mock truthfulness regression
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_media_mock_truthfulness_adversarial_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/media-mock-truthfulness-regression.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run Intelligence discovered-page follow-up regression v2
         timeout-minutes: 5
         shell: pwsh

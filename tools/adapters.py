@@ -184,10 +184,18 @@ class MediaCreationAdapter(BaseCapabilityAdapter):
     ) -> AdapterResult:
         start = time.perf_counter()
         asset_type = "video" if "video" in capability_id else "image"
-        artifact_id = f"art-{asset_type}-{int(time.time())}"
+        artifact_id = f"mock-art-{asset_type}-{int(time.time())}"
         return AdapterResult(
             success=True,
-            data={"asset_id": artifact_id, "asset_type": asset_type, "status": "RENDERED", "format": "png" if asset_type == "image" else "mp4"},
+            data={
+                "asset_id": artifact_id,
+                "asset_type": asset_type,
+                "status": "MOCK_RENDERED",
+                "format": "png" if asset_type == "image" else "mp4",
+                "simulated": True,
+                "provider_network_called": False,
+                "external_side_effect": False,
+            },
             artifact_refs=[artifact_id],
             latency_ms=(time.perf_counter() - start) * 1000.0,
             execution_mode=ExecutionMode.MOCK,
