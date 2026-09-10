@@ -6,7 +6,7 @@ from integrations.models.registry import ProviderDefinition, ProviderRegistry
 
 
 class ModelGatewayImplicitPolicyNeutralityV1Tests(unittest.TestCase):
-    def test_explicit_default_provider_uses_registry_model_without_foreign_fallbacks(self):
+    def _gateway(self):
         registry = ProviderRegistry()
         registry.register_provider(
             ProviderDefinition(
@@ -19,13 +19,14 @@ class ModelGatewayImplicitPolicyNeutralityV1Tests(unittest.TestCase):
                 cost_policy=CostPolicy.FREE_TIER_ALLOWED,
             )
         )
-
-        gateway = UniversalModelGateway(
+        return UniversalModelGateway(
             provider_registry=registry,
             default_provider="acme-lab",
             free_only_mode=False,
         )
 
+    def test_explicit_default_provider_uses_its_registry_model(self):
+        gateway = self._gateway()
         policy = gateway.model_policy
         self.assertEqual(policy.global_target.provider_id, "acme-lab")
         self.assertEqual(
@@ -33,6 +34,10 @@ class ModelGatewayImplicitPolicyNeutralityV1Tests(unittest.TestCase):
             "acme-reasoner-v7",
             "implicit policy must derive the selected provider's configured default model instead of injecting another provider's model",
         )
+
+    def test_implicit_policy_has_no_foreign_fallback_injection(self):
+        gateway = self._gateway()
+        policy = gateway.model_policy
         self.assertEqual(
             policy.fallback_chain,
             [],
