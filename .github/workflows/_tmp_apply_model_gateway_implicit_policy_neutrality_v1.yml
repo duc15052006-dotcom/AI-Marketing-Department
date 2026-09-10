@@ -1,0 +1,55 @@
+name: TEMP Apply Model Gateway Implicit Policy Neutrality V1
+
+'on':
+  push:
+    branches:
+      - test/model-gateway-implicit-policy-neutrality-v1
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply exact production patch
+        run: python scripts/_tmp_patch_model_gateway_implicit_policy_neutrality_v1.py
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Run causal and focused regressions
+        run: |
+          python -m compileall -q integrations/models tests/test_model_gateway_implicit_policy_neutrality_v1.py
+          python -m unittest -v \
+            tests.test_model_gateway_implicit_policy_neutrality_v1 \
+            tests.test_model_gateway_stream_degradation_exception_health_v1 \
+            tests.test_model_gateway_post_dispatch_timeout_health_v2 \
+            tests.test_model_gateway_permission_health_v1 \
+            tests.test_model_gateway_sync_rate_limit_health_v1
+      - name: Commit production patch
+        run: |
+          if git diff --quiet -- integrations/models/gateway.py; then
+            echo 'No production diff to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add integrations/models/gateway.py
+          git commit -m 'fix(models): make implicit gateway policy provider-neutral'
+          git push origin HEAD:test/model-gateway-implicit-policy-neutrality-v1
+      - name: Verify clean worktree
+        run: git diff --exit-code
