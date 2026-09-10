@@ -410,12 +410,7 @@ class ModelPolicy(BaseModel):
         default_factory=lambda: ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512")
     )
     agent_overrides: Dict[str, ModelTarget] = Field(default_factory=dict)
-    fallback_chain: List[ModelTarget] = Field(
-        default_factory=lambda: [
-            ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
-            ModelTarget(provider_id="gemini", model_id="gemini-flash-latest"),
-        ]
-    )
+    fallback_chain: List[ModelTarget] = Field(default_factory=list)
     timeout_seconds: float = 60.0
     free_only_mode: bool = True
     configuration_version: str = "v1"
