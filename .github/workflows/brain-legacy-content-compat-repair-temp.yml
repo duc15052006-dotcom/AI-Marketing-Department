@@ -29,16 +29,17 @@ jobs:
         shell: pwsh
         run: python -m pip install -r requirements.txt
 
-      - name: Apply guarded compatibility repair
+      - name: Apply guarded production compatibility repair
         shell: pwsh
         run: |
           @'
           from pathlib import Path
 
-          def replace_exact(path: str, old: str, new: str) -> None:
+          def replace_exact(path: str, old: str, new: str, already: str | None = None) -> None:
               p = Path(path)
               text = p.read_text(encoding="utf-8")
-              if new in text:
+              marker = already or new
+              if marker in text:
                   print(f"already repaired: {path}")
                   return
               if old not in text:
@@ -50,19 +51,71 @@ jobs:
               "runtime/context.py",
               '    CONTENT = "CONTENT"\n    CREATIVE = "CREATIVE"',
               '    CONTENT = "CONTENT"\n    STRATEGIST = "CONTENT"  # Deprecated enum alias; iteration remains canonical CONTENT only.\n    CREATIVE = "CREATIVE"',
+              '    STRATEGIST = "CONTENT"',
           )
 
           replace_exact(
               "governance/access_matrix.py",
               '    def get_profile(cls, agent_id: str) -> Optional[AgentAccessProfile]:\n        """Retrieve access profile for a recognized agent."""\n        return cls.PROFILES.get(agent_id.lower())',
               '    def get_profile(cls, agent_id: str) -> Optional[AgentAccessProfile]:\n        """Retrieve a canonical profile while accepting narrow legacy role aliases."""\n        key = str(agent_id or "").strip().lower()\n        if key in {"strategist", "strategy", "copywriter"}:\n            key = "content"\n        return cls.PROFILES.get(key)',
+              '_LEGACY_AGENT_ID_ALIASES',
           )
 
           replace_exact(
               "runtime/context_compiler.py",
               '            allowed_sources = prof.allowed_knowledge_sources if prof else [SourceType.CANONICAL_FACT, SourceType.VERIFIED_EVIDENCE]',
               '            # Unknown agents fail closed; recognized legacy aliases are normalized by AgentAccessMatrix.\n            allowed_sources = prof.allowed_knowledge_sources if prof else []',
+              'allowed_sources = prof.allowed_knowledge_sources if prof else []',
           )
+          '@ | python -
+
+      - name: Migrate known stale canonical-identity regressions
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          files = [
+              "tests/test_collaboration_adversarial_final.py",
+              "tests/test_collaboration_integrity_audit.py",
+              "tests/test_structured_epistemic_handoff.py",
+              "tests/test_claim_evidence_binding.py",
+              "tests/test_material_factual_claim_coverage.py",
+              "tests/test_model_execution_bridge.py",
+              "tests/test_phase4_3c_15_rc3_architecture.py",
+              "tests/test_phase5_1_foundation.py",
+              "tests/test_phase5_2_runtime_integration.py",
+              "tests/test_phase6_1_v1_connectors_and_workspace.py",
+              "tests/test_phase6_2_pilot_and_v1_release.py",
+              "tests/test_prod_core_authority_01a.py",
+              "tests/test_prod_core_authority_01b.py",
+              "tests/test_prod_runtime_01_single_run_authority.py",
+              "tests/test_prod_workflow_failure_semantics_01.py",
+              "tests/test_runtime_agent_dna_wiring_28.py",
+              "tests/test_phase1a_runtime_integrity.py",
+              "tests/test_phase1b_grounded_context.py",
+              "tests/test_prod_scope_01_isolation.py",
+              "tests/test_conversation_router_and_gpt_mode.py",
+          ]
+
+          total = 0
+          for name in files:
+              p = Path(name)
+              text = p.read_text(encoding="utf-8")
+              original = text
+              # These are legacy test fixtures/assertions that model the removed permanent Strategist role.
+              # Compatibility-specific tests are deliberately NOT in this allowlist.
+              text = text.replace('"strategist"', '"content"')
+              text = text.replace("'strategist'", "'content'")
+              text = text.replace('RuntimeStage.STRATEGIST', 'RuntimeStage.CONTENT')
+              text = text.replace('BrainAgentId.STRATEGIST', 'BrainAgentId.CONTENT')
+              text = text.replace('AgentId.STRATEGIST', 'AgentId.CONTENT')
+              if text != original:
+                  p.write_text(text, encoding="utf-8")
+                  changed = sum(1 for a, b in zip(original, text) if a != b)
+                  total += 1
+                  print(f"canonicalized legacy fixture: {name}")
+          print(f"files migrated: {total}")
           '@ | python -
 
       - name: Verify canonical alias invariants
@@ -80,10 +133,15 @@ jobs:
           print("canonical compatibility invariants: PASS")
           '@ | python -
 
-      - name: Run focused compatibility regressions
+      - name: Compile migrated regressions
+        shell: pwsh
+        run: python -m compileall -q runtime governance tests
+
+      - name: Run focused canonical migration regressions
         shell: pwsh
         run: |
           python -m unittest `
+            tests.test_structured_epistemic_handoff `
             tests.test_prod_core_authority_01b.TestAgentStageInvariants.test_six_stages `
             tests.test_phase1b_grounded_context.TestPhase1BGroundContext.test_i_truncation_metadata `
             tests.test_prod_scope_01_isolation.TestProdScope01Isolation.test_06_project_a_sentinel_not_visible_in_project_b `
@@ -96,8 +154,8 @@ jobs:
           if (git status --porcelain) {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add runtime/context.py governance/access_matrix.py runtime/context_compiler.py
-            git commit -m "fix(brain): preserve legacy strategist compatibility at content boundary"
+            git add runtime/context.py governance/access_matrix.py runtime/context_compiler.py tests
+            git commit -m "fix(brain): complete legacy Strategist to Content migration boundary"
             git push origin HEAD:fix/brain-content-canonical-role-v1
           } else {
             Write-Host "No compatibility repair changes to commit."
