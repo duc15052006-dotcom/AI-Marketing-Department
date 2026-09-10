@@ -42,7 +42,7 @@ class RuntimeAgentDnaWiring28Tests(unittest.TestCase):
         markers = {
             "cmo": "Chief Marketing Officer",
             "intelligence": "Intelligence",
-            "content": "Marketing Strategy & Growth Architect",
+            "content": "Content ASI",
             "creative": "Creative",
             "performance": "Performance Marketer, Marketing Analyst",
         }
