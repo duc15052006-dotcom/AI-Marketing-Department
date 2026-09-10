@@ -107,7 +107,7 @@ class BrainCollaborationIntelligenceV1Tests(unittest.TestCase):
             "assessment_id": "CA-1",
             "goal_id": "G-1",
             "proposal_id": "P-1",
-            "author_agent": "STRATEGIST",
+            "author_agent": "CONTENT",
             "proposal_verdict": ClaimVerdict.SUPPORTED,
             "proposal_evidence_refs": ["E-P1"],
             "reviews": list(reviews),
@@ -207,7 +207,7 @@ class BrainCollaborationIntelligenceV1Tests(unittest.TestCase):
         self.assertEqual(decision.disposition, CollaborationDisposition.INCONCLUSIVE)
 
     def test_self_review_cannot_create_independent_consensus(self) -> None:
-        self_review = self._review(reviewer_agent="STRATEGIST")
+        self_review = self._review(reviewer_agent="CONTENT")
         decision = evaluate_collaboration(self._assessment([self_review]))
         self.assertEqual(decision.disposition, CollaborationDisposition.INCONCLUSIVE)
         self.assertEqual(decision.supporting_review_ids, [])

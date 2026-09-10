@@ -116,7 +116,7 @@ class BrainObservationActionIntentProvenanceV1Tests(unittest.TestCase):
                 category=CapabilityCategory.OBSERVE,
                 description="Test-only observation capability for causal provenance.",
                 provider=adapter.adapter_name,
-                supported_agents=["strategist"],
+                supported_agents=["content"],
                 required_permissions=[],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
@@ -135,7 +135,7 @@ class BrainObservationActionIntentProvenanceV1Tests(unittest.TestCase):
         return ToolRequest(
             request_id=f"REQ-{run_id}",
             run_id=run_id,
-            agent_id="strategist",
+            agent_id="content",
             capability_id=cls.CAPABILITY_ID,
             parameters={"query": "bounded market evidence"},
             business_id="business-observation-provenance",

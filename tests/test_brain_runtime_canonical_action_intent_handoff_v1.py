@@ -183,7 +183,7 @@ class BrainRuntimeCanonicalActionIntentHandoffV1Tests(unittest.TestCase):
         return ToolRequest(
             request_id="REQ-RT-1",
             run_id="RUN-RT-1",
-            agent_id="strategist",
+            agent_id="content",
             capability_id="web_search",
             parameters={"query": "bounded market evidence"},
             business_id="BIZ-RT-1",

@@ -169,7 +169,7 @@ class BrainCanonicalActionIntentToolGatewayV1Tests(unittest.TestCase):
         )
 
     @staticmethod
-    def _request(*, agent_id: str = "strategist") -> ToolRequest:
+    def _request(*, agent_id: str = "content") -> ToolRequest:
         return ToolRequest(
             request_id="REQ-GW-1",
             run_id="RUN-GW-1",

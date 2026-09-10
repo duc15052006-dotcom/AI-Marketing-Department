@@ -105,7 +105,7 @@ class BrainActionIntentReceiptProvenanceV1Tests(unittest.TestCase):
     def test_action_intent_provenance_participates_in_receipt_immutability(self) -> None:
         original = ExecutionReceipt(
             run_id="RUN-PROV-1",
-            agent_id="strategist",
+            agent_id="content",
             capability_id="web_search",
             provider="search_adapter",
             request_hash="a" * 64,

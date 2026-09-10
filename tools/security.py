@@ -24,9 +24,9 @@ AGENT_DEFAULT_PERMISSIONS: Dict[str, Set[PermissionLevel]] = {
     "intelligence": {
         PermissionLevel.READ_ONLY,
     },
-    "strategist": {
+    "content": {
         PermissionLevel.READ_ONLY,
-        PermissionLevel.ANALYTICS,
+        PermissionLevel.CREATE_LOCAL,
     },
     "creative": {
         PermissionLevel.READ_ONLY,

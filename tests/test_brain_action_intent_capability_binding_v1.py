@@ -27,7 +27,7 @@ class TestBrainActionIntentCapabilityBindingV1(unittest.TestCase):
         self,
         *,
         semantic_needs=("MARKET_RESEARCH",),
-        supported_agents=("INTELLIGENCE", "STRATEGIST", "CMO"),
+        supported_agents=("INTELLIGENCE", "CONTENT", "CMO"),
     ):
         binding_type = getattr(action_policy, "TrustedCapabilityBinding", None)
         self.assertIsNotNone(
