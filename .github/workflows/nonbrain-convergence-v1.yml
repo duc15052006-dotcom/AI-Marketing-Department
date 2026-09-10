@@ -66,7 +66,9 @@ jobs:
           gateway_sha="25f4ea1a29fa16246908de2573b9f49850bf671b"
           policy_sha="c75e7b20d14ae98c1b94ee8e2a4c470e8adcdb9c"
           runtime_sha="bd7e4ef01f91712e1ca725412932e7c17aca8d4f"
-          git fetch origin "${gateway_sha}" "${policy_sha}" "${runtime_sha}"
+          settings_sha="5a55f3d02569f75f76eb85bfec7467689908b59a"
+          truncated_sha="24ef65de48f38c3221149f8f53d42aabdc158cec"
+          git fetch origin "${gateway_sha}" "${policy_sha}" "${runtime_sha}" "${settings_sha}" "${truncated_sha}"
 
           for f in \
             tests/test_model_gateway_implicit_policy_neutrality_v1.py \
@@ -85,6 +87,8 @@ jobs:
 
           git show "${policy_sha}:tests/test_model_policy_default_fallback_authority_v1.py" > tests/test_model_policy_default_fallback_authority_v1.py
           git show "${runtime_sha}:tests/test_runtime_default_provider_authority_v1.py" > tests/test_runtime_default_provider_authority_v1.py
+          git show "${settings_sha}:tests/test_model_settings_default_provider_authority_v1.py" > tests/test_model_settings_default_provider_authority_v1.py
+          git show "${truncated_sha}:tests/test_model_gateway_stream_truncated_health_v1.py" > tests/test_model_gateway_stream_truncated_health_v1.py
 
       - name: Compile focused convergence surface
         run: python -m compileall -q config integrations/models tests
@@ -104,7 +108,9 @@ jobs:
             tests.test_model_gateway_initial_timeout_budget_v1 \
             tests.test_model_gateway_stream_timeout_budget_v1 \
             tests.test_model_policy_default_fallback_authority_v1 \
-            tests.test_runtime_default_provider_authority_v1
+            tests.test_runtime_default_provider_authority_v1 \
+            tests.test_model_settings_default_provider_authority_v1 \
+            tests.test_model_gateway_stream_truncated_health_v1
 
       - name: Restore and verify clean checkout
         if: always()
