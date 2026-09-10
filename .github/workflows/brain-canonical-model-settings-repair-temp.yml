@@ -1,0 +1,65 @@
+name: Brain Canonical Model Settings Repair Temp
+
+on:
+  push:
+    branches:
+      - fix/brain-content-canonical-role-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    if: github.event.head_commit.message == 'chore(ci): launch canonical model-settings repair'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply exact canonical Content test repair
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("tests/test_prod_model_settings_01.py")
+          text = path.read_text(encoding="utf-8")
+
+          old_doc = "Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE)."
+          new_doc = "Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE)."
+          old_assert = 'self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"})'
+          new_assert = 'self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"})'
+
+          assert text.count(old_doc) == 1, f"Expected exactly one stale canonical doc contract, got {text.count(old_doc)}"
+          assert text.count(old_assert) == 1, f"Expected exactly one stale canonical assertion, got {text.count(old_assert)}"
+
+          text = text.replace(old_doc, new_doc)
+          text = text.replace(old_assert, new_assert)
+          path.write_text(text, encoding="utf-8")
+          '@ | python -
+
+      - name: Verify targeted model settings regression
+        shell: pwsh
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m unittest tests.test_prod_model_settings_01
+
+      - name: Commit verified repair only
+        shell: pwsh
+        run: |
+          git diff --check
+          git diff -- tests/test_prod_model_settings_01.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_prod_model_settings_01.py
+          git diff --cached --quiet; if ($LASTEXITCODE -eq 0) { throw "No repair diff produced" }
+          git commit -m "test(brain): align model settings with canonical Content role"
+          git push origin HEAD:fix/brain-content-canonical-role-v1
