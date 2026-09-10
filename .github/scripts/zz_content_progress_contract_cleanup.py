@@ -23,7 +23,7 @@ progress_path = Path("tests/test_prod_runtime_progress_01.py")
 progress = progress_path.read_text(encoding="utf-8")
 # This is a current production progress contract suite, not a legacy migration suite.
 # Every Strategist spelling here is stale canonical-role vocabulary.
-progress = replace_exact(progress, "STRATEGIST", "CONTENT", path=str(progress_path), expected=5)
+progress = replace_exact(progress, "STRATEGIST", "CONTENT", path=str(progress_path), expected=6)
 progress = replace_exact(progress, "strategist", "content", path=str(progress_path), expected=1)
 progress = replace_exact(progress, "Strategist", "Content", path=str(progress_path), expected=2)
 progress_path.write_text(progress, encoding="utf-8")

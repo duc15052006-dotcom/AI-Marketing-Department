@@ -1,5 +1,6 @@
 name: One-shot Canonical Content Progress Contract Cleanup
 
+# retry-2: exact STRATEGIST count in runtime progress suite is 6 because one mapping assertion contains two references.
 on:
   push:
     branches:
