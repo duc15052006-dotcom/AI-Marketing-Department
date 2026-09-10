@@ -121,7 +121,7 @@ jobs:
           p = Path("tests/test_structured_epistemic_handoff.py")
           text = p.read_text(encoding="utf-8")
           exact = {
-              '("strategist", "Marketing Strategist")': '("content", "Content Strategy, Copywriting & Distribution Specialist")',
+              '("content", "Marketing Strategist")': '("content", "Content Strategy, Copywriting & Distribution Specialist")',
               'rt.execute_stage_strategist(ctx)': 'rt.execute_stage_content(ctx)',
               'ctx.stage_outputs["content"]["positioning"]': 'ctx.stage_outputs["content"]["content_strategy"]',
               'self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)': 'self.assertTrue({"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}.issubset(set(dir(rt))))\n        self.assertTrue(callable(getattr(rt, "execute_stage_strategist", None)))',
