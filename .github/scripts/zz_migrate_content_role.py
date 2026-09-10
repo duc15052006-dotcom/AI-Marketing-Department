@@ -1,155 +1,41 @@
 from pathlib import Path
 
+path = Path("runtime/engine.py")
+s = path.read_text(encoding="utf-8")
 
-def read(path: str) -> str:
-    return Path(path).read_text(encoding="utf-8")
+replacements = {
+    'user_prompt = f"Objective: {context.objective}\\nPositioning Strategy: {content_strategy}\\n\\n{evidence_section}".strip()':
+        'user_prompt = f"Objective: {context.objective}\\nCMO Strategy & Positioning: {context.stage_outputs.get(\'cmo_initial\', {}).get(\'strategic_intent\', \'\')}\\nContent Messaging & Editorial Brief: {content_strategy}\\n\\n{evidence_section}".strip()',
+    '"4. ## Creative Concepts, Ad Hooks & Video Scripts (from Creative)\\n"':
+        '"4. ## Creative Visual Concepts, Storyboards & Multimedia Assets (from Creative)\\n"',
+    'f"- Content Positioning: {content_out.get(\'positioning\', \'\')}\\n"':
+        'f"- Content Strategy & Messaging: {content_out.get(\'content_strategy\', \'\')}\\n"',
+}
 
+for old, new in replacements.items():
+    if old not in s:
+        raise SystemExit(f"EXPECTED_PATTERN_MISSING: {old}")
+    s = s.replace(old, new, 1)
 
-def write(path: str, text: str) -> None:
-    Path(path).write_text(text, encoding="utf-8")
-
-
-def require(text: str, needle: str, path: str) -> None:
-    if needle not in text:
-        raise SystemExit(f"EXPECTED_PATTERN_MISSING in {path}: {needle!r}")
-
-
-# Runtime engine: migrate permanent stage/identity to Content.
-path = "runtime/engine.py"
-s = read(path)
-require(s, "def execute_stage_strategist", path)
-require(s, "RuntimeStage.STRATEGIST", path)
-require(s, 'context.stage_outputs["strategist"]', path)
-
-s = s.replace("Strategist", "Content")
-s = s.replace("STRATEGIST", "CONTENT")
-s = s.replace("strategist", "content")
-
-# CMO owns strategy/positioning; Content owns messaging/editorial.
-s = s.replace(
-    "- Content: Value proposition & audience positioning\\n",
-    "- Content: Messaging architecture, copy/scripts, editorial plan & channel adaptation\\n",
-)
-s = s.replace(
-    "- Creative: High-converting hooks & multimedia concept directions\\n",
-    "- Creative: Visual concepts, storyboards & multimedia asset directions\\n",
-)
-s = s.replace(
-    '"content_focus": "Define ICP segments, value proposition, and positioning hierarchy for the stated objective",',
-    '"content_focus": "Turn CMO strategy and verified evidence into messaging hierarchy, copy/script directions, editorial plan, SEO briefs, and channel adaptation",',
-)
-s = s.replace(
-    '"creative_focus": "Develop creative angles, high-converting hooks, and ad copy for the stated objective",',
-    '"creative_focus": "Develop visual concepts, storyboards, and multimedia asset directions from the approved Content brief",',
-)
-
-# Content stage semantics.
-s = s.replace(
-    '"""Stage 3: Content Positioning & Value Architecture."""',
-    '"""Stage 3: Content Strategy, Messaging & Editorial Architecture."""',
-)
-s = s.replace(
-    'message="Bắt đầu giai đoạn Content (Positioning & Value Architecture)"',
-    'message="Bắt đầu giai đoạn Content (Messaging & Editorial Architecture)"',
-)
-s = s.replace(
-    '"You are the Marketing Content in the Five-Agent AI Marketing Department.\\n"\n            "Synthesize the market intelligence into a sharp positioning architecture, defining:\\n"\n            "1. Primary Ideal Customer Profile (ICP) & Beachhead Segments\\n"\n            "2. Core Value Proposition & Category Point-of-View\\n"\n            "3. Messaging Hierarchy & Proof Pillars\\n"',
-    '"You are the Content Strategy, Copywriting & Distribution Specialist in the Five-Agent AI Marketing Department.\\n"\n            "Use CMO-approved strategy and verified Intelligence evidence to build content architecture without redefining positioning or commercial strategy. Define:\\n"\n            "1. Messaging hierarchy and proof pillars\\n"\n            "2. Copy/script and editorial directions\\n"\n            "3. SEO/channel adaptation and CTA guidance\\n"',
-)
-s = s.replace(
-    'intel_findings = context.stage_outputs.get("intelligence", {}).get("market_findings", "")\n        evidence_section = grounded_pkg.render_prompt_section()\n        user_prompt = f"Objective: {context.objective}\\nIntelligence Research: {intel_findings}\\n\\n{evidence_section}".strip()',
-    'intel_findings = context.stage_outputs.get("intelligence", {}).get("market_findings", "")\n        cmo_strategy = context.stage_outputs.get("cmo_initial", {}).get("strategic_intent", "")\n        evidence_section = grounded_pkg.render_prompt_section()\n        user_prompt = f"Objective: {context.objective}\\nCMO Strategy & Positioning: {cmo_strategy}\\nIntelligence Research: {intel_findings}\\n\\n{evidence_section}".strip()',
-)
-s = s.replace("llm_strategy", "llm_content")
-s = s.replace('"positioning": "",', '"content_strategy": "",')
-s = s.replace('"positioning": strip_handoff_block(llm_content),', '"content_strategy": strip_handoff_block(llm_content),')
-s = s.replace('"positioning": "AGENT_DERIVED",', '"content_strategy": "AGENT_DERIVED",')
-
-# Downstream stages consume Content, while CMO remains strategy authority.
-s = s.replace("strat_pos", "content_strategy")
-s = s.replace("strat_out", "content_out")
-s = s.replace('.get("positioning", "")', '.get("content_strategy", "")')
-s = s.replace(
-    'f"Positioning Strategy: {content_strategy}\\n\\n{evidence_section}"',
-    'f"CMO Strategy & Positioning: {context.stage_outputs.get(\'cmo_initial\', {}).get(\'strategic_intent\', \'\')}\\nContent Messaging & Editorial Brief: {content_strategy}\\n\\n{evidence_section}"',
-)
-s = s.replace(
-    'f"Strategy: {content_strategy}\\n"',
-    'f"CMO Strategy & Positioning: {context.stage_outputs.get(\'cmo_initial\', {}).get(\'strategic_intent\', \'\')}\\n"\n            f"Content Strategy & Messaging: {content_strategy}\\n"',
-)
-
-# Creative is asset/visual production, not the owner of primary copy strategy.
-s = s.replace(
-    '"You are the Creative Director and Copywriter in the Five-Agent AI Marketing Department.\\n"\n            "Develop 3-5 high-converting ad angles with scroll-stopping hooks, ad copy, and short-form video scripts (Meta, TikTok, YouTube Shorts).\\n"',
-    '"You are the Creative Director & Multimedia Production Specialist in the Five-Agent AI Marketing Department.\\n"\n            "Turn the approved Content brief into visual concepts, storyboards, asset systems, and multimedia production directions. Do not rewrite factual claims or take primary copy ownership.\\n"',
-)
-
-# Final CMO synthesizes its own strategy plus Content deliverables.
-s = s.replace(
-    '"3. ## Positioning Architecture & ICP Target Segments (from Content)\\n"',
-    '"3. ## Content Strategy, Messaging & Editorial System (from Content)\\n"',
-)
-s = s.replace(
-    'f"- Content Positioning: {content_out.get(\'content_strategy\', \'\')}\\n"',
-    'f"- Content Strategy & Messaging: {content_out.get(\'content_strategy\', \'\')}\\n"',
-)
-s = s.replace(
-    '"strategy": content_out,\n                "creative": crtv_out,',
-    '"strategy": cmo_init,\n                "content": content_out,\n                "creative": crtv_out,',
-)
-
-# The global replacement turned the historical method into canonical Content.
-require(s, "def execute_stage_content", path)
-marker = "    def execute_stage_creative(self, context: RuntimeContext) -> Dict[str, Any]:\n"
-require(s, marker, path)
-shim = '''    def execute_stage_strategist(self, context: RuntimeContext) -> Dict[str, Any]:
-        """Deprecated compatibility shim; executes canonical Content stage."""
-        return self.execute_stage_content(context)
-
-'''
-s = s.replace(marker, shim + marker, 1)
-
+# Canonical runtime must not actively execute the removed role. The sole
+# historical method name is a deprecated API shim that delegates to Content.
 for forbidden in (
     "RuntimeStage." + "STRATEGIST",
     'stage_outputs["' + "strategist" + '"]',
     '_call_agent_llm("' + "strategist" + '"',
     'agent="' + "STRATEGIST" + '"',
+    'Content Positioning:',
+    'Positioning Strategy: {content_strategy}',
 ):
     if forbidden in s:
-        raise SystemExit(f"RUNTIME_MIGRATION_INCOMPLETE: {forbidden}")
-write(path, s)
+        raise SystemExit(f"RUNTIME_ROLE_BOUNDARY_INCOMPLETE: {forbidden}")
 
-# True-handoff regression test: canonical Content is the third stage.
-path = "tests/test_creative_performance_true_handoff.py"
-t = read(path)
-t = t.replace("Strategist", "Content").replace("STRATEGIST", "CONTENT").replace("strategist", "content")
-t = t.replace('"Marketing Content"', '"Content Strategy"')
-t = t.replace("'Marketing Content'", "'Content Strategy'")
-write(path, t)
+if s.count("def execute_stage_strategist") != 1:
+    raise SystemExit("LEGACY_SHIM_COUNT_INVALID")
+if "Deprecated compatibility shim; executes canonical Content stage." not in s:
+    raise SystemExit("LEGACY_SHIM_NOT_EXPLICIT")
+if 'content_out.get(\'content_strategy\', \'\')' not in s:
+    raise SystemExit("FINAL_CMO_CONTENT_HANDOFF_MISSING")
 
-# Operating prompts: remove active Strategist handoffs and assert authority split.
-prompt_rules = {
-    ".agents/agents/cmo/agent.md": "Canonical role boundary: CMO owns marketing strategy, positioning, GTM choices and commercial sign-off. Content owns messaging architecture, copy/scripts, editorial/SEO/channel content. Creative owns visual/multimedia asset production.",
-    ".agents/agents/intelligence/agent.md": "Canonical role boundary: Strategic recommendations and positioning are decided by CMO. Verified evidence is handed to Content for messaging/editorial work, Creative for asset production, and Performance for measurement.",
-    ".agents/agents/creative/agent.md": "Canonical role boundary: CMO supplies approved strategy/positioning; Content supplies messaging/copy/editorial brief; Creative owns visual concepts, storyboards, assets and multimedia production — not primary copy strategy.",
-    ".agents/agents/performance/agent.md": "Canonical role boundary: CMO supplies strategy/positioning, Content supplies messaging/content hypotheses, Creative supplies assets; Performance owns measurement, experiments, attribution and observed learning.",
-}
-for path, boundary_note in prompt_rules.items():
-    p = read(path)
-    p = p.replace("Strategist", "Content").replace("STRATEGIST", "CONTENT").replace("strategist", "content")
-    if boundary_note not in p:
-        lines = p.splitlines()
-        insert_at = 0
-        if lines and lines[0].strip() == "---":
-            for i in range(1, min(len(lines), 30)):
-                if lines[i].strip() == "---":
-                    insert_at = i + 1
-                    break
-        lines.insert(insert_at, f"> **{boundary_note}**")
-        p = "\n".join(lines) + ("\n" if p.endswith("\n") else "")
-    for forbidden in ("Strategist", "STRATEGIST", "strategist"):
-        if forbidden in p:
-            raise SystemExit(f"PROMPT_MIGRATION_INCOMPLETE: {path}: {forbidden}")
-    write(path, p)
-
-print("Canonical Content runtime/prompt migration complete.")
+path.write_text(s, encoding="utf-8")
+print("Content semantic ownership repair complete.")
