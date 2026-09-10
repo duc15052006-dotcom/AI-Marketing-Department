@@ -34,6 +34,8 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/engine.py tests/test_creative_performance_true_handoff.py .agents/agents/cmo/agent.md .agents/agents/intelligence/agent.md .agents/agents/creative/agent.md .agents/agents/performance/agent.md
-          git commit -m "fix(runtime): migrate canonical strategist stage to Content"
+          git add runtime/engine.py
+          git commit -m "fix(runtime): preserve CMO strategy authority across Content handoff"
           git push origin HEAD:fix/brain-content-canonical-role-v1
+
+# one-shot revision: semantic-authority-v2
