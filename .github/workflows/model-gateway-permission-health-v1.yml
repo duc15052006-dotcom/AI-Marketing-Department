@@ -1,0 +1,54 @@
+name: Model Gateway Permission Health V1
+
+on:
+  push:
+    branches:
+      - test/model-gateway-permission-health-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-gateway-permission-health-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  causal-permission-health:
+    name: Ubuntu Python 3.12 causal permission health
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Record exact-head identity
+        run: |
+          echo "github_sha=${{ github.sha }}"
+          echo "github_ref=${{ github.ref }}"
+          python --version
+          git rev-parse HEAD
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Compile model and causal regression sources
+        run: python -m compileall -q integrations/models tests/test_model_gateway_permission_health_v1.py
+      - name: Run causal regression — permission-health
+        run: python -m unittest -v tests.test_model_gateway_permission_health_v1
+      - name: Verify clean checkout after tests
+        if: always()
+        run: git diff --exit-code
