@@ -1302,6 +1302,15 @@ class UniversalModelGateway:
                     has_emitted_visible_content = True
                     if first_delta.finish_reason == "error":
                         candidate_terminal_seen = True
+                        terminal_err = normalize_public_stream_error(first_delta.error, default_provider=cand_provider)
+                        internal_code = stream_error_to_provider_error_code(terminal_err)
+                        self.config_service.record_error(cand_provider, internal_code)
+                        if internal_code == ProviderErrorCode.RATE_LIMIT_429:
+                            self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
+                        elif internal_code == ProviderErrorCode.AUTH_401:
+                            self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                        elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                         yield normalize_public_stream_delta(
                             StreamDelta(content=first_delta.content, finish_reason=None),
                             cand_provider,
@@ -1311,7 +1320,7 @@ class UniversalModelGateway:
                             StreamDelta(
                                 content="",
                                 finish_reason="error",
-                                error=normalize_public_stream_error(first_delta.error, default_provider=cand_provider),
+                                error=terminal_err,
                             ),
                             cand_provider,
                             cand_model,
@@ -1352,6 +1361,15 @@ class UniversalModelGateway:
                     if delta.finish_reason:
                         candidate_terminal_seen = True
                         if delta.finish_reason == "error":
+                            terminal_err = normalize_public_stream_error(delta.error, default_provider=cand_provider)
+                            internal_code = stream_error_to_provider_error_code(terminal_err)
+                            self.config_service.record_error(cand_provider, internal_code)
+                            if internal_code == ProviderErrorCode.RATE_LIMIT_429:
+                                self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
+                            elif internal_code == ProviderErrorCode.AUTH_401:
+                                self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                            elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                             if delta.content:
                                 yield normalize_public_stream_delta(
                                     StreamDelta(content=delta.content, finish_reason=None),
@@ -1362,7 +1380,7 @@ class UniversalModelGateway:
                                 StreamDelta(
                                     content="",
                                     finish_reason="error",
-                                    error=normalize_public_stream_error(delta.error, default_provider=cand_provider),
+                                    error=terminal_err,
                                 ),
                                 cand_provider,
                                 cand_model,
