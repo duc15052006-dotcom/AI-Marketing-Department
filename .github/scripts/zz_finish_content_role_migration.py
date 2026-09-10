@@ -13,9 +13,10 @@ def replace_required(text: str, old: str, new: str, *, path: str, count: int | N
 
 # ---------------------------------------------------------------------------
 # Production capability authority.
-# Content inherits research/text/workspace-read responsibilities from the
-# removed permanent role. Performance/CMO retain analytics/KPI/experiment
-# authority; Content must not gain raw telemetry/attribution authority.
+# Content inherits evidence-gathering, text-creation, and workspace-read
+# responsibilities from the removed permanent role. Performance/CMO retain
+# raw analytics/KPI/experiment authority. Content must not gain attribution,
+# live publishing, budget, image/video, or generic workspace-write authority.
 # ---------------------------------------------------------------------------
 cap_path = Path("tools/capabilities.py")
 cap = cap_path.read_text(encoding="utf-8")
@@ -56,7 +57,6 @@ cap = replace_required(
     count=1,
 )
 
-# No builtin capability is allowed to advertise the removed permanent agent.
 for match in re.finditer(r"supported_agents\s*=\s*\[(.*?)\]", cap, flags=re.S):
     if "strategist" in match.group(1).lower():
         raise SystemExit("STALE_STRATEGIST_CAPABILITY_AUTHORITY: " + match.group(0))
@@ -65,11 +65,36 @@ cap_path.write_text(cap, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
-# Stale test fixtures. These modules exercise the canonical current role, not
-# legacy-deserialization compatibility. The dedicated canonical identity test
-# remains untouched and is the sole regression for legacy STRATEGIST -> CONTENT.
+# Runtime RBAC authority.
+# The removed Strategist role had analytics authority. Content must NOT inherit
+# that authority. Content needs READ_ONLY for research/context and CREATE_LOCAL
+# for local text generation; capability semantic allowlists remain the second
+# fail-closed gate for each concrete operation.
+# ---------------------------------------------------------------------------
+security_path = Path("tools/security.py")
+security = security_path.read_text(encoding="utf-8")
+security = replace_required(
+    security,
+    '"strategist": {PermissionLevel.READ_ONLY, PermissionLevel.ANALYTICS},',
+    '"content": {PermissionLevel.READ_ONLY, PermissionLevel.CREATE_LOCAL},',
+    path=str(security_path),
+    count=1,
+)
+if '"strategist":' in security.lower():
+    raise SystemExit("STALE_STRATEGIST_RBAC_AUTHORITY")
+if '"content": {PermissionLevel.READ_ONLY, PermissionLevel.CREATE_LOCAL},' not in security:
+    raise SystemExit("CONTENT_RBAC_AUTHORITY_MISSING")
+security_path.write_text(security, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Stale current-role test fixtures. These modules exercise the canonical current
+# role, not legacy deserialization compatibility. The dedicated canonical
+# identity regression remains untouched and continues to verify the narrow
+# STRATEGIST -> CONTENT legacy ingress mapping.
 # ---------------------------------------------------------------------------
 test_files = [
+    "tests/test_brain_action_intent_capability_binding_v1.py",
     "tests/test_brain_collaboration_intelligence_v1.py",
     "tests/test_brain_reasoning_policy_v1.py",
     "tests/test_brain_cognitive_contract_v1.py",
@@ -101,8 +126,6 @@ for raw_path in test_files:
 if not changed_tests:
     raise SystemExit("NO_STALE_TARGET_TEST_FIXTURES_FOUND")
 
-# Active target fixtures must no longer reference the removed role as an exact
-# identity literal. Legacy migration coverage lives in the excluded contract test.
 for raw_path in test_files:
     text = Path(raw_path).read_text(encoding="utf-8")
     for forbidden in ('"STRATEGIST"', "'STRATEGIST'", '"strategist"', "'strategist'"):
@@ -110,6 +133,7 @@ for raw_path in test_files:
             raise SystemExit(f"STALE_TARGET_FIXTURE {raw_path}: {forbidden}")
 
 print("Production capability authority migrated to canonical Content.")
+print("Runtime RBAC migrated to canonical Content without analytics escalation.")
 print("Migrated target fixtures:")
 for raw_path in changed_tests:
     print(" -", raw_path)
