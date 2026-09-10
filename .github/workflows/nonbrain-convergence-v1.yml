@@ -17,37 +17,57 @@ env:
   RUN_LIVE_PROVIDER_TESTS: "0"
   RUN_REAL_MODEL_TEST: "0"
   RUN_LIVE_MODEL_TESTS: "0"
+  AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+  AI_MARKETING_MEMORY_EPHEMERAL: "1"
+  AI_MARKETING_LEARNING_EPHEMERAL: "1"
+  PYTHONUTF8: "1"
   PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
-  gateway-convergence-red:
-    name: Ubuntu Python 3.12 Gateway convergence matrix
+  focused-nonbrain-convergence:
+    name: Ubuntu Python 3.12 focused non-Brain convergence
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
-      - name: Checkout exact platform integration head
+      - name: Checkout exact integration head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
-      - name: Record exact-head identity
+
+      - name: Verify exact-head identity
+        shell: bash
         run: |
-          echo "github_sha=${{ github.sha }}"
-          git rev-parse HEAD
-      - name: Install dependencies
+          set -euo pipefail
+          expected="${{ github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "expected_head_sha=${expected}"
+          echo "actual_head_sha=${actual}"
+          python --version
+          test "${actual}" = "${expected}"
+
+      - name: Install runtime dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
-      - name: Import certified Gateway regressions into checkout only
+
+      - name: Import exact certified regressions into checkout only
         shell: bash
         run: |
-          git fetch origin test/model-gateway-implicit-policy-neutrality-v1:test/model-gateway-implicit-policy-neutrality-v1
+          set -euo pipefail
+          gateway_sha="25f4ea1a29fa16246908de2573b9f49850bf671b"
+          policy_sha="c75e7b20d14ae98c1b94ee8e2a4c470e8adcdb9c"
+          runtime_sha="bd7e4ef01f91712e1ca725412932e7c17aca8d4f"
+          git fetch origin "${gateway_sha}" "${policy_sha}" "${runtime_sha}"
+
           for f in \
             tests/test_model_gateway_implicit_policy_neutrality_v1.py \
             tests/test_model_gateway_stream_degradation_exception_health_v1.py \
@@ -60,11 +80,16 @@ jobs:
             tests/test_model_gateway_late_result_timeout_v1.py \
             tests/test_model_gateway_initial_timeout_budget_v1.py \
             tests/test_model_gateway_stream_timeout_budget_v1.py; do
-            git show test/model-gateway-implicit-policy-neutrality-v1:$f > $f
+            git show "${gateway_sha}:$f" > "$f"
           done
-      - name: Compile imported regressions
-        run: python -m compileall -q integrations/models tests
-      - name: Run certified Gateway convergence matrix
+
+          git show "${policy_sha}:tests/test_model_policy_default_fallback_authority_v1.py" > tests/test_model_policy_default_fallback_authority_v1.py
+          git show "${runtime_sha}:tests/test_runtime_default_provider_authority_v1.py" > tests/test_runtime_default_provider_authority_v1.py
+
+      - name: Compile focused convergence surface
+        run: python -m compileall -q config integrations/models tests
+
+      - name: Run exact certified focused matrix
         run: |
           python -m unittest -v \
             tests.test_model_gateway_implicit_policy_neutrality_v1 \
@@ -77,10 +102,72 @@ jobs:
             tests.test_model_gateway_stream_consumer_cancel_v1 \
             tests.test_model_gateway_late_result_timeout_v1 \
             tests.test_model_gateway_initial_timeout_budget_v1 \
-            tests.test_model_gateway_stream_timeout_budget_v1
-      - name: Restore exact integration checkout
+            tests.test_model_gateway_stream_timeout_budget_v1 \
+            tests.test_model_policy_default_fallback_authority_v1 \
+            tests.test_runtime_default_provider_authority_v1
+
+      - name: Restore and verify clean checkout
         if: always()
+        shell: bash
         run: |
           git reset --hard HEAD
           git clean -fd
           git diff --exit-code
+
+  windows-full-hermetic:
+    name: Windows Python 3.12 full hermetic discovery
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact integration head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact-head identity
+        shell: pwsh
+        run: |
+          $expected = "${{ github.sha }}"
+          $actual = (git rev-parse HEAD).Trim()
+          Write-Host "expected_head_sha=$expected"
+          Write-Host "actual_head_sha=$actual"
+          python --version
+          if ($actual -ne $expected) {
+            Write-Error "EXACT_HEAD_MISMATCH: expected $expected but checked out $actual"
+            exit 1
+          }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile production and test sources
+        shell: pwsh
+        run: |
+          python -m compileall -q app_api chat config connections connectors creative_engine governance integrations knowledge memory observability runtime schemas scripts tools workspace tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify clean checkout
+        if: always()
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
