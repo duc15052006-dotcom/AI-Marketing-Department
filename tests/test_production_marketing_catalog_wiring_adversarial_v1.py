@@ -57,6 +57,22 @@ class ProductionMarketingCatalogWiringAdversarialV1Tests(unittest.TestCase):
         self.assertIsNotNone(APP_BACKEND.provider_preflight_repository.database_path)
         self.assertIsNotNone(APP_BACKEND.provider_operation_repository.database_path)
 
+    def test_backend_close_releases_all_durable_marketing_stores(self) -> None:
+        from app_api.server import DepartmentAppBackend
+
+        backend = DepartmentAppBackend()
+        backend.close()
+        backend.close()
+
+        with self.assertRaisesRegex(Exception, "PROVIDER_PREFLIGHT_STORE_CLOSED"):
+            backend.provider_preflight_repository.get("PREFLIGHT-CLOSED")
+        with self.assertRaisesRegex(Exception, "PROVIDER_OPERATION_STORE_CLOSED"):
+            backend.provider_operation_repository.list_scope(
+                business_id="BIZ-CLOSED",
+                project_id=None,
+                brand_id=None,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
