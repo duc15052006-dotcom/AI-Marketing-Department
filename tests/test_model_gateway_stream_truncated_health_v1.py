@@ -20,6 +20,20 @@ class _RecordingConfigService:
         self.errors.append((provider_id, error_code))
 
 
+class _ZeroDeltaTruncatedAdapter(BaseModelAdapter):
+    @property
+    def provider_name(self):
+        return "zero-delta-truncated"
+
+    def generate(self, request):
+        raise AssertionError("sync generate must not be used")
+
+    def generate_stream(self, request):
+        if False:
+            yield StreamDelta(content="", finish_reason=None)
+        return
+
+
 class _SilentTruncatedAdapter(BaseModelAdapter):
     @property
     def provider_name(self):
@@ -79,6 +93,18 @@ class ModelGatewayStreamTruncatedHealthV1Tests(unittest.TestCase):
             gateway.get_provider_health(provider_name),
             ProviderHealth.UNAVAILABLE,
             "a provider that violates the terminal stream protocol must not remain AVAILABLE",
+        )
+
+    def test_zero_delta_eof_records_protocol_failure_health(self):
+        adapter = _ZeroDeltaTruncatedAdapter()
+        gateway, config_service, deltas = self._run(adapter)
+
+        self.assertEqual(len(deltas), 1)
+        self.assertEqual(deltas[0].finish_reason, "error")
+        self.assertIsNotNone(deltas[0].error)
+        self.assertEqual(deltas[0].error.code, "STREAM_TRUNCATED")
+        self._assert_accounted_unavailable(
+            gateway, config_service, adapter.provider_name
         )
 
     def test_silent_precontent_eof_records_protocol_failure_health(self):
