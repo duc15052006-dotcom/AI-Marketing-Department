@@ -1132,6 +1132,12 @@ class UniversalModelGateway:
                     return
 
                 if first_delta is None:
+                    self.config_service.record_error(cand_provider, ProviderErrorCode.OTHER)
+                    self.update_provider_health(
+                        cand_provider,
+                        ProviderHealth.UNAVAILABLE,
+                        detail="STREAM_TRUNCATED: Provider stream closed unexpectedly without yielding deltas.",
+                    )
                     err = ModelStreamError(
                         code="STREAM_TRUNCATED",
                         category="STREAM_PROTOCOL",
@@ -1448,6 +1454,12 @@ class UniversalModelGateway:
                 if not candidate_terminal_seen:
                     if candidate_visible_content:
                         # Visible content was emitted, but stream dropped without finish_reason -> STREAM_TRUNCATED (NO fallback)
+                        self.config_service.record_error(cand_provider, ProviderErrorCode.OTHER)
+                        self.update_provider_health(
+                            cand_provider,
+                            ProviderHealth.UNAVAILABLE,
+                            detail="STREAM_TRUNCATED: Provider stream closed unexpectedly after partial output.",
+                        )
                         yield normalize_public_stream_delta(
                             StreamDelta(
                                 content="",
@@ -1466,6 +1478,12 @@ class UniversalModelGateway:
                         return
                     else:
                         # No visible content and no finish_reason -> STREAM_TRUNCATED (fallback allowed)
+                        self.config_service.record_error(cand_provider, ProviderErrorCode.OTHER)
+                        self.update_provider_health(
+                            cand_provider,
+                            ProviderHealth.UNAVAILABLE,
+                            detail="STREAM_TRUNCATED: Provider stream closed unexpectedly without completion signal.",
+                        )
                         trunc_err = ModelStreamError(
                             code="STREAM_TRUNCATED",
                             category="STREAM_PROTOCOL",
