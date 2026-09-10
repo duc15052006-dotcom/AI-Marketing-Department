@@ -104,7 +104,7 @@ replace(
     "tests/test_prod_core_authority_01a.py",
     '("content", "execute_stage_strategist"),',
     '("content", "execute_stage_content"),',
-    exact=1,
+    exact=2,
 )
 replace(
     "tests/test_prod_runtime_01_single_run_authority.py",
