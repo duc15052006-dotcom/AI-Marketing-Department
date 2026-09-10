@@ -58,7 +58,6 @@ class RuntimeStage(str, Enum):
     CMO_INITIAL = "CMO_INITIAL"
     INTELLIGENCE = "INTELLIGENCE"
     CONTENT = "CONTENT"
-    STRATEGIST = "CONTENT"  # Deprecated enum alias; iteration remains canonical CONTENT only.
     CREATIVE = "CREATIVE"
     PERFORMANCE = "PERFORMANCE"
     FINAL_CMO = "FINAL_CMO"
