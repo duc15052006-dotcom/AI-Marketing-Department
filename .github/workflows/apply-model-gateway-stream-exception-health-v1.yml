@@ -1,0 +1,76 @@
+name: Apply Model Gateway Stream Exception Health V1
+
+on:
+  push:
+    branches:
+      - test/model-gateway-stream-exception-health-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-model-gateway-stream-exception-health-v1-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply minimal production patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("integrations/models/gateway.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''                err = ModelStreamError(
+                      code=err_code,
+                      category=err_cat,
+                      safe_message=safe_msg,
+                      retryable=ret,
+                      http_status=st,
+                  )
+                  last_error = err
+          '''
+          new = '''                err = ModelStreamError(
+                      code=err_code,
+                      category=err_cat,
+                      safe_message=safe_msg,
+                      retryable=ret,
+                      http_status=st,
+                  )
+                  internal_code = stream_error_to_provider_error_code(err)
+                  self.config_service.record_error(cand_provider, internal_code)
+                  if internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
+                      self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=safe_msg)
+                  last_error = err
+          '''
+          if new in text:
+              print("production patch already present")
+          else:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one stream exception health anchor, found {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          git diff --check
+      - name: Run causal regression after local patch
+        run: python -m unittest -v tests.test_model_gateway_stream_exception_health_v1
+      - name: Commit production patch if needed
+        shell: bash
+        run: |
+          if git diff --quiet -- integrations/models/gateway.py; then
+            echo "No production diff to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/models/gateway.py
+          git commit -m "fix(models): record stream exception provider health"
+          git push origin HEAD:test/model-gateway-stream-exception-health-v1
