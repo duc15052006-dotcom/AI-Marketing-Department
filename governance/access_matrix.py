@@ -21,6 +21,11 @@ PERMANENT_FIVE_AGENTS: Set[str] = {
     "performance",
 }
 
+_LEGACY_AGENT_ID_ALIASES: Dict[str, str] = {
+    "strategist": "content",
+    "strategy": "content",
+}
+
 
 class AgentAccessProfile(BaseModel):
     """Specification of storage and capability access boundaries for an agent role."""
@@ -193,8 +198,10 @@ class AgentAccessMatrix:
 
     @classmethod
     def get_profile(cls, agent_id: str) -> Optional[AgentAccessProfile]:
-        """Retrieve access profile for a recognized agent."""
-        return cls.PROFILES.get(agent_id.lower())
+        """Retrieve access profile, canonicalizing narrow legacy role aliases."""
+        key = str(agent_id or "").strip().lower()
+        key = _LEGACY_AGENT_ID_ALIASES.get(key, key)
+        return cls.PROFILES.get(key)
 
     @classmethod
     def validate_agent_count(cls) -> bool:
