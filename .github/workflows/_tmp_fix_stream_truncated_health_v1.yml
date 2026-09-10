@@ -1,0 +1,156 @@
+name: TEMP Fix Stream Truncated Health V1
+
+on:
+  push:
+    branches:
+      - test/model-gateway-stream-truncated-health-v1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tmp-fix-stream-truncated-health-v1
+  cancel-in-progress: true
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Apply minimal production patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('integrations/models/gateway.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''                if first_delta is None:\n                    err = ModelStreamError(''',
+                  '''                if first_delta is None:\n                    self.config_service.record_error(cand_provider, ProviderErrorCode.OTHER)\n                    self.update_provider_health(\n                        cand_provider,\n                        ProviderHealth.UNAVAILABLE,\n                        detail="STREAM_TRUNCATED: Provider stream closed unexpectedly without yielding deltas.",\n                    )\n                    err = ModelStreamError(''',
+              ),
+              (
+                  '''                    if candidate_visible_content:\n                        # Visible content was emitted, but stream dropped without finish_reason -> STREAM_TRUNCATED (NO fallback)\n                        yield normalize_public_stream_delta(''',
+                  '''                    if candidate_visible_content:\n                        # Visible content was emitted, but stream dropped without finish_reason -> STREAM_TRUNCATED (NO fallback)\n                        self.config_service.record_error(cand_provider, ProviderErrorCode.OTHER)\n                        self.update_provider_health(\n                            cand_provider,\n                            ProviderHealth.UNAVAILABLE,\n                            detail="STREAM_TRUNCATED: Provider stream closed unexpectedly after partial output.",\n                        )\n                        yield normalize_public_stream_delta(''',
+              ),
+              (
+                  '''                    else:\n                        # No visible content and no finish_reason -> STREAM_TRUNCATED (fallback allowed)\n                        trunc_err = ModelStreamError(''',
+                  '''                    else:\n                        # No visible content and no finish_reason -> STREAM_TRUNCATED (fallback allowed)\n                        self.config_service.record_error(cand_provider, ProviderErrorCode.OTHER)\n                        self.update_provider_health(\n                            cand_provider,\n                            ProviderHealth.UNAVAILABLE,\n                            detail="STREAM_TRUNCATED: Provider stream closed unexpectedly without completion signal.",\n                        )\n                        trunc_err = ModelStreamError(''',
+              ),
+          ]
+
+          changed = 0
+          for old, new in replacements:
+              count = text.count(old)
+              if count == 1:
+                  text = text.replace(old, new, 1)
+                  changed += 1
+              elif count == 0 and new in text:
+                  pass
+              else:
+                  raise SystemExit(f'Unexpected patch anchor count: {count} for {old[:80]!r}')
+
+          if changed:
+              path.write_text(text, encoding='utf-8')
+          print(f'patched_anchors={changed}')
+          PY
+
+          mapfile -t changed < <(git diff --name-only)
+          if [ "${#changed[@]}" -eq 0 ]; then
+            echo "Production patch already present."
+            exit 0
+          fi
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "integrations/models/gateway.py"
+          ! git diff --name-only | grep -q '^brain/'
+
+      - name: Compile and run causal regression
+        run: |
+          python -m compileall -q integrations/models tests/test_model_gateway_stream_truncated_health_v1.py
+          python -m unittest -v tests.test_model_gateway_stream_truncated_health_v1
+
+      - name: Run certified Gateway regression matrix
+        shell: bash
+        run: |
+          git fetch origin 25f4ea1a29fa16246908de2573b9f49850bf671b
+          for f in \
+            tests/test_model_gateway_implicit_policy_neutrality_v1.py \
+            tests/test_model_gateway_stream_degradation_exception_health_v1.py \
+            tests/test_model_gateway_post_dispatch_timeout_health_v2.py \
+            tests/test_model_gateway_permission_health_v1.py \
+            tests/test_model_gateway_midstream_error_health_v1.py \
+            tests/test_model_gateway_stream_exception_health_v1.py \
+            tests/test_model_gateway_sync_rate_limit_health_v1.py \
+            tests/test_model_gateway_stream_consumer_cancel_v1.py \
+            tests/test_model_gateway_late_result_timeout_v1.py \
+            tests/test_model_gateway_initial_timeout_budget_v1.py \
+            tests/test_model_gateway_stream_timeout_budget_v1.py; do
+            git show 25f4ea1a29fa16246908de2573b9f49850bf671b:$f > $f
+          done
+          python -m unittest -v \
+            tests.test_model_gateway_implicit_policy_neutrality_v1 \
+            tests.test_model_gateway_stream_degradation_exception_health_v1 \
+            tests.test_model_gateway_post_dispatch_timeout_health_v2 \
+            tests.test_model_gateway_permission_health_v1 \
+            tests.test_model_gateway_midstream_error_health_v1 \
+            tests.test_model_gateway_stream_exception_health_v1 \
+            tests.test_model_gateway_sync_rate_limit_health_v1 \
+            tests.test_model_gateway_stream_consumer_cancel_v1 \
+            tests.test_model_gateway_late_result_timeout_v1 \
+            tests.test_model_gateway_initial_timeout_budget_v1 \
+            tests.test_model_gateway_stream_timeout_budget_v1
+
+      - name: Restore test-only imports and verify production diff
+        shell: bash
+        run: |
+          git restore tests || true
+          git clean -fd tests
+          mapfile -t changed < <(git diff --name-only)
+          if [ "${#changed[@]}" -eq 0 ]; then
+            echo "No production diff to commit."
+            exit 0
+          fi
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = "integrations/models/gateway.py"
+          ! git diff --name-only | grep -q '^brain/'
+
+      - name: Commit production fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- integrations/models/gateway.py; then
+            echo "No production diff to commit."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add integrations/models/gateway.py
+          git commit -m 'fix(models): account truncated stream protocol failures'
+          git push origin HEAD:test/model-gateway-stream-truncated-health-v1
