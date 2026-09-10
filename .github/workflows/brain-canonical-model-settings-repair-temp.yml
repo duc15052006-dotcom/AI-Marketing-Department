@@ -1,22 +1,23 @@
 name: Brain Canonical Model Settings Repair Temp
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/brain-content-canonical-role-v1
+      - fix/brain-learning-control-downgrade-v1
 
 permissions:
   contents: write
 
 jobs:
   repair-and-verify:
-    if: github.event.head_commit.message == 'chore(ci): launch canonical model-settings repair'
+    if: github.event.pull_request.head.ref == 'fix/brain-content-canonical-role-v1'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout exact branch head
+      - name: Checkout exact PR head branch
         uses: actions/checkout@v4
         with:
+          ref: fix/brain-content-canonical-role-v1
           fetch-depth: 0
 
       - name: Set up Python 3.12
@@ -24,7 +25,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Apply exact canonical Content test repair
+      - name: Apply exact canonical Content test repair idempotently
         shell: pwsh
         run: |
           @'
@@ -38,12 +39,19 @@ jobs:
           old_assert = 'self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"})'
           new_assert = 'self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"})'
 
-          assert text.count(old_doc) == 1, f"Expected exactly one stale canonical doc contract, got {text.count(old_doc)}"
-          assert text.count(old_assert) == 1, f"Expected exactly one stale canonical assertion, got {text.count(old_assert)}"
+          old_doc_count = text.count(old_doc)
+          old_assert_count = text.count(old_assert)
+          assert old_doc_count in (0, 1), f"Unexpected stale canonical doc count: {old_doc_count}"
+          assert old_assert_count in (0, 1), f"Unexpected stale canonical assertion count: {old_assert_count}"
+          assert old_doc_count == old_assert_count, "Canonical doc/assert repair state diverged"
 
-          text = text.replace(old_doc, new_doc)
-          text = text.replace(old_assert, new_assert)
-          path.write_text(text, encoding="utf-8")
+          if old_doc_count == 1:
+              text = text.replace(old_doc, new_doc)
+              text = text.replace(old_assert, new_assert)
+              path.write_text(text, encoding="utf-8")
+          else:
+              assert text.count(new_doc) == 1, "Canonical Content doc contract missing"
+              assert text.count(new_assert) == 1, "Canonical Content assertion missing"
           '@ | python -
 
       - name: Verify targeted model settings regression
@@ -52,7 +60,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m unittest tests.test_prod_model_settings_01
 
-      - name: Commit verified repair only
+      - name: Commit verified repair when needed
         shell: pwsh
         run: |
           git diff --check
@@ -60,6 +68,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tests/test_prod_model_settings_01.py
-          git diff --cached --quiet; if ($LASTEXITCODE -eq 0) { throw "No repair diff produced" }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Canonical test already repaired; verification-only run."
+            exit 0
+          }
           git commit -m "test(brain): align model settings with canonical Content role"
           git push origin HEAD:fix/brain-content-canonical-role-v1
