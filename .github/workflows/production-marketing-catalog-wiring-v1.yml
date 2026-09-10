@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "app_api/server.py"
+      - "tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py"
       - "tests/test_production_marketing_catalog_wiring_adversarial_v1.py"
       - ".github/workflows/production-marketing-catalog-wiring-v1.yml"
   workflow_dispatch:
@@ -63,4 +64,4 @@ jobs:
       - name: Compile and run production marketing catalog regressions
         run: |
           python -m compileall -q app_api connectors connections tools tests/test_production_marketing_catalog_wiring_adversarial_v1.py
-          python -m unittest -v tests.test_production_marketing_catalog_wiring_adversarial_v1 tests.test_production_dynamic_tool_gateway_wiring_adversarial_v1 tests.test_marketing_provider_catalog_v1 tests.test_marketing_live_boundary_v1 tests.test_provider_operation_tracker_v1 tests.test_provider_operation_tracker_adversarial_v1 tests.test_marketing_gateway_sandbox_v1
+          python -m unittest -v tests.test_production_marketing_catalog_wiring_adversarial_v1 tests.test_app_backend_durable_job_store_wiring_adversarial_v1 tests.test_production_dynamic_tool_gateway_wiring_adversarial_v1 tests.test_marketing_provider_catalog_v1 tests.test_marketing_live_boundary_v1 tests.test_provider_operation_tracker_v1 tests.test_provider_operation_tracker_adversarial_v1 tests.test_marketing_gateway_sandbox_v1
