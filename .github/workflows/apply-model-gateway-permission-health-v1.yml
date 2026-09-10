@@ -34,19 +34,20 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path("integrations/models/gateway.py")
           text = path.read_text(encoding="utf-8")
-          old = """                    elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
-                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
-"""
-          new = """                    elif internal_code in (
-                        ProviderErrorCode.PERMISSION_403,
-                        ProviderErrorCode.TIMEOUT,
-                        ProviderErrorCode.NETWORK_ERROR,
-                    ):
-                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
-"""
+          old = "\n".join([
+              "                    elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):",
+              "                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)",
+          ]) + "\n"
+          new = "\n".join([
+              "                    elif internal_code in (",
+              "                        ProviderErrorCode.PERMISSION_403,",
+              "                        ProviderErrorCode.TIMEOUT,",
+              "                        ProviderErrorCode.NETWORK_ERROR,",
+              "                    ):",
+              "                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)",
+          ]) + "\n"
           count = text.count(old)
           if count != 4:
               raise SystemExit(f"expected exactly four stream health anchors, found {count}")
