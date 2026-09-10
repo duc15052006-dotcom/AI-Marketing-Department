@@ -1,0 +1,54 @@
+name: Model Gateway Midstream Error Health V1
+
+on:
+  push:
+    branches:
+      - test/model-gateway-midstream-error-health-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-gateway-midstream-error-health-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  causal-red:
+    name: Ubuntu Python 3.12 causal midstream error health
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Record exact-head identity
+        run: |
+          echo "github_sha=${{ github.sha }}"
+          echo "github_ref=${{ github.ref }}"
+          python --version
+          git rev-parse HEAD
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Compile model and causal regression sources
+        run: python -m compileall -q integrations/models tests/test_model_gateway_midstream_error_health_v1.py
+      - name: Run causal regression — midstream-error-health
+        run: python -m unittest -v tests.test_model_gateway_midstream_error_health_v1
+      - name: Verify clean checkout after tests
+        if: always()
+        run: git diff --exit-code
