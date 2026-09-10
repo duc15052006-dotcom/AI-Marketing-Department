@@ -1218,6 +1218,8 @@ class UniversalModelGateway:
                                 self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
                             elif internal_code == ProviderErrorCode.AUTH_401:
                                 self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                            elif internal_code == ProviderErrorCode.PERMISSION_403:
+                                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                             elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                                 self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
 
@@ -1266,6 +1268,8 @@ class UniversalModelGateway:
                         self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
                     elif internal_code == ProviderErrorCode.AUTH_401:
                         self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                    elif internal_code == ProviderErrorCode.PERMISSION_403:
+                        self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                     elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                         self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
 
@@ -1309,6 +1313,8 @@ class UniversalModelGateway:
                             self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
                         elif internal_code == ProviderErrorCode.AUTH_401:
                             self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                        elif internal_code == ProviderErrorCode.PERMISSION_403:
+                            self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                         elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                             self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                         yield normalize_public_stream_delta(
@@ -1368,6 +1374,8 @@ class UniversalModelGateway:
                                 self.update_provider_health(cand_provider, ProviderHealth.RATE_LIMITED)
                             elif internal_code == ProviderErrorCode.AUTH_401:
                                 self.update_provider_health(cand_provider, ProviderHealth.AUTH_ERROR)
+                            elif internal_code == ProviderErrorCode.PERMISSION_403:
+                                self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                             elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                                 self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                             if delta.content:
