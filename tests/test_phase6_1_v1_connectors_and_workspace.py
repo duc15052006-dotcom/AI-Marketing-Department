@@ -75,7 +75,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("performance", "Performance Specialist"),
         ("creative", "Creative Director"),
         ("creative", "Creative Specialist"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Marketing Strategist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
         ("cmo_initial", "Chief Marketing Officer (CMO)"),
@@ -416,7 +416,7 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
         self.assertTrue(len(artifact.final_artifact_hash) == 64)
         self.assertIn("cmo_initial", artifact.agent_outputs)
         self.assertIn("intelligence", artifact.agent_outputs)
-        self.assertIn("strategist", artifact.agent_outputs)
+        self.assertIn("content", artifact.agent_outputs)
         self.assertIn("creative", artifact.agent_outputs)
         self.assertIn("performance", artifact.agent_outputs)
         self.assertIn("final_cmo", artifact.agent_outputs)
@@ -548,7 +548,7 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
         """12. Candidate memory without evidence cannot be promoted to durable learning."""
         cand_mem = MemoryItem(
             memory_type=MemoryType.DECISION_MEMORY,
-            agent_source="strategist",
+            agent_source="content",
             content="Unverified opinion with no evidence",
             confidence=0.40,
             evidence_refs=[],

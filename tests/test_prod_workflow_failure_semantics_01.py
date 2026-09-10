@@ -63,7 +63,7 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
 
         # 3. Downstream stages must NOT have executed
         self.assertNotIn("intelligence", ctx.stage_outputs)
-        self.assertNotIn("strategist", ctx.stage_outputs)
+        self.assertNotIn("content", ctx.stage_outputs)
         self.assertNotIn("creative", ctx.stage_outputs)
         self.assertNotIn("performance", ctx.stage_outputs)
 
@@ -97,7 +97,7 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
                 return "CMO Initial strategic directive", None
             elif agent_id == "intelligence":
                 return "Market findings and consumer trends", None
-            elif agent_id == "strategist":
+            elif agent_id == "content":
                 return None, "STRATEGIST_GATEWAY_RATE_LIMIT"
             return "Unexpected agent call", None
 
@@ -112,7 +112,7 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
         self.assertEqual(ctx.stage_outputs.get("cmo_initial", {}).get("status"), "COMPLETED")
         self.assertEqual(ctx.stage_outputs.get("intelligence", {}).get("status"), "COMPLETED")
-        self.assertEqual(ctx.stage_outputs.get("strategist", {}).get("status"), "FAILED")
+        self.assertEqual(ctx.stage_outputs.get("content", {}).get("status"), "FAILED")
         self.assertNotIn("creative", ctx.stage_outputs)
         self.assertNotIn("performance", ctx.stage_outputs)
 

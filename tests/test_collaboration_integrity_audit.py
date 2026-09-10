@@ -69,7 +69,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("final_cmo", "Final Governed Go-To-Market"),
         ("performance", "Performance Marketing & Analytics Director"),
         ("creative", "Creative Director"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Marketing Strategist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
     ]
@@ -154,7 +154,7 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
         })
         rt, ctx, artifact = run_pipeline(gw)
 
-        strat_prompts = prompts_for(gw, "strategist")
+        strat_prompts = prompts_for(gw, "content")
         self.assertTrue(strat_prompts, "Strategist must be invoked")
         joined = "\n".join(strat_prompts)
         # The unknown must reach the strategist verbatim (not dropped/upgraded).
@@ -185,15 +185,15 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_c_strategist_structured_fields_not_hardcoded_templates(self):
         gw = ScriptedAgentGateway(replies={
-            "strategist": (
+            "content": (
                 "POSITIONING: premium eco-friendly segment.\n"
                 "HYPOTHESIS: GenZ buyers pay +15% for sustainable packaging."
             ),
         })
         rt, ctx, artifact = run_pipeline(gw)
-        strat_out = ctx.stage_outputs["strategist"]
+        strat_out = ctx.stage_outputs["content"]
 
-        llm_text = gw.replies["strategist"]
+        llm_text = gw.replies["content"]
         # DESIRED CONTRACT: structured value propositions come from the
         # strategist's own analysis, not engine-injected template strings.
         self.assertTrue(
@@ -286,7 +286,7 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
         rt, ctx, artifact = run_pipeline(gw)
 
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
-        strat_out = ctx.stage_outputs["strategist"]
+        strat_out = ctx.stage_outputs["content"]
         crtv_out = ctx.stage_outputs["creative"]
         perf_out = ctx.stage_outputs["performance"]
         for out in (strat_out, crtv_out, perf_out):
@@ -385,7 +385,7 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
 
         compiler = ContextCompiler(knowledge_repo=repo)
         ctx_a = RuntimeContext(objective="marketing plan", business_id="BIZ_BRAND_A")
-        pkg_a = compiler.compile_grounded_package("strategist", ctx_a)
+        pkg_a = compiler.compile_grounded_package("content", ctx_a)
         contents_a = " ".join(i.content for i in pkg_a.evidence_items)
 
         self.assertIn("KFC-X", contents_a)
@@ -555,7 +555,7 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
     def test_12_no_agent_six_invariant_preserved(self):
         from governance.access_matrix import PERMANENT_FIVE_AGENTS
 
-        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "strategist", "creative", "performance"})
+        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "content", "creative", "performance"})
         self.assertEqual(set(AgentAccessMatrix.PROFILES.keys()), PERMANENT_FIVE_AGENTS)
 
         rt = self._runtime_with_repo(ScriptedAgentGateway())
@@ -607,7 +607,7 @@ class TestConstraintPropagation(unittest.TestCase):
         self._run_all_stages(rt, ctx)
         rt.execute_stage_final_cmo(ctx)
 
-        for label in ("cmo_initial", "intelligence", "strategist", "creative", "performance", "final_cmo"):
+        for label in ("cmo_initial", "intelligence", "content", "creative", "performance", "final_cmo"):
             prompts = "\n".join(self._prompts(gw, label))
             self.assertIn(
                 self.CONSTRAINT_A, prompts,
@@ -736,7 +736,7 @@ class TestConstraintPropagation(unittest.TestCase):
     # 16. five-agent invariant
     def test_16_five_agent_invariant_intact(self):
         from governance.access_matrix import PERMANENT_FIVE_AGENTS
-        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "strategist", "creative", "performance"})
+        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "content", "creative", "performance"})
         rt = self._runtime(ScriptedAgentGateway())
         stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}
         self.assertEqual(len(stage_methods), 6)
@@ -817,9 +817,9 @@ class TestDataOriginIntegrity(unittest.TestCase):
     # 1/2. strategist structured fields absent when model did not produce them
     def test_01_02_strategist_fields_empty_without_model_content(self):
         gw, rt, ctx, final_out, artifact = self._full_run(replies={
-            "strategist": "POSITIONING: premium eco segment only.",
+            "content": "POSITIONING: premium eco segment only.",
         })
-        strat = ctx.stage_outputs["strategist"]
+        strat = ctx.stage_outputs["content"]
         self.assertEqual(strat["target_segments"], [])
         self.assertEqual(strat["value_propositions"], [])
         llm_text = "premium eco segment only"
@@ -830,10 +830,10 @@ class TestDataOriginIntegrity(unittest.TestCase):
 
     def test_02b_strategist_agent_derived_positioning_preserved(self):
         gw, rt, ctx, final_out, artifact = self._full_run(replies={
-            "strategist": "POSITIONING X: beachhead la sinh vien urban.",
+            "content": "POSITIONING X: beachhead la sinh vien urban.",
         })
-        self.assertEqual(ctx.stage_outputs["strategist"]["positioning"], "POSITIONING X: beachhead la sinh vien urban.")
-        self.assertEqual(ctx.stage_outputs["strategist"]["field_origins"]["positioning"], "AGENT_DERIVED")
+        self.assertEqual(ctx.stage_outputs["content"]["positioning"], "POSITIONING X: beachhead la sinh vien urban.")
+        self.assertEqual(ctx.stage_outputs["content"]["field_origins"]["positioning"], "AGENT_DERIVED")
 
     # 3/4. creative concept/headlines not fabricated
     def test_03_04_creative_concept_and_headlines_absent(self):
@@ -898,20 +898,20 @@ class TestDataOriginIntegrity(unittest.TestCase):
     def test_11_agent_derived_values_preserved(self):
         replies = {
             "intelligence": "FINDINGS: competitor price cut 10%.",
-            "strategist": "POSITIONING Y: value-first messaging.",
+            "content": "POSITIONING Y: value-first messaging.",
             "creative": "HOOKS: three scroll-stopper angles.",
             "performance": "KPI TREE: CAC guardrail 120k VND.",
         }
         gw, rt, ctx, final_out, artifact = self._full_run(replies=replies)
         self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"], replies["intelligence"])
-        self.assertEqual(ctx.stage_outputs["strategist"]["positioning"], replies["strategist"])
+        self.assertEqual(ctx.stage_outputs["content"]["positioning"], replies["content"])
         self.assertEqual(ctx.stage_outputs["creative"]["creative_synthesis"], replies["creative"])
         self.assertEqual(ctx.stage_outputs["performance"]["funnel_kpi"], replies["performance"])
 
     # 12/13/14. invariants
     def test_12_five_agent_invariant_intact(self):
         from governance.access_matrix import PERMANENT_FIVE_AGENTS
-        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "strategist", "creative", "performance"})
+        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "content", "creative", "performance"})
 
     def test_13_collab02_approval_safety_intact(self):
         gw, rt, ctx, final_out, artifact = self._full_run(replies={

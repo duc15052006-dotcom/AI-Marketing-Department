@@ -93,7 +93,7 @@ class MockScriptedGateway(UniversalModelGateway):
                 ))
                 else "cmo_initial"
             )
-        elif resolved_agent in {"intelligence", "strategist", "creative", "performance"}:
+        elif resolved_agent in {"intelligence", "content", "creative", "performance"}:
             stage = resolved_agent
         else:
             stage = "unknown"
@@ -289,7 +289,7 @@ class TestDefect2DualExecutionAuthority(unittest.TestCase):
         for stage_name, attr in [
             ("cmo_initial", "execute_stage_cmo_initial"),
             ("intelligence", "execute_stage_intelligence"),
-            ("strategist", "execute_stage_strategist"),
+            ("content", "execute_stage_strategist"),
             ("creative", "execute_stage_creative"),
             ("performance", "execute_stage_performance"),
             ("final_cmo", "execute_stage_final_cmo"),
@@ -311,7 +311,7 @@ class TestDefect2DualExecutionAuthority(unittest.TestCase):
         self.assertTrue(execute_run_called[0])
         # All 6 stages are called through execute_run
         self.assertEqual(called_stages, [
-            "cmo_initial", "intelligence", "strategist",
+            "cmo_initial", "intelligence", "content",
             "creative", "performance", "final_cmo",
         ])
 
@@ -376,7 +376,7 @@ class TestInvariantFiveAgentsSixStages(unittest.TestCase):
             objective="Invariant test", business_id="BIZ_001"
         )
 
-        allowed_agents = {"cmo", "intelligence", "strategist", "creative", "performance"}
+        allowed_agents = {"cmo", "intelligence", "content", "creative", "performance"}
         for stage_name, stage_out in ctx.stage_outputs.items():
             agent = stage_out.get("agent")
             self.assertIn(agent, allowed_agents, f"Stage {stage_name} uses unexpected agent: {agent}")
@@ -481,7 +481,7 @@ class TestFailureShortCircuit(unittest.TestCase):
         stages_called: List[str] = []
         orig_strat = rt.execute_stage_strategist
         def tracked_strat(ctx):
-            stages_called.append("strategist")
+            stages_called.append("content")
             return orig_strat(ctx)
         rt.execute_stage_strategist = tracked_strat
 
@@ -490,11 +490,11 @@ class TestFailureShortCircuit(unittest.TestCase):
         )
 
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
-        self.assertNotIn("strategist", stages_called)
+        self.assertNotIn("content", stages_called)
 
     def test_P_strategist_failure_stops_creative(self) -> None:
         """If Strategist fails, Creative is not invoked."""
-        gw = MockScriptedGateway(fail_stage="strategist")
+        gw = MockScriptedGateway(fail_stage="content")
         rt = _build_runtime(gateway=gw)
 
         stages_called: List[str] = []
@@ -690,16 +690,16 @@ class TestProviderArchitectureRegression(unittest.TestCase):
             agent_overrides={
                 "cmo": ModelTarget(provider_id="p_cmo", model_id="cmo_model"),
                 "intelligence": ModelTarget(provider_id="p_intel", model_id="intel_model"),
-                "strategist": ModelTarget(provider_id="p_strat", model_id="strat_model"),
+                "content": ModelTarget(provider_id="p_strat", model_id="strat_model"),
                 "creative": ModelTarget(provider_id="p_creative", model_id="creative_model"),
                 "performance": ModelTarget(provider_id="p_perf", model_id="perf_model"),
             },
         )
-        for agent in ["cmo", "intelligence", "strategist", "creative", "performance"]:
+        for agent in ["cmo", "intelligence", "content", "creative", "performance"]:
             target = policy.resolve_target_for_agent(agent)
             self.assertIsNotNone(target)
             self.assertIn(agent, {"cmo": "p_cmo", "intelligence": "p_intel",
-                                   "strategist": "p_strat", "creative": "p_creative",
+                                   "content": "p_strat", "creative": "p_creative",
                                    "performance": "p_perf"})
 
     def test_17c_fallback_chain(self) -> None:
@@ -918,7 +918,7 @@ class TestStageFailureShortCircuitIntegration(unittest.TestCase):
         stages_executed: List[str] = []
         for stage_name, attr in [
             ("intelligence", "execute_stage_intelligence"),
-            ("strategist", "execute_stage_strategist"),
+            ("content", "execute_stage_strategist"),
             ("creative", "execute_stage_creative"),
             ("performance", "execute_stage_performance"),
         ]:

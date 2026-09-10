@@ -80,7 +80,7 @@ class ControllableMockAdapter(BaseModelAdapter):
         if "you are the intelligence specialist" in sys_content:
             detected_role = "intelligence"
         elif "you are the marketing strategist" in sys_content:
-            detected_role = "strategist"
+            detected_role = "content"
         elif "you are the creative director" in sys_content:
             detected_role = "creative"
         elif "you are the performance marketing" in sys_content:
@@ -245,7 +245,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
             responses={
                 "cmo": "# BÁO CÁO CHIẾN LƯỢC GTM CHÍNH THỨC\n\n1. Định hướng tổng thể: Mở rộng thị trường.",
                 "intelligence": "Nghiên cứu thị trường cho thấy nhu cầu phân khúc cao cấp tăng 45%.",
-                "strategist": "Định vị sản phẩm: Chất lượng vượt trội với chi phí tối ưu.",
+                "content": "Định vị sản phẩm: Chất lượng vượt trội với chi phí tối ưu.",
                 "creative": "Concept: Bứt phá giới hạn — 3 video hooks cho Meta & TikTok.",
                 "performance": "Mục tiêu: CAC < 200k, ROAS > 3.5, 4 thử nghiệm A/B.",
             }

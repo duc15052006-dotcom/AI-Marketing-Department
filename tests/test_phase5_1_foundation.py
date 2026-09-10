@@ -391,7 +391,7 @@ class TestPhase51CapabilityGatewayAndFoundation(unittest.TestCase):
         """Verify strict RBAC access matrix covers exactly the 5 permanent agents with zero 6th agent."""
         self.assertTrue(AgentAccessMatrix.validate_agent_count())
         self.assertEqual(len(AgentAccessMatrix.PROFILES), 5)
-        self.assertEqual(set(AgentAccessMatrix.PROFILES.keys()), {"cmo", "intelligence", "strategist", "creative", "performance"})
+        self.assertEqual(set(AgentAccessMatrix.PROFILES.keys()), {"cmo", "intelligence", "content", "creative", "performance"})
 
         # Verify access boundaries
         self.assertTrue(AgentAccessMatrix.can_access_knowledge_source("cmo", SourceType.LEGAL_COMPLIANCE))

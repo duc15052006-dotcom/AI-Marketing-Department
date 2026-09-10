@@ -62,7 +62,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("performance", "Performance Specialist"),
         ("creative", "Creative Director"),
         ("creative", "Creative Specialist"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Marketing Strategist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
         ("cmo_initial", "Chief Marketing Officer (CMO)"),
@@ -194,7 +194,7 @@ class TestPhase52RuntimeIntegration(unittest.TestCase):
 
         # 4. Strategist (Consumes research + memory)
         strat_out = self.runtime.execute_stage_strategist(ctx)
-        self.assertIn("strategist", ctx.stage_outputs)
+        self.assertIn("content", ctx.stage_outputs)
         self.assertGreater(len(ctx.memory_refs), 0)
 
         # 5. Creative (Executes ToolGateway image_generation)
@@ -302,14 +302,14 @@ class TestPhase52RuntimeIntegration(unittest.TestCase):
         """7. Memories below minimum confidence threshold are excluded from agent context."""
         low_conf_mem = MemoryItem(
             memory_type=MemoryType.DECISION_MEMORY,
-            agent_source="strategist",
+            agent_source="content",
             content="Uncertain speculative hypothesis",
             confidence=0.30,  # Below 0.60 threshold
             promotion_level=PromotionState.CANDIDATE_MEMORY,
         )
         self.memory_repo.save_memory(low_conf_mem)
         builder = self.runtime.memory_builder
-        res = builder.build_context_for_agent("strategist", query_text="speculative", min_confidence=0.60)
+        res = builder.build_context_for_agent("content", query_text="speculative", min_confidence=0.60)
         self.assertNotIn("Uncertain speculative hypothesis", res.context_text)
 
     def test_adv_08_raw_observation_trusted_learning_attempt(self):
@@ -468,7 +468,7 @@ class TestPhase52RuntimeIntegration(unittest.TestCase):
 
         # Verify permanent count is strictly 5
         self.assertTrue(AgentAccessMatrix.validate_agent_count())
-        self.assertEqual(set(AgentAccessMatrix.PROFILES.keys()), {"cmo", "intelligence", "strategist", "creative", "performance"})
+        self.assertEqual(set(AgentAccessMatrix.PROFILES.keys()), {"cmo", "intelligence", "content", "creative", "performance"})
 
     def test_adv_20_frozen_brain_file_mutation_detection(self):
         """20. Verified that Phase 5.2 files do NOT mutate any frozen Brain RC3 agent DNA or schemas."""

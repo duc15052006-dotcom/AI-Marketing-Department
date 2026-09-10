@@ -67,7 +67,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("final_cmo", "Final Governed Go-To-Market"),
         ("performance", "Performance Marketing & Analytics Director"),
         ("creative", "Creative Director"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Marketing Strategist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
     ]
@@ -183,7 +183,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
                     "observations": [{"tier": "FACT", "text": "Gia thi truong 250k"}],
                     "unknowns": ["Ti le chuyen doi chinh xac"],
                 },
-                "strategist": {
+                "content": {
                     "decisions": ["Dinh vi san pham cao cap"],
                 },
             },
@@ -279,20 +279,20 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         """B1: UNKNOWN in Intelligence cannot be escalated to a verified FACT in Strategist without new evidence."""
         gw = ScriptedAgentGateway(replies={
             "intelligence": "FINDINGS: Willingness to pay is UNKNOWN. Zero data available in current market audits.",
-            "strategist": "STRATEGY: As a verified fact, 100% of customers will pay $100/mo without resistance.",
+            "content": "STRATEGY: As a verified fact, 100% of customers will pay $100/mo without resistance.",
             "creative": "COPY: Official verified $100 pricing plan.",
             "performance": "EVALUATION: Baseline model.",
             "final_cmo": "# FINAL_CMO_VERDICT\nSTATUS: APPROVED\nApproved without objections.",
         })
         rt, ctx, final_out, artifact = run_pipeline(gw)
         # Strategist structured outputs must NOT escalate UNKNOWN to FACT
-        strat_out = ctx.stage_outputs.get("strategist", {})
+        strat_out = ctx.stage_outputs.get("content", {})
         self.assertNotIn("100% of customers will pay", strat_out.get("market_evidence", ""))
 
     def test_B2_case_safe_assumption_preserved_in_planning_permitted(self):
         """B2 (Safe): Preserving ASSUMPTION as an explicit experimental hypothesis is permitted."""
         gw = ScriptedAgentGateway(replies={
-            "strategist": "ASSUMPTION: We assume organic referral rate could reach 20% in Q4 (to be validated).",
+            "content": "ASSUMPTION: We assume organic referral rate could reach 20% in Q4 (to be validated).",
             "creative": "HYPOTHESIS: Creative concept exploring referral incentives (idea only, to be tested).",
             "final_cmo": "# PLAN\nHYPOTHESIS: Referral angle to be validated via smoke test.",
         })
@@ -303,7 +303,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
     def test_B2_case_unsafe_assumption_escalated_to_factual_claim_blocked(self):
         """B2 (Unsafe): Escalating ASSUMPTION to an unverified factual guarantee MUST be blocked."""
         gw = ScriptedAgentGateway(replies={
-            "strategist": "ASSUMPTION: We assume customers value 24h battery life.",
+            "content": "ASSUMPTION: We assume customers value 24h battery life.",
             "creative": "Clinically proven: our product delivers 24h battery life with money-back guarantee.",
             "final_cmo": "# PLAN\nClinically proven results guaranteed for all customers.",
         })
@@ -318,7 +318,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
     def test_B3_hypothesis_cannot_become_verified_fact(self):
         """B3: HYPOTHESIS cannot be presented as clinically proven / verified factual result."""
         gw = ScriptedAgentGateway(replies={
-            "strategist": "HYPOTHESIS: Video ads with micro-influencers might decrease CAC by 15%.",
+            "content": "HYPOTHESIS: Video ads with micro-influencers might decrease CAC by 15%.",
             "creative": "HEADLINE: Clinically proven to reduce acquisition costs by 15% immediately!",
             "final_cmo": "# FINAL_CMO_VERDICT\nClinically proven results that decrease CAC by 15% guaranteed.",
         })
@@ -558,7 +558,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         rt.execute_stage_strategist(ctx)
         rt.execute_stage_creative(ctx)
 
-        strat_prompt = [u for (l, _s, u) in gw.calls if l == "strategist"][-1]
+        strat_prompt = [u for (l, _s, u) in gw.calls if l == "content"][-1]
         creative_prompt = [u for (l, _s, u) in gw.calls if l == "creative"][-1]
         self.assertIn("10 trieu VND", strat_prompt)
         self.assertIn("10 trieu VND", creative_prompt)
@@ -575,7 +575,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         rt.execute_stage_strategist(ctx)
 
         intel_prompt = [u for (l, _s, u) in gw.calls if l == "intelligence"][-1]
-        strat_prompt = [u for (l, _s, u) in gw.calls if l == "strategist"][-1]
+        strat_prompt = [u for (l, _s, u) in gw.calls if l == "content"][-1]
         self.assertIn("CompetitorX", intel_prompt)
         self.assertIn("CompetitorX", strat_prompt)
 
@@ -652,7 +652,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         """F1: Contradiction between Intelligence UNKNOWN and Strategist claim preserves UNKNOWN in structured handoff."""
         gw = ScriptedAgentGateway(replies={
             "intelligence": ("Market research report.", {"unknowns": ["Willingness to pay"]}),
-            "strategist": ("Strategy report asserting demand.", {"decisions": ["Target tier 1"]}),
+            "content": ("Strategy report asserting demand.", {"decisions": ["Target tier 1"]}),
         })
         rt = build_runtime(gw)
         ctx = rt.start_run(objective="SaaS pricing", business_id="BIZ_AUDIT")
@@ -698,7 +698,7 @@ class TestCollaborationAdversarialFinal(unittest.TestCase):
         """G1: Completely empty or whitespace model output is handled gracefully without pipeline crash."""
         gw = ScriptedAgentGateway(replies={
             "intelligence": "   \n\t  ",
-            "strategist": "",
+            "content": "",
         })
         rt, ctx, final_out, artifact = run_pipeline(gw)
         self.assertIsNotNone(artifact)

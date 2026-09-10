@@ -359,7 +359,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
         ctx = self.runtime.start_run(objective="Analyze whitepaper")
         # Compile with a constrained character budget
-        pkg = self.context_compiler.compile_grounded_package("strategist", ctx, char_budget=1000)
+        pkg = self.context_compiler.compile_grounded_package("content", ctx, char_budget=1000)
 
         self.assertGreater(pkg.diagnostics["truncated_sources_count"], 0)
         large_item = next(it for it in pkg.evidence_items if it.source_id.startswith("SRC-"))

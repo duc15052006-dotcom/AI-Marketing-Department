@@ -68,7 +68,7 @@ class MockScriptedGateway(UniversalModelGateway):
                 ))
                 else "cmo_initial"
             )
-        elif resolved_agent in {"intelligence", "strategist", "creative", "performance"}:
+        elif resolved_agent in {"intelligence", "content", "creative", "performance"}:
             stage = resolved_agent
         else:
             stage = "unknown"
@@ -174,7 +174,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         self.assertEqual(final_cmo.get("stage"), "FINAL_CMO")
 
         # Verify all stage agent identifiers across the 6 stages belong to {cmo, intelligence, strategist, creative, performance}
-        allowed_agents = {"cmo", "intelligence", "strategist", "creative", "performance"}
+        allowed_agents = {"cmo", "intelligence", "content", "creative", "performance"}
         for s_name, s_out in ctx.stage_outputs.items():
             self.assertIn(s_out.get("agent"), allowed_agents, f"Unexpected agent in stage {s_name}: {s_out.get('agent')}")
 
@@ -360,7 +360,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
 
     def test_11_middle_stage_failure_marks_context_failed_deterministically(self) -> None:
         """A failure in a middle stage (e.g. Strategist) fails closed and does not claim COMPLETED."""
-        failing_gw = MockScriptedGateway(fail_stage="strategist")
+        failing_gw = MockScriptedGateway(fail_stage="content")
         rt = _build_test_runtime(gateway=failing_gw)
 
         ctx, final_cmo, artifact = rt.run_workflow(objective="Fail on strategist", business_id="BIZ_001")
@@ -608,7 +608,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
             return orig_intel(c)
 
         def tracked_strat(c: RuntimeContext) -> Dict[str, Any]:
-            executed_stages.append("strategist")
+            executed_stages.append("content")
             return orig_strat(c)
 
         rt.execute_stage_cmo_initial = tracked_cmo
@@ -622,7 +622,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         self.assertEqual(art.status, RuntimeStatus.CANCELLED)
         self.assertIn("cmo_initial", executed_stages)
         self.assertNotIn("intelligence", executed_stages)
-        self.assertNotIn("strategist", executed_stages)
+        self.assertNotIn("content", executed_stages)
 
     def test_32_cancelled_run_cannot_become_completed(self) -> None:
         """A cancelled context cannot be converted to COMPLETED by complete_run."""

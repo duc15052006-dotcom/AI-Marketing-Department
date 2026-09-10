@@ -78,7 +78,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("performance", "Performance Specialist"),
         ("creative", "Creative Director"),
         ("creative", "Creative Specialist"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Marketing Strategist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
         ("cmo_initial", "Chief Marketing Officer (CMO)"),
@@ -361,7 +361,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
 
         # Stage 3: Strategist (Consumes research + memory)
         strat_out = self.runtime.execute_stage_strategist(ctx)
-        self.assertEqual(strat_out["agent"], "strategist")
+        self.assertEqual(strat_out["agent"], "content")
 
         # Stage 4: Creative (Executes Media Mock via ToolGateway)
         crtv_out = self.runtime.execute_stage_creative(ctx)
