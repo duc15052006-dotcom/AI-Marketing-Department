@@ -53,7 +53,7 @@ class TestContentMigrationDefinition(unittest.TestCase):
         for state in ("OBSERVED / VERIFIED", "INFERRED", "HYPOTHESIS", "UNKNOWN"):
             self.assertIn(state, self.content)
         self.assertIn("Never turn an inference into a fact", self.content)
-        self.assertIn("do not fill the gap with plausible prose", self.content)
+        self.assertIn("Do not fill the gap with plausible prose", self.content)
 
     def test_content_message_copy_and_hook_system(self):
         self.assertIn("Message Architecture", self.content)
