@@ -22,12 +22,23 @@ class EpistemicType(str, Enum):
 
 
 class AgentRole(str, Enum):
-    """The five permanent marketing agents."""
+    """The five permanent marketing agents.
+
+    Historical serialized STRATEGIST values are accepted only as legacy input
+    and normalize to the canonical CONTENT identity. STRATEGIST is deliberately
+    not an enum member so it cannot become a sixth permanent agent identity.
+    """
     CMO = "CMO"
     INTELLIGENCE = "INTELLIGENCE"
-    STRATEGIST = "STRATEGIST"
+    CONTENT = "CONTENT"
     CREATIVE = "CREATIVE"
     PERFORMANCE = "PERFORMANCE"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.strip().upper() == "STRATEGIST":
+            return cls.CONTENT
+        return None
 
 
 class TaskStatus(str, Enum):
