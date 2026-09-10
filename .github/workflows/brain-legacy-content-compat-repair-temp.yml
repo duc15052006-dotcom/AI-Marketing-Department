@@ -12,7 +12,7 @@ permissions:
 jobs:
   repair:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'fix/brain-content-canonical-role-v1'
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout exact PR branch
         uses: actions/checkout@v4
@@ -47,8 +47,6 @@ jobs:
               p.write_text(text.replace(old, new, 1), encoding="utf-8")
               print(f"repaired: {path}")
 
-          # RuntimeStage remains canonical: no STRATEGIST enum member. Historical
-          # serialized STRATEGIST values are normalized by RuntimeStage._missing_.
           context = Path("runtime/context.py").read_text(encoding="utf-8")
           if '    STRATEGIST = "CONTENT"' in context:
               raise SystemExit("Refusing repair: canonical RuntimeStage must not expose STRATEGIST")
@@ -102,8 +100,6 @@ jobs:
               p = Path(name)
               text = p.read_text(encoding="utf-8")
               original = text
-              # Allowlisted legacy fixtures only. Compatibility-contract tests are
-              # deliberately excluded so they keep proving STRATEGIST -> CONTENT.
               text = text.replace('"strategist"', '"content"')
               text = text.replace("'strategist'", "'content'")
               text = text.replace('RuntimeStage.STRATEGIST', 'RuntimeStage.CONTENT')
@@ -117,17 +113,26 @@ jobs:
 
           p = Path("tests/test_structured_epistemic_handoff.py")
           text = p.read_text(encoding="utf-8")
-          exact = {
-              '("content", "Content Strategy, Copywriting & Distribution Specialist")': '("content", "Content ASI")',
-              'rt.execute_stage_strategist(ctx)': 'rt.execute_stage_content(ctx)',
-              'ctx.stage_outputs["content"]["positioning"]': 'ctx.stage_outputs["content"]["content_strategy"]',
-              'self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)': 'stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}\n        canonical_stage_methods = {"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}\n        self.assertTrue(canonical_stage_methods.issubset(stage_methods))\n        self.assertIn("execute_stage_strategist", stage_methods)  # deprecated method shim only',
-          }
-          for old, new in exact.items():
+          replacements = [
+              ('("content", "Content Strategy, Copywriting & Distribution Specialist")', '("content", "Content ASI")', '("content", "Content ASI")'),
+              ('rt.execute_stage_strategist(ctx)', 'rt.execute_stage_content(ctx)', 'rt.execute_stage_content(ctx)'),
+              ('ctx.stage_outputs["content"]["positioning"]', 'ctx.stage_outputs["content"]["content_strategy"]', 'ctx.stage_outputs["content"]["content_strategy"]'),
+          ]
+          for old, new, marker in replacements:
               if old in text:
                   text = text.replace(old, new, 1)
-              elif new not in text:
+              elif marker not in text:
                   raise SystemExit(f"structured handoff expected old/new snippet missing: {old}")
+
+          old_count = 'self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)'
+          if old_count in text:
+              text = text.replace(
+                  old_count,
+                  'stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}\n        canonical_stage_methods = {"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}\n        self.assertTrue(canonical_stage_methods.issubset(stage_methods))\n        self.assertIn("execute_stage_strategist", stage_methods)  # deprecated method shim only',
+                  1,
+              )
+          elif 'canonical_stage_methods = {' not in text:
+              raise SystemExit("structured handoff canonical stage-method assertion missing")
           p.write_text(text, encoding="utf-8")
           '@ | python -
 
