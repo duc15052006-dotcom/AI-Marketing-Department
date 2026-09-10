@@ -1506,7 +1506,7 @@ class FiveAgentDepartmentRuntime:
         )
         content_strategy = context.stage_outputs.get("content", {}).get("content_strategy", "")
         evidence_section = grounded_pkg.render_prompt_section()
-        user_prompt = f"Objective: {context.objective}\nPositioning Strategy: {content_strategy}\n\n{evidence_section}".strip()
+        user_prompt = f"Objective: {context.objective}\nCMO Strategy & Positioning: {context.stage_outputs.get('cmo_initial', {}).get('strategic_intent', '')}\nContent Messaging & Editorial Brief: {content_strategy}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
         llm_creative, err = self._call_agent_llm("creative", sys_prompt, user_prompt, temperature=0.7, context=context)
 
@@ -2495,7 +2495,7 @@ class FiveAgentDepartmentRuntime:
             "1. # Executive Summary & Strategic Intent\n"
             "2. ## Market Intelligence & Competitor Signals (from Intelligence)\n"
             "3. ## Content Strategy, Messaging & Editorial System (from Content)\n"
-            "4. ## Creative Concepts, Ad Hooks & Video Scripts (from Creative)\n"
+            "4. ## Creative Visual Concepts, Storyboards & Multimedia Assets (from Creative)\n"
             "5. ## Media Allocation, Full-Funnel KPIs & Experiment Backlog (from Performance)\n"
             "6. ## Governance, Autonomy & Next Action Steps\n\n"
             "CRITICAL: Always output complete, professional Markdown with headers, tables, and bullet points. "
@@ -2509,7 +2509,7 @@ class FiveAgentDepartmentRuntime:
             f"Specialist Deliverables:\n"
             f"- CMO Strategic Intent: {cmo_init.get('strategic_intent', '')}\n"
             f"- Intelligence Findings: {intel_out.get('market_findings', '')}\n"
-            f"- Content Positioning: {content_out.get('positioning', '')}\n"
+            f"- Content Strategy & Messaging: {content_out.get('content_strategy', '')}\n"
             f"- Creative Synthesis: {crtv_out.get('creative_synthesis', crtv_out.get('copy_headlines', ''))}\n"
             f"- Performance Plan: {perf_out.get('funnel_kpi', '')}\n\n"
             f"{evidence_section}"
