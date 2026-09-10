@@ -47,12 +47,11 @@ jobs:
               p.write_text(text.replace(old, new, 1), encoding="utf-8")
               print(f"repaired: {path}")
 
-          replace_exact(
-              "runtime/context.py",
-              '    CONTENT = "CONTENT"\n    CREATIVE = "CREATIVE"',
-              '    CONTENT = "CONTENT"\n    STRATEGIST = "CONTENT"  # Deprecated enum alias; iteration remains canonical CONTENT only.\n    CREATIVE = "CREATIVE"',
-              '    STRATEGIST = "CONTENT"',
-          )
+          # RuntimeStage remains canonical: no STRATEGIST enum member. Historical
+          # serialized STRATEGIST values are normalized by RuntimeStage._missing_.
+          context = Path("runtime/context.py").read_text(encoding="utf-8")
+          if '    STRATEGIST = "CONTENT"' in context:
+              raise SystemExit("Refusing repair: canonical RuntimeStage must not expose STRATEGIST")
 
           replace_exact(
               "governance/access_matrix.py",
@@ -103,8 +102,8 @@ jobs:
               p = Path(name)
               text = p.read_text(encoding="utf-8")
               original = text
-              # These are legacy test fixtures/assertions that model the removed permanent Strategist role.
-              # Compatibility-specific tests are deliberately NOT in this allowlist.
+              # Allowlisted legacy fixtures only. Compatibility-contract tests are
+              # deliberately excluded so they keep proving STRATEGIST -> CONTENT.
               text = text.replace('"strategist"', '"content"')
               text = text.replace("'strategist'", "'content'")
               text = text.replace('RuntimeStage.STRATEGIST', 'RuntimeStage.CONTENT')
@@ -116,15 +115,13 @@ jobs:
                   print(f"canonicalized legacy fixture: {name}")
           print(f"files migrated: {total}")
 
-          # Structured handoff has helper-level contracts that cannot be migrated
-          # by identifier replacement alone. Bind it explicitly to canonical Content.
           p = Path("tests/test_structured_epistemic_handoff.py")
           text = p.read_text(encoding="utf-8")
           exact = {
               '("content", "Content Strategy, Copywriting & Distribution Specialist")': '("content", "Content ASI")',
               'rt.execute_stage_strategist(ctx)': 'rt.execute_stage_content(ctx)',
               'ctx.stage_outputs["content"]["positioning"]': 'ctx.stage_outputs["content"]["content_strategy"]',
-              'self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)': 'stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}\n        canonical_stage_methods = {"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}\n        self.assertTrue(canonical_stage_methods.issubset(stage_methods))\n        self.assertIn("execute_stage_strategist", stage_methods)  # deprecated compatibility shim only',
+              'self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)': 'stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}\n        canonical_stage_methods = {"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}\n        self.assertTrue(canonical_stage_methods.issubset(stage_methods))\n        self.assertIn("execute_stage_strategist", stage_methods)  # deprecated method shim only',
           }
           for old, new in exact.items():
               if old in text:
@@ -134,7 +131,7 @@ jobs:
           p.write_text(text, encoding="utf-8")
           '@ | python -
 
-      - name: Verify canonical alias invariants
+      - name: Verify canonical compatibility invariants
         shell: pwsh
         run: |
           @'
@@ -143,7 +140,8 @@ jobs:
 
           assert AgentAccessMatrix.get_profile("strategist").agent_id == "content"
           assert AgentAccessMatrix.get_profile("strategy").agent_id == "content"
-          assert RuntimeStage.STRATEGIST is RuntimeStage.CONTENT
+          assert not hasattr(RuntimeStage, "STRATEGIST")
+          assert RuntimeStage("STRATEGIST") is RuntimeStage.CONTENT
           assert [stage.value for stage in RuntimeStage].count("CONTENT") == 1
           assert PERMANENT_FIVE_AGENTS == {"cmo", "intelligence", "content", "creative", "performance"}
           print("canonical compatibility invariants: PASS")
@@ -157,6 +155,7 @@ jobs:
         shell: pwsh
         run: |
           python -m unittest `
+            tests.test_brain_canonical_agent_identity_v1 `
             tests.test_structured_epistemic_handoff `
             tests.test_prod_core_authority_01b.TestAgentStageInvariants.test_six_stages `
             tests.test_phase1b_grounded_context.TestPhase1BGroundContext.test_i_truncation_metadata `
@@ -170,7 +169,7 @@ jobs:
           if (git status --porcelain) {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add runtime/context.py governance/access_matrix.py runtime/context_compiler.py tests
+            git add governance/access_matrix.py runtime/context_compiler.py tests
             git commit -m "fix(brain): complete legacy Strategist to Content migration boundary"
             git push origin HEAD:fix/brain-content-canonical-role-v1
           } else {
