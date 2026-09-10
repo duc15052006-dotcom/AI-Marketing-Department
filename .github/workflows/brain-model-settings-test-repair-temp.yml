@@ -1,0 +1,101 @@
+name: Brain Model Settings Canonical Content Repair Temp
+
+on:
+  push:
+    branches:
+      - fix/brain-content-canonical-role-v1
+    paths:
+      - .github/workflows/brain-model-settings-test-repair-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-stale-model-settings-contract:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: fix/brain-content-canonical-role-v1
+          fetch-depth: 0
+
+      - name: Guard one-shot parent and changed path
+        shell: pwsh
+        run: |
+          $expectedParent = "7230ddd6532a3cc7f4ac75d717947a501f43c7f9"
+          $actualParent = (git rev-parse HEAD^).Trim()
+          if ($actualParent -ne $expectedParent) {
+            throw "Unexpected parent SHA: $actualParent (expected $expectedParent)"
+          }
+          $changed = @(git diff --name-only HEAD^ HEAD)
+          if ($changed.Count -ne 1 -or $changed[0] -ne ".github/workflows/brain-model-settings-test-repair-temp.yml") {
+            throw "Unexpected files in trigger commit: $($changed -join ', ')"
+          }
+
+      - name: Patch only stale canonical-role expectations
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("tests/test_prod_model_settings_01.py")
+          text = path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  "Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE).",
+                  "Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE).",
+              ),
+              (
+                  'self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"})',
+                  'self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"})',
+              ),
+              (
+                  '"""Verify CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE can be overridden independently."""',
+                  '"""Verify CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE can be overridden independently."""',
+              ),
+              (
+                  '"STRATEGIST": {"provider_id": "prov_strat", "model_id": "m-strat"},',
+                  '"CONTENT": {"provider_id": "prov_content", "model_id": "m-content"},',
+              ),
+              (
+                  'self.assertEqual(policy.get_target_for_agent("strategist").provider_id, "prov_strat")',
+                  'self.assertEqual(policy.get_target_for_agent("content").provider_id, "prov_content")',
+              ),
+              (
+                  'runtime.execute_stage_strategist(ctx1)',
+                  'runtime.execute_stage_content(ctx1)',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one match, found {count}: {old}")
+              text = text.replace(old, new, 1)
+
+          if "STRATEGIST" in text or 'get_target_for_agent("strategist")' in text or "execute_stage_strategist(ctx1)" in text:
+              raise SystemExit("Unexpected stale strategist contract reference remains in targeted regression file")
+
+          path.write_text(text, encoding="utf-8")
+          '@ | python -
+
+          git diff --check
+          git diff -- tests/test_prod_model_settings_01.py
+
+      - name: Run targeted Windows model-settings regression
+        shell: pwsh
+        run: python -m unittest tests.test_prod_model_settings_01
+
+      - name: Commit exact test-only repair
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_prod_model_settings_01.py
+          git diff --cached --check
+          git diff --cached --name-only | Select-String -Pattern '^tests/test_prod_model_settings_01.py$' | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Expected targeted test file not staged" }
+          git commit -m "test(model-settings): align canonical Content identity"
+          git push origin HEAD:fix/brain-content-canonical-role-v1
