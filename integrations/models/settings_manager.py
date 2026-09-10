@@ -98,7 +98,7 @@ class ModelSettings(BaseModel):
     settings_revision: int = 1
     free_only_mode: bool = True
     global_target: ModelTarget = Field(
-        default_factory=lambda: ModelTarget(provider_id="gemini", model_id="gemini-flash-latest")
+        default_factory=lambda: ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512")
     )
     agent_overrides: Dict[str, ModelTarget] = Field(default_factory=dict)
     fallback_chain: List[ModelTarget] = Field(default_factory=list)
@@ -253,11 +253,8 @@ class ModelSettingsManager:
             settings = ModelSettings(
                 settings_revision=1,
                 free_only_mode=True,
-                global_target=ModelTarget(provider_id="gemini", model_id="gemini-flash-latest"),
-                fallback_chain=[
-                    ModelTarget(provider_id="thespark", model_id="spark-default"),
-                    ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
-                ],
+                global_target=ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
+                fallback_chain=[],
                 providers=default_providers,
             )
             self._save_to_disk(settings)
