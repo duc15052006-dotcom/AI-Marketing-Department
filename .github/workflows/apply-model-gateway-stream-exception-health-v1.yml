@@ -15,12 +15,20 @@ concurrency:
 jobs:
   apply-fix:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout exact pushed head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
       - name: Apply minimal production patch
         shell: bash
         run: |
@@ -29,35 +37,41 @@ jobs:
 
           path = Path("integrations/models/gateway.py")
           text = path.read_text(encoding="utf-8")
-          old = '''                err = ModelStreamError(
-                      code=err_code,
-                      category=err_cat,
-                      safe_message=safe_msg,
-                      retryable=ret,
-                      http_status=st,
-                  )
-                  last_error = err
-          '''
-          new = '''                err = ModelStreamError(
-                      code=err_code,
-                      category=err_cat,
-                      safe_message=safe_msg,
-                      retryable=ret,
-                      http_status=st,
-                  )
-                  internal_code = stream_error_to_provider_error_code(err)
-                  self.config_service.record_error(cand_provider, internal_code)
-                  if internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
-                      self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=safe_msg)
-                  last_error = err
-          '''
-          if new in text:
+          anchor = (
+              "                err = ModelStreamError(\n"
+              "                    code=err_code,\n"
+              "                    category=err_cat,\n"
+              "                    safe_message=safe_msg,\n"
+              "                    retryable=ret,\n"
+              "                    http_status=st,\n"
+              "                )\n"
+              "                last_error = err\n"
+              "                last_error_provider = cand_provider\n"
+              "                last_error_model = cand_model\n"
+          )
+          replacement = (
+              "                err = ModelStreamError(\n"
+              "                    code=err_code,\n"
+              "                    category=err_cat,\n"
+              "                    safe_message=safe_msg,\n"
+              "                    retryable=ret,\n"
+              "                    http_status=st,\n"
+              "                )\n"
+              "                internal_code = stream_error_to_provider_error_code(err)\n"
+              "                self.config_service.record_error(cand_provider, internal_code)\n"
+              "                if internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):\n"
+              "                    self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE, detail=safe_msg)\n"
+              "                last_error = err\n"
+              "                last_error_provider = cand_provider\n"
+              "                last_error_model = cand_model\n"
+          )
+          if replacement in text:
               print("production patch already present")
           else:
-              count = text.count(old)
+              count = text.count(anchor)
               if count != 1:
                   raise SystemExit(f"expected exactly one stream exception health anchor, found {count}")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+              path.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
           PY
           git diff --check
       - name: Run causal regression after local patch
