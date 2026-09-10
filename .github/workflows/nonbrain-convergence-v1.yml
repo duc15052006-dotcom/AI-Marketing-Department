@@ -1,0 +1,86 @@
+name: Non-Brain Convergence V1
+
+on:
+  push:
+    branches:
+      - integration/nonbrain-convergence-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nonbrain-convergence-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUN_LIVE_PROVIDER_TESTS: "0"
+  RUN_REAL_MODEL_TEST: "0"
+  RUN_LIVE_MODEL_TESTS: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  gateway-convergence-red:
+    name: Ubuntu Python 3.12 Gateway convergence matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact platform integration head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Record exact-head identity
+        run: |
+          echo "github_sha=${{ github.sha }}"
+          git rev-parse HEAD
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Import certified Gateway regressions into checkout only
+        shell: bash
+        run: |
+          git fetch origin test/model-gateway-implicit-policy-neutrality-v1:test/model-gateway-implicit-policy-neutrality-v1
+          for f in \
+            tests/test_model_gateway_implicit_policy_neutrality_v1.py \
+            tests/test_model_gateway_stream_degradation_exception_health_v1.py \
+            tests/test_model_gateway_post_dispatch_timeout_health_v2.py \
+            tests/test_model_gateway_permission_health_v1.py \
+            tests/test_model_gateway_midstream_error_health_v1.py \
+            tests/test_model_gateway_stream_exception_health_v1.py \
+            tests/test_model_gateway_sync_rate_limit_health_v1.py \
+            tests/test_model_gateway_stream_consumer_cancel_v1.py \
+            tests/test_model_gateway_late_result_timeout_v1.py \
+            tests/test_model_gateway_initial_timeout_budget_v1.py \
+            tests/test_model_gateway_stream_timeout_budget_v1.py; do
+            git show test/model-gateway-implicit-policy-neutrality-v1:$f > $f
+          done
+      - name: Compile imported regressions
+        run: python -m compileall -q integrations/models tests
+      - name: Run certified Gateway convergence matrix
+        run: |
+          python -m unittest -v \
+            tests.test_model_gateway_implicit_policy_neutrality_v1 \
+            tests.test_model_gateway_stream_degradation_exception_health_v1 \
+            tests.test_model_gateway_post_dispatch_timeout_health_v2 \
+            tests.test_model_gateway_permission_health_v1 \
+            tests.test_model_gateway_midstream_error_health_v1 \
+            tests.test_model_gateway_stream_exception_health_v1 \
+            tests.test_model_gateway_sync_rate_limit_health_v1 \
+            tests.test_model_gateway_stream_consumer_cancel_v1 \
+            tests.test_model_gateway_late_result_timeout_v1 \
+            tests.test_model_gateway_initial_timeout_budget_v1 \
+            tests.test_model_gateway_stream_timeout_budget_v1
+      - name: Restore exact integration checkout
+        if: always()
+        run: |
+          git reset --hard HEAD
+          git clean -fd
+          git diff --exit-code
