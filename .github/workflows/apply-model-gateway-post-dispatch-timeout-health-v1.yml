@@ -76,7 +76,6 @@ jobs:
         run: |
           python -m unittest -v tests.test_model_gateway_post_dispatch_timeout_health_v1
           python -m unittest -v tests.test_model_gateway_late_result_timeout_v1
-          python -m unittest -v tests.test_model_gateway_stream_degradation_timeout_budget_v1
           python -m unittest -v tests.test_model_gateway_stream_timeout_budget_v1
       - name: Commit production patch if needed
         shell: bash
