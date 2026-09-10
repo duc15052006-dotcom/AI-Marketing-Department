@@ -13,11 +13,25 @@ jobs:
   migrate-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: Verify exact branch
         shell: bash
@@ -25,6 +39,14 @@ jobs:
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "fix/brain-content-canonical-role-v1"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Install repository dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
 
       - name: Apply fail-closed canonical Content test migration
         shell: bash
