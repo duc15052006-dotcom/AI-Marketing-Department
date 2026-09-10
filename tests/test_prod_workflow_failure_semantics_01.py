@@ -38,7 +38,6 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
         def sink(evt: Dict[str, Any]) -> None:
             progress_events.append(evt)
 
-        # Mock _call_agent_llm to fail on CMO_INITIAL with a deterministic root error
         def mock_call_agent_llm(agent_id, sys_prompt, user_prompt, context=None, text_delta_sink=None):
             if agent_id == "cmo":
                 return None, "TEST_CMO_PROVIDER_TIMEOUT"
@@ -52,22 +51,18 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
                 progress_sink=sink,
             )
 
-        # 1. Context and Artifact terminal status
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
         self.assertEqual(artifact.status, RuntimeStatus.FAILED)
 
-        # 2. CMO_INITIAL status in stage outputs
         cmo_init = ctx.stage_outputs.get("cmo_initial", {})
         self.assertEqual(cmo_init.get("status"), "FAILED")
         self.assertEqual(cmo_init.get("error"), "TEST_CMO_PROVIDER_TIMEOUT")
 
-        # 3. Downstream stages must NOT have executed
         self.assertNotIn("intelligence", ctx.stage_outputs)
         self.assertNotIn("content", ctx.stage_outputs)
         self.assertNotIn("creative", ctx.stage_outputs)
         self.assertNotIn("performance", ctx.stage_outputs)
 
-        # 4. Final CMO output must reflect NOT_REACHED and retain original root error
         self.assertEqual(cmo_final.get("status"), "NOT_REACHED")
         self.assertEqual(cmo_final.get("failed_stage"), "CMO_INITIAL")
         self.assertEqual(cmo_final.get("error"), "TEST_CMO_PROVIDER_TIMEOUT")
@@ -75,18 +70,16 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
         self.assertNotIn("PREVIOUS_STAGE_FAILED", str(cmo_final.get("error")))
         self.assertNotIn("PREVIOUS_STAGE_FAILED", str(cmo_final.get("reason")))
 
-        # 5. Progress Events: Zero FINAL_CMO STAGE_STARTED events!
         final_cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "FINAL_CMO" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]
         self.assertEqual(len(final_cmo_started), 0, "FINAL_CMO STAGE_STARTED must be 0 on early failure")
 
-        # CMO_INITIAL must have STAGE_STARTED and RUN_FAILED
         cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "CMO_INITIAL" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]
         cmo_failed = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "CMO_INITIAL" and getattr(e.event_type, "value", e.event_type) == "RUN_FAILED"]
         self.assertEqual(len(cmo_started), 1)
         self.assertEqual(len(cmo_failed), 1)
 
     def test_02_mid_workflow_failure_preserves_failing_stage_and_guards_final_cmo(self) -> None:
-        """Assert failure in Stage 3 (Strategist) skips Stages 4, 5, 6 and preserves Strategist root error."""
+        """Assert failure in canonical Content stage skips Creative/Performance/Final CMO and preserves root error."""
         progress_events = []
 
         def sink(evt: Dict[str, Any]) -> None:
@@ -98,7 +91,7 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
             elif agent_id == "intelligence":
                 return "Market findings and consumer trends", None
             elif agent_id == "content":
-                return None, "STRATEGIST_GATEWAY_RATE_LIMIT"
+                return None, "CONTENT_GATEWAY_RATE_LIMIT"
             return "Unexpected agent call", None
 
         with patch.object(self.engine, "_call_agent_llm", side_effect=mock_call_agent_llm):
@@ -117,8 +110,8 @@ class TestWorkflowFailureSemantics01(unittest.TestCase):
         self.assertNotIn("performance", ctx.stage_outputs)
 
         self.assertEqual(cmo_final.get("status"), "NOT_REACHED")
-        self.assertEqual(cmo_final.get("failed_stage"), "STRATEGIST")
-        self.assertEqual(cmo_final.get("error"), "STRATEGIST_GATEWAY_RATE_LIMIT")
+        self.assertEqual(cmo_final.get("failed_stage"), "CONTENT")
+        self.assertEqual(cmo_final.get("error"), "CONTENT_GATEWAY_RATE_LIMIT")
         self.assertNotIn("PREVIOUS_STAGE_FAILED", str(cmo_final.get("error")))
 
         final_cmo_started = [e for e in progress_events if getattr(e.stage, "value", e.stage) == "FINAL_CMO" and getattr(e.event_type, "value", e.event_type) == "STAGE_STARTED"]
