@@ -402,7 +402,21 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         from governance.access_matrix import PERMANENT_FIVE_AGENTS
         self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "content", "creative", "performance"})
         rt = build_rt(HandoffGateway())
-        self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)
+        canonical_stage_methods = {
+            "execute_stage_cmo_initial",
+            "execute_stage_intelligence",
+            "execute_stage_content",
+            "execute_stage_creative",
+            "execute_stage_performance",
+            "execute_stage_final_cmo",
+        }
+        stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}
+        self.assertEqual(
+            stage_methods - {"execute_stage_strategist"},
+            canonical_stage_methods,
+            "Only six canonical stages may represent the five permanent ASIs; "
+            "execute_stage_strategist is a deprecated compatibility shim, not an agent.",
+        )
 
 
 if __name__ == "__main__":

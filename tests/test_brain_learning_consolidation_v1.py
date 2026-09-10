@@ -358,7 +358,7 @@ class BrainLearningConsolidationV1Tests(unittest.TestCase):
         self.assertEqual(len(BrainAgentId), 5)
         self.assertEqual(
             {agent.value for agent in BrainAgentId},
-            {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"},
+            {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"},
         )
 
 

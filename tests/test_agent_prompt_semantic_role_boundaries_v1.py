@@ -49,5 +49,24 @@ class AgentPromptSemanticRoleBoundariesV1Tests(unittest.TestCase):
         self.assertIn("live scheduling/publishing remains a governed runtime/Body action", performance)
 
 
+    def test_intelligence_handoffs_strategy_content_media_and_execution_correctly(self):
+        text = _agent("intelligence")
+        self.assertIn("strategy formulation, positioning, offer boundaries, and budget allocation to **CMO**", text)
+        self.assertIn("messaging architecture, concepts, hooks, ad copy, scripts, and CTA wording to **Content**", text)
+        self.assertIn("visual concepts, storyboards, multimedia asset rendering, and production timelines to **Creative**", text)
+        self.assertIn("governed runtime/Body policy", text)
+        self.assertNotIn("strategy formulation, positioning, and budget allocation to **CMO** and **Content**", text)
+        self.assertNotIn("concept development, ad copy, and scripts to **Creative**", text)
+        self.assertNotIn("ad setup and deployment to **Performance**", text)
+
+    def test_cmo_delegates_text_media_and_live_execution_without_role_overlap(self):
+        text = _agent("cmo")
+        self.assertIn("messaging architecture, verbal concepts, hooks, copy, scripts, CTA wording, and editorial adaptation to **Content**", text)
+        self.assertIn("visual concepts, storyboards, video timeline assembly, and image/video/audio asset synthesis to **Creative**", text)
+        self.assertIn("external platform actions must pass governed runtime/Body policy", text)
+        self.assertNotIn("delegate concept, hook, and copy generation to **Creative**", text)
+        self.assertNotIn("delegate platform payload preparation to **Performance**", text)
+
+
 if __name__ == "__main__":
     unittest.main()
