@@ -10,317 +10,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: brain-final-convergence-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  migrate-stale-content-tests:
-    name: One-shot canonical Content test migration
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      RUN_LIVE_PROVIDER_TESTS: "0"
-      RUN_REAL_MODEL_TEST: "0"
-      RUN_LIVE_MODEL_TESTS: "0"
-      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
-      PYTHONUTF8: "1"
-      PYTHONDONTWRITEBYTECODE: "1"
-    steps:
-      - name: Checkout exact pull request head branch
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: fix/brain-content-canonical-role-v1
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
-      - name: Verify exact migration head
-        shell: bash
-        run: |
-          expected="${{ github.event.pull_request.head.sha || github.sha }}"
-          actual="$(git rev-parse HEAD)"
-          echo "expected=$expected"
-          echo "actual=$actual"
-          test "$expected" = "$actual"
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip check
-
-      - name: Apply controlled canonical Content migration in worktree
-        shell: bash
-        run: |
-          mkdir -p .ci-results
-          python - <<'PY'
-          from pathlib import Path
-          import hashlib
-
-          canonical_files = [
-              'tests/test_collaboration_adversarial_final.py',
-              'tests/test_collaboration_integrity_audit.py',
-              'tests/test_structured_epistemic_handoff.py',
-              'tests/test_creative_definition.py',
-              'tests/test_prod_runtime_01_single_run_authority.py',
-              'tests/test_phase5_2_runtime_integration.py',
-              'tests/test_prod_core_authority_01a.py',
-              'tests/test_cmo_definition.py',
-              'tests/test_intelligence_definition.py',
-              'tests/test_performance_definition.py',
-              'tests/test_phase5_1_foundation.py',
-              'tests/test_phase6_1_v1_connectors_and_workspace.py',
-              'tests/test_phase1a_runtime_integrity.py',
-              'tests/test_prod_core_authority_01b.py',
-              'tests/test_applicationization_v1.py',
-              'tests/test_chat_first_app_v1.py',
-              'tests/test_chat_persistence_v1.py',
-              'tests/test_claim_evidence_binding.py',
-              'tests/test_conversation_router_and_gpt_mode.py',
-              'tests/test_material_factual_claim_coverage.py',
-              'tests/test_model_execution_bridge.py',
-              'tests/test_phase4_3c_15_rc3_architecture.py',
-              'tests/test_phase6_2_pilot_and_v1_release.py',
-              'tests/test_prod_workflow_failure_semantics_01.py',
-              'tests/test_runtime_agent_dna_wiring_28.py',
-          ]
-
-          replacements = (
-              ('RuntimeStage.STRATEGIST', 'RuntimeStage.CONTENT'),
-              ('BrainAgentId.STRATEGIST', 'BrainAgentId.CONTENT'),
-              ('AgentId.STRATEGIST', 'AgentId.CONTENT'),
-              ('"strategist"', '"content"'),
-              ("'strategist'", "'content'"),
-              ('"STRATEGIST"', '"CONTENT"'),
-              ("'STRATEGIST'", "'CONTENT'"),
-              ('Strategist', 'Content'),
-          )
-
-          changed = []
-          for rel in canonical_files:
-              p = Path(rel)
-              text = p.read_text(encoding='utf-8')
-              original = text
-              for old, new in replacements:
-                  text = text.replace(old, new)
-              if rel.endswith('test_runtime_agent_dna_wiring_28.py'):
-                  text = text.replace(
-                      '"content": "Marketing Strategy & Growth Architect"',
-                      '"content": "Content Strategy, Copywriting & Distribution"',
-                  )
-              if text != original:
-                  p.write_text(text, encoding='utf-8')
-                  changed.append(rel)
-
-          provider_test = Path('tests/test_prod_model_gateway_01_provider_registry.py')
-          text = provider_test.read_text(encoding='utf-8')
-          old = 'self.assertEqual(normalize_agent_id("strategist"), "STRATEGIST")'
-          new = 'self.assertEqual(normalize_agent_id("strategist"), "CONTENT")'
-          if old not in text and new not in text:
-              raise SystemExit('provider normalization assertion shape changed unexpectedly')
-          if old in text:
-              provider_test.write_text(text.replace(old, new), encoding='utf-8')
-              changed.append(str(provider_test))
-
-          perf_hash = hashlib.sha256(Path('.agents/agents/performance/agent.md').read_bytes()).hexdigest()
-          cmo_hash = hashlib.sha256(Path('.agents/agents/cmo/agent.md').read_bytes()).hexdigest()
-          old_perf = '26be7c5a2aa3c388defec7fe92162d0082c34ca6609f17c692704863ce4ea3c9'
-          old_cmo = '766edaf82a8493b82e42d6e61fdca615bc4bfa678ce419f43aee0ae7e86bd52e'
-          for p in Path('tests').glob('test_*.py'):
-              text = p.read_text(encoding='utf-8')
-              updated = text.replace(old_perf, perf_hash).replace(old_cmo, cmo_hash)
-              if updated != text:
-                  p.write_text(updated, encoding='utf-8')
-                  changed.append(str(p))
-
-          obsolete = Path('tests/test_strategist_definition.py')
-          if obsolete.exists():
-              obsolete.unlink()
-              changed.append(str(obsolete))
-
-          content_test = Path('tests/test_content_definition.py')
-          content_test.write_text(r'''"""Canonical Content ASI definition and authority-boundary regressions."""
-
-import unittest
-from pathlib import Path
-
-from tests.test_agent_manifests import parse_yaml_frontmatter
-
-
-class TestContentDefinition(unittest.TestCase):
-    def setUp(self):
-        self.path = Path(__file__).resolve().parent.parent / ".agents" / "agents" / "content" / "agent.md"
-        self.assertTrue(self.path.exists(), "content/agent.md does not exist")
-        self.content = self.path.read_text(encoding="utf-8")
-        self.frontmatter = parse_yaml_frontmatter(self.content)
-
-    def test_content_frontmatter_valid(self):
-        self.assertEqual(self.frontmatter.get("name"), "content")
-        self.assertIn("Content Strategy", self.frontmatter.get("description", ""))
-
-    def test_identity_and_role_boundaries(self):
-        self.assertIn("Content ASI", self.content)
-        self.assertIn("semantic layer between strategy and creative production", self.content)
-        for boundary in ("not the CMO", "not Intelligence", "not Creative", "not Performance"):
-            self.assertIn(boundary, self.content)
-
-    def test_canonical_authority_model(self):
-        for capability in (
-            "CONTENT_STRATEGY", "MESSAGE_ARCHITECTURE", "COPY_AND_SCRIPT",
-            "EDITORIAL_PLANNING", "SEO_CONTENT_BRIEFING", "CHANNEL_CONTENT_ADAPTATION",
-            "CONTENT_EXPERIMENT_HYPOTHESES",
-        ):
-            self.assertIn(capability, self.content)
-
-    def test_content_cannot_self_grant_execution_authority(self):
-        for forbidden in (
-            "final commercial sign-off", "live publishing authority", "raw budget mutation",
-            "credential or provider mutation", "direct Body/runtime/tool execution authority",
-        ):
-            self.assertIn(forbidden, self.content)
-
-    def test_epistemic_discipline_has_four_states(self):
-        for state in ("OBSERVED / VERIFIED", "INFERRED", "HYPOTHESIS", "UNKNOWN"):
-            self.assertIn(state, self.content)
-        self.assertIn("Never turn an inference into a fact", self.content)
-
-    def test_required_input_audit(self):
-        for field in (
-            "BUSINESS_OBJECTIVE", "TARGET_AUDIENCE / JTBD", "FUNNEL_STAGE",
-            "CMO_APPROVED_STRATEGY", "PRODUCT_FACTS / PRODUCT_LIMITATIONS",
-            "VERIFIED_CUSTOMER_EVIDENCE",
-        ):
-            self.assertIn(field, self.content)
-
-    def test_message_architecture_is_evidence_grounded(self):
-        for element in (
-            "Audience context", "Problem / desired progress", "Value proposition",
-            "Reason to believe", "Objection handling", "CTA",
-        ):
-            self.assertIn(element, self.content)
-        self.assertIn("preserve lineage", self.content)
-
-    def test_copywriting_frameworks_are_tools_not_dogma(self):
-        for framework in ("AIDA", "PAS", "BAB", "Hook–Value–Proof–CTA", "Claim–Evidence–Implication"):
-            self.assertIn(framework, self.content)
-        self.assertIn("clarity first", self.content)
-
-    def test_hook_safety_rules(self):
-        for rule in (
-            "fabricate a result", "fake scarcity", "impersonate a customer quote",
-            "misstate product capability", "unsupported hypothesis as observed truth",
-        ):
-            self.assertIn(rule, self.content)
-
-    def test_editorial_plan_has_measurement_and_evidence(self):
-        for field in (
-            "audience segment", "awareness level", "distribution channel", "evidence basis",
-            "experiment hypothesis if unproven", "measurement expectation supplied to Performance",
-        ):
-            self.assertIn(field, self.content)
-
-    def test_seo_contract_forbids_invented_metrics(self):
-        for field in ("query/topic cluster", "search intent", "factual sources required", "risks of unsupported claims"):
-            self.assertIn(field, self.content)
-        self.assertIn("Never invent keyword volume", self.content)
-        self.assertIn("traffic forecasts", self.content)
-
-    def test_short_form_adaptation_requires_native_channel_behavior(self):
-        self.assertIn("native behavior of each channel", self.content)
-        self.assertIn("deliver one dominant idea", self.content)
-        self.assertIn("end with one clear CTA", self.content)
-
-    def test_experiment_contract_keeps_measurement_with_performance(self):
-        for field in (
-            "content variable being changed", "expected behavioral signal",
-            "guardrail or failure condition", "support, refutation, or inconclusive evidence",
-        ):
-            self.assertIn(field, self.content)
-        self.assertIn("Performance owns authoritative measurement", self.content)
-        self.assertIn("cannot self-certify a winner", self.content)
-
-    def test_collaboration_protocol_preserves_role_boundaries(self):
-        for heading in ("From Intelligence", "From CMO", "To Creative", "To Performance", "Back to CMO"):
-            self.assertIn(heading, self.content)
-        self.assertIn("Creative owns visual/production execution", self.content)
-
-    def test_learning_loop_does_not_overgeneralize(self):
-        self.assertIn("Goal -> evidence check -> content hypothesis", self.content)
-        self.assertIn("Do not convert a single successful post into a universal rule", self.content)
-        self.assertIn("Preserve scope, audience, channel, time, product, and evidence lineage", self.content)
-
-    def test_output_contract_is_structured_and_fail_safe(self):
-        for field in (
-            "OBJECTIVE", "AUDIENCE", "EVIDENCE_BASE", "KNOWN_UNKNOWNS", "MESSAGE_HIERARCHY",
-            "CONTENT_ASSET_OR_BRIEF", "CLAIMS_REQUIRING_PROOF", "HANDOFF_TARGET", "MEASUREMENT_QUESTION",
-        ):
-            self.assertIn(field, self.content)
-        self.assertIn("INSUFFICIENT EVIDENCE", self.content)
-
-    def test_permanent_five_asi_invariant(self):
-        for role in ("CMO", "Intelligence", "Content", "Creative", "Performance"):
-            self.assertIn(role, self.content)
-        self.assertIn("There is no permanent Strategist identity", self.content)
-        self.assertIn("no sixth Final CMO", self.content)
-        self.assertIn("compatibility inputs only", self.content)
-
-
-if __name__ == "__main__":
-    unittest.main()
-''', encoding='utf-8')
-          changed.append(str(content_test))
-
-          print('Changed paths:')
-          for rel in sorted(set(changed)):
-              print(' -', rel)
-          print('New frozen hashes:', {'performance': perf_hash, 'cmo': cmo_hash})
-          PY
-
-      - name: Compile migrated repository tests
-        shell: bash
-        run: python -m compileall -q brain app_api chat config connections connectors creative_engine governance integrations knowledge memory observability runtime schemas scripts tools workspace tests
-
-      - name: Run full hermetic suite against migrated worktree
-        shell: bash
-        timeout-minutes: 32
-        run: |
-          set -o pipefail
-          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | tee .ci-results/content-migration-full-hermetic.log
-
-      - name: Upload migration evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: brain-content-test-migration-${{ github.event.pull_request.head.sha || github.sha }}
-          path: .ci-results/
-          if-no-files-found: warn
-          include-hidden-files: true
-          retention-days: 7
-
-      - name: Commit only after full hermetic green
-        if: success()
-        shell: bash
-        run: |
-          git checkout d6613b82fd665fc85b894de12fdeea1a1361f8ed -- .github/workflows/brain-final-convergence-cert-v1.yml
-          git rm -f .github/workflows/brain-content-test-migration-repair-temp.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/brain-final-convergence-cert-v1.yml tests governance
-          git diff --cached --stat
-          git commit -m "test(brain): migrate stale strategist regressions to content"
-          git push origin HEAD:fix/brain-content-canonical-role-v1
-
   brain-convergence-linux:
-    if: ${{ false }}
     name: Linux full Brain adversarial convergence
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -331,18 +28,21 @@ if __name__ == "__main__":
       AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
       PYTHONUTF8: "1"
       PYTHONDONTWRITEBYTECODE: "1"
+
     steps:
       - name: Checkout exact pull request head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
+
       - name: Verify exact CI identity
         shell: bash
         run: |
@@ -351,27 +51,33 @@ if __name__ == "__main__":
           actual="$(git rev-parse HEAD)"
           printf 'expected_head_sha=%s\nactual_head_sha=%s\n' "$expected" "$actual" | tee .ci-results/final-brain-linux-identity.txt
           test "$expected" = "$actual"
+
       - name: Install dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
+
       - name: Compile Brain and Brain tests
         shell: bash
-        run: python -m compileall -q brain tests
+        run: |
+          python -m compileall -q brain tests
+
       - name: Run complete Brain test namespace
         shell: bash
         timeout-minutes: 28
         run: |
           set -o pipefail
           python -m unittest discover -s tests -p "test_brain_*.py" -v 2>&1 | tee .ci-results/final-brain-linux.log
+
       - name: Run expert five-ASI holdout
         if: always()
         shell: bash
         run: |
           set -o pipefail
           python -m unittest -v tests.test_asi_brain_expert_holdout_v1 2>&1 | tee .ci-results/final-brain-expert-holdout-linux.log
+
       - name: Upload Linux convergence evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -383,7 +89,6 @@ if __name__ == "__main__":
           retention-days: 14
 
   canonical-full-windows:
-    if: ${{ false }}
     name: Windows canonical full hermetic certification
     runs-on: windows-latest
     timeout-minutes: 55
@@ -394,18 +99,21 @@ if __name__ == "__main__":
       AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
       PYTHONUTF8: "1"
       PYTHONDONTWRITEBYTECODE: "1"
+
     steps:
       - name: Checkout exact pull request head
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
+
       - name: Verify exact CI identity
         shell: pwsh
         run: |
@@ -415,23 +123,27 @@ if __name__ == "__main__":
           "expected_head_sha=$expected" | Tee-Object -FilePath .ci-results/final-brain-windows-identity.txt
           "actual_head_sha=$actual" | Tee-Object -FilePath .ci-results/final-brain-windows-identity.txt -Append
           if ($actual -ne $expected) { Write-Error "EXACT_HEAD_MISMATCH"; exit 1 }
+
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
+
       - name: Compile repository Python sources
         shell: pwsh
         run: |
           python -m compileall -q brain app_api chat config connections connectors creative_engine governance integrations knowledge memory observability runtime schemas scripts tools workspace tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run canonical full hermetic unittest discovery
         shell: pwsh
         timeout-minutes: 40
         run: |
           python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/final-full-hermetic-windows.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Upload Windows canonical evidence
         if: always()
         uses: actions/upload-artifact@v4
