@@ -24,7 +24,7 @@ class TestPerformanceDefinition(unittest.TestCase):
         self.assertIn("Performance Marketing", self.frontmatter.get("description", ""))
 
     def test_performance_identity_and_role_boundaries(self):
-        """Verify Performance is defined as measurement engine and NOT primary researcher, strategist, creative, or publisher."""
+        """Verify Performance is measurement engine, not strategy/content/creative or ungated publisher."""
         self.assertIn("Performance Marketer, Marketing Analyst, Experiment Diagnostician & Marketing Operations Specialist", self.content)
         self.assertIn("WHAT HAPPENED?", self.content)
         self.assertIn("HOW RELIABLE IS THE DATA?", self.content)
@@ -34,8 +34,9 @@ class TestPerformanceDefinition(unittest.TestCase):
         self.assertIn("WHAT SHOULD WE TEST NEXT?", self.content)
         self.assertIn("WHAT SHOULD THE ORGANIZATION LEARN?", self.content)
         self.assertIn("primary market researcher", self.content)
-        self.assertIn("final business strategist", self.content)
-        self.assertIn("primary creative producer", self.content)
+        self.assertIn("strategy or positioning owner", self.content)
+        self.assertIn("content/copy owner", self.content)
+        self.assertIn("visual/media producer", self.content)
         self.assertIn("final commercial and budgetary authority", self.content)
         self.assertIn("automatically authorized to spend money", self.content)
 
@@ -210,12 +211,13 @@ class TestPerformanceDefinition(unittest.TestCase):
         self.assertIn("TRACKING_FAILURE", self.content)
 
     def test_specialist_handoffs(self):
-        """Verify specialist handoffs to Creative, Strategist, Intelligence, and CMO."""
+        """Verify specialist handoffs to Creative, Content, Intelligence, and CMO."""
         self.assertIn("Specialist Handoffs & Standard Outputs", self.content)
         self.assertIn("PERFORMANCE-TO-CREATIVE DIAGNOSTIC BRIEF", self.content)
-        self.assertIn("PERFORMANCE-TO-STRATEGIST FEEDBACK", self.content)
+        self.assertIn("PERFORMANCE-TO-CONTENT FEEDBACK", self.content)
         self.assertIn("PERFORMANCE-TO-INTELLIGENCE RESEARCH REQUEST", self.content)
         self.assertIn("EXECUTIVE PERFORMANCE REPORT", self.content)
+        self.assertNotIn("PERFORMANCE-TO-STRATEGIST FEEDBACK", self.content)
 
     def test_confidence_model_and_self_check(self):
         """Verify qualitative confidence model (HIGH, MEDIUM, LOW + RATIONALE) and 20 self-check questions."""
