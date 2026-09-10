@@ -11,17 +11,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: brain-hypothesis-migration-${{ github.ref }}
-  cancel-in-progress: true
+  contents: read
 
 jobs:
   qualification:
-    name: One-shot canonical Content full-hermetic migration
-    runs-on: ubuntu-latest
-    timeout-minutes: 55
+    name: Hypothesis portfolio (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     env:
       RUN_LIVE_PROVIDER_TESTS: "0"
       RUN_REAL_MODEL_TEST: "0"
@@ -29,13 +29,12 @@ jobs:
       AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
       PYTHONUTF8: "1"
       PYTHONDONTWRITEBYTECODE: "1"
-
     steps:
-      - name: Checkout exact PR head branch
+      - name: Checkout exact pull request head
         uses: actions/checkout@v4
         with:
-          ref: fix/brain-content-canonical-role-v1
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -53,50 +52,56 @@ jobs:
           printf 'expected_head_sha=%s\nactual_head_sha=%s\n' "$expected" "$actual" | tee .ci-results/identity.txt
           test "$expected" = "$actual"
 
-      - name: Install repository dependencies
+      - name: Install runtime dependencies
         shell: bash
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip check
 
-      - name: Apply controlled canonical Content migration
-        shell: bash
-        run: python scripts/_tmp_content_test_migration.py
-
-      - name: Compile repository Python sources
+      - name: Compile hypothesis architecture and regression
         shell: bash
         run: |
-          python -m compileall -q brain app_api chat config connections connectors creative_engine governance integrations knowledge memory observability runtime schemas scripts tools workspace tests
+          python -m compileall -q \
+            brain/__init__.py \
+            brain/hypotheses.py \
+            tests/test_brain_hypothesis_portfolio_v1.py \
+            tests/test_brain_hypothesis_public_api_v1.py
+
+      - name: Run hypothesis portfolio regression
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v \
+            tests.test_brain_hypothesis_portfolio_v1 \
+            tests.test_brain_hypothesis_public_api_v1 \
+            2>&1 | tee .ci-results/targeted.log
+
+      - name: Run adjacent five-ASI learning stack
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v \
+            tests.test_brain_metacognition_intelligence_v1 \
+            tests.test_brain_causal_learning_loop_v1 \
+            tests.test_brain_meta_learning_policy_v1 \
+            tests.test_brain_evidence_intelligence_v1 \
+            tests.test_brain_memory_intelligence_v1 \
+            2>&1 | tee .ci-results/adjacent.log
 
       - name: Run canonical full hermetic unittest discovery
+        if: runner.os == 'Windows'
         shell: bash
-        timeout-minutes: 40
         run: |
           set -o pipefail
           python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | tee .ci-results/full-unittest.log
 
-      - name: Upload migration evidence
+      - name: Upload exact-head qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: brain-content-migration-${{ github.event.pull_request.head.sha || github.sha }}
+          name: brain-hypothesis-portfolio-v1-${{ runner.os }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: .ci-results/
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
-
-      - name: Restore qualification workflows, remove temp files, and commit verified migration
-        if: success()
-        shell: bash
-        run: |
-          git checkout 00fedf7cc7e17ed392ed6b765b0c3eefae50e628 -- .github/workflows/brain-hypothesis-portfolio-v1.yml
-          git checkout d6613b82fd665fc85b894de12fdeea1a1361f8ed -- .github/workflows/brain-final-convergence-cert-v1.yml
-          git rm -f .github/workflows/brain-content-test-migration-repair-temp.yml
-          git rm -f scripts/_tmp_content_test_migration.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/brain-hypothesis-portfolio-v1.yml .github/workflows/brain-final-convergence-cert-v1.yml tests
-          git diff --cached --stat
-          git commit -m "test(brain): migrate stale strategist regressions to content"
-          git push origin HEAD:fix/brain-content-canonical-role-v1
+          retention-days: 14
