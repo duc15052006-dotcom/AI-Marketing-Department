@@ -35,12 +35,13 @@ jobs:
       - name: Verify Content RBAC boundary
         run: |
           python - <<'PY'
-          from tools.security import PermissionLevel, PolicyEngine
+          from tools.capabilities import PermissionLevel
+          from tools.security import AGENT_DEFAULT_PERMISSIONS
 
           expected = {PermissionLevel.READ_ONLY, PermissionLevel.CREATE_LOCAL}
-          actual = PolicyEngine.AGENT_DEFAULT_PERMISSIONS.get("content")
+          actual = AGENT_DEFAULT_PERMISSIONS.get("content")
           assert actual == expected, (actual, expected)
-          assert "strategist" not in PolicyEngine.AGENT_DEFAULT_PERMISSIONS
+          assert "strategist" not in AGENT_DEFAULT_PERMISSIONS
           assert PermissionLevel.ANALYTICS not in actual
           PY
 

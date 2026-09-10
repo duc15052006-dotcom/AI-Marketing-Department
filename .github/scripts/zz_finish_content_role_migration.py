@@ -66,23 +66,30 @@ cap_path.write_text(cap, encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # Runtime RBAC authority.
-# The removed Strategist role had analytics authority. Content must NOT inherit
-# that authority. Content needs READ_ONLY for research/context and CREATE_LOCAL
-# for local text generation; capability semantic allowlists remain the second
-# fail-closed gate for each concrete operation.
+# Content needs READ_ONLY for research/context and CREATE_LOCAL for local text
+# generation. It deliberately does NOT inherit the removed Strategist role's
+# ANALYTICS permission. Concrete capability allowlists remain the second gate.
 # ---------------------------------------------------------------------------
 security_path = Path("tools/security.py")
 security = security_path.read_text(encoding="utf-8")
+old_security = '''    "strategist": {
+        PermissionLevel.READ_ONLY,
+        PermissionLevel.ANALYTICS,
+    },'''
+new_security = '''    "content": {
+        PermissionLevel.READ_ONLY,
+        PermissionLevel.CREATE_LOCAL,
+    },'''
 security = replace_required(
     security,
-    '"strategist": {PermissionLevel.READ_ONLY, PermissionLevel.ANALYTICS},',
-    '"content": {PermissionLevel.READ_ONLY, PermissionLevel.CREATE_LOCAL},',
+    old_security,
+    new_security,
     path=str(security_path),
     count=1,
 )
-if '"strategist":' in security.lower():
+if '"strategist": {' in security.lower():
     raise SystemExit("STALE_STRATEGIST_RBAC_AUTHORITY")
-if '"content": {PermissionLevel.READ_ONLY, PermissionLevel.CREATE_LOCAL},' not in security:
+if new_security not in security:
     raise SystemExit("CONTENT_RBAC_AUTHORITY_MISSING")
 security_path.write_text(security, encoding="utf-8")
 
