@@ -4,8 +4,6 @@ from integrations.models.base import (
     BaseModelAdapter,
     ModelMessage,
     ModelRequest,
-    ModelResponse,
-    ModelResponseStatus,
     ModelRole,
     StreamDelta,
 )
@@ -22,21 +20,31 @@ class _RecordingConfigService:
         self.errors.append((provider_id, error_code))
 
 
-class _DegradationTimeoutAdapter(BaseModelAdapter):
+class _BaseDegradationExceptionAdapter(BaseModelAdapter):
+    def generate_stream(self, request):
+        yield StreamDelta(content="", finish_reason="stream_unsupported")
+
+
+class _DegradationTimeoutAdapter(_BaseDegradationExceptionAdapter):
     @property
     def provider_name(self):
         return "degradation-timeout-exception"
-
-    def generate_stream(self, request):
-        yield StreamDelta(content="", finish_reason="stream_unsupported")
 
     def generate(self, request):
         raise TimeoutError("synchronous degradation timed out")
 
 
+class _DegradationNetworkAdapter(_BaseDegradationExceptionAdapter):
+    @property
+    def provider_name(self):
+        return "degradation-network-exception"
+
+    def generate(self, request):
+        raise ConnectionError("synchronous degradation connection failed")
+
+
 class ModelGatewayStreamDegradationExceptionHealthV1Tests(unittest.TestCase):
-    def test_degradation_timeout_exception_preserves_timeout_accounting_and_health(self):
-        adapter = _DegradationTimeoutAdapter()
+    def _run_case(self, adapter, expected_public_code, expected_internal_code):
         registry = ProviderRegistry()
         registry.register_custom_adapter(adapter)
         config_service = _RecordingConfigService()
@@ -64,18 +72,32 @@ class ModelGatewayStreamDegradationExceptionHealthV1Tests(unittest.TestCase):
         self.assertIsNotNone(deltas[0].error)
         self.assertEqual(
             deltas[0].error.code,
-            "TIMEOUT",
-            "a TimeoutError raised by sync degradation must not be collapsed into STREAM_INTERNAL_ERROR",
+            expected_public_code,
+            "sync degradation transport exceptions must preserve their canonical public classification",
         )
         self.assertEqual(
             config_service.errors,
-            [(adapter.provider_name, ProviderErrorCode.TIMEOUT)],
-            "degradation timeout exceptions must feed provider error accounting",
+            [(adapter.provider_name, expected_internal_code)],
+            "sync degradation transport exceptions must feed provider error accounting",
         )
         self.assertEqual(
             gateway.get_provider_health(adapter.provider_name),
             ProviderHealth.UNAVAILABLE,
-            "a provider timing out during sync degradation must not remain AVAILABLE",
+            "a provider failing transport during sync degradation must not remain AVAILABLE",
+        )
+
+    def test_degradation_timeout_exception_preserves_timeout_accounting_and_health(self):
+        self._run_case(
+            _DegradationTimeoutAdapter(),
+            "TIMEOUT",
+            ProviderErrorCode.TIMEOUT,
+        )
+
+    def test_degradation_network_exception_preserves_network_accounting_and_health(self):
+        self._run_case(
+            _DegradationNetworkAdapter(),
+            "NETWORK_ERROR",
+            ProviderErrorCode.NETWORK_ERROR,
         )
 
 
