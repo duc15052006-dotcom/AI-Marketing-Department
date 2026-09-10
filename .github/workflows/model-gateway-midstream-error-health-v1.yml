@@ -1,0 +1,132 @@
+name: Model Gateway Midstream Error Health V1
+
+on:
+  push:
+    branches:
+      - test/model-gateway-midstream-error-health-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-gateway-midstream-error-health-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  focused-regression:
+    name: Ubuntu Python 3.12 focused — ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: causal-midstream-error-health
+            module: tests.test_model_gateway_midstream_error_health_v1
+          - label: stream-exception-health
+            module: tests.test_model_gateway_stream_exception_health_v1
+          - label: sync-rate-limit-health
+            module: tests.test_model_gateway_sync_rate_limit_health_v1
+          - label: stream-consumer-cancel
+            module: tests.test_model_gateway_stream_consumer_cancel_v1
+          - label: late-result-timeout
+            module: tests.test_model_gateway_late_result_timeout_v1
+          - label: initial-timeout-budget
+            module: tests.test_model_gateway_initial_timeout_budget_v1
+          - label: stream-timeout-budget
+            module: tests.test_model_gateway_stream_timeout_budget_v1
+          - label: structured-provider-stream-error
+            module: tests.test_prod_structured_provider_stream_error_01
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Record exact-head identity
+        run: |
+          echo "github_sha=${{ github.sha }}"
+          echo "github_ref=${{ github.ref }}"
+          echo "module=${{ matrix.module }}"
+          python --version
+          git rev-parse HEAD
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Compile model and regression sources
+        run: |
+          python -m compileall -q integrations/models tests/test_model_gateway_midstream_error_health_v1.py tests/test_model_gateway_stream_exception_health_v1.py tests/test_model_gateway_sync_rate_limit_health_v1.py tests/test_model_gateway_stream_consumer_cancel_v1.py tests/test_model_gateway_late_result_timeout_v1.py tests/test_model_gateway_initial_timeout_budget_v1.py tests/test_model_gateway_stream_timeout_budget_v1.py
+      - name: Run focused regression — ${{ matrix.label }}
+        run: python -m unittest -v ${{ matrix.module }}
+      - name: Verify clean checkout after tests
+        if: always()
+        run: git diff --exit-code
+
+  full-hermetic-windows:
+    name: Windows Python 3.12 full hermetic discovery
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Record exact-head identity
+        shell: pwsh
+        run: |
+          "github_sha=${{ github.sha }}"
+          "github_ref=${{ github.ref }}"
+          python --version
+          git rev-parse HEAD
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+      - name: Compile Python sources
+        shell: pwsh
+        run: |
+          python -m compileall -q app_api chat config connectors creative_engine governance integrations knowledge memory runtime schemas scripts tools workspace tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run full hermetic unittest discovery
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          $outputFile = Join-Path $env:RUNNER_TEMP "full-hermetic-unittest.log"
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath $outputFile
+          $testExit = $LASTEXITCODE
+          Get-Content $outputFile |
+            Select-String -Pattern '^Ran \d+ tests', '^OK(?: \(skipped=\d+\))?$' |
+            ForEach-Object { Write-Host "CANONICAL_TEST_SUMMARY=$($_.Line)" }
+          if ($testExit -ne 0) { exit $testExit }
+      - name: Verify clean checkout after tests
+        shell: pwsh
+        run: |
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
