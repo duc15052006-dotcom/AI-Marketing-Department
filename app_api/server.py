@@ -232,6 +232,7 @@ class DepartmentAppBackend:
     """Singleton backend managing application runtime state, chats, and workspaces."""
 
     def __init__(self) -> None:
+        self._closed = False
         self.cap_registry = CapabilityRegistry()
         self.policy_engine = PolicyEngine()
         self.receipt_repo = ExecutionReceiptRepository()
@@ -364,8 +365,20 @@ class DepartmentAppBackend:
             )
         )
 
+    def close(self) -> None:
+        """Release every process-owned runtime and SQLite authority exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        self.run_manager.shutdown(wait=True, cancel_pending=True)
+        self.job_repository.close()
+        self.provider_preflight_repository.close()
+        self.provider_operation_repository.close()
+        self.dynamic_tool_gateway.close()
+
 
 APP_BACKEND = DepartmentAppBackend()
+atexit.register(APP_BACKEND.close)
 
 
 class DepartmentAPIHandler(BaseHTTPRequestHandler):
