@@ -882,11 +882,20 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             )
             return
 
-        elif path in ("/api/system/health", "/api/connections"):
+        elif path == "/api/system/health":
             health = APP_BACKEND.workspace.inspect_connector_health()
             health["app_backend_version"] = "1.0.0"
             health["build_id"] = "20260820-RELEASE-V1"
             health["providers"] = self._authoritative_provider_report()
+            self._send_json(health)
+            return
+
+        elif path == "/api/connections":
+            health = APP_BACKEND.workspace.inspect_connector_health()
+            health["app_backend_version"] = "1.0.0"
+            health["build_id"] = "20260820-RELEASE-V1"
+            health["providers"] = self._authoritative_provider_report()
+            health["connection_profiles"] = self._connection_profiles_report()
             self._send_json(health)
             return
 
@@ -1262,6 +1271,23 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 "last_error_category": None,
             })
         return report
+
+    @staticmethod
+    def _connection_profiles_report() -> List[Dict[str, Any]]:
+        """Return UI-safe connection metadata without secret locators or values."""
+        return [
+            {
+                "connection_id": profile.connection_id,
+                "provider": profile.provider,
+                "display_name": profile.display_name,
+                "endpoint": profile.endpoint,
+                "enabled": profile.enabled,
+                "business_id": profile.business_id,
+                "project_ids": list(profile.project_ids),
+                "brand_ids": list(profile.brand_ids),
+            }
+            for profile in APP_BACKEND.connection_manager.list_profiles()
+        ]
 
     def do_POST(self) -> None:
         host = self.headers.get("Host", "")
