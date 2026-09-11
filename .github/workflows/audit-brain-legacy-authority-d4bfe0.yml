@@ -1,0 +1,54 @@
+name: Audit Brain Legacy Authority D4BFE0
+
+on:
+  push:
+    branches:
+      - audit/brain-legacy-authority-d4bfe0
+    paths:
+      - .github/workflows/audit-brain-legacy-authority-d4bfe0.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit exact convergence target
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=d4bfe0ebb3a93d1f96510a8f23bbdf3899ae9350
+          git checkout --detach "$TARGET"
+          echo "AUDIT_TARGET=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$TARGET"
+
+          echo '=== PHYSICAL AGENT DIRECTORIES ==='
+          find .agents/agents -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+          test "$(find .agents/agents -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 5
+          test ! -e .agents/agents/strategist
+
+          echo '=== CANONICAL STRATEGIST AUTHORITY PATTERNS (must be empty) ==='
+          if git grep -nE 'BrainAgentId\.STRATEGIST|AgentId\.STRATEGIST|STRATEGIST[[:space:]]*=[[:space:]]*["'"']STRATEGIST["'"']|supported_agents=.*strategist' -- '*.py' '*.json' '*.yml' '*.yaml'; then
+            echo 'FORBIDDEN_CANONICAL_STRATEGIST_AUTHORITY_FOUND=1'
+            exit 1
+          else
+            echo 'FORBIDDEN_CANONICAL_STRATEGIST_AUTHORITY_FOUND=0'
+          fi
+
+          echo '=== ALL STRATEGIST TEXT RESIDUE ==='
+          git grep -nEi 'strategist' -- ':!*.md' ':!docs/**' ':!artifacts/**' ':!evidence/**' || true
+
+          echo '=== LEGACY ID NORMALIZATION SURFACES ==='
+          git grep -nE 'STRATEGIST|COPYWRITER' -- '*.py' '*.json' '*.yml' '*.yaml' || true
+
+          echo '=== BRAIN/AGENT CHANGES FROM PRE-CONTENT STACK BASE TO CERTIFIED BRAIN ==='
+          git diff --name-status b51010d85cb4d3342e9451fe953299301e925b42 fcb9042ee4dd3dc1d8261bb75f1ea8ae3873d2b3 -- brain .agents agents integrations/models tools tests | sed -n '1,240p'
+
+          echo '=== OLD STRATEGIST PATH HISTORY FROM PRE-CONTENT STACK BASE TO CERTIFIED BRAIN ==='
+          git diff --name-status b51010d85cb4d3342e9451fe953299301e925b42 fcb9042ee4dd3dc1d8261bb75f1ea8ae3873d2b3 -- .agents/agents/strategist .agents/agents/content || true
