@@ -11,6 +11,8 @@ from connections.manager import (
     ConnectionManager,
     ConnectionNotFoundError,
     ConnectionScopeDeniedError,
+    ConnectionStoreClosedError,
+    ConnectionStoreIntegrityError,
     ResolvedConnection,
 )
 from connections.models import (
@@ -37,6 +39,8 @@ __all__ = [
     "ConnectionProfile",
     "ConnectionProfileError",
     "ConnectionScopeDeniedError",
+    "ConnectionStoreClosedError",
+    "ConnectionStoreIntegrityError",
     "ResolvedConnection",
     "SecretNotFoundError",
     "SecretProvider",
