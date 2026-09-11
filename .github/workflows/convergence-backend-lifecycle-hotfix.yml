@@ -14,7 +14,7 @@ jobs:
   patch-convergence-head:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'integration/brain-nonbrain-mergework-v1'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout guarded convergence head
         uses: actions/checkout@v4
@@ -30,66 +30,106 @@ jobs:
           test "$(git branch --show-current)" = "integration/brain-nonbrain-mergework-v1"
           test "$(git branch --show-current)" != "main"
 
-      - name: Apply exact lifecycle, canonical-agent, and Brain authority fixes
+      - name: Apply idempotent convergence hardening patch
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          server_path = Path('app_api/server.py')
-          server = server_path.read_text(encoding='utf-8')
+          def replace_once_or_keep(text: str, old: str, new: str, label: str) -> str:
+              if new in text:
+                  return text
+              if text.count(old) != 1:
+                  raise SystemExit(f"{label} mismatch; refusing unsafe patch")
+              return text.replace(old, new, 1)
 
-          old_close = '''        self.run_manager.shutdown(wait=True, cancel_pending=True)\n        self.job_repository.close()\n        self.provider_preflight_repository.close()\n        self.provider_operation_repository.close()\n        self.connection_manager.close()\n        self.dynamic_tool_gateway.close()\n'''
-          new_close = '''        self.run_manager.shutdown(wait=True, cancel_pending=True)\n        for repository in (self.learning_repo, self.memory_repo, self.knowledge_repo):\n            close_repository = getattr(repository, "close", None)\n            if callable(close_repository):\n                close_repository()\n        self.job_repository.close()\n        self.provider_preflight_repository.close()\n        self.provider_operation_repository.close()\n        self.connection_manager.close()\n        self.dynamic_tool_gateway.close()\n'''
-          if server.count(old_close) != 1:
-              raise SystemExit('backend close block mismatch; refusing unsafe patch')
-          server = server.replace(old_close, new_close, 1)
+          server_path = Path("app_api/server.py")
+          server = server_path.read_text(encoding="utf-8")
+
+          old_job_path = '''def get_job_store_file_path() -> Path:\n    """Return the durable queue database in the canonical per-user runtime directory."""\n    return get_backend_state_file_path().with_name("jobs.sqlite3")\n'''
+          receipt_path = '''def get_receipt_store_file_path() -> Path:\n    """Return the durable execution receipt / intent journal database path."""\n    return get_backend_state_file_path().with_name("execution_receipts.sqlite3")\n'''
+          if receipt_path not in server:
+              if server.count(old_job_path) != 1:
+                  raise SystemExit("job path helper mismatch; refusing unsafe receipt-path patch")
+              server = server.replace(old_job_path, old_job_path + "\n\n" + receipt_path, 1)
+
+          server = replace_once_or_keep(
+              server,
+              "        self.receipt_repo = ExecutionReceiptRepository()\n",
+              "        self.receipt_repo = ExecutionReceiptRepository(\n            database_path=get_receipt_store_file_path()\n        )\n",
+              "receipt repository composition",
+          )
+
+          close_legacy = '''        self.run_manager.shutdown(wait=True, cancel_pending=True)\n        self.job_repository.close()\n        self.provider_preflight_repository.close()\n        self.provider_operation_repository.close()\n        self.connection_manager.close()\n        self.dynamic_tool_gateway.close()\n'''
+          close_repo_hardened = '''        self.run_manager.shutdown(wait=True, cancel_pending=True)\n        for repository in (self.learning_repo, self.memory_repo, self.knowledge_repo):\n            close_repository = getattr(repository, "close", None)\n            if callable(close_repository):\n                close_repository()\n        self.job_repository.close()\n        self.provider_preflight_repository.close()\n        self.provider_operation_repository.close()\n        self.connection_manager.close()\n        self.dynamic_tool_gateway.close()\n'''
+          close_final = '''        self.run_manager.shutdown(wait=True, cancel_pending=True)\n        for repository in (self.learning_repo, self.memory_repo, self.knowledge_repo):\n            close_repository = getattr(repository, "close", None)\n            if callable(close_repository):\n                close_repository()\n        self.job_repository.close()\n        self.provider_preflight_repository.close()\n        self.provider_operation_repository.close()\n        self.connection_manager.close()\n        self.dynamic_tool_gateway.close()\n        self.receipt_repo.close()\n'''
+          if close_final not in server:
+              if close_repo_hardened in server:
+                  server = server.replace(close_repo_hardened, close_final, 1)
+              elif close_legacy in server:
+                  server = server.replace(close_legacy, close_final, 1)
+              else:
+                  raise SystemExit("backend close block mismatch; refusing unsafe lifecycle patch")
 
           old_agents = '"permanent_agents": ["cmo", "intelligence", "strategist", "creative", "performance"]'
           new_agents = '"permanent_agents": ["cmo", "intelligence", "content", "creative", "performance"]'
-          if server.count(old_agents) != 1:
-              raise SystemExit('canonical agent status block mismatch; refusing unsafe patch')
-          server = server.replace(old_agents, new_agents, 1)
-          server_path.write_text(server, encoding='utf-8')
+          if new_agents not in server:
+              if server.count(old_agents) != 1:
+                  raise SystemExit("canonical agent status block mismatch; refusing unsafe patch")
+              server = server.replace(old_agents, new_agents, 1)
+          server_path.write_text(server, encoding="utf-8")
 
-          test_path = Path('tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py')
-          test = test_path.read_text(encoding='utf-8')
+          job_test_path = Path("tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py")
+          job_test = job_test_path.read_text(encoding="utf-8")
           old_env = '            env = {"APPDATA": tmpdir, "LOCALAPPDATA": tmpdir}\n'
           new_env = '''            env = {\n                "APPDATA": tmpdir,\n                "LOCALAPPDATA": tmpdir,\n                "AI_MARKETING_KNOWLEDGE_EPHEMERAL": "0",\n                "AI_MARKETING_MEMORY_EPHEMERAL": "0",\n                "AI_MARKETING_LEARNING_EPHEMERAL": "0",\n            }\n'''
-          if test.count(old_env) != 1:
-              raise SystemExit('durability test env block mismatch; refusing unsafe patch')
-          test = test.replace(old_env, new_env, 1)
+          if new_env not in job_test:
+              if job_test.count(old_env) != 1:
+                  raise SystemExit("durability test env block mismatch; refusing unsafe patch")
+              job_test = job_test.replace(old_env, new_env, 1)
 
-          old_first_close = '                first.close()\n\n                second = DepartmentAppBackend()\n'
-          new_first_close = '''                first.close()\n                for repository in (first.learning_repo, first.memory_repo, first.knowledge_repo):\n                    self.assertIsNone(\n                        getattr(repository, "_connection", None),\n                        "DepartmentAppBackend.close() must release every owned durable SQLite repository.",\n                    )\n\n                second = DepartmentAppBackend()\n'''
-          if test.count(old_first_close) != 1:
-              raise SystemExit('durability first-close block mismatch; refusing unsafe patch')
-          test = test.replace(old_first_close, new_first_close, 1)
-          test_path.write_text(test, encoding='utf-8')
+          lifecycle_assertion = '''                for repository in (first.learning_repo, first.memory_repo, first.knowledge_repo):\n                    self.assertIsNone(\n                        getattr(repository, "_connection", None),\n                        "DepartmentAppBackend.close() must release every owned durable SQLite repository.",\n                    )\n'''
+          if lifecycle_assertion not in job_test:
+              old_first_close = '                first.close()\n\n                second = DepartmentAppBackend()\n'
+              if job_test.count(old_first_close) != 1:
+                  raise SystemExit("durability first-close block mismatch; refusing unsafe patch")
+              job_test = job_test.replace(
+                  old_first_close,
+                  "                first.close()\n" + lifecycle_assertion + "\n                second = DepartmentAppBackend()\n",
+                  1,
+              )
+          job_test_path.write_text(job_test, encoding="utf-8")
 
-          action_path = Path('brain/action_policy.py')
-          action = action_path.read_text(encoding='utf-8')
+          action_path = Path("brain/action_policy.py")
+          action = action_path.read_text(encoding="utf-8")
           old_authorize = '''def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:\n    """Validated V1 structural runtime veto policy.\n\n    This function intentionally preserves the already-qualified ToolGateway V1\n    behavior. Semantic Decision provenance is enforced by\n    :func:`authorize_action_intent` and will be wired into runtime separately.\n    """\n\n    if not isinstance(intent, RuntimeActionIntent):\n        raise ValueError("intent must be RuntimeActionIntent")\n    return ActionAuthorization(\n        intent_id=intent.intent_id,\n        disposition=ActionDisposition.ALLOW,\n        reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",\n    )\n'''
-          new_authorize = '''def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:\n    """Fail closed for legacy operational authority while preserving perception.\n\n    ToolGateway creates ``BRAIN-ACTION-*`` identities only when no canonical\n    semantic ``ActionIntent`` / ``DecisionEvaluationRequest`` was supplied.\n    Such structural-only authority may bootstrap read-only epistemic acquisition\n    (OBSERVE/ANALYZE), but it must never authorize CREATE, PUBLISH, FILE_DATA,\n    or any consequential dispatch. Those operations require the canonical\n    semantic authority channel before this structural veto is evaluated.\n    """\n\n    if not isinstance(intent, RuntimeActionIntent):\n        raise ValueError("intent must be RuntimeActionIntent")\n\n    legacy_structural_only = intent.intent_id.startswith("BRAIN-ACTION-")\n    if legacy_structural_only and (\n        intent.consequential\n        or intent.capability_category not in {"OBSERVE", "ANALYZE"}\n    ):\n        return ActionAuthorization(\n            intent_id=intent.intent_id,\n            disposition=ActionDisposition.BLOCK,\n            reason=(\n                "BRAIN_SEMANTIC_AUTHORITY_REQUIRED: structural-only legacy "\n                "authority cannot authorize generative, file/data, publishing, "\n                "or consequential execution."\n            ),\n        )\n\n    return ActionAuthorization(\n        intent_id=intent.intent_id,\n        disposition=ActionDisposition.ALLOW,\n        reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",\n    )\n'''
-          if action.count(old_authorize) != 1:
-              raise SystemExit('Brain authorize_action block mismatch; refusing unsafe patch')
-          action = action.replace(old_authorize, new_authorize, 1)
-          action_path.write_text(action, encoding='utf-8')
+          new_authorize = '''def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:\n    """Fail closed for legacy operational authority while preserving perception.\n\n    ToolGateway creates ``BRAIN-ACTION-*`` identities only when no canonical\n    semantic ``ActionIntent`` / ``DecisionEvaluationRequest`` was supplied.\n    Structural-only authority may bootstrap read-only epistemic acquisition\n    (OBSERVE/ANALYZE), but it cannot authorize CREATE, PUBLISH, FILE_DATA, or\n    any consequential dispatch. Those operations require canonical semantic\n    authority before this structural veto is evaluated.\n    """\n\n    if not isinstance(intent, RuntimeActionIntent):\n        raise ValueError("intent must be RuntimeActionIntent")\n\n    legacy_structural_only = intent.intent_id.startswith("BRAIN-ACTION-")\n    if legacy_structural_only and (\n        intent.consequential\n        or intent.capability_category not in {"OBSERVE", "ANALYZE"}\n    ):\n        return ActionAuthorization(\n            intent_id=intent.intent_id,\n            disposition=ActionDisposition.BLOCK,\n            reason=(\n                "BRAIN_SEMANTIC_AUTHORITY_REQUIRED: structural-only legacy "\n                "authority cannot authorize generative, file/data, publishing, "\n                "or consequential execution."\n            ),\n        )\n\n    return ActionAuthorization(\n        intent_id=intent.intent_id,\n        disposition=ActionDisposition.ALLOW,\n        reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",\n    )\n'''
+          action = replace_once_or_keep(action, old_authorize, new_authorize, "Brain authorize_action")
+          action_path.write_text(action, encoding="utf-8")
 
-          authority_test = Path('tests/test_brain_legacy_tool_authority_boundary_v1.py')
-          if authority_test.exists():
-              raise SystemExit('authority boundary test already exists; refusing ambiguous overwrite')
-          authority_test.write_text('''"""Adversarial boundary for legacy structural ToolGateway authority.\n\nRead-only epistemic acquisition must remain available to bootstrap evidence.\nGenerative, file/data, publishing, and consequential operations must require the\ncanonical semantic ActionIntent + DecisionEvaluationRequest channel.\n"""\n\nfrom __future__ import annotations\n\nimport unittest\n\nfrom brain.action_policy import (\n    ActionDisposition,\n    RuntimeActionIntent,\n    authorize_action,\n)\n\n\nclass BrainLegacyToolAuthorityBoundaryV1Tests(unittest.TestCase):\n    @staticmethod\n    def _intent(\n        *,\n        intent_id: str = "BRAIN-ACTION-REQ-1",\n        category: str,\n        consequential: bool,\n    ) -> RuntimeActionIntent:\n        return RuntimeActionIntent(\n            intent_id=intent_id,\n            run_id="RUN-AUTH-1",\n            agent_id="intelligence" if category == "OBSERVE" else "cmo",\n            capability_id="boundary_test_capability",\n            capability_category=category,\n            risk_level="LOW" if not consequential else "HIGH",\n            human_approval_required=consequential,\n            consequential=consequential,\n        )\n\n    def test_legacy_read_only_observation_can_bootstrap_evidence(self) -> None:\n        result = authorize_action(\n            self._intent(category="OBSERVE", consequential=False)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n    def test_legacy_read_only_analysis_can_bootstrap_telemetry(self) -> None:\n        result = authorize_action(\n            self._intent(category="ANALYZE", consequential=False)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n    def test_legacy_create_without_semantic_authority_is_blocked(self) -> None:\n        result = authorize_action(\n            self._intent(category="CREATE", consequential=False)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.BLOCK)\n        self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n\n    def test_legacy_publish_is_blocked_even_before_approval_policy(self) -> None:\n        result = authorize_action(\n            self._intent(category="PUBLISH", consequential=True)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.BLOCK)\n        self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n\n    def test_bound_semantic_identity_reaches_structural_gate(self) -> None:\n        result = authorize_action(\n            self._intent(\n                intent_id="AI-CANONICAL-BOUND-1",\n                category="CREATE",\n                consequential=False,\n            )\n        )\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n\nif __name__ == "__main__":\n    unittest.main()\n''', encoding='utf-8')
+          authority_test = Path("tests/test_brain_legacy_tool_authority_boundary_v1.py")
+          if not authority_test.exists():
+              authority_test.write_text('''"""Adversarial boundary for legacy structural ToolGateway authority.\n\nRead-only epistemic acquisition can bootstrap evidence. Generative, file/data,\npublishing, and consequential operations require canonical semantic authority.\n"""\n\nfrom __future__ import annotations\n\nimport unittest\n\nfrom brain.action_policy import ActionDisposition, RuntimeActionIntent, authorize_action\n\n\nclass BrainLegacyToolAuthorityBoundaryV1Tests(unittest.TestCase):\n    @staticmethod\n    def _intent(*, intent_id: str = "BRAIN-ACTION-REQ-1", category: str, consequential: bool) -> RuntimeActionIntent:\n        return RuntimeActionIntent(\n            intent_id=intent_id,\n            run_id="RUN-AUTH-1",\n            agent_id="intelligence" if category == "OBSERVE" else "cmo",\n            capability_id="boundary_test_capability",\n            capability_category=category,\n            risk_level="LOW" if not consequential else "HIGH",\n            human_approval_required=consequential,\n            consequential=consequential,\n        )\n\n    def test_legacy_read_only_observation_can_bootstrap_evidence(self) -> None:\n        result = authorize_action(self._intent(category="OBSERVE", consequential=False))\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n    def test_legacy_read_only_analysis_can_bootstrap_telemetry(self) -> None:\n        result = authorize_action(self._intent(category="ANALYZE", consequential=False))\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n    def test_legacy_create_without_semantic_authority_is_blocked(self) -> None:\n        result = authorize_action(self._intent(category="CREATE", consequential=False))\n        self.assertEqual(result.disposition, ActionDisposition.BLOCK)\n        self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n\n    def test_legacy_publish_is_blocked_even_before_approval_policy(self) -> None:\n        result = authorize_action(self._intent(category="PUBLISH", consequential=True))\n        self.assertEqual(result.disposition, ActionDisposition.BLOCK)\n        self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n\n    def test_bound_semantic_identity_reaches_structural_gate(self) -> None:\n        result = authorize_action(\n            self._intent(intent_id="AI-CANONICAL-BOUND-1", category="CREATE", consequential=False)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n\nif __name__ == "__main__":\n    unittest.main()\n''', encoding="utf-8")
+
+          receipt_test = Path("tests/test_production_receipt_restart_durability_adversarial_v1.py")
+          if not receipt_test.exists():
+              receipt_test.write_text('''"""Production composition must persist execution receipts across restart.\n\nExecution receipts and consequential pre-dispatch intents are execution evidence,\nso the application composition root must not leave their repository in RAM.\n"""\n\nfrom __future__ import annotations\n\nimport os\nimport tempfile\nimport unittest\nfrom pathlib import Path\nfrom unittest.mock import patch\n\nfrom app_api.server import DepartmentAppBackend\nfrom tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus\n\n\nclass ProductionReceiptRestartDurabilityAdversarialV1Tests(unittest.TestCase):\n    def test_receipt_repository_is_durable_closed_and_recovered(self) -> None:\n        with tempfile.TemporaryDirectory() as tmpdir:\n            env = {\n                "APPDATA": tmpdir,\n                "LOCALAPPDATA": tmpdir,\n                "AI_MARKETING_KNOWLEDGE_EPHEMERAL": "0",\n                "AI_MARKETING_MEMORY_EPHEMERAL": "0",\n                "AI_MARKETING_LEARNING_EPHEMERAL": "0",\n            }\n            with patch.dict(os.environ, env, clear=False):\n                first = DepartmentAppBackend()\n                first_repo = first.receipt_repo\n                self.assertTrue(first_repo.durable)\n                self.assertIsNotNone(first_repo.database_path)\n                assert first_repo.database_path is not None\n                self.assertTrue(first_repo.database_path.is_relative_to(Path(tmpdir).resolve()))\n\n                saved = first_repo.save_receipt(\n                    ExecutionReceipt(\n                        run_id="RUN-RECEIPT-RESTART-1",\n                        agent_id="intelligence",\n                        capability_id="web_search",\n                        provider="test-provider",\n                        request_hash="receipt-restart-hash",\n                        status=ExecutionStatus.BLOCKED,\n                        execution_mode=ExecutionMode.MOCK,\n                        error_class="TEST_BLOCK",\n                        error_message="durability probe",\n                    )\n                )\n                first_path = first_repo.database_path\n                first.close()\n                self.assertTrue(first_repo._closed)\n\n                second = DepartmentAppBackend()\n                try:\n                    self.assertTrue(second.receipt_repo.durable)\n                    self.assertEqual(second.receipt_repo.database_path, first_path)\n                    restored = second.receipt_repo.get_receipt(saved.execution_id)\n                    self.assertIsNotNone(restored)\n                    assert restored is not None\n                    self.assertEqual(restored.run_id, "RUN-RECEIPT-RESTART-1")\n                    self.assertEqual(restored.error_class, "TEST_BLOCK")\n                finally:\n                    second.close()\n\n\nif __name__ == "__main__":\n    unittest.main()\n''', encoding="utf-8")
           PY
 
-      - name: Validate targeted lifecycle, authority boundary, and syntax
+      - name: Validate targeted lifecycle, receipt durability, authority boundary, and syntax
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q app_api/server.py brain/action_policy.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py tests/test_brain_legacy_tool_authority_boundary_v1.py
+          python -m compileall -q \
+            app_api/server.py \
+            brain/action_policy.py \
+            tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py \
+            tests/test_production_receipt_restart_durability_adversarial_v1.py \
+            tests/test_brain_legacy_tool_authority_boundary_v1.py
           python -m unittest -v \
             tests.test_app_backend_durable_job_store_wiring_adversarial_v1 \
+            tests.test_production_receipt_restart_durability_adversarial_v1 \
             tests.test_brain_legacy_tool_authority_boundary_v1 \
             tests.test_brain_runtime_canonical_action_intent_handoff_v1 \
             tests.test_brain_canonical_action_intent_tool_gateway_v1
@@ -98,11 +138,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm .github/workflows/convergence-backend-lifecycle-hotfix.yml
+          rm -f .github/workflows/convergence-backend-lifecycle-hotfix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app_api/server.py brain/action_policy.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py tests/test_brain_legacy_tool_authority_boundary_v1.py .github/workflows/convergence-backend-lifecycle-hotfix.yml
+          git add -A
           git diff --cached --check
-          git commit -m "fix(convergence): close backend resources and fail closed legacy action authority"
+          if git diff --cached --quiet; then
+            echo "No patch remains to commit."
+            exit 0
+          fi
+          git commit -m "fix(convergence): harden durable execution authority lifecycle"
           test "$(git branch --show-current)" = "integration/brain-nonbrain-mergework-v1"
           git push origin HEAD:integration/brain-nonbrain-mergework-v1
