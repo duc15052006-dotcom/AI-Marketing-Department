@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Audit exact convergence target
+      - name: Checkout exact convergence target
         shell: bash
         run: |
           set -euo pipefail
@@ -28,27 +28,96 @@ jobs:
           echo "AUDIT_TARGET=$(git rev-parse HEAD)"
           test "$(git rev-parse HEAD)" = "$TARGET"
 
-          echo '=== PHYSICAL AGENT DIRECTORIES ==='
-          find .agents/agents -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
-          test "$(find .agents/agents -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 5
-          test ! -e .agents/agents/strategist
+      - name: Audit legacy Brain authority
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import subprocess
 
-          echo '=== CANONICAL STRATEGIST AUTHORITY PATTERNS (must be empty) ==='
-          if git grep -nE 'BrainAgentId\.STRATEGIST|AgentId\.STRATEGIST|STRATEGIST[[:space:]]*=[[:space:]]*["'"']STRATEGIST["'"']|supported_agents=.*strategist' -- '*.py' '*.json' '*.yml' '*.yaml'; then
-            echo 'FORBIDDEN_CANONICAL_STRATEGIST_AUTHORITY_FOUND=1'
-            exit 1
-          else
-            echo 'FORBIDDEN_CANONICAL_STRATEGIST_AUTHORITY_FOUND=0'
-          fi
+          TARGET = "d4bfe0ebb3a93d1f96510a8f23bbdf3899ae9350"
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          assert head == TARGET, (head, TARGET)
 
-          echo '=== ALL STRATEGIST TEXT RESIDUE ==='
-          git grep -nEi 'strategist' -- ':!*.md' ':!docs/**' ':!artifacts/**' ':!evidence/**' || true
+          agent_root = Path(".agents/agents")
+          agent_dirs = sorted(p.name for p in agent_root.iterdir() if p.is_dir())
+          print("=== PHYSICAL AGENT DIRECTORIES ===")
+          for name in agent_dirs:
+              print(name)
+          assert agent_dirs == ["cmo", "content", "creative", "intelligence", "performance"], agent_dirs
+          assert not (agent_root / "strategist").exists()
 
-          echo '=== LEGACY ID NORMALIZATION SURFACES ==='
-          git grep -nE 'STRATEGIST|COPYWRITER' -- '*.py' '*.json' '*.yml' '*.yaml' || true
+          suffixes = {".py", ".json", ".yml", ".yaml"}
+          ignored_parts = {".git", "docs", "artifacts", "evidence"}
+          scanned = []
+          for path in Path(".").rglob("*"):
+              if not path.is_file() or path.suffix.lower() not in suffixes:
+                  continue
+              if any(part in ignored_parts for part in path.parts):
+                  continue
+              try:
+                  text = path.read_text(encoding="utf-8")
+              except UnicodeDecodeError:
+                  continue
+              scanned.append((path, text))
 
-          echo '=== BRAIN/AGENT CHANGES FROM PRE-CONTENT STACK BASE TO CERTIFIED BRAIN ==='
-          git diff --name-status b51010d85cb4d3342e9451fe953299301e925b42 fcb9042ee4dd3dc1d8261bb75f1ea8ae3873d2b3 -- brain .agents agents integrations/models tools tests | sed -n '1,240p'
+          forbidden_patterns = {
+              "BrainAgentId.STRATEGIST": re.compile(r"BrainAgentId\.STRATEGIST", re.I),
+              "AgentId.STRATEGIST": re.compile(r"(?<!Brain)AgentId\.STRATEGIST", re.I),
+              "canonical STRATEGIST enum assignment": re.compile(r"^\s*STRATEGIST\s*=\s*['\"]STRATEGIST['\"]", re.I | re.M),
+              "strategist supported_agents": re.compile(r"supported_agents\s*=.*strategist", re.I),
+          }
+          forbidden_hits = []
+          for path, text in scanned:
+              for label, pattern in forbidden_patterns.items():
+                  for match in pattern.finditer(text):
+                      line = text.count("\n", 0, match.start()) + 1
+                      forbidden_hits.append((str(path), line, label, match.group(0)))
 
-          echo '=== OLD STRATEGIST PATH HISTORY FROM PRE-CONTENT STACK BASE TO CERTIFIED BRAIN ==='
-          git diff --name-status b51010d85cb4d3342e9451fe953299301e925b42 fcb9042ee4dd3dc1d8261bb75f1ea8ae3873d2b3 -- .agents/agents/strategist .agents/agents/content || true
+          print("=== CANONICAL STRATEGIST AUTHORITY PATTERNS ===")
+          if forbidden_hits:
+              for hit in forbidden_hits:
+                  print(":".join(map(str, hit)))
+          else:
+              print("FORBIDDEN_CANONICAL_STRATEGIST_AUTHORITY_FOUND=0")
+
+          print("=== ALL STRATEGIST TEXT RESIDUE (code/config only) ===")
+          strategist_hits = []
+          for path, text in scanned:
+              for lineno, line in enumerate(text.splitlines(), 1):
+                  if "strategist" in line.lower():
+                      strategist_hits.append((str(path), lineno, line.strip()))
+          for hit in strategist_hits:
+              print(f"{hit[0]}:{hit[1]}:{hit[2]}")
+          print(f"STRATEGIST_RESIDUE_COUNT={len(strategist_hits)}")
+
+          print("=== LEGACY ID NORMALIZATION SURFACES ===")
+          legacy_hits = []
+          for path, text in scanned:
+              for lineno, line in enumerate(text.splitlines(), 1):
+                  if "STRATEGIST" in line or "COPYWRITER" in line:
+                      legacy_hits.append((str(path), lineno, line.strip()))
+          for hit in legacy_hits:
+              print(f"{hit[0]}:{hit[1]}:{hit[2]}")
+          print(f"LEGACY_ID_HIT_COUNT={len(legacy_hits)}")
+
+          print("=== BRAIN/AGENT CHANGES FROM PRE-CONTENT STACK BASE TO CERTIFIED BRAIN ===")
+          diff = subprocess.check_output([
+              "git", "diff", "--name-status",
+              "b51010d85cb4d3342e9451fe953299301e925b42",
+              "fcb9042ee4dd3dc1d8261bb75f1ea8ae3873d2b3",
+              "--", "brain", ".agents", "agents", "integrations/models", "tools", "tests"
+          ], text=True)
+          print("\n".join(diff.splitlines()[:240]))
+
+          print("=== OLD STRATEGIST/CONTENT PATH HISTORY ===")
+          role_diff = subprocess.check_output([
+              "git", "diff", "--name-status",
+              "b51010d85cb4d3342e9451fe953299301e925b42",
+              "fcb9042ee4dd3dc1d8261bb75f1ea8ae3873d2b3",
+              "--", ".agents/agents/strategist", ".agents/agents/content"
+          ], text=True)
+          print(role_diff)
+
+          if forbidden_hits:
+              raise SystemExit("Forbidden canonical Strategist authority remains")
