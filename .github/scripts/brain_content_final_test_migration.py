@@ -99,6 +99,35 @@ audit = audit.replace("Strategist must be invoked", "Content must be invoked")
 audit_path.write_text(audit, encoding="utf-8")
 print(f"tests/test_collaboration_integrity_audit.py: migrated {legacy_call_count} legacy stage call(s)")
 
+# The canonical Content stage preserves agent-derived prose in content_strategy.
+# CMO owns positioning/commercial strategy, so active tests must not require the
+# removed Strategist-specific positioning field or look for Content fields under
+# master_gtm_plan.strategy (which is the CMO-initial output).
+replace(
+    "tests/test_collaboration_integrity_audit.py",
+    'ctx.stage_outputs["content"]["positioning"]',
+    'ctx.stage_outputs["content"]["content_strategy"]',
+    exact=2,
+)
+replace(
+    "tests/test_collaboration_integrity_audit.py",
+    'ctx.stage_outputs["content"]["field_origins"]["positioning"]',
+    'ctx.stage_outputs["content"]["field_origins"]["content_strategy"]',
+    exact=1,
+)
+replace(
+    "tests/test_collaboration_integrity_audit.py",
+    'plan["strategy"]["value_propositions"]',
+    'plan["content"]["value_propositions"]',
+    exact=1,
+)
+replace(
+    "tests/test_collaboration_integrity_audit.py",
+    'plan["strategy"]["field_origins"]["positioning"]',
+    'plan["content"]["field_origins"]["content_strategy"]',
+    exact=1,
+)
+
 # Instrument the method execute_run actually calls, not the deprecated shim.
 replace(
     "tests/test_prod_core_authority_01a.py",
