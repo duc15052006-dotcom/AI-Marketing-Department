@@ -14,7 +14,7 @@ jobs:
   patch-convergence-head:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'integration/brain-nonbrain-mergework-v1'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout guarded convergence head
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
           test "$(git branch --show-current)" = "integration/brain-nonbrain-mergework-v1"
           test "$(git branch --show-current)" != "main"
 
-      - name: Apply exact backend lifecycle and canonical-agent fixes
+      - name: Apply exact lifecycle, canonical-agent, and Brain authority fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -67,14 +67,32 @@ jobs:
               raise SystemExit('durability first-close block mismatch; refusing unsafe patch')
           test = test.replace(old_first_close, new_first_close, 1)
           test_path.write_text(test, encoding='utf-8')
+
+          action_path = Path('brain/action_policy.py')
+          action = action_path.read_text(encoding='utf-8')
+          old_authorize = '''def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:\n    """Validated V1 structural runtime veto policy.\n\n    This function intentionally preserves the already-qualified ToolGateway V1\n    behavior. Semantic Decision provenance is enforced by\n    :func:`authorize_action_intent` and will be wired into runtime separately.\n    """\n\n    if not isinstance(intent, RuntimeActionIntent):\n        raise ValueError("intent must be RuntimeActionIntent")\n    return ActionAuthorization(\n        intent_id=intent.intent_id,\n        disposition=ActionDisposition.ALLOW,\n        reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",\n    )\n'''
+          new_authorize = '''def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:\n    """Fail closed for legacy operational authority while preserving perception.\n\n    ToolGateway creates ``BRAIN-ACTION-*`` identities only when no canonical\n    semantic ``ActionIntent`` / ``DecisionEvaluationRequest`` was supplied.\n    Such structural-only authority may bootstrap read-only epistemic acquisition\n    (OBSERVE/ANALYZE), but it must never authorize CREATE, PUBLISH, FILE_DATA,\n    or any consequential dispatch. Those operations require the canonical\n    semantic authority channel before this structural veto is evaluated.\n    """\n\n    if not isinstance(intent, RuntimeActionIntent):\n        raise ValueError("intent must be RuntimeActionIntent")\n\n    legacy_structural_only = intent.intent_id.startswith("BRAIN-ACTION-")\n    if legacy_structural_only and (\n        intent.consequential\n        or intent.capability_category not in {"OBSERVE", "ANALYZE"}\n    ):\n        return ActionAuthorization(\n            intent_id=intent.intent_id,\n            disposition=ActionDisposition.BLOCK,\n            reason=(\n                "BRAIN_SEMANTIC_AUTHORITY_REQUIRED: structural-only legacy "\n                "authority cannot authorize generative, file/data, publishing, "\n                "or consequential execution."\n            ),\n        )\n\n    return ActionAuthorization(\n        intent_id=intent.intent_id,\n        disposition=ActionDisposition.ALLOW,\n        reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",\n    )\n'''
+          if action.count(old_authorize) != 1:
+              raise SystemExit('Brain authorize_action block mismatch; refusing unsafe patch')
+          action = action.replace(old_authorize, new_authorize, 1)
+          action_path.write_text(action, encoding='utf-8')
+
+          authority_test = Path('tests/test_brain_legacy_tool_authority_boundary_v1.py')
+          if authority_test.exists():
+              raise SystemExit('authority boundary test already exists; refusing ambiguous overwrite')
+          authority_test.write_text('''"""Adversarial boundary for legacy structural ToolGateway authority.\n\nRead-only epistemic acquisition must remain available to bootstrap evidence.\nGenerative, file/data, publishing, and consequential operations must require the\ncanonical semantic ActionIntent + DecisionEvaluationRequest channel.\n"""\n\nfrom __future__ import annotations\n\nimport unittest\n\nfrom brain.action_policy import (\n    ActionDisposition,\n    RuntimeActionIntent,\n    authorize_action,\n)\n\n\nclass BrainLegacyToolAuthorityBoundaryV1Tests(unittest.TestCase):\n    @staticmethod\n    def _intent(\n        *,\n        intent_id: str = "BRAIN-ACTION-REQ-1",\n        category: str,\n        consequential: bool,\n    ) -> RuntimeActionIntent:\n        return RuntimeActionIntent(\n            intent_id=intent_id,\n            run_id="RUN-AUTH-1",\n            agent_id="intelligence" if category == "OBSERVE" else "cmo",\n            capability_id="boundary_test_capability",\n            capability_category=category,\n            risk_level="LOW" if not consequential else "HIGH",\n            human_approval_required=consequential,\n            consequential=consequential,\n        )\n\n    def test_legacy_read_only_observation_can_bootstrap_evidence(self) -> None:\n        result = authorize_action(\n            self._intent(category="OBSERVE", consequential=False)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n    def test_legacy_read_only_analysis_can_bootstrap_telemetry(self) -> None:\n        result = authorize_action(\n            self._intent(category="ANALYZE", consequential=False)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n    def test_legacy_create_without_semantic_authority_is_blocked(self) -> None:\n        result = authorize_action(\n            self._intent(category="CREATE", consequential=False)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.BLOCK)\n        self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n\n    def test_legacy_publish_is_blocked_even_before_approval_policy(self) -> None:\n        result = authorize_action(\n            self._intent(category="PUBLISH", consequential=True)\n        )\n        self.assertEqual(result.disposition, ActionDisposition.BLOCK)\n        self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n\n    def test_bound_semantic_identity_reaches_structural_gate(self) -> None:\n        result = authorize_action(\n            self._intent(\n                intent_id="AI-CANONICAL-BOUND-1",\n                category="CREATE",\n                consequential=False,\n            )\n        )\n        self.assertEqual(result.disposition, ActionDisposition.ALLOW)\n\n\nif __name__ == "__main__":\n    unittest.main()\n''', encoding='utf-8')
           PY
 
-      - name: Validate targeted lifecycle and syntax
+      - name: Validate targeted lifecycle, authority boundary, and syntax
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q app_api/server.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py
-          python -m unittest -v tests.test_app_backend_durable_job_store_wiring_adversarial_v1
+          python -m compileall -q app_api/server.py brain/action_policy.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py tests/test_brain_legacy_tool_authority_boundary_v1.py
+          python -m unittest -v \
+            tests.test_app_backend_durable_job_store_wiring_adversarial_v1 \
+            tests.test_brain_legacy_tool_authority_boundary_v1 \
+            tests.test_brain_runtime_canonical_action_intent_handoff_v1 \
+            tests.test_brain_canonical_action_intent_tool_gateway_v1
 
       - name: Remove temporary workflow and commit guarded patch
         shell: bash
@@ -83,8 +101,8 @@ jobs:
           rm .github/workflows/convergence-backend-lifecycle-hotfix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app_api/server.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py .github/workflows/convergence-backend-lifecycle-hotfix.yml
+          git add app_api/server.py brain/action_policy.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py tests/test_brain_legacy_tool_authority_boundary_v1.py .github/workflows/convergence-backend-lifecycle-hotfix.yml
           git diff --cached --check
-          git commit -m "fix(runtime): release backend repositories on shutdown"
+          git commit -m "fix(convergence): close backend resources and fail closed legacy action authority"
           test "$(git branch --show-current)" = "integration/brain-nonbrain-mergework-v1"
           git push origin HEAD:integration/brain-nonbrain-mergework-v1
