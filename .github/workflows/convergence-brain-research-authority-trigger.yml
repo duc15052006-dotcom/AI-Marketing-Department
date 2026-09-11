@@ -44,7 +44,6 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import textwrap
 
           workflow = Path('.github/workflows/convergence-brain-research-authority-apply.yml').read_text(encoding='utf-8')
           start_marker = "          python - <<'PY'\n"
@@ -53,10 +52,21 @@ jobs:
               raise SystemExit('Brain research authority patch markers changed; refusing unsafe extraction')
           start = workflow.index(start_marker) + len(start_marker)
           end = workflow.index(end_marker, start)
-          patch_code = textwrap.dedent(workflow[start:end])
-          compile(patch_code, '<brain-research-authority-patch>', 'exec')
+          raw_patch = workflow[start:end]
+          prefix = "          "
+          lines = raw_patch.splitlines()
+          bad = [line for line in lines if line and not line.startswith(prefix)]
+          if bad:
+              raise SystemExit(
+                  'Brain research authority patch indentation contract changed; refusing unsafe extraction'
+              )
+          patch_code = "\n".join(
+              line[len(prefix):] if line else ""
+              for line in lines
+          ) + "\n"
+          compiled = compile(patch_code, '<brain-research-authority-patch>', 'exec')
           namespace = {'__name__': '__main__'}
-          exec(compile(patch_code, '<brain-research-authority-patch>', 'exec'), namespace, namespace)
+          exec(compiled, namespace, namespace)
           PY
 
       - name: Validate Brain research authority migration
