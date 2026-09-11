@@ -1,0 +1,68 @@
+name: Convergence Hotfix Dependency Bootstrap
+
+on:
+  pull_request:
+    branches:
+      - integration/brain-nonbrain-convergence-v1
+    paths:
+      - ".github/workflows/convergence-hotfix-dependency-bootstrap.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-hotfix-workflow:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'integration/brain-nonbrain-mergework-v1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact triggering convergence SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify branch and stale-run guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.event.pull_request.head.ref }}" = "integration/brain-nonbrain-mergework-v1"
+          test "${{ github.event.pull_request.head.sha }}" = "$(git rev-parse HEAD)"
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
+          test "${{ github.event.pull_request.head.ref }}" != "main"
+
+      - name: Add repository dependency bootstrap to hotfix validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/convergence-backend-lifecycle-hotfix.yml')
+          text = path.read_text(encoding='utf-8')
+          anchor = '      - name: Validate durability, recovery, control plane, lineage, publish compatibility, and syntax\n'
+          install = '''      - name: Install repository test dependencies\n        shell: bash\n        run: |\n          set -euo pipefail\n          python -m pip install --disable-pip-version-check -r requirements.txt\n\n'''
+          if install not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit('validation anchor mismatch; refusing unsafe workflow patch')
+              text = text.replace(anchor, install + anchor, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit guarded workflow repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/convergence-backend-lifecycle-hotfix.yml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "Dependency bootstrap already present."
+            exit 0
+          fi
+          git commit -m "ci(convergence): bootstrap hotfix test dependencies"
+          git push origin HEAD:integration/brain-nonbrain-mergework-v1
