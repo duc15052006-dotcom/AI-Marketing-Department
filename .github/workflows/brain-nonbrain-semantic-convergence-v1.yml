@@ -1,0 +1,110 @@
+name: Brain Non-Brain Semantic Convergence V1
+
+on:
+  push:
+    branches:
+      - integration/brain-nonbrain-mergework-v1
+    paths:
+      - .github/workflows/brain-nonbrain-semantic-convergence-v1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merge-work history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: integration/brain-nonbrain-mergework-v1
+
+      - name: Reconcile certified overlap semantically
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+
+          BRAIN = "fcb9042ee4dd3dc1d8261bb75f1ea8ae3873d2b3"
+
+          def show(path: str) -> str:
+              return subprocess.check_output(
+                  ["git", "show", f"{BRAIN}:{path}"],
+                  text=True,
+                  encoding="utf-8",
+              )
+
+          # 1) Registry: canonical CONTENT identity comes from certified Brain;
+          # explicit-only fallback authority comes from certified non-Brain.
+          registry_path = Path("integrations/models/registry.py")
+          registry = show(str(registry_path))
+          implicit_fallback = '''    fallback_chain: List[ModelTarget] = Field(
+              default_factory=lambda: [
+                  ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
+                  ModelTarget(provider_id="gemini", model_id="gemini-flash-latest"),
+              ]
+          )'''
+          explicit_only = '    fallback_chain: List[ModelTarget] = Field(default_factory=list)'
+          assert registry.count(implicit_fallback) == 1, "unexpected Brain fallback block"
+          registry = registry.replace(implicit_fallback, explicit_only, 1)
+          assert 'STRATEGIST = "STRATEGIST"' not in registry
+          assert 'CONTENT = "CONTENT"' in registry
+          assert registry.count('fallback_chain: List[ModelTarget] = Field(default_factory=list)') == 1
+          registry_path.write_text(registry, encoding="utf-8")
+
+          # 2) Capabilities: certified Brain owns canonical CONTENT routing;
+          # certified non-Brain owns truthful MOCK_ONLY media availability.
+          cap_path = Path("tools/capabilities.py")
+          capabilities = show(str(cap_path))
+          providers = (
+              "image_gen_adapter",
+              "image_edit_adapter",
+              "video_gen_adapter",
+              "video_edit_adapter",
+          )
+          for provider in providers:
+              needle = f'                provider="{provider}",\n'
+              replacement = needle + '                availability="MOCK_ONLY",\n'
+              assert capabilities.count(needle) == 1, f"unexpected provider marker: {provider}"
+              capabilities = capabilities.replace(needle, replacement, 1)
+          assert '"strategist"' not in capabilities.lower()
+          for provider in providers:
+              marker = f'provider="{provider}",\n                availability="MOCK_ONLY",'
+              assert marker in capabilities
+          cap_path.write_text(capabilities, encoding="utf-8")
+
+          # 3) Preserve the certified non-Brain transient-probe regression test,
+          # while migrating the two canonical identity expectations to CONTENT.
+          test_path = Path("tests/test_prod_model_settings_01.py")
+          test_text = test_path.read_text(encoding="utf-8")
+          old_doc = "Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE)."
+          new_doc = "Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE)."
+          assert test_text.count(old_doc) == 1, "unexpected identity doc contract"
+          test_text = test_text.replace(old_doc, new_doc, 1)
+          old_set = '{"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"}'
+          new_set = '{"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"}'
+          assert test_text.count(old_set) == 1, "unexpected allowed-agent expectation"
+          test_text = test_text.replace(old_set, new_set, 1)
+          assert "expected_global_target" in test_text, "non-Brain transient probe regression was lost"
+          test_path.write_text(test_text, encoding="utf-8")
+
+          # Static contract checks before committing.
+          compile(registry, str(registry_path), "exec")
+          compile(capabilities, str(cap_path), "exec")
+          compile(test_text, str(test_path), "exec")
+
+      - name: Commit semantic convergence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add integrations/models/registry.py tools/capabilities.py tests/test_prod_model_settings_01.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No semantic convergence changes to commit."
+            exit 0
+          fi
+          git commit -m "fix(convergence): preserve Brain identity and runtime authority"
+          git push origin HEAD:integration/brain-nonbrain-mergework-v1
