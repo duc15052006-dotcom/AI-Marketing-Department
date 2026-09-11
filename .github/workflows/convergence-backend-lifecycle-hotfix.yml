@@ -16,19 +16,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout guarded convergence head
+      - name: Checkout exact triggering convergence SHA
         uses: actions/checkout@v4
         with:
-          ref: integration/brain-nonbrain-mergework-v1
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Verify branch guard
+      - name: Verify branch and stale-run guards
         shell: bash
         run: |
           set -euo pipefail
           test "${{ github.event.pull_request.head.ref }}" = "integration/brain-nonbrain-mergework-v1"
-          test "$(git branch --show-current)" = "integration/brain-nonbrain-mergework-v1"
-          test "$(git branch --show-current)" != "main"
+          test "${{ github.event.pull_request.head.sha }}" = "$(git rev-parse HEAD)"
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
+          test "${{ github.event.pull_request.head.ref }}" != "main"
 
       - name: Apply idempotent convergence hardening patch
         shell: bash
@@ -99,13 +101,6 @@ jobs:
               )
           job_test_path.write_text(job_test, encoding="utf-8")
 
-          action_path = Path("brain/action_policy.py")
-          action = action_path.read_text(encoding="utf-8")
-          old_authorize = '''def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:\n    """Validated V1 structural runtime veto policy.\n\n    This function intentionally preserves the already-qualified ToolGateway V1\n    behavior. Semantic Decision provenance is enforced by\n    :func:`authorize_action_intent` and will be wired into runtime separately.\n    """\n\n    if not isinstance(intent, RuntimeActionIntent):\n        raise ValueError("intent must be RuntimeActionIntent")\n    return ActionAuthorization(\n        intent_id=intent.intent_id,\n        disposition=ActionDisposition.ALLOW,\n        reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",\n    )\n'''
-          new_authorize = '''def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:\n    """Fail closed for legacy consequential authority without breaking local creation.\n\n    ToolGateway creates ``BRAIN-ACTION-*`` identities only when no canonical\n    semantic ``ActionIntent`` / ``DecisionEvaluationRequest`` was supplied.\n    Structural-only authority may bootstrap perception/analysis and low-risk\n    local or MOCK creation. It must not authorize PUBLISH, FILE_DATA, or any\n    capability classified as consequential by trusted registry metadata.\n    """\n\n    if not isinstance(intent, RuntimeActionIntent):\n        raise ValueError("intent must be RuntimeActionIntent")\n\n    legacy_structural_only = intent.intent_id.startswith("BRAIN-ACTION-")\n    if legacy_structural_only and (\n        intent.consequential\n        or intent.capability_category in {"PUBLISH", "FILE_DATA"}\n    ):\n        return ActionAuthorization(\n            intent_id=intent.intent_id,\n            disposition=ActionDisposition.BLOCK,\n            reason=(\n                "BRAIN_SEMANTIC_AUTHORITY_REQUIRED: structural-only legacy "\n                "authority cannot authorize publishing, file/data mutation, "\n                "or consequential execution."\n            ),\n        )\n\n    return ActionAuthorization(\n        intent_id=intent.intent_id,\n        disposition=ActionDisposition.ALLOW,\n        reason="BRAIN_ACTION_GATE_V1_STRUCTURAL_ALLOW",\n    )\n'''
-          action = replace_once_or_keep(action, old_authorize, new_authorize, "Brain authorize_action")
-          action_path.write_text(action, encoding="utf-8")
-
           engine_path = Path("runtime/engine.py")
           engine = engine_path.read_text(encoding="utf-8")
           old_helper_anchor = '''        return self.tool_gateway.execute(request, **semantic_kwargs)\n\n\n    @staticmethod\n    def _ordered_unique_scope_keys(values: List[str]) -> List[str]:\n'''
@@ -134,10 +129,6 @@ jobs:
           engine = replace_once_or_keep(engine, old_terminal_cleanup, new_terminal_cleanup, "terminal run isolation cleanup")
           engine_path.write_text(engine, encoding="utf-8")
 
-          authority_test = Path("tests/test_brain_legacy_tool_authority_boundary_v1.py")
-          if not authority_test.exists():
-              authority_test.write_text('''"""Adversarial boundary for legacy structural ToolGateway authority."""\nfrom __future__ import annotations\nimport unittest\nfrom brain.action_policy import ActionDisposition, RuntimeActionIntent, authorize_action\n\nclass BrainLegacyToolAuthorityBoundaryV1Tests(unittest.TestCase):\n    @staticmethod\n    def _intent(*, intent_id: str = "BRAIN-ACTION-REQ-1", category: str, consequential: bool) -> RuntimeActionIntent:\n        return RuntimeActionIntent(intent_id=intent_id, run_id="RUN-AUTH-1", agent_id="intelligence" if category in {"OBSERVE", "ANALYZE"} else "cmo", capability_id="boundary_test_capability", capability_category=category, risk_level="LOW" if not consequential else "HIGH", human_approval_required=consequential, consequential=consequential)\n    def test_legacy_observation_can_bootstrap_evidence(self) -> None:\n        self.assertEqual(authorize_action(self._intent(category="OBSERVE", consequential=False)).disposition, ActionDisposition.ALLOW)\n    def test_legacy_analysis_can_bootstrap_telemetry(self) -> None:\n        self.assertEqual(authorize_action(self._intent(category="ANALYZE", consequential=False)).disposition, ActionDisposition.ALLOW)\n    def test_nonconsequential_local_create_remains_available(self) -> None:\n        self.assertEqual(authorize_action(self._intent(category="CREATE", consequential=False)).disposition, ActionDisposition.ALLOW)\n    def test_consequential_create_requires_semantic_authority(self) -> None:\n        result = authorize_action(self._intent(category="CREATE", consequential=True)); self.assertEqual(result.disposition, ActionDisposition.BLOCK); self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n    def test_publish_requires_semantic_authority(self) -> None:\n        result = authorize_action(self._intent(category="PUBLISH", consequential=True)); self.assertEqual(result.disposition, ActionDisposition.BLOCK); self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n    def test_file_data_requires_semantic_authority(self) -> None:\n        result = authorize_action(self._intent(category="FILE_DATA", consequential=False)); self.assertEqual(result.disposition, ActionDisposition.BLOCK); self.assertIn("BRAIN_SEMANTIC_AUTHORITY_REQUIRED", result.reason)\n    def test_bound_semantic_identity_reaches_structural_gate(self) -> None:\n        self.assertEqual(authorize_action(self._intent(intent_id="AI-CANONICAL-BOUND-1", category="CREATE", consequential=True)).disposition, ActionDisposition.ALLOW)\n\nif __name__ == "__main__": unittest.main()\n''', encoding="utf-8")
-
           receipt_test = Path("tests/test_production_receipt_restart_durability_adversarial_v1.py")
           if not receipt_test.exists():
               receipt_test.write_text('''"""Production composition must persist execution receipts across restart."""\nfrom __future__ import annotations\nimport os, tempfile, unittest\nfrom pathlib import Path\nfrom unittest.mock import patch\nfrom app_api.server import DepartmentAppBackend\nfrom tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus\n\nclass ProductionReceiptRestartDurabilityAdversarialV1Tests(unittest.TestCase):\n    def test_receipt_repository_is_durable_closed_and_recovered(self) -> None:\n        with tempfile.TemporaryDirectory() as tmpdir:\n            env = {"APPDATA": tmpdir, "LOCALAPPDATA": tmpdir, "AI_MARKETING_KNOWLEDGE_EPHEMERAL": "0", "AI_MARKETING_MEMORY_EPHEMERAL": "0", "AI_MARKETING_LEARNING_EPHEMERAL": "0"}\n            with patch.dict(os.environ, env, clear=False):\n                first = DepartmentAppBackend(); first_repo = first.receipt_repo\n                self.assertTrue(first_repo.durable); self.assertIsNotNone(first_repo.database_path); assert first_repo.database_path is not None\n                self.assertTrue(first_repo.database_path.is_relative_to(Path(tmpdir).resolve()))\n                saved = first_repo.save_receipt(ExecutionReceipt(run_id="RUN-RECEIPT-RESTART-1", agent_id="intelligence", capability_id="web_search", provider="test-provider", request_hash="receipt-restart-hash", status=ExecutionStatus.BLOCKED, execution_mode=ExecutionMode.MOCK, error_class="TEST_BLOCK", error_message="durability probe"))\n                first_path = first_repo.database_path; first.close(); self.assertTrue(first_repo._closed)\n                second = DepartmentAppBackend()\n                try:\n                    self.assertTrue(second.receipt_repo.durable); self.assertEqual(second.receipt_repo.database_path, first_path)\n                    restored = second.receipt_repo.get_receipt(saved.execution_id); self.assertIsNotNone(restored); assert restored is not None\n                    self.assertEqual(restored.run_id, "RUN-RECEIPT-RESTART-1"); self.assertEqual(restored.error_class, "TEST_BLOCK")\n                finally: second.close()\n\nif __name__ == "__main__": unittest.main()\n''', encoding="utf-8")
@@ -147,23 +138,25 @@ jobs:
               isolation_test.write_text('''"""Adversarial regression for run-scoped lineage and transient tool-cache cleanup."""\nfrom __future__ import annotations\nimport os, unittest\nfrom unittest.mock import patch\nfrom knowledge.models import KnowledgeCitation\nfrom runtime.context import RuntimeContext, RuntimeStatus\nfrom runtime.engine import FiveAgentDepartmentRuntime\nfrom tools.capabilities import CapabilityRegistry\nfrom tools.receipts import ExecutionMode, ExecutionReceipt, ExecutionStatus\nfrom tools.tool_gateway import ToolGateway\n\nclass RuntimeRunIsolationCleanupAdversarialV1Tests(unittest.TestCase):\n    @staticmethod\n    def _receipt(run_id: str) -> ExecutionReceipt:\n        return ExecutionReceipt(run_id=run_id, agent_id="intelligence", capability_id="web_search", provider="test", request_hash=f"hash-{run_id}", status=ExecutionStatus.BLOCKED, execution_mode=ExecutionMode.MOCK)\n    def test_completed_artifact_uses_only_context_lineage_and_clears_its_transient_cache(self) -> None:\n        env = {"AI_MARKETING_KNOWLEDGE_EPHEMERAL": "1", "AI_MARKETING_MEMORY_EPHEMERAL": "1", "AI_MARKETING_LEARNING_EPHEMERAL": "1"}\n        with patch.dict(os.environ, env, clear=False):\n            runtime = FiveAgentDepartmentRuntime(tool_gateway=ToolGateway(capability_registry=CapabilityRegistry()))\n            run_id = "RUN-ISOLATION-A"; context = RuntimeContext(run_id=run_id, objective="isolation probe", status=RuntimeStatus.FAILED)\n            context.stage_outputs["final_cmo"] = {"status": "FAILED"}; context.knowledge_refs = ["CIT-CURRENT-RUN"]\n            runtime.lineage_inspector.add_citation(KnowledgeCitation(citation_id="CIT-OTHER-RUN", knowledge_id="KNOW-OTHER")); runtime._active_contexts[run_id] = context\n            own_key = f"{run_id}:intelligence:web_search:isolation probe"; other_key = "RUN-ISOLATION-B:intelligence:web_search:other"\n            runtime._executed_tool_idempotency_keys[own_key] = self._receipt(run_id); runtime._executed_tool_idempotency_keys[other_key] = self._receipt("RUN-ISOLATION-B")\n            artifact = runtime.complete_run(context)\n            self.assertEqual(artifact.lineage_summary.get("citations"), ["CIT-CURRENT-RUN"]); self.assertNotIn(own_key, runtime._executed_tool_idempotency_keys); self.assertIn(other_key, runtime._executed_tool_idempotency_keys); self.assertEqual(runtime.lineage_inspector.get_all_citations(), [])\n\nif __name__ == "__main__": unittest.main()\n''', encoding="utf-8")
           PY
 
-      - name: Validate targeted durability, authority, isolation, and syntax
+      - name: Validate targeted durability, isolation, publish compatibility, and syntax
         shell: bash
         run: |
           set -euo pipefail
-          python -m compileall -q app_api/server.py brain/action_policy.py runtime/engine.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py tests/test_production_receipt_restart_durability_adversarial_v1.py tests/test_brain_legacy_tool_authority_boundary_v1.py tests/test_runtime_run_isolation_cleanup_adversarial_v1.py
+          python -m compileall -q app_api/server.py runtime/engine.py tests/test_app_backend_durable_job_store_wiring_adversarial_v1.py tests/test_production_receipt_restart_durability_adversarial_v1.py tests/test_runtime_run_isolation_cleanup_adversarial_v1.py
           python -m unittest -v \
             tests.test_app_backend_durable_job_store_wiring_adversarial_v1 \
             tests.test_production_receipt_restart_durability_adversarial_v1 \
-            tests.test_brain_legacy_tool_authority_boundary_v1 \
+            tests.test_runtime_run_isolation_cleanup_adversarial_v1 \
             tests.test_brain_runtime_canonical_action_intent_handoff_v1 \
             tests.test_brain_canonical_action_intent_tool_gateway_v1 \
-            tests.test_runtime_run_isolation_cleanup_adversarial_v1
+            tests.test_phase6_1_v1_connectors_and_workspace.TestPhase61V1ConnectorsAndWorkspace.test_adv_22_lineage_trace_validity_for_approved_publish
 
       - name: Remove temporary workflow and commit guarded patch
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
           rm -f .github/workflows/convergence-backend-lifecycle-hotfix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -174,5 +167,4 @@ jobs:
             exit 0
           fi
           git commit -m "fix(convergence): harden durable execution and run isolation"
-          test "$(git branch --show-current)" = "integration/brain-nonbrain-mergework-v1"
           git push origin HEAD:integration/brain-nonbrain-mergework-v1
