@@ -74,7 +74,7 @@ jobs:
           set -euo pipefail
           python -m compileall -q runtime/engine.py tests/test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1.py
           python -m unittest -v tests.test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1
-          python -m unittest discover -s tests -p 'test_creative_prerequisite_tool_gate_v1.py' -v
+          python -m unittest -v tests.test_creative_prerequisite_tool_gate_adversarial_v1
 
       - name: Commit source-only hardening
         shell: bash
