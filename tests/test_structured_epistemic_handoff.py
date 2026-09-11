@@ -64,13 +64,19 @@ class StructuredScriptedGateway(UniversalModelGateway):
 
     @classmethod
     def _bind_current_evidence_ref(cls, payload, prompt):
-        """Bind test payloads to a real receipt exposed in the current stage prompt.
+        """Bind test payloads to a REAL observation receipt exposed in the prompt.
 
         Production receipts intentionally use unpredictable EXEC-* identities.
-        The adversarial test must cite the receipt actually issued for this run
-        rather than relying on the historical deterministic TOOL-RUN-DEPT-001 id.
+        Only Live Tool Observation receipts are eligible to support factual
+        handoff claims. GENERATIVE/ACTION receipts may also be visible in a
+        stage prompt, but selecting one merely because it appears first would
+        weaken the production evidence-role boundary and make this fixture
+        order-dependent.
         """
-        refs = re.findall(r"\bEXEC-[A-F0-9]{12}\b", str(prompt or "").upper())
+        refs = re.findall(
+            r"LIVE TOOL OBSERVATION[^\n]*?RECEIPT:\s*(EXEC-[A-F0-9]{12})",
+            str(prompt or "").upper(),
+        )
         current_ref = refs[0] if refs else None
 
         def replace(value):
@@ -258,7 +264,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
         strat_h = ctx.stage_outputs["content"]["handoff"]["hypotheses"]
         self.assertEqual(strat_h[0]["epistemic_type"], "HYPOTHESIS")
 
-    # 10. creative claim retains cited source ids/evidence refs
+    # 10. creative claim retains source binding to a deployable observation receipt
     def test_10_creative_claim_keeps_source_binding(self):
         gw = StructuredScriptedGateway(replies={
             "creative": (
@@ -270,7 +276,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
         })
         rt, ctx, final_out, artifact = run_pipeline(gw, real_adapter=True)
         claims = ctx.stage_outputs["creative"]["handoff"]["claims"]
-        expected_ref = ctx.stage_outputs["creative"]["visual_asset_receipt"]
+        expected_ref = ctx.stage_outputs["intelligence"]["search_receipt_id"]
         self.assertEqual(claims[0]["source_ids"], ["SRC-LAB-1"])
         self.assertEqual(claims[0]["evidence_refs"], [expected_ref])
         self.assertEqual(claims[0]["verification"], "SOURCE_BACKED")
