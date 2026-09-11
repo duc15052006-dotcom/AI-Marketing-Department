@@ -67,7 +67,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("final_cmo", "Final Governed Go-To-Market"),
         ("performance", "Performance Marketing & Analytics Director"),
         ("creative", "Creative Director"),
-        ("content", "Marketing Strategist"),
+        ("content", "Content ASI"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
     ]

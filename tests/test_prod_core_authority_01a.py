@@ -289,7 +289,7 @@ class TestDefect2DualExecutionAuthority(unittest.TestCase):
         for stage_name, attr in [
             ("cmo_initial", "execute_stage_cmo_initial"),
             ("intelligence", "execute_stage_intelligence"),
-            ("content", "execute_stage_strategist"),
+            ("content", "execute_stage_content"),
             ("creative", "execute_stage_creative"),
             ("performance", "execute_stage_performance"),
             ("final_cmo", "execute_stage_final_cmo"),
@@ -918,7 +918,7 @@ class TestStageFailureShortCircuitIntegration(unittest.TestCase):
         stages_executed: List[str] = []
         for stage_name, attr in [
             ("intelligence", "execute_stage_intelligence"),
-            ("content", "execute_stage_strategist"),
+            ("content", "execute_stage_content"),
             ("creative", "execute_stage_creative"),
             ("performance", "execute_stage_performance"),
         ]:

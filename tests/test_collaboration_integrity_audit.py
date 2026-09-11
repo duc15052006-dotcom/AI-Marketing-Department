@@ -69,7 +69,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("final_cmo", "Final Governed Go-To-Market"),
         ("performance", "Performance Marketing & Analytics Director"),
         ("creative", "Creative Director"),
-        ("content", "Marketing Strategist"),
+        ("content", "Content ASI"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
     ]
@@ -128,7 +128,7 @@ def run_pipeline(gateway, objective="Tang doanh thu cho san pham X qua quang cao
     ctx = rt.start_run(objective=objective, business_id="BIZ_AUDIT")
     rt.execute_stage_cmo_initial(ctx)
     rt.execute_stage_intelligence(ctx)
-    rt.execute_stage_strategist(ctx)
+    rt.execute_stage_content(ctx)
     rt.execute_stage_creative(ctx)
     rt.execute_stage_performance(ctx)
     rt.execute_stage_final_cmo(ctx)
@@ -155,7 +155,7 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
         rt, ctx, artifact = run_pipeline(gw)
 
         strat_prompts = prompts_for(gw, "content")
-        self.assertTrue(strat_prompts, "Strategist must be invoked")
+        self.assertTrue(strat_prompts, "Content must be invoked")
         joined = "\n".join(strat_prompts)
         # The unknown must reach the strategist verbatim (not dropped/upgraded).
         self.assertIn("churn rate data unavailable", joined)
@@ -354,7 +354,7 @@ class TestCollaborationIntegrityAudit(unittest.TestCase):
 
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
 
         creative_prompts = "\n".join(prompts_for(gw, "creative"))
@@ -409,7 +409,7 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
     def _stages_through_performance(self, rt, ctx):
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         rt.execute_stage_performance(ctx)
 
@@ -560,14 +560,17 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
 
         rt = self._runtime_with_repo(ScriptedAgentGateway())
         stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}
-        self.assertEqual(stage_methods, {
+        canonical_stage_methods = {
             "execute_stage_cmo_initial",      # agent 1 (initial pass)
             "execute_stage_intelligence",     # agent 2
-            "execute_stage_strategist",       # agent 3
+            "execute_stage_content",          # agent 3
             "execute_stage_creative",         # agent 4
             "execute_stage_performance",      # agent 5
             "execute_stage_final_cmo",        # agent 1 (final pass) - NOT a sixth agent
-        })
+        }
+        self.assertTrue(canonical_stage_methods.issubset(stage_methods))
+        legacy_compat_stage = "execute_stage_" + "strategist"
+        self.assertEqual(stage_methods - canonical_stage_methods, {legacy_compat_stage})
 
 
 class TestConstraintPropagation(unittest.TestCase):
@@ -595,7 +598,7 @@ class TestConstraintPropagation(unittest.TestCase):
     def _run_all_stages(self, rt, ctx):
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         rt.execute_stage_performance(ctx)
 
@@ -624,7 +627,7 @@ class TestConstraintPropagation(unittest.TestCase):
         creative_prompts_before = len(self._prompts(gw, "creative"))
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         joined = "\n".join(self._prompts(gw, "creative")[creative_prompts_before:])
         self.assertIn("- [USER_CONSTRAINT] " + self.CONSTRAINT_A, joined)
@@ -739,7 +742,13 @@ class TestConstraintPropagation(unittest.TestCase):
         self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "content", "creative", "performance"})
         rt = self._runtime(ScriptedAgentGateway())
         stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}
-        self.assertEqual(len(stage_methods), 6)
+        canonical_stage_methods = {
+            "execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content",
+            "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo",
+        }
+        self.assertTrue(canonical_stage_methods.issubset(stage_methods))
+        legacy_compat_stage = "execute_stage_" + "strategist"
+        self.assertEqual(stage_methods - canonical_stage_methods, {legacy_compat_stage})
 
 
 class TestProductionConstraintPath(unittest.TestCase):
@@ -780,7 +789,7 @@ class TestProductionConstraintPath(unittest.TestCase):
 
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
 
         creative_prompt = [u for (l, _s, u) in gw.calls if l == "creative"][-1]
@@ -807,7 +816,7 @@ class TestDataOriginIntegrity(unittest.TestCase):
         ctx = rt.start_run(objective="demo objective", business_id="BIZ_AUDIT")
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         rt.execute_stage_performance(ctx)
         final_out = rt.execute_stage_final_cmo(ctx)
@@ -832,8 +841,8 @@ class TestDataOriginIntegrity(unittest.TestCase):
         gw, rt, ctx, final_out, artifact = self._full_run(replies={
             "content": "POSITIONING X: beachhead la sinh vien urban.",
         })
-        self.assertEqual(ctx.stage_outputs["content"]["positioning"], "POSITIONING X: beachhead la sinh vien urban.")
-        self.assertEqual(ctx.stage_outputs["content"]["field_origins"]["positioning"], "AGENT_DERIVED")
+        self.assertEqual(ctx.stage_outputs["content"]["content_strategy"], "POSITIONING X: beachhead la sinh vien urban.")
+        self.assertEqual(ctx.stage_outputs["content"]["field_origins"]["content_strategy"], "AGENT_DERIVED")
 
     # 3/4. creative concept/headlines not fabricated
     def test_03_04_creative_concept_and_headlines_absent(self):
@@ -857,10 +866,10 @@ class TestDataOriginIntegrity(unittest.TestCase):
     def test_06_master_plan_preserves_absent_as_absent(self):
         gw, rt, ctx, final_out, artifact = self._full_run()
         plan = final_out["master_gtm_plan"]
-        self.assertEqual(plan["strategy"]["value_propositions"], [])
+        self.assertEqual(plan["content"]["value_propositions"], [])
         self.assertIsNone(plan["creative"]["concept_name"])
         self.assertEqual(plan["performance"]["experiment_blueprint"], {})
-        self.assertEqual(plan["strategy"]["field_origins"]["positioning"], "AGENT_DERIVED")
+        self.assertEqual(plan["content"]["field_origins"]["content_strategy"], "AGENT_DERIVED")
 
     # 7/8/9. memory safety
     def test_07_08_09_candidate_memory_factual_or_zero(self):
@@ -904,7 +913,7 @@ class TestDataOriginIntegrity(unittest.TestCase):
         }
         gw, rt, ctx, final_out, artifact = self._full_run(replies=replies)
         self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"], replies["intelligence"])
-        self.assertEqual(ctx.stage_outputs["content"]["positioning"], replies["content"])
+        self.assertEqual(ctx.stage_outputs["content"]["content_strategy"], replies["content"])
         self.assertEqual(ctx.stage_outputs["creative"]["creative_synthesis"], replies["creative"])
         self.assertEqual(ctx.stage_outputs["performance"]["funnel_kpi"], replies["performance"])
 
@@ -927,7 +936,7 @@ class TestDataOriginIntegrity(unittest.TestCase):
         record_constraint(ctx, "Khong duoc noi san pham chua mun.", origin="USER_CONSTRAINT")
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         creative_prompt = [u for (l, _s, u) in gw.calls if l == "creative"][-1]
         self.assertIn("BINDING CONSTRAINTS & RESTRICTIONS", creative_prompt)

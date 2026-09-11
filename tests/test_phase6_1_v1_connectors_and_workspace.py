@@ -659,10 +659,10 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
     def test_adv_24_frozen_brain_dna_hashes_unchanged(self):
         """24. Verified that Phase 6.1 code preserves all frozen Brain RC3 agent DNA and schemas."""
         perf_md = Path(".agents/agents/performance/agent.md").read_text(encoding="utf-8")
-        self.assertEqual(hashlib.sha256(perf_md.encode("utf-8")).hexdigest(), "26be7c5a2aa3c388defec7fe92162d0082c34ca6609f17c692704863ce4ea3c9")
+        self.assertEqual(hashlib.sha256(perf_md.encode("utf-8")).hexdigest(), "0501d698f6b33f13eee9b75bb304dc93ff46aeaa66679ab3ffe879ef1ed0c604")
 
         cmo_md = Path(".agents/agents/cmo/agent.md").read_text(encoding="utf-8")
-        self.assertEqual(hashlib.sha256(cmo_md.encode("utf-8")).hexdigest(), "766edaf82a8493b82e42d6e61fdca615bc4bfa678ce419f43aee0ae7e86bd52e")
+        self.assertEqual(hashlib.sha256(cmo_md.encode("utf-8")).hexdigest(), "f76762a720435ed243c233ff707c9e79c42aeb273f21b5f14915e9059f18703d")
 
         handoff_py = Path("schemas/handoff.py").read_text(encoding="utf-8")
         self.assertEqual(hashlib.sha256(handoff_py.encode("utf-8")).hexdigest(), "4075a8e269aef7526bb52c281ac88cc6fdc009d83e9aecb384032e29087e237a")

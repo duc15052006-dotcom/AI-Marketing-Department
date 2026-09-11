@@ -305,7 +305,7 @@ class TestModelExecutionBridge(unittest.TestCase):
         self.assertEqual(summary.traces[0].from_agent, AgentRole.CMO)
         self.assertEqual(summary.traces[0].to_agent, AgentRole.INTELLIGENCE)
         self.assertEqual(summary.traces[1].from_agent, AgentRole.INTELLIGENCE)
-        self.assertEqual(summary.traces[1].to_agent, AgentRole.STRATEGIST)
+        self.assertEqual(summary.traces[1].to_agent, AgentRole.CONTENT)
 
 
 if __name__ == "__main__":
