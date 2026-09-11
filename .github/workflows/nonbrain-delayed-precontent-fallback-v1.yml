@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - test/nonbrain-delayed-precontent-fallback-red-v1
-      - fix/nonbrain-delayed-precontent-fallback-v1
   workflow_dispatch:
 
 permissions:
