@@ -39,15 +39,15 @@ jobs:
           # explicit-only fallback authority comes from certified non-Brain.
           registry_path = Path("integrations/models/registry.py")
           registry = show(str(registry_path))
-          implicit_fallback = '''    fallback_chain: List[ModelTarget] = Field(
-              default_factory=lambda: [
-                  ModelTarget(provider_id="xkiro", model_id="mistralai/mistral-large-2512"),
-                  ModelTarget(provider_id="gemini", model_id="gemini-flash-latest"),
-              ]
-          )'''
-          explicit_only = '    fallback_chain: List[ModelTarget] = Field(default_factory=list)'
-          assert registry.count(implicit_fallback) == 1, "unexpected Brain fallback block"
-          registry = registry.replace(implicit_fallback, explicit_only, 1)
+          fallback_start = '    fallback_chain: List[ModelTarget] = Field(\n'
+          next_field = '    timeout_seconds: float = 60.0\n'
+          assert registry.count(fallback_start) == 1, "unexpected Brain fallback field"
+          start = registry.index(fallback_start)
+          end = registry.index(next_field, start)
+          old_block = registry[start:end]
+          assert 'default_factory=lambda:' in old_block, "Brain fallback is not the expected implicit policy"
+          assert 'gemini-flash-latest' in old_block, "expected historical implicit fallback is missing"
+          registry = registry[:start] + '    fallback_chain: List[ModelTarget] = Field(default_factory=list)\n' + registry[end:]
           assert 'STRATEGIST = "STRATEGIST"' not in registry
           assert 'CONTENT = "CONTENT"' in registry
           assert registry.count('fallback_chain: List[ModelTarget] = Field(default_factory=list)') == 1
@@ -68,14 +68,15 @@ jobs:
               replacement = needle + '                availability="MOCK_ONLY",\n'
               assert capabilities.count(needle) == 1, f"unexpected provider marker: {provider}"
               capabilities = capabilities.replace(needle, replacement, 1)
-          assert '"strategist"' not in capabilities.lower()
+          assert 'supported_agents=["intelligence", "strategist"' not in capabilities.lower()
+          assert 'supported_agents=["creative", "strategist"' not in capabilities.lower()
           for provider in providers:
               marker = f'provider="{provider}",\n                availability="MOCK_ONLY",'
               assert marker in capabilities
           cap_path.write_text(capabilities, encoding="utf-8")
 
-          # 3) Preserve the certified non-Brain transient-probe regression test,
-          # while migrating the two canonical identity expectations to CONTENT.
+          # 3) Preserve certified non-Brain transient-probe regression coverage,
+          # while migrating canonical identity expectations to CONTENT.
           test_path = Path("tests/test_prod_model_settings_01.py")
           test_text = test_path.read_text(encoding="utf-8")
           old_doc = "Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE)."
@@ -89,7 +90,6 @@ jobs:
           assert "expected_global_target" in test_text, "non-Brain transient probe regression was lost"
           test_path.write_text(test_text, encoding="utf-8")
 
-          # Static contract checks before committing.
           compile(registry, str(registry_path), "exec")
           compile(capabilities, str(cap_path), "exec")
           compile(test_text, str(test_path), "exec")
