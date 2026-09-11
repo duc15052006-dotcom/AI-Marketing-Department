@@ -44,6 +44,30 @@ class RuntimeUpstreamFailedZeroToolDispatchConvergenceV1Tests(unittest.TestCase)
         self.assertEqual([], context.execution_receipt_refs)
         runtime._execute_tool_request.assert_not_called()
 
+    def test_content_does_not_mutate_lineage_after_intelligence_failure(self) -> None:
+        runtime = self._runtime()
+        runtime._build_stage_lineage_context = MagicMock(
+            side_effect=AssertionError('lineage retrieval must not occur after known upstream failure')
+        )
+        runtime.context_compiler = MagicMock()
+        runtime._call_agent_llm = MagicMock(
+            side_effect=AssertionError('model invocation must not occur after known upstream failure')
+        )
+        context = self._failed_context('RUN-UPSTREAM-FAILED-CONTENT-CONV', 'intelligence')
+        sentinel = {'upstream-source': {'origin': 'preexisting'}}
+        context.working_state['provenance_index'] = dict(sentinel)
+
+        output = runtime.execute_stage_content(context)
+
+        self.assertEqual('FAILED', output['status'])
+        self.assertEqual('PREVIOUS_STAGE_FAILED', output['error'])
+        self.assertEqual([], output['citations'])
+        self.assertEqual(sentinel, context.working_state['provenance_index'])
+        runtime._build_stage_lineage_context.assert_not_called()
+        runtime.context_compiler.compile_grounded_package.assert_not_called()
+        runtime._call_agent_llm.assert_not_called()
+        runtime._execute_tool_request.assert_not_called()
+
     def test_creative_does_not_generate_asset_after_content_failure(self) -> None:
         runtime = self._runtime()
         context = self._failed_context('RUN-UPSTREAM-FAILED-CREATIVE-CONV', 'content')

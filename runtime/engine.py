@@ -1378,6 +1378,33 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Content (Messaging & Editorial Architecture)",
             )
 
+        # Content prerequisite is terminal before lineage/context mutation.
+        # If Intelligence already failed, Content must not derive downstream
+        # citations/provenance or invoke the model.
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("intelligence", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="CONTENT",
+                    agent="CONTENT",
+                    message="Giai đoạn Content thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "CONTENT",
+                "agent": "content",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "content_strategy": "",
+                "target_segments": [],
+                "value_propositions": [],
+                "citations": [],
+            }
+            context.stage_outputs["content"] = output
+            context.create_checkpoint()
+            return output
+
         k_res, m_res = self._build_stage_lineage_context("content", context, include_memory=True)
 
         # Grounded Context Compilation is the authoritative model-input boundary.
