@@ -1102,6 +1102,7 @@ class UniversalModelGateway:
             # 5. Execute Streaming with Fallback Semantics
             candidate_visible_content = False
             candidate_terminal_seen = False
+            candidate_fallback_error: Optional[ModelStreamError] = None
             stream_gen = None
 
             try:
@@ -1428,6 +1429,19 @@ class UniversalModelGateway:
                                 self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
                             elif internal_code in (ProviderErrorCode.TIMEOUT, ProviderErrorCode.NETWORK_ERROR):
                                 self.update_provider_health(cand_provider, ProviderHealth.UNAVAILABLE)
+                            if not candidate_visible_content:
+                                last_error = terminal_err
+                                last_error_provider = cand_provider
+                                last_error_model = cand_model
+                                if strict_model_pin or len(candidates) == 1:
+                                    yield normalize_public_stream_delta(
+                                        StreamDelta(content="", finish_reason="error", error=terminal_err),
+                                        cand_provider,
+                                        cand_model,
+                                    )
+                                    return
+                                candidate_fallback_error = terminal_err
+                                break
                             if delta.content:
                                 yield normalize_public_stream_delta(
                                     StreamDelta(content=delta.content, finish_reason=None),
@@ -1449,6 +1463,9 @@ class UniversalModelGateway:
                             return
                     else:
                         yield normalize_public_stream_delta(delta, cand_provider, cand_model)
+
+                if candidate_fallback_error is not None:
+                    continue
 
                 # 6. Generator finished. Check if candidate finished without a terminal delta (Silent EOF)!
                 if not candidate_terminal_seen:
