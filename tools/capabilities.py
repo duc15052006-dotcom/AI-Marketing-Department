@@ -162,7 +162,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["intelligence", "content", "cmo"],
+                supported_agents=["intelligence", "strategist", "cmo"],
                 semantic_needs=["MARKET_RESEARCH"],
                 provider="search_adapter",
                 timeout_policy=15.0,
@@ -178,7 +178,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["intelligence", "content", "cmo"],
+                supported_agents=["intelligence", "strategist", "cmo"],
                 semantic_needs=["MARKET_RESEARCH"],
                 provider="http_adapter",
                 timeout_policy=20.0,
@@ -212,7 +212,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["creative", "content", "cmo"],
+                supported_agents=["creative", "strategist", "cmo"],
                 semantic_needs=["TEXT_CREATION"],
                 provider="creative_text_adapter",
                 timeout_policy=30.0,
@@ -231,6 +231,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["IMAGE_GENERATION"],
                 provider="image_gen_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=45.0,
             )
         )
@@ -247,6 +248,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["IMAGE_EDITING"],
                 provider="image_edit_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=30.0,
             )
         )
@@ -263,6 +265,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["VIDEO_GENERATION"],
                 provider="video_gen_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=60.0,
             )
         )
@@ -279,6 +282,7 @@ class CapabilityRegistry:
                 supported_agents=["creative", "cmo"],
                 semantic_needs=["VIDEO_EDITING"],
                 provider="video_edit_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=60.0,
             )
         )
@@ -344,7 +348,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY, PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["performance", "cmo"],
+                supported_agents=["performance", "cmo", "strategist"],
                 semantic_needs=["PERFORMANCE_TELEMETRY"],
                 provider="analytics_adapter",
                 timeout_policy=20.0,
@@ -360,7 +364,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["performance", "cmo"],
+                supported_agents=["performance", "cmo", "strategist"],
                 semantic_needs=["KPI_COMPUTATION"],
                 provider="kpi_calc_adapter",
                 timeout_policy=15.0,
@@ -392,7 +396,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["performance", "cmo"],
+                supported_agents=["performance", "cmo", "strategist"],
                 semantic_needs=["EXPERIMENT_ANALYSIS"],
                 provider="stats_analysis_adapter",
                 timeout_policy=20.0,
@@ -410,7 +414,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["cmo", "intelligence", "content", "creative", "performance"],
+                supported_agents=["cmo", "intelligence", "strategist", "creative", "performance"],
                 semantic_needs=["WORKSPACE_READ"],
                 provider="file_io_adapter",
                 timeout_policy=10.0,
@@ -442,7 +446,7 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["cmo", "intelligence", "performance", "content"],
+                supported_agents=["cmo", "intelligence", "performance", "strategist"],
                 semantic_needs=["STRUCTURED_DATA_QUERY"],
                 provider="db_storage_adapter",
                 timeout_policy=20.0,
