@@ -23,7 +23,6 @@ env:
 
 jobs:
   apply-and-verify:
-    if: github.event.head_commit.message != 'fix(models): fallback after delayed precontent stream error'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
