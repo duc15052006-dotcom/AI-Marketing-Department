@@ -121,7 +121,7 @@ class TestApplicationizationV1(unittest.TestCase):
         self.assertEqual(data["app_name"], "AI Marketing Department")
         self.assertEqual(data["brain_version"], "FIVE_AGENT_BRAIN_V1_RC3")
         self.assertEqual(data["permanent_agent_count"], 5)
-        self.assertEqual(data["permanent_agents"], ["cmo", "intelligence", "strategist", "creative", "performance"])
+        self.assertEqual(data["permanent_agents"], ["cmo", "intelligence", "content", "creative", "performance"])
 
     def test_connector_health_api_zero_secret_exposure(self):
         """Verify /api/system/health returns sanitized statuses with zero API keys or secrets."""
