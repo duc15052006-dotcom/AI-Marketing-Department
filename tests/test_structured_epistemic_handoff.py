@@ -8,6 +8,7 @@ extraction/validation. No prose-regex heuristics, no second model call.
 """
 
 import json
+import re
 import unittest
 
 from integrations.models.gateway import UniversalModelGateway
@@ -36,6 +37,8 @@ def fence(payload: dict) -> str:
 class StructuredScriptedGateway(UniversalModelGateway):
     """Scripted gateway; reply values may be str OR (text, structured_payload)."""
 
+    CURRENT_EVIDENCE_REF = "__CURRENT_EVIDENCE_REF__"
+
     MARKERS = [
         ("final_cmo", "Final Governed Go-To-Market"),
         ("performance", "Performance Marketing & Analytics Director"),
@@ -59,10 +62,35 @@ class StructuredScriptedGateway(UniversalModelGateway):
                 return label
         return "unknown"
 
+    @classmethod
+    def _bind_current_evidence_ref(cls, payload, prompt):
+        """Bind test payloads to a real receipt exposed in the current stage prompt.
+
+        Production receipts intentionally use unpredictable EXEC-* identities.
+        The adversarial test must cite the receipt actually issued for this run
+        rather than relying on the historical deterministic TOOL-RUN-DEPT-001 id.
+        """
+        refs = re.findall(r"\bEXEC-[A-F0-9]{12}\b", str(prompt or "").upper())
+        current_ref = refs[0] if refs else None
+
+        def replace(value):
+            if isinstance(value, str):
+                if value == cls.CURRENT_EVIDENCE_REF and current_ref:
+                    return current_ref
+                return value
+            if isinstance(value, list):
+                return [replace(item) for item in value]
+            if isinstance(value, dict):
+                return {key: replace(item) for key, item in value.items()}
+            return value
+
+        return replace(payload)
+
     def generate(self, request, **kwargs):
         from integrations.models.base import ModelResponse, ModelResponseStatus
         label = self._label(request)
-        self.calls.append((label, request.messages[-1].content))
+        current_prompt = request.messages[-1].content
+        self.calls.append((label, current_prompt))
         if label in self.fail_stages:
             return ModelResponse(
                 request_id=request.request_id, provider="structured_mock",
@@ -71,6 +99,7 @@ class StructuredScriptedGateway(UniversalModelGateway):
         reply = self.replies.get(label, f"[{label}] baseline deliverable.")
         if isinstance(reply, tuple):
             text, payload = reply
+            payload = self._bind_current_evidence_ref(payload, current_prompt)
             content = text + "\n\n" + fence(payload)
         else:
             content = reply
@@ -186,15 +215,16 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
         gw = StructuredScriptedGateway(replies={
             "intelligence": (
                 "Findings prose.", {
-                    "facts": [{"text": "Search volume up per tool", "evidence_refs": ["TOOL-RUN-DEPT-001"]}],
+                    "facts": [{"text": "Search volume up per tool", "evidence_refs": [StructuredScriptedGateway.CURRENT_EVIDENCE_REF]}],
                 }
             ),
         })
         rt, ctx, final_out, artifact = run_pipeline(gw, real_adapter=True)
         facts = ctx.stage_outputs["intelligence"]["handoff"]["facts"]
+        expected_ref = ctx.stage_outputs["intelligence"]["search_receipt_id"]
         self.assertEqual(len(facts), 1)
         self.assertEqual(facts[0]["verification"], "SOURCE_BACKED")
-        self.assertEqual(facts[0]["evidence_refs"], ["TOOL-RUN-DEPT-001"])
+        self.assertEqual(facts[0]["evidence_refs"], [expected_ref])
 
     def test_07_unsupported_fact_downgraded_not_verified(self):
         gw = StructuredScriptedGateway(replies={
@@ -234,14 +264,15 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
             "creative": (
                 "Creative prose.", {
                     "claims": [{"text": "Serum hydrates per lab test", "source_ids": ["SRC-LAB-1"],
-                                "evidence_refs": ["TOOL-RUN-DEPT-001"]}],
+                                "evidence_refs": [StructuredScriptedGateway.CURRENT_EVIDENCE_REF]}],
                 }
             ),
         })
         rt, ctx, final_out, artifact = run_pipeline(gw, real_adapter=True)
         claims = ctx.stage_outputs["creative"]["handoff"]["claims"]
+        expected_ref = ctx.stage_outputs["creative"]["visual_asset_receipt"]
         self.assertEqual(claims[0]["source_ids"], ["SRC-LAB-1"])
-        self.assertEqual(claims[0]["evidence_refs"], ["TOOL-RUN-DEPT-001"])
+        self.assertEqual(claims[0]["evidence_refs"], [expected_ref])
         self.assertEqual(claims[0]["verification"], "SOURCE_BACKED")
 
     # 11. performance receives creative claims/hypotheses structurally
