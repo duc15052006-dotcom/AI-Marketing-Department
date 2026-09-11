@@ -2,6 +2,8 @@ from pathlib import Path
 
 OLD_HASH = "26be7c5a2aa3c388defec7fe92162d0082c34ca6609f17c692704863ce4ea3c9"
 NEW_HASH = "0501d698f6b33f13eee9b75bb304dc93ff46aeaa66679ab3ffe879ef1ed0c604"
+OLD_CMO_HASH = "766edaf82a8493b82e42d6e61fdca615bc4bfa678ce419f43aee0ae7e86bd52e"
+NEW_CMO_HASH = "f76762a720435ed243c233ff707c9e79c42aeb273f21b5f14915e9059f18703d"
 
 
 def replace(path: str, old: str, new: str, *, exact: int | None = None, minimum: int = 1) -> None:
@@ -157,8 +159,10 @@ replace(
     exact=1,
 )
 
-# Performance DNA changed intentionally as part of the reviewed Content authority migration.
-for path in (
+# Performance and CMO DNA changed intentionally as part of the reviewed
+# canonical Content authority/ownership migration. Preserve frozen-hash
+# protection by pinning the reviewed canonical bytes, not the pre-migration DNA.
+frozen_hash_tests = (
     "tests/test_applicationization_v1.py",
     "tests/test_chat_first_app_v1.py",
     "tests/test_chat_persistence_v1.py",
@@ -166,10 +170,12 @@ for path in (
     "tests/test_phase5_2_runtime_integration.py",
     "tests/test_phase6_1_v1_connectors_and_workspace.py",
     "tests/test_phase6_2_pilot_and_v1_release.py",
-):
+)
+for path in frozen_hash_tests:
     replace(path, OLD_HASH, NEW_HASH)
+    replace(path, OLD_CMO_HASH, NEW_CMO_HASH, minimum=0)
 
-# Fail closed if active tests still directly require the removed canonical enum member.
+# Fail closed if active tests still directly require removed/stale contracts.
 for path in (
     "tests/test_collaboration_definition.py",
     "tests/test_model_execution_bridge.py",
@@ -177,5 +183,8 @@ for path in (
 ):
     if "AgentRole.STRATEGIST" in Path(path).read_text(encoding="utf-8"):
         raise SystemExit(f"{path}: stale AgentRole.STRATEGIST remains")
+for path in frozen_hash_tests:
+    if OLD_CMO_HASH in Path(path).read_text(encoding="utf-8"):
+        raise SystemExit(f"{path}: stale pre-Content CMO DNA hash remains")
 
 print("Canonical Content regression migration applied successfully.")
