@@ -44,8 +44,19 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import subprocess
 
-          workflow = Path('.github/workflows/convergence-brain-research-authority-apply.yml').read_text(encoding='utf-8')
+          patch_path = Path('.github/workflows/convergence-brain-research-authority-apply.yml')
+          expected_blob = '0171d9687cd13bdcbbb61527c17f7c0f8348b420'
+          actual_blob = subprocess.check_output(
+              ['git', 'hash-object', str(patch_path)], text=True
+          ).strip()
+          if actual_blob != expected_blob:
+              raise SystemExit(
+                  f'Brain research authority patch blob changed: {actual_blob}; refusing unreviewed extraction'
+              )
+
+          workflow = patch_path.read_text(encoding='utf-8')
           start_marker = "          python - <<'PY'\n"
           end_marker = "\n          PY\n\n      - name: Validate Brain research authority migration\n"
           if workflow.count(start_marker) != 1 or workflow.count(end_marker) != 1:
@@ -54,15 +65,9 @@ jobs:
           end = workflow.index(end_marker, start)
           raw_patch = workflow[start:end]
           prefix = "          "
-          lines = raw_patch.splitlines()
-          bad = [line for line in lines if line.strip() and not line.startswith(prefix)]
-          if bad:
-              raise SystemExit(
-                  'Brain research authority patch indentation contract changed; refusing unsafe extraction'
-              )
           patch_code = "\n".join(
-              line[len(prefix):] if line.strip() else ""
-              for line in lines
+              line[len(prefix):] if line.startswith(prefix) else line
+              for line in raw_patch.splitlines()
           ) + "\n"
           compiled = compile(patch_code, '<brain-research-authority-patch>', 'exec')
           namespace = {'__name__': '__main__'}
