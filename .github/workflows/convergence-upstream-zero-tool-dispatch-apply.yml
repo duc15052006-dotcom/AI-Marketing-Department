@@ -1,0 +1,170 @@
+name: Convergence Upstream Failure Zero Tool Dispatch Apply
+
+on:
+  pull_request:
+    branches:
+      - integration/brain-nonbrain-convergence-v1
+    paths:
+      - ".github/workflows/convergence-upstream-zero-tool-dispatch-apply.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-apply-source-only:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'integration/brain-nonbrain-mergework-v1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact triggering convergence SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact branch and stale-run guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.event.pull_request.head.ref }}" = "integration/brain-nonbrain-mergework-v1"
+          test "${{ github.event.pull_request.head.sha }}" = "$(git rev-parse HEAD)"
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
+          test "${{ github.event.pull_request.head.ref }}" != "main"
+
+      - name: Install repository test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Apply upstream failure zero-tool patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  if new in text:
+                      return
+                  raise SystemExit(f'anchor missing in {path}: {old[:120]!r}')
+              if text.count(old) != 1:
+                  raise SystemExit(f'anchor not unique in {path}: {old[:120]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          intelligence_anchor = '''        if emitter and not is_research_mode:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="INTELLIGENCE",\n                agent="INTELLIGENCE",\n                message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",\n            )\n\n        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)\n'''
+          intelligence_replacement = '''        if emitter and not is_research_mode:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="INTELLIGENCE",\n                agent="INTELLIGENCE",\n                message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",\n            )\n\n        # Upstream failure is authoritative before any retrieval or tool side effect.\n        # A failed CMO stage must not spend search/read quota or create receipts.\n        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":\n            context.status = RuntimeStatus.FAILED\n            if emitter:\n                emitter.emit(\n                    ProgressEventType.RUN_FAILED,\n                    stage="INTELLIGENCE",\n                    agent="INTELLIGENCE",\n                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",\n                    metadata={"error": "PREVIOUS_STAGE_FAILED"},\n                )\n            output = {\n                "stage": "INTELLIGENCE",\n                "agent": "intelligence",\n                "status": "FAILED",\n                "error": "PREVIOUS_STAGE_FAILED",\n                "market_findings": "",\n                "search_receipt_id": None,\n                "citations": [],\n            }\n            context.stage_outputs["intelligence"] = output\n            context.create_checkpoint()\n            return output\n\n        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)\n'''
+          replace_once('runtime/engine.py', intelligence_anchor, intelligence_replacement)
+
+          performance_anchor = '''        if emitter:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="PERFORMANCE",\n                agent="PERFORMANCE",\n                message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",\n            )\n\n        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)\n'''
+          performance_replacement = '''        if emitter:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="PERFORMANCE",\n                agent="PERFORMANCE",\n                message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",\n            )\n\n        # Upstream failure is authoritative before analytics retrieval.\n        # A failed Creative stage must not create telemetry receipts or spend provider quota.\n        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("creative", {}).get("status") == "FAILED":\n            context.status = RuntimeStatus.FAILED\n            if emitter:\n                emitter.emit(\n                    ProgressEventType.RUN_FAILED,\n                    stage="PERFORMANCE",\n                    agent="PERFORMANCE",\n                    message="Giai đoạn Performance thất bại do giai đoạn trước gặp sự cố",\n                    metadata={"error": "PREVIOUS_STAGE_FAILED"},\n                )\n            output = {\n                "stage": "PERFORMANCE",\n                "agent": "performance",\n                "status": "FAILED",\n                "error": "PREVIOUS_STAGE_FAILED",\n                "funnel_kpi": "",\n                "experiment_blueprint": {},\n                "analytics_receipt_id": None,\n                "analytics_data_status": "NOT_ATTEMPTED:PREVIOUS_STAGE_FAILED",\n                "calc_receipt_id": None,\n                "citations": [],\n            }\n            context.stage_outputs["performance"] = output\n            context.create_checkpoint()\n            return output\n\n        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)\n'''
+          replace_once('runtime/engine.py', performance_anchor, performance_replacement)
+
+          Path('tests/test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1.py').write_text(r'''from __future__ import annotations
+
+import threading
+import unittest
+from unittest.mock import MagicMock
+
+from runtime.context import RuntimeContext, RuntimeStatus
+from runtime.engine import FiveAgentDepartmentRuntime
+
+
+class RuntimeUpstreamFailedZeroToolDispatchConvergenceV1Tests(unittest.TestCase):
+    @staticmethod
+    def _runtime() -> FiveAgentDepartmentRuntime:
+        runtime = FiveAgentDepartmentRuntime.__new__(FiveAgentDepartmentRuntime)
+        runtime._lock = threading.Lock()
+        runtime._active_emitters = {}
+        runtime._get_emitter = lambda *_args, **_kwargs: None
+        runtime._execute_tool_request = MagicMock(side_effect=AssertionError('tool dispatch must not occur after known upstream failure'))
+        return runtime
+
+    @staticmethod
+    def _failed_context(run_id: str, upstream_stage: str) -> RuntimeContext:
+        context = RuntimeContext(
+            run_id=run_id,
+            objective='Launch a governed marketing campaign',
+            business_id='BIZ-UPSTREAM-FAILED-CONVERGENCE-V1',
+            project_id='PROJ-UPSTREAM-FAILED-CONVERGENCE-V1',
+        )
+        context.status = RuntimeStatus.FAILED
+        context.stage_outputs[upstream_stage] = {
+            'stage': upstream_stage.upper(),
+            'status': 'FAILED',
+            'error': 'UPSTREAM_TEST_FAILURE',
+        }
+        return context
+
+    def test_intelligence_does_not_search_after_cmo_failure(self) -> None:
+        runtime = self._runtime()
+        context = self._failed_context('RUN-UPSTREAM-FAILED-INT-CONV', 'cmo_initial')
+        output = runtime.execute_stage_intelligence(context)
+        self.assertEqual('FAILED', output['status'])
+        self.assertEqual('PREVIOUS_STAGE_FAILED', output['error'])
+        self.assertIsNone(output.get('search_receipt_id'))
+        self.assertEqual([], context.execution_receipt_refs)
+        runtime._execute_tool_request.assert_not_called()
+
+    def test_creative_does_not_generate_asset_after_content_failure(self) -> None:
+        runtime = self._runtime()
+        context = self._failed_context('RUN-UPSTREAM-FAILED-CREATIVE-CONV', 'content')
+        output = runtime.execute_stage_creative(context)
+        self.assertEqual('FAILED', output['status'])
+        self.assertEqual('PREVIOUS_STAGE_FAILED', output['error'])
+        self.assertIsNone(output.get('visual_asset_receipt'))
+        self.assertEqual([], context.execution_receipt_refs)
+        self.assertEqual([], context.artifact_refs)
+        runtime._execute_tool_request.assert_not_called()
+
+    def test_performance_does_not_retrieve_analytics_after_creative_failure(self) -> None:
+        runtime = self._runtime()
+        context = self._failed_context('RUN-UPSTREAM-FAILED-PERF-CONV', 'creative')
+        output = runtime.execute_stage_performance(context)
+        self.assertEqual('FAILED', output['status'])
+        self.assertEqual('PREVIOUS_STAGE_FAILED', output['error'])
+        self.assertIsNone(output.get('analytics_receipt_id'))
+        self.assertEqual('NOT_ATTEMPTED:PREVIOUS_STAGE_FAILED', output.get('analytics_data_status'))
+        self.assertEqual([], context.execution_receipt_refs)
+        runtime._execute_tool_request.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()
+''', encoding='utf-8')
+          PY
+
+      - name: Validate zero-tool dispatch hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q runtime/engine.py tests/test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1.py
+          python -m unittest -v \
+            tests.test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1 \
+            tests.test_runtime_run_isolation_cleanup_adversarial_v1 \
+            tests.test_brain_runtime_canonical_action_intent_handoff_v1
+
+      - name: Commit source-only hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/engine.py tests/test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No source changes remain to commit."
+            exit 0
+          fi
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo "Refusing workflow mutation in source-only commit" >&2
+            exit 1
+          fi
+          git commit -m "fix(runtime): block tools after upstream stage failure"
+          git push origin HEAD:integration/brain-nonbrain-mergework-v1
