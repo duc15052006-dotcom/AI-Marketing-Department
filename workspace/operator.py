@@ -149,40 +149,21 @@ class OperatorWorkspace:
 
     # 5. Reject Gated Action
     def reject_gated_action(self, run_id: str, reason: str = "Rejected by operator") -> bool:
-        """Record human rejection of a gated action."""
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.PAUSED
-        ctx.working_state["rejection_reason"] = reason
-        ctx.create_checkpoint()
-        return True
+        """Record rejection and cooperatively pause through runtime authority."""
+        return self.runtime.pause_run(
+            run_id,
+            working_state_updates={"rejection_reason": reason},
+        )
 
     # 6. Pause / Resume / Cancel
     def pause_run(self, run_id: str) -> bool:
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.PAUSED
-        ctx.create_checkpoint()
-        return True
+        return self.runtime.pause_run(run_id)
 
     def resume_run(self, run_id: str) -> bool:
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.RUNNING
-        ctx.create_checkpoint()
-        return True
+        return self.runtime.resume_run(run_id)
 
     def cancel_run(self, run_id: str, reason: str = "Cancelled by operator") -> bool:
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.CANCELLED
-        ctx.working_state["cancellation_reason"] = reason
-        ctx.create_checkpoint()
-        return True
+        return self.runtime.cancel_run(run_id, reason=reason)
 
     # 7. Complete Supervised Campaign Workflow
     def execute_supervised_campaign(

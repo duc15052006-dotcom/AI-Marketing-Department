@@ -249,6 +249,7 @@ class FiveAgentDepartmentRuntime:
         self.lineage_inspector = LineageInspector()
 
         self._lock = threading.Lock()
+        self._run_state_condition = threading.Condition(self._lock)
         self._active_contexts: Dict[str, RuntimeContext] = {}
         self._completed_runs: OrderedDict[str, DepartmentRunArtifact] = OrderedDict()
         self._active_emitters: Dict[str, ProgressEmitter] = {}
@@ -302,6 +303,15 @@ class FiveAgentDepartmentRuntime:
 
         return self.tool_gateway.execute(request, **semantic_kwargs)
 
+    def _get_cached_tool_receipt(self, key: str) -> Optional[ExecutionReceipt]:
+        """Read one run-scoped tool receipt cache entry under runtime lock."""
+        with self._lock:
+            return self._executed_tool_idempotency_keys.get(key)
+
+    def _cache_tool_receipt(self, key: str, receipt: ExecutionReceipt) -> None:
+        """Publish one run-scoped tool receipt cache entry under runtime lock."""
+        with self._lock:
+            self._executed_tool_idempotency_keys[key] = receipt
 
     @staticmethod
     def _ordered_unique_scope_keys(values: List[str]) -> List[str]:
@@ -600,16 +610,65 @@ class FiveAgentDepartmentRuntime:
         with self._lock:
             return self._completed_runs.get(run_id)
 
-    def cancel_run(self, run_id: str) -> bool:
-        """Mark an active run as CANCELLED to prevent subsequent stage execution."""
-        with self._lock:
-            self._cancelled_run_ids.add(run_id)
-            if run_id in self._active_contexts:
-                ctx = self._active_contexts[run_id]
-                ctx.status = RuntimeStatus.CANCELLED
+    def pause_run(
+        self,
+        run_id: str,
+        *,
+        working_state_updates: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Cooperatively pause an active run at the next stage boundary."""
+        with self._run_state_condition:
+            ctx = self._active_contexts.get(run_id)
+            if ctx is None or ctx.status in (
+                RuntimeStatus.COMPLETED, RuntimeStatus.FAILED, RuntimeStatus.CANCELLED
+            ):
+                return False
+            if working_state_updates:
+                ctx.working_state.update(dict(working_state_updates))
+            if ctx.status != RuntimeStatus.PAUSED:
+                ctx.status = RuntimeStatus.PAUSED
                 ctx.create_checkpoint()
-                return True
-            return False
+            self._run_state_condition.notify_all()
+            return True
+
+    def resume_run(self, run_id: str) -> bool:
+        """Resume a cooperatively paused active run."""
+        with self._run_state_condition:
+            ctx = self._active_contexts.get(run_id)
+            if ctx is None or ctx.status != RuntimeStatus.PAUSED:
+                return False
+            ctx.status = RuntimeStatus.RUNNING
+            ctx.create_checkpoint()
+            self._run_state_condition.notify_all()
+            return True
+
+    def cancel_run(self, run_id: str, reason: str = "Cancelled by operator") -> bool:
+        """Cancel an active run and wake a worker blocked in pause."""
+        with self._run_state_condition:
+            self._cancelled_run_ids.add(run_id)
+            ctx = self._active_contexts.get(run_id)
+            if ctx is None:
+                self._run_state_condition.notify_all()
+                return False
+            ctx.status = RuntimeStatus.CANCELLED
+            if reason:
+                ctx.working_state["cancellation_reason"] = str(reason)
+            ctx.create_checkpoint()
+            self._run_state_condition.notify_all()
+            return True
+
+    def _wait_if_paused(self, context: RuntimeContext) -> bool:
+        """Block only between stages; return True when cancellation wins."""
+        with self._run_state_condition:
+            while (
+                context.status == RuntimeStatus.PAUSED
+                and context.run_id not in self._cancelled_run_ids
+            ):
+                self._run_state_condition.wait()
+            return (
+                context.run_id in self._cancelled_run_ids
+                or context.status == RuntimeStatus.CANCELLED
+            )
 
     def is_cancelled(self, run_id: str) -> bool:
         """Check if a run has been requested for cancellation."""
@@ -998,9 +1057,8 @@ class FiveAgentDepartmentRuntime:
         successful_receipts: List[ExecutionReceipt] = []
         for url in discovered_urls:
             page_idem_key = f"{context.run_id}:intelligence:read_page:{url}"
-            if page_idem_key in self._executed_tool_idempotency_keys:
-                page_receipt = self._executed_tool_idempotency_keys[page_idem_key]
-            else:
+            page_receipt = self._get_cached_tool_receipt(page_idem_key)
+            if page_receipt is None:
                 page_req = ToolRequest(
                     run_id=context.run_id,
                     agent_id="intelligence",
@@ -1011,7 +1069,7 @@ class FiveAgentDepartmentRuntime:
                     chat_id=context.chat_id,
                 )
                 page_receipt = self._execute_tool_request(context, page_req)
-                self._executed_tool_idempotency_keys[page_idem_key] = page_receipt
+                self._cache_tool_receipt(page_idem_key, page_receipt)
 
             context.execution_receipt_refs.append(page_receipt.execution_id)
             self.lineage_inspector.add_receipt(page_receipt)
@@ -1050,9 +1108,8 @@ class FiveAgentDepartmentRuntime:
             )
 
         idem_key = f"{context.run_id}:intelligence:web_search:{context.objective}"
-        if idem_key in self._executed_tool_idempotency_keys:
-            search_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
+        search_receipt = self._get_cached_tool_receipt(idem_key)
+        if search_receipt is None:
             search_req = ToolRequest(
                 run_id=context.run_id,
                 agent_id="intelligence",
@@ -1063,7 +1120,7 @@ class FiveAgentDepartmentRuntime:
                 chat_id=context.chat_id,
             )
             search_receipt = self._execute_tool_request(context, search_req)
-            self._executed_tool_idempotency_keys[idem_key] = search_receipt
+            self._cache_tool_receipt(idem_key, search_receipt)
 
         context.execution_receipt_refs.append(search_receipt.execution_id)
         self.lineage_inspector.add_receipt(search_receipt)
@@ -1446,9 +1503,8 @@ class FiveAgentDepartmentRuntime:
 
         # Invoke ToolGateway for local image generation / asset preparation
         idem_key = f"{context.run_id}:creative:image_generation:hero"
-        if idem_key in self._executed_tool_idempotency_keys:
-            img_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
+        img_receipt = self._get_cached_tool_receipt(idem_key)
+        if img_receipt is None:
             img_req = ToolRequest(
                 run_id=context.run_id,
                 agent_id="creative",
@@ -1459,7 +1515,7 @@ class FiveAgentDepartmentRuntime:
                 chat_id=context.chat_id,
             )
             img_receipt = self._execute_tool_request(context, img_req)
-            self._executed_tool_idempotency_keys[idem_key] = img_receipt
+            self._cache_tool_receipt(idem_key, img_receipt)
 
         context.execution_receipt_refs.append(img_receipt.execution_id)
         self.lineage_inspector.add_receipt(img_receipt)
@@ -1591,9 +1647,8 @@ class FiveAgentDepartmentRuntime:
         # MOCK analytics remain auditable receipts but are never promoted as
         # empirical Performance evidence.
         idem_key = f"{context.run_id}:performance:analytics_retrieval:{context.campaign_id}"
-        if idem_key in self._executed_tool_idempotency_keys:
-            analytics_receipt = self._executed_tool_idempotency_keys[idem_key]
-        else:
+        analytics_receipt = self._get_cached_tool_receipt(idem_key)
+        if analytics_receipt is None:
             analytics_req = ToolRequest(
                 run_id=context.run_id,
                 agent_id="performance",
@@ -1604,7 +1659,7 @@ class FiveAgentDepartmentRuntime:
                 chat_id=context.chat_id,
             )
             analytics_receipt = self._execute_tool_request(context, analytics_req)
-            self._executed_tool_idempotency_keys[idem_key] = analytics_receipt
+            self._cache_tool_receipt(idem_key, analytics_receipt)
 
         context.execution_receipt_refs.append(analytics_receipt.execution_id)
         self.lineage_inspector.add_receipt(analytics_receipt)
@@ -2740,7 +2795,7 @@ class FiveAgentDepartmentRuntime:
                 artifacts=context.artifact_refs,
                 learning_candidates=cand_memories,
                 final_cmo_output=context.stage_outputs.get("final_cmo", {}),
-                lineage_summary={"citations": [c.citation_id for c in self.lineage_inspector.get_all_citations()]},
+                lineage_summary={"citations": list(dict.fromkeys(context.knowledge_refs))},
                 binding_constraints=list(context.constraints),
                 epistemic_handoffs=dict(context.working_state.get("stage_handoffs", {})),
                 claim_verification_ledger=list(context.working_state.get("claim_verification_ledger", [])),
@@ -2763,6 +2818,15 @@ class FiveAgentDepartmentRuntime:
             if context.status in (RuntimeStatus.COMPLETED, RuntimeStatus.FAILED, RuntimeStatus.CANCELLED):
                 self._active_contexts.pop(context.run_id, None)
                 self._cancelled_run_ids.discard(context.run_id)
+                cache_prefix = f"{context.run_id}:"
+                for cache_key in [
+                    key for key in self._executed_tool_idempotency_keys
+                    if key.startswith(cache_prefix)
+                ]:
+                    self._executed_tool_idempotency_keys.pop(cache_key, None)
+                self.lineage_inspector.remove_receipts_for_run(context.run_id)
+                if not self._active_contexts:
+                    self.lineage_inspector = LineageInspector()
 
             return artifact
 
@@ -2802,6 +2866,9 @@ class FiveAgentDepartmentRuntime:
             )
 
         def _check_cancellation() -> bool:
+            if self._wait_if_paused(context):
+                context.status = RuntimeStatus.CANCELLED
+                return True
             if self.is_cancelled(context.run_id) or context.status == RuntimeStatus.CANCELLED:
                 context.status = RuntimeStatus.CANCELLED
                 return True

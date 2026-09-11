@@ -68,6 +68,11 @@ def get_job_store_file_path() -> Path:
     return get_backend_state_file_path().with_name("jobs.sqlite3")
 
 
+def get_receipt_store_file_path() -> Path:
+    """Return the durable execution receipt / intent journal database path."""
+    return get_backend_state_file_path().with_name("execution_receipts.sqlite3")
+
+
 def get_provider_preflight_store_file_path() -> Path:
     """Return the durable provider-preflight database beside other runtime state."""
     return get_backend_state_file_path().with_name("provider_preflights.sqlite3")
@@ -240,7 +245,12 @@ class DepartmentAppBackend:
         self._closed = False
         self.cap_registry = CapabilityRegistry()
         self.policy_engine = PolicyEngine()
-        self.receipt_repo = ExecutionReceiptRepository()
+        self.receipt_repo = ExecutionReceiptRepository(
+            database_path=get_receipt_store_file_path()
+        )
+        self.execution_recovery_assessments = (
+            self.receipt_repo.reconcile_unfinished_intents()
+        )
 
         # Compose the provider-neutral marketing control plane without granting
         # LIVE execution. Account binding, credential access, and runtime LIVE
@@ -379,11 +389,16 @@ class DepartmentAppBackend:
             return
         self._closed = True
         self.run_manager.shutdown(wait=True, cancel_pending=True)
+        for repository in (self.learning_repo, self.memory_repo, self.knowledge_repo):
+            close_repository = getattr(repository, "close", None)
+            if callable(close_repository):
+                close_repository()
         self.job_repository.close()
         self.provider_preflight_repository.close()
         self.provider_operation_repository.close()
         self.connection_manager.close()
         self.dynamic_tool_gateway.close()
+        self.receipt_repo.close()
 
 
 APP_BACKEND = DepartmentAppBackend()
@@ -871,7 +886,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     "build_id": "20260820-RELEASE-V1",
                     "status": "ONLINE",
                     "brain_version": "FIVE_AGENT_BRAIN_V1_RC3",
-                    "permanent_agents": ["cmo", "intelligence", "strategist", "creative", "performance"],
+                    "permanent_agents": ["cmo", "intelligence", "content", "creative", "performance"],
                     "permanent_agent_count": 5,
                     "chat_sessions_count": len(APP_BACKEND.chat_mgr._sessions),
                     "projects_count": len(APP_BACKEND.project_registry._projects),

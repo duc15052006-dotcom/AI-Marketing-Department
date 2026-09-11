@@ -648,7 +648,9 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
             )
         )
         receipt = self.runtime.request_publish_action(ctx, approval_token=token)
-        trace = self.runtime.lineage_inspector.trace_claim_to_receipt("Published Campaign", receipt.execution_id)
+        trace = self.runtime.lineage_inspector.trace_claim_to_receipt(
+            "Published Campaign", receipt.execution_id, run_id=ctx.run_id
+        )
         self.assertTrue(trace.valid)
 
     def test_adv_23_agent_6_registration_strictly_blocked(self):
