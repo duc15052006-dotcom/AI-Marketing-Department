@@ -1,8 +1,9 @@
 """Regression tests for the canonical Content migration.
 
 The former Strategist ASI was removed from the permanent five-agent architecture.
-These tests intentionally verify that no strategist DNA file is resurrected and that
-Content owns the semantic/content responsibilities that replaced it.
+These tests intentionally verify that no strategist DNA file is resurrected, that
+Content owns the semantic/content responsibilities that replaced it, and that the
+historical Strategist evaluation surface cannot be mistaken for current authority.
 """
 
 import unittest
@@ -13,14 +14,20 @@ from tests.test_agent_manifests import parse_yaml_frontmatter
 
 class TestContentMigrationDefinition(unittest.TestCase):
     def setUp(self):
-        root = Path(__file__).resolve().parent.parent / ".agents" / "agents"
+        repo_root = Path(__file__).resolve().parent.parent
+        root = repo_root / ".agents" / "agents"
         self.strategist_path = root / "strategist" / "agent.md"
         self.content_path = root / "content" / "agent.md"
+        self.legacy_strategist_evaluation_path = repo_root / "STRATEGIST_EVALUATION.md"
         self.assertFalse(
             self.strategist_path.exists(),
             "strategist/agent.md must not exist after canonical Content migration",
         )
         self.assertTrue(self.content_path.exists(), "content/agent.md does not exist")
+        self.assertTrue(
+            self.legacy_strategist_evaluation_path.exists(),
+            "legacy Strategist evaluation migration landmark does not exist",
+        )
         self.content = self.content_path.read_text(encoding="utf-8")
         self.frontmatter = parse_yaml_frontmatter(self.content)
 
@@ -69,6 +76,15 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.assertIn("Visual concepts, storyboards, image/video production specs, multimedia generation -> **Creative**", self.content)
         self.assertIn("Paid campaign execution, analytics, attribution, KPI verification -> **Performance**", self.content)
         self.assertNotIn("Strategist ASI", self.content)
+
+    def test_legacy_strategist_evaluation_is_non_authoritative(self):
+        legacy = self.legacy_strategist_evaluation_path.read_text(encoding="utf-8")
+        self.assertIn("LEGACY / NON-AUTHORITATIVE", legacy)
+        self.assertIn("exactly five permanent ASIs", legacy)
+        self.assertIn("CONTENT_EVALUATION.md", legacy)
+        self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", legacy)
+        self.assertIn("must never recreate a sixth agent", legacy)
+        self.assertNotIn("The Strategist acts as the strategic engine", legacy)
 
 
 if __name__ == "__main__":
