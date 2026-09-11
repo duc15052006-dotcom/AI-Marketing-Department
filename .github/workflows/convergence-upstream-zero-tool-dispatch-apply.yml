@@ -44,6 +44,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import base64
 
           def replace_once(path: str, old: str, new: str) -> None:
               p = Path(path)
@@ -56,86 +57,16 @@ jobs:
                   raise SystemExit(f'anchor not unique in {path}: {old[:120]!r}')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          intelligence_anchor = '''        if emitter and not is_research_mode:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="INTELLIGENCE",\n                agent="INTELLIGENCE",\n                message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",\n            )\n\n        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)\n'''
-          intelligence_replacement = '''        if emitter and not is_research_mode:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="INTELLIGENCE",\n                agent="INTELLIGENCE",\n                message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",\n            )\n\n        # Upstream failure is authoritative before any retrieval or tool side effect.\n        # A failed CMO stage must not spend search/read quota or create receipts.\n        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":\n            context.status = RuntimeStatus.FAILED\n            if emitter:\n                emitter.emit(\n                    ProgressEventType.RUN_FAILED,\n                    stage="INTELLIGENCE",\n                    agent="INTELLIGENCE",\n                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",\n                    metadata={"error": "PREVIOUS_STAGE_FAILED"},\n                )\n            output = {\n                "stage": "INTELLIGENCE",\n                "agent": "intelligence",\n                "status": "FAILED",\n                "error": "PREVIOUS_STAGE_FAILED",\n                "market_findings": "",\n                "search_receipt_id": None,\n                "citations": [],\n            }\n            context.stage_outputs["intelligence"] = output\n            context.create_checkpoint()\n            return output\n\n        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)\n'''
+          intelligence_anchor = '        if emitter and not is_research_mode:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="INTELLIGENCE",\n                agent="INTELLIGENCE",\n                message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",\n            )\n\n        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)\n'
+          intelligence_replacement = '        if emitter and not is_research_mode:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="INTELLIGENCE",\n                agent="INTELLIGENCE",\n                message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",\n            )\n\n        # Upstream failure is authoritative before any retrieval or tool side effect.\n        # A failed CMO stage must not spend search/read quota or create receipts.\n        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":\n            context.status = RuntimeStatus.FAILED\n            if emitter:\n                emitter.emit(\n                    ProgressEventType.RUN_FAILED,\n                    stage="INTELLIGENCE",\n                    agent="INTELLIGENCE",\n                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",\n                    metadata={"error": "PREVIOUS_STAGE_FAILED"},\n                )\n            output = {\n                "stage": "INTELLIGENCE",\n                "agent": "intelligence",\n                "status": "FAILED",\n                "error": "PREVIOUS_STAGE_FAILED",\n                "market_findings": "",\n                "search_receipt_id": None,\n                "citations": [],\n            }\n            context.stage_outputs["intelligence"] = output\n            context.create_checkpoint()\n            return output\n\n        k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)\n'
           replace_once('runtime/engine.py', intelligence_anchor, intelligence_replacement)
 
-          performance_anchor = '''        if emitter:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="PERFORMANCE",\n                agent="PERFORMANCE",\n                message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",\n            )\n\n        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)\n'''
-          performance_replacement = '''        if emitter:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="PERFORMANCE",\n                agent="PERFORMANCE",\n                message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",\n            )\n\n        # Upstream failure is authoritative before analytics retrieval.\n        # A failed Creative stage must not create telemetry receipts or spend provider quota.\n        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("creative", {}).get("status") == "FAILED":\n            context.status = RuntimeStatus.FAILED\n            if emitter:\n                emitter.emit(\n                    ProgressEventType.RUN_FAILED,\n                    stage="PERFORMANCE",\n                    agent="PERFORMANCE",\n                    message="Giai đoạn Performance thất bại do giai đoạn trước gặp sự cố",\n                    metadata={"error": "PREVIOUS_STAGE_FAILED"},\n                )\n            output = {\n                "stage": "PERFORMANCE",\n                "agent": "performance",\n                "status": "FAILED",\n                "error": "PREVIOUS_STAGE_FAILED",\n                "funnel_kpi": "",\n                "experiment_blueprint": {},\n                "analytics_receipt_id": None,\n                "analytics_data_status": "NOT_ATTEMPTED:PREVIOUS_STAGE_FAILED",\n                "calc_receipt_id": None,\n                "citations": [],\n            }\n            context.stage_outputs["performance"] = output\n            context.create_checkpoint()\n            return output\n\n        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)\n'''
+          performance_anchor = '        if emitter:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="PERFORMANCE",\n                agent="PERFORMANCE",\n                message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",\n            )\n\n        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)\n'
+          performance_replacement = '        if emitter:\n            emitter.emit(\n                ProgressEventType.STAGE_STARTED,\n                stage="PERFORMANCE",\n                agent="PERFORMANCE",\n                message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",\n            )\n\n        # Upstream failure is authoritative before analytics retrieval.\n        # A failed Creative stage must not create telemetry receipts or spend provider quota.\n        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("creative", {}).get("status") == "FAILED":\n            context.status = RuntimeStatus.FAILED\n            if emitter:\n                emitter.emit(\n                    ProgressEventType.RUN_FAILED,\n                    stage="PERFORMANCE",\n                    agent="PERFORMANCE",\n                    message="Giai đoạn Performance thất bại do giai đoạn trước gặp sự cố",\n                    metadata={"error": "PREVIOUS_STAGE_FAILED"},\n                )\n            output = {\n                "stage": "PERFORMANCE",\n                "agent": "performance",\n                "status": "FAILED",\n                "error": "PREVIOUS_STAGE_FAILED",\n                "funnel_kpi": "",\n                "experiment_blueprint": {},\n                "analytics_receipt_id": None,\n                "analytics_data_status": "NOT_ATTEMPTED:PREVIOUS_STAGE_FAILED",\n                "calc_receipt_id": None,\n                "citations": [],\n            }\n            context.stage_outputs["performance"] = output\n            context.create_checkpoint()\n            return output\n\n        k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)\n'
           replace_once('runtime/engine.py', performance_anchor, performance_replacement)
 
-          Path('tests/test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1.py').write_text(r'''from __future__ import annotations
-
-import threading
-import unittest
-from unittest.mock import MagicMock
-
-from runtime.context import RuntimeContext, RuntimeStatus
-from runtime.engine import FiveAgentDepartmentRuntime
-
-
-class RuntimeUpstreamFailedZeroToolDispatchConvergenceV1Tests(unittest.TestCase):
-    @staticmethod
-    def _runtime() -> FiveAgentDepartmentRuntime:
-        runtime = FiveAgentDepartmentRuntime.__new__(FiveAgentDepartmentRuntime)
-        runtime._lock = threading.Lock()
-        runtime._active_emitters = {}
-        runtime._get_emitter = lambda *_args, **_kwargs: None
-        runtime._execute_tool_request = MagicMock(side_effect=AssertionError('tool dispatch must not occur after known upstream failure'))
-        return runtime
-
-    @staticmethod
-    def _failed_context(run_id: str, upstream_stage: str) -> RuntimeContext:
-        context = RuntimeContext(
-            run_id=run_id,
-            objective='Launch a governed marketing campaign',
-            business_id='BIZ-UPSTREAM-FAILED-CONVERGENCE-V1',
-            project_id='PROJ-UPSTREAM-FAILED-CONVERGENCE-V1',
-        )
-        context.status = RuntimeStatus.FAILED
-        context.stage_outputs[upstream_stage] = {
-            'stage': upstream_stage.upper(),
-            'status': 'FAILED',
-            'error': 'UPSTREAM_TEST_FAILURE',
-        }
-        return context
-
-    def test_intelligence_does_not_search_after_cmo_failure(self) -> None:
-        runtime = self._runtime()
-        context = self._failed_context('RUN-UPSTREAM-FAILED-INT-CONV', 'cmo_initial')
-        output = runtime.execute_stage_intelligence(context)
-        self.assertEqual('FAILED', output['status'])
-        self.assertEqual('PREVIOUS_STAGE_FAILED', output['error'])
-        self.assertIsNone(output.get('search_receipt_id'))
-        self.assertEqual([], context.execution_receipt_refs)
-        runtime._execute_tool_request.assert_not_called()
-
-    def test_creative_does_not_generate_asset_after_content_failure(self) -> None:
-        runtime = self._runtime()
-        context = self._failed_context('RUN-UPSTREAM-FAILED-CREATIVE-CONV', 'content')
-        output = runtime.execute_stage_creative(context)
-        self.assertEqual('FAILED', output['status'])
-        self.assertEqual('PREVIOUS_STAGE_FAILED', output['error'])
-        self.assertIsNone(output.get('visual_asset_receipt'))
-        self.assertEqual([], context.execution_receipt_refs)
-        self.assertEqual([], context.artifact_refs)
-        runtime._execute_tool_request.assert_not_called()
-
-    def test_performance_does_not_retrieve_analytics_after_creative_failure(self) -> None:
-        runtime = self._runtime()
-        context = self._failed_context('RUN-UPSTREAM-FAILED-PERF-CONV', 'creative')
-        output = runtime.execute_stage_performance(context)
-        self.assertEqual('FAILED', output['status'])
-        self.assertEqual('PREVIOUS_STAGE_FAILED', output['error'])
-        self.assertIsNone(output.get('analytics_receipt_id'))
-        self.assertEqual('NOT_ATTEMPTED:PREVIOUS_STAGE_FAILED', output.get('analytics_data_status'))
-        self.assertEqual([], context.execution_receipt_refs)
-        runtime._execute_tool_request.assert_not_called()
-
-
-if __name__ == '__main__':
-    unittest.main()
-''', encoding='utf-8')
+          test_b64 = 'ZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IHRocmVhZGluZwppbXBvcnQgdW5pdHRlc3QKZnJvbSB1bml0dGVzdC5tb2NrIGltcG9ydCBNYWdpY01vY2sKCmZyb20gcnVudGltZS5jb250ZXh0IGltcG9ydCBSdW50aW1lQ29udGV4dCwgUnVudGltZVN0YXR1cwpmcm9tIHJ1bnRpbWUuZW5naW5lIGltcG9ydCBGaXZlQWdlbnREZXBhcnRtZW50UnVudGltZQoKCmNsYXNzIFJ1bnRpbWVVcHN0cmVhbUZhaWxlZFplcm9Ub29sRGlzcGF0Y2hDb252ZXJnZW5jZVYxVGVzdHModW5pdHRlc3QuVGVzdENhc2UpOgogICAgQHN0YXRpY21ldGhvZAogICAgZGVmIF9ydW50aW1lKCkgLT4gRml2ZUFnZW50RGVwYXJ0bWVudFJ1bnRpbWU6CiAgICAgICAgcnVudGltZSA9IEZpdmVBZ2VudERlcGFydG1lbnRSdW50aW1lLl9fbmV3X18oRml2ZUFnZW50RGVwYXJ0bWVudFJ1bnRpbWUpCiAgICAgICAgcnVudGltZS5fbG9jayA9IHRocmVhZGluZy5Mb2NrKCkKICAgICAgICBydW50aW1lLl9hY3RpdmVfZW1pdHRlcnMgPSB7fQogICAgICAgIHJ1bnRpbWUuX2dldF9lbWl0dGVyID0gbGFtYmRhICpfYXJncywgKipfa3dhcmdzOiBOb25lCiAgICAgICAgcnVudGltZS5fZXhlY3V0ZV90b29sX3JlcXVlc3QgPSBNYWdpY01vY2soc2lkZV9lZmZlY3Q9QXNzZXJ0aW9uRXJyb3IoJ3Rvb2wgZGlzcGF0Y2ggbXVzdCBub3Qgb2NjdXIgYWZ0ZXIga25vd24gdXBzdHJlYW0gZmFpbHVyZScpKQogICAgICAgIHJldHVybiBydW50aW1lCgogICAgQHN0YXRpY21ldGhvZAogICAgZGVmIF9mYWlsZWRfY29udGV4dChydW5faWQ6IHN0ciwgdXBzdHJlYW1fc3RhZ2U6IHN0cikgLT4gUnVudGltZUNvbnRleHQ6CiAgICAgICAgY29udGV4dCA9IFJ1bnRpbWVDb250ZXh0KAogICAgICAgICAgICBydW5faWQ9cnVuX2lkLAogICAgICAgICAgICBvYmplY3RpdmU9J0xhdW5jaCBhIGdvdmVybmVkIG1hcmtldGluZyBjYW1wYWlnbicsCiAgICAgICAgICAgIGJ1c2luZXNzX2lkPSdCSVotVVBTVFJFQU0tRkFJTEVELUNPTlZFUkdFTkNFLVYxJywKICAgICAgICAgICAgcHJvamVjdF9pZD0nUFJPSi1VUFNUUkVBTS1GQUlMRUQtQ09OVkVSR0VOQ0UtVjEnLAogICAgICAgICkKICAgICAgICBjb250ZXh0LnN0YXR1cyA9IFJ1bnRpbWVTdGF0dXMuRkFJTEVECiAgICAgICAgY29udGV4dC5zdGFnZV9vdXRwdXRzW3Vwc3RyZWFtX3N0YWdlXSA9IHsKICAgICAgICAgICAgJ3N0YWdlJzogdXBzdHJlYW1fc3RhZ2UudXBwZXIoKSwKICAgICAgICAgICAgJ3N0YXR1cyc6ICdGQUlMRUQnLAogICAgICAgICAgICAnZXJyb3InOiAnVVBTVFJFQU1fVEVTVF9GQUlMVVJFJywKICAgICAgICB9CiAgICAgICAgcmV0dXJuIGNvbnRleHQKCiAgICBkZWYgdGVzdF9pbnRlbGxpZ2VuY2VfZG9lc19ub3Rfc2VhcmNoX2FmdGVyX2Ntb19mYWlsdXJlKHNlbGYpIC0+IE5vbmU6CiAgICAgICAgcnVudGltZSA9IHNlbGYuX3J1bnRpbWUoKQogICAgICAgIGNvbnRleHQgPSBzZWxmLl9mYWlsZWRfY29udGV4dCgnUlVOLVVQU1RSRUFNLUZBSUxFRC1JTlQtQ09OVicsICdjbW9faW5pdGlhbCcpCiAgICAgICAgb3V0cHV0ID0gcnVudGltZS5leGVjdXRlX3N0YWdlX2ludGVsbGlnZW5jZShjb250ZXh0KQogICAgICAgIHNlbGYuYXNzZXJ0RXF1YWwoJ0ZBSUxFRCcsIG91dHB1dFsnc3RhdHVzJ10pCiAgICAgICAgc2VsZi5hc3NlcnRFcXVhbCgnUFJFVklPVVNfU1RBR0VfRkFJTEVEJywgb3V0cHV0WydlcnJvciddKQogICAgICAgIHNlbGYuYXNzZXJ0SXNOb25lKG91dHB1dC5nZXQoJ3NlYXJjaF9yZWNlaXB0X2lkJykpCiAgICAgICAgc2VsZi5hc3NlcnRFcXVhbChbXSwgY29udGV4dC5leGVjdXRpb25fcmVjZWlwdF9yZWZzKQogICAgICAgIHJ1bnRpbWUuX2V4ZWN1dGVfdG9vbF9yZXF1ZXN0LmFzc2VydF9ub3RfY2FsbGVkKCkKCiAgICBkZWYgdGVzdF9jcmVhdGl2ZV9kb2VzX25vdF9nZW5lcmF0ZV9hc3NldF9hZnRlcl9jb250ZW50X2ZhaWx1cmUoc2VsZikgLT4gTm9uZToKICAgICAgICBydW50aW1lID0gc2VsZi5fcnVudGltZSgpCiAgICAgICAgY29udGV4dCA9IHNlbGYuX2ZhaWxlZF9jb250ZXh0KCdSVU4tVVBTVFJFQU0tRkFJTEVELUNSRUFUSVZFLUNPTlYnLCAnY29udGVudCcpCiAgICAgICAgb3V0cHV0ID0gcnVudGltZS5leGVjdXRlX3N0YWdlX2NyZWF0aXZlKGNvbnRleHQpCiAgICAgICAgc2VsZi5hc3NlcnRFcXVhbCgnRkFJTEVEJywgb3V0cHV0WydzdGF0dXMnXSkKICAgICAgICBzZWxmLmFzc2VydEVxdWFsKCdQUkVWSU9VU19TVEFHRV9GQUlMRUQnLCBvdXRwdXRbJ2Vycm9yJ10pCiAgICAgICAgc2VsZi5hc3NlcnRJc05vbmUob3V0cHV0LmdldCgndmlzdWFsX2Fzc2V0X3JlY2VpcHQnKSkKICAgICAgICBzZWxmLmFzc2VydEVxdWFsKFtdLCBjb250ZXh0LmV4ZWN1dGlvbl9yZWNlaXB0X3JlZnMpCiAgICAgICAgc2VsZi5hc3NlcnRFcXVhbChbXSwgY29udGV4dC5hcnRpZmFjdF9yZWZzKQogICAgICAgIHJ1bnRpbWUuX2V4ZWN1dGVfdG9vbF9yZXF1ZXN0LmFzc2VydF9ub3RfY2FsbGVkKCkKCiAgICBkZWYgdGVzdF9wZXJmb3JtYW5jZV9kb2VzX25vdF9yZXRyaWV2ZV9hbmFseXRpY3NfYWZ0ZXJfY3JlYXRpdmVfZmFpbHVyZShzZWxmKSAtPiBOb25lOgogICAgICAgIHJ1bnRpbWUgPSBzZWxmLl9ydW50aW1lKCkKICAgICAgICBjb250ZXh0ID0gc2VsZi5fZmFpbGVkX2NvbnRleHQoJ1JVTi1VUFNUUkVBTS1GQUlMRUQtUEVSRi1DT05WJywgJ2NyZWF0aXZlJykKICAgICAgICBvdXRwdXQgPSBydW50aW1lLmV4ZWN1dGVfc3RhZ2VfcGVyZm9ybWFuY2UoY29udGV4dCkKICAgICAgICBzZWxmLmFzc2VydEVxdWFsKCdGQUlMRUQnLCBvdXRwdXRbJ3N0YXR1cyddKQogICAgICAgIHNlbGYuYXNzZXJ0RXF1YWwoJ1BSRVZJT1VTX1NUQUdFX0ZBSUxFRCcsIG91dHB1dFsnZXJyb3InXSkKICAgICAgICBzZWxmLmFzc2VydElzTm9uZShvdXRwdXQuZ2V0KCdhbmFseXRpY3NfcmVjZWlwdF9pZCcpKQogICAgICAgIHNlbGYuYXNzZXJ0RXF1YWwoJ05PVF9BVFRFTVBURUQ6UFJFVklPVVNfU1RBR0VfRkFJTEVEJywgb3V0cHV0LmdldCgnYW5hbHl0aWNzX2RhdGFfc3RhdHVzJykpCiAgICAgICAgc2VsZi5hc3NlcnRFcXVhbChbXSwgY29udGV4dC5leGVjdXRpb25fcmVjZWlwdF9yZWZzKQogICAgICAgIHJ1bnRpbWUuX2V4ZWN1dGVfdG9vbF9yZXF1ZXN0LmFzc2VydF9ub3RfY2FsbGVkKCkKCgppZiBfX25hbWVfXyA9PSAnX19tYWluX18nOgogICAgdW5pdHRlc3QubWFpbigpCg=='
+          Path('tests/test_runtime_upstream_failed_zero_tool_dispatch_convergence_v1.py').write_bytes(base64.b64decode(test_b64))
           PY
 
       - name: Validate zero-tool dispatch hardening
