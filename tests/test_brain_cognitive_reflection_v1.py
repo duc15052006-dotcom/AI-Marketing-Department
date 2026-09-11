@@ -47,7 +47,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         goal_id: str = "goal-growth",
         source_id: str = "source-demand-study",
         relation: EvidenceRelation = EvidenceRelation.SUPPORTS,
-        agent_id: BrainAgentId = BrainAgentId.STRATEGIST,
+        agent_id: BrainAgentId = BrainAgentId.CONTENT,
         origin: EvidenceOrigin = EvidenceOrigin.OBSERVED,
     ) -> EvidenceSignal:
         # agent_id is accepted for helper symmetry; EvidenceSignal authority is goal/claim/source.
@@ -67,7 +67,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         *,
         assessment_id: str,
         claim_id: str = "claim-demand",
-        agent_id: BrainAgentId = BrainAgentId.STRATEGIST,
+        agent_id: BrainAgentId = BrainAgentId.CONTENT,
         signals=None,
         goal_id: str = "goal-growth",
     ) -> ClaimEvidenceRequest:
@@ -85,7 +85,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         status: BeliefStatus = BeliefStatus.ESTABLISHED,
         snapshot_id: str = "world-reflection-1",
         goal_id: str = "goal-growth",
-        agent_id: BrainAgentId = BrainAgentId.STRATEGIST,
+        agent_id: BrainAgentId = BrainAgentId.CONTENT,
     ):
         proposition = WorldProposition(
             proposition_id="claim-demand",
@@ -161,7 +161,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         evidence_refs=None,
         confidence=None,
         goal_id: str = "goal-growth",
-        agent_id: BrainAgentId = BrainAgentId.STRATEGIST,
+        agent_id: BrainAgentId = BrainAgentId.CONTENT,
     ) -> DecisionRecord:
         return DecisionRecord(
             decision_id="decision-growth",
@@ -199,14 +199,14 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
             HypothesisCandidate(
                 hypothesis_id="h-demand",
                 goal_id=goal_id,
-                owner_agent=BrainAgentId.STRATEGIST,
+                owner_agent=BrainAgentId.CONTENT,
                 statement="Demand is the dominant growth driver",
                 differentiating_predictions=first_predictions or [],
             ),
             HypothesisCandidate(
                 hypothesis_id="h-price",
                 goal_id=goal_id,
-                owner_agent=BrainAgentId.STRATEGIST,
+                owner_agent=BrainAgentId.CONTENT,
                 statement="Price is the dominant growth driver",
                 differentiating_predictions=["Price test produces material lift"],
             ),
@@ -242,7 +242,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         return HypothesisPortfolioRequest(
             portfolio_id="portfolio-growth",
             goal_id=goal_id,
-            owner_agent=BrainAgentId.STRATEGIST,
+            owner_agent=BrainAgentId.CONTENT,
             hypotheses=hypotheses,
             evidence_requests=evidence_requests,
         )
@@ -257,7 +257,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         portfolio_request=None,
         selected_hypothesis_id=None,
         goal_id: str = "goal-growth",
-        agent_id: BrainAgentId = BrainAgentId.STRATEGIST,
+        agent_id: BrainAgentId = BrainAgentId.CONTENT,
     ):
         self._require_capability()
         return CognitiveReflectionRequest(
@@ -377,7 +377,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         )
         strategist = self._evidence_request(
             assessment_id="assessment-strategist",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             signals=[
                 self._signal(
                     evidence_id="e-strategist-source",
@@ -396,7 +396,7 @@ class BrainCognitiveReflectionV1Tests(unittest.TestCase):
         self.assertEqual(finding.source_ids, ["shared-market-report"])
         self.assertEqual(
             set(finding.agent_ids),
-            {BrainAgentId.INTELLIGENCE, BrainAgentId.STRATEGIST},
+            {BrainAgentId.INTELLIGENCE, BrainAgentId.CONTENT},
         )
         self.assertIn(ReflectionDirective.DIVERSIFY_SOURCES, self._directives(report))
 

@@ -40,7 +40,7 @@ class StructuredScriptedGateway(UniversalModelGateway):
         ("final_cmo", "Final Governed Go-To-Market"),
         ("performance", "Performance Marketing & Analytics Director"),
         ("creative", "Creative Director"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Content Strategy, Copywriting & Distribution Specialist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
     ]
@@ -107,7 +107,7 @@ def run_pipeline(gateway, objective="demo objective", business_id="BIZ_AUDIT", r
     ctx = rt.start_run(objective=objective, business_id=business_id)
     rt.execute_stage_cmo_initial(ctx)
     rt.execute_stage_intelligence(ctx)
-    rt.execute_stage_strategist(ctx)
+    rt.execute_stage_content(ctx)
     rt.execute_stage_creative(ctx)
     rt.execute_stage_performance(ctx)
     final_out = rt.execute_stage_final_cmo(ctx)
@@ -171,7 +171,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
         })
         rt, ctx, final_out, artifact = run_pipeline(gw)
 
-        strat_prompt = prompts_for(gw, "strategist")[-1]
+        strat_prompt = prompts_for(gw, "content")[-1]
         self.assertIn("UNKNOWNS — DO NOT INVENT ANSWERS", strat_prompt)
         self.assertIn("Churn rate unknown", strat_prompt)
         self.assertIn("ASSUMPTIONS — DO NOT TREAT AS FACT", strat_prompt)
@@ -214,7 +214,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
     # 8/9. strategist hypothesis reaches Creative as HYPOTHESIS (never product fact)
     def test_08_09_strategist_hypothesis_typed_for_creative(self):
         gw = StructuredScriptedGateway(replies={
-            "strategist": (
+            "content": (
                 "Positioning prose.", {
                     "hypotheses": [{"text": "GenZ pays +15% for eco packaging"}],
                 }
@@ -225,7 +225,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
         self.assertIn("HYPOTHESES — REQUIRE TESTING", creative_prompt)
         self.assertIn("+15% for eco packaging", creative_prompt)
         self.assertNotIn("VERIFIED / SOURCE-BACKED INFORMATION\n[VERIFIED] GenZ", creative_prompt)
-        strat_h = ctx.stage_outputs["strategist"]["handoff"]["hypotheses"]
+        strat_h = ctx.stage_outputs["content"]["handoff"]["hypotheses"]
         self.assertEqual(strat_h[0]["epistemic_type"], "HYPOTHESIS")
 
     # 10. creative claim retains cited source ids/evidence refs
@@ -356,7 +356,7 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
     def test_23_absent_payload_pipeline_runs(self):
         gw = StructuredScriptedGateway()
         rt, ctx, final_out, artifact = run_pipeline(gw)
-        for stage in ("cmo_initial", "intelligence", "strategist", "creative", "performance", "final_cmo"):
+        for stage in ("cmo_initial", "intelligence", "content", "creative", "performance", "final_cmo"):
             h = ctx.stage_outputs[stage]["handoff"]
             self.assertEqual(h["structured_parse_status"], "ABSENT")
         self.assertEqual(final_out["status"] in ("READY_FOR_DEPLOYMENT", "NOT_READY"), True)
@@ -364,16 +364,17 @@ class TestStructuredEpistemicHandoff(unittest.TestCase):
     # 24. free-text outputs remain verbatim
     def test_24_free_text_preserved_verbatim(self):
         text = "POSITIONING Z: urban professionals first."
-        gw = StructuredScriptedGateway(replies={"strategist": text})
+        gw = StructuredScriptedGateway(replies={"content": text})
         rt, ctx, final_out, artifact = run_pipeline(gw)
-        self.assertEqual(ctx.stage_outputs["strategist"]["positioning"], text)
+        self.assertEqual(ctx.stage_outputs["content"]["content_strategy"], text)
 
     # 25. five-agent invariant exact
     def test_25_five_agent_invariant(self):
         from governance.access_matrix import PERMANENT_FIVE_AGENTS
-        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "strategist", "creative", "performance"})
+        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "content", "creative", "performance"})
         rt = build_runtime(StructuredScriptedGateway())
-        self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)
+        self.assertTrue({"execute_stage_cmo_initial", "execute_stage_intelligence", "execute_stage_content", "execute_stage_creative", "execute_stage_performance", "execute_stage_final_cmo"}.issubset(set(dir(rt))))
+        self.assertTrue(callable(getattr(rt, "execute_stage_strategist", None)))
 
 
 if __name__ == "__main__":

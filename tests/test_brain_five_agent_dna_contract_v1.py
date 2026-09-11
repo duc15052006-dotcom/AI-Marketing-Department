@@ -23,17 +23,14 @@ class FiveAgentDNAContractV1Tests(unittest.TestCase):
     def test_registry_contains_exactly_the_five_brain_agents(self) -> None:
         profiles = canonical_agent_profiles()
         self.assertEqual(len(profiles), 5)
-        self.assertEqual(
-            {profile.agent_id for profile in profiles},
-            set(BrainAgentId),
-        )
+        self.assertEqual({profile.agent_id for profile in profiles}, set(BrainAgentId))
 
     def test_each_agent_has_one_distinct_canonical_marketing_function(self) -> None:
         expected = {
             BrainAgentId.CMO: AgentFunction.EXECUTIVE_ORCHESTRATION,
             BrainAgentId.INTELLIGENCE: AgentFunction.MARKET_INTELLIGENCE,
-            BrainAgentId.STRATEGIST: AgentFunction.STRATEGY_AND_GROWTH,
-            BrainAgentId.CREATIVE: AgentFunction.CREATIVE_COMMUNICATION,
+            BrainAgentId.CONTENT: AgentFunction.CONTENT_AND_DISTRIBUTION,
+            BrainAgentId.CREATIVE: AgentFunction.CREATIVE_PRODUCTION,
             BrainAgentId.PERFORMANCE: AgentFunction.PERFORMANCE_AND_MEASUREMENT,
         }
         actual = {profile.agent_id: profile.function for profile in canonical_agent_profiles()}
@@ -42,9 +39,7 @@ class FiveAgentDNAContractV1Tests(unittest.TestCase):
 
     def test_only_cmo_has_commercial_signoff_but_no_agent_has_live_execution_authority(self) -> None:
         profiles = canonical_agent_profiles()
-        signoff_agents = {
-            profile.agent_id for profile in profiles if profile.commercial_signoff_authority
-        }
+        signoff_agents = {profile.agent_id for profile in profiles if profile.commercial_signoff_authority}
         self.assertEqual(signoff_agents, {BrainAgentId.CMO})
         self.assertTrue(all(not profile.live_execution_authority for profile in profiles))
 
@@ -66,76 +61,70 @@ class FiveAgentDNAContractV1Tests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             AgentDNAProfile(**base)
 
-    def test_cmo_boundary_is_orchestration_not_specialist_execution(self) -> None:
+    def test_cmo_owns_strategy_and_governance_not_specialist_execution(self) -> None:
         profile = get_agent_profile(BrainAgentId.CMO)
-        self.assertTrue(
-            {
-                "TASK_DECOMPOSITION",
-                "COMMERCIAL_GOVERNANCE",
-                "SPECIALIST_QUALITY_REVIEW",
-            }.issubset(set(profile.owned_responsibilities))
-        )
-        self.assertTrue(
-            {
-                "PRIMARY_MARKET_RESEARCH",
-                "PRIMARY_CREATIVE_PRODUCTION",
-                "PRIMARY_PERFORMANCE_ANALYSIS",
-                "LIVE_EXECUTION",
-            }.issubset(set(profile.forbidden_authorities))
-        )
+        self.assertTrue({
+            "TASK_DECOMPOSITION",
+            "COMMERCIAL_GOVERNANCE",
+            "MARKETING_STRATEGY_FORMULATION",
+            "POSITIONING_AND_GTM_GOVERNANCE",
+        }.issubset(set(profile.owned_responsibilities)))
+        self.assertTrue({
+            "PRIMARY_MARKET_RESEARCH",
+            "PRIMARY_CONTENT_PRODUCTION",
+            "PRIMARY_CREATIVE_PRODUCTION",
+            "PRIMARY_PERFORMANCE_ANALYSIS",
+            "LIVE_EXECUTION",
+        }.issubset(set(profile.forbidden_authorities)))
 
-    def test_intelligence_owns_evidence_not_strategy_or_signoff(self) -> None:
+    def test_intelligence_owns_evidence_not_strategy_content_or_signoff(self) -> None:
         profile = get_agent_profile(BrainAgentId.INTELLIGENCE)
-        self.assertTrue(
-            {"EVIDENCE_DISCOVERY", "SOURCE_VERIFICATION", "UNCERTAINTY_REDUCTION"}.issubset(
-                set(profile.owned_responsibilities)
-            )
-        )
-        self.assertTrue(
-            {
-                "FINAL_COMMERCIAL_SIGNOFF",
-                "PRIMARY_STRATEGY_FORMULATION",
-                "PRIMARY_CREATIVE_PRODUCTION",
-                "LIVE_EXECUTION",
-            }.issubset(set(profile.forbidden_authorities))
-        )
+        self.assertTrue({"EVIDENCE_DISCOVERY", "SOURCE_VERIFICATION", "UNCERTAINTY_REDUCTION"}.issubset(
+            set(profile.owned_responsibilities)
+        ))
+        self.assertTrue({
+            "FINAL_COMMERCIAL_SIGNOFF",
+            "PRIMARY_STRATEGY_FORMULATION",
+            "PRIMARY_CONTENT_PRODUCTION",
+            "PRIMARY_CREATIVE_PRODUCTION",
+            "LIVE_EXECUTION",
+        }.issubset(set(profile.forbidden_authorities)))
 
-    def test_strategist_owns_choices_tradeoffs_and_hypotheses_not_primary_research(self) -> None:
-        profile = get_agent_profile(BrainAgentId.STRATEGIST)
-        self.assertTrue(
-            {
-                "SEGMENTATION_TARGETING_POSITIONING",
-                "STRATEGIC_TRADEOFFS",
-                "HYPOTHESIS_DESIGN",
-            }.issubset(set(profile.owned_responsibilities))
-        )
+    def test_content_owns_messaging_copy_and_editorial_not_research_or_assets(self) -> None:
+        profile = get_agent_profile(BrainAgentId.CONTENT)
+        self.assertTrue({
+            "CONTENT_STRATEGY",
+            "MESSAGE_ARCHITECTURE",
+            "COPY_AND_SCRIPT",
+            "EDITORIAL_PLANNING",
+            "SEO_CONTENT_BRIEFING",
+            "CHANNEL_CONTENT_ADAPTATION",
+        }.issubset(set(profile.owned_responsibilities)))
         self.assertIn("PRIMARY_MARKET_RESEARCH", profile.forbidden_authorities)
-        self.assertIn("PRIMARY_CREATIVE_PRODUCTION", profile.forbidden_authorities)
+        self.assertIn("PRIMARY_CREATIVE_ASSET_PRODUCTION", profile.forbidden_authorities)
         self.assertIn("PRIMARY_PERFORMANCE_ANALYSIS", profile.forbidden_authorities)
-
-    def test_creative_owns_message_and_asset_specification_without_fact_invention_authority(self) -> None:
-        profile = get_agent_profile(BrainAgentId.CREATIVE)
-        self.assertTrue(
-            {
-                "CONCEPT_DEVELOPMENT",
-                "COPY_AND_SCRIPT",
-                "CREATIVE_PRODUCTION_SPECIFICATION",
-            }.issubset(set(profile.owned_responsibilities))
-        )
         self.assertIn("INVENT_PRODUCT_OR_EVIDENCE_FACTS", profile.forbidden_authorities)
-        self.assertIn("FINAL_COMMERCIAL_SIGNOFF", profile.forbidden_authorities)
-        self.assertIn("PRIMARY_PERFORMANCE_ANALYSIS", profile.forbidden_authorities)
 
-    def test_performance_owns_measurement_and_learning_without_spend_authority(self) -> None:
+    def test_creative_owns_visual_production_not_content_strategy_or_copy_ownership(self) -> None:
+        profile = get_agent_profile(BrainAgentId.CREATIVE)
+        self.assertTrue({
+            "CONCEPT_DEVELOPMENT",
+            "VISUAL_DIRECTION",
+            "CREATIVE_PRODUCTION_SPECIFICATION",
+            "ASSET_SYSTEM_DESIGN",
+        }.issubset(set(profile.owned_responsibilities)))
+        self.assertIn("PRIMARY_CONTENT_STRATEGY", profile.forbidden_authorities)
+        self.assertIn("PRIMARY_COPY_OWNERSHIP", profile.forbidden_authorities)
+        self.assertIn("INVENT_PRODUCT_OR_EVIDENCE_FACTS", profile.forbidden_authorities)
+
+    def test_performance_owns_measurement_and_learning_without_signoff_or_execution_self_grant(self) -> None:
         profile = get_agent_profile(BrainAgentId.PERFORMANCE)
-        self.assertTrue(
-            {
-                "MEASUREMENT_VALIDATION",
-                "FUNNEL_DIAGNOSIS",
-                "EXPERIMENT_ANALYSIS",
-                "LEARNING_EXTRACTION",
-            }.issubset(set(profile.owned_responsibilities))
-        )
+        self.assertTrue({
+            "MEASUREMENT_VALIDATION",
+            "FUNNEL_DIAGNOSIS",
+            "EXPERIMENT_ANALYSIS",
+            "LEARNING_EXTRACTION",
+        }.issubset(set(profile.owned_responsibilities)))
         self.assertIn("FINAL_COMMERCIAL_SIGNOFF", profile.forbidden_authorities)
         self.assertIn("LIVE_EXECUTION", profile.forbidden_authorities)
 
@@ -143,7 +132,7 @@ class FiveAgentDNAContractV1Tests(unittest.TestCase):
         expected = {
             BrainAgentId.CMO: EpistemicPosture.EVIDENCE_GOVERNANCE,
             BrainAgentId.INTELLIGENCE: EpistemicPosture.EVIDENCE_DISCOVERY,
-            BrainAgentId.STRATEGIST: EpistemicPosture.EVIDENCE_DEPENDENT_STRATEGY,
+            BrainAgentId.CONTENT: EpistemicPosture.EVIDENCE_DEPENDENT_CONTENT,
             BrainAgentId.CREATIVE: EpistemicPosture.EVIDENCE_DEPENDENT_CREATION,
             BrainAgentId.PERFORMANCE: EpistemicPosture.EMPIRICAL_MEASUREMENT,
         }
@@ -161,20 +150,19 @@ class FiveAgentDNAContractV1Tests(unittest.TestCase):
     def test_core_marketing_feedback_loop_is_explicit_without_creating_agent_six(self) -> None:
         cmo = get_agent_profile(BrainAgentId.CMO)
         intelligence = get_agent_profile(BrainAgentId.INTELLIGENCE)
-        strategist = get_agent_profile(BrainAgentId.STRATEGIST)
+        content = get_agent_profile(BrainAgentId.CONTENT)
         creative = get_agent_profile(BrainAgentId.CREATIVE)
         performance = get_agent_profile(BrainAgentId.PERFORMANCE)
 
-        self.assertTrue(
-            {
-                BrainAgentId.INTELLIGENCE,
-                BrainAgentId.STRATEGIST,
-                BrainAgentId.CREATIVE,
-                BrainAgentId.PERFORMANCE,
-            }.issubset(set(cmo.primary_handoff_targets))
-        )
-        self.assertIn(BrainAgentId.STRATEGIST, intelligence.primary_handoff_targets)
-        self.assertIn(BrainAgentId.CREATIVE, strategist.primary_handoff_targets)
+        self.assertTrue({
+            BrainAgentId.INTELLIGENCE,
+            BrainAgentId.CONTENT,
+            BrainAgentId.CREATIVE,
+            BrainAgentId.PERFORMANCE,
+        }.issubset(set(cmo.primary_handoff_targets)))
+        self.assertIn(BrainAgentId.CONTENT, intelligence.primary_handoff_targets)
+        self.assertIn(BrainAgentId.CREATIVE, content.primary_handoff_targets)
+        self.assertIn(BrainAgentId.CONTENT, creative.primary_handoff_targets)
         self.assertIn(BrainAgentId.PERFORMANCE, creative.primary_handoff_targets)
         self.assertIn(BrainAgentId.CMO, performance.primary_handoff_targets)
 
@@ -183,14 +171,15 @@ class FiveAgentDNAContractV1Tests(unittest.TestCase):
         first.owned_responsibilities.append("INJECTED_AUTHORITY")
         second = get_agent_profile(BrainAgentId.CMO)
         self.assertNotIn("INJECTED_AUTHORITY", second.owned_responsibilities)
-
         collection = canonical_agent_profiles()
         collection.pop()
         self.assertEqual(len(canonical_agent_profiles()), 5)
 
-    def test_unknown_permanent_agent_is_rejected_instead_of_promoted(self) -> None:
+    def test_legacy_strategist_resolves_only_as_content_alias(self) -> None:
         self.assertEqual(resolve_permanent_agent("cmo"), BrainAgentId.CMO)
         self.assertEqual(resolve_permanent_agent(" Intelligence "), BrainAgentId.INTELLIGENCE)
+        self.assertEqual(resolve_permanent_agent("STRATEGIST"), BrainAgentId.CONTENT)
+        self.assertNotIn("STRATEGIST", {agent.value for agent in BrainAgentId})
         for invalid in ("affiliate_manager", "research_specialist", "agent_6", ""):
             with self.assertRaises(ValidationError):
                 resolve_permanent_agent(invalid)
@@ -207,14 +196,7 @@ class FiveAgentDNAContractV1Tests(unittest.TestCase):
     def test_agent_dna_contract_has_no_body_or_provider_dependency(self) -> None:
         source = inspect.getsource(agent_dna)
         tree = ast.parse(source)
-        forbidden_roots = {
-            "runtime",
-            "tools",
-            "integrations",
-            "connectors",
-            "knowledge",
-            "memory",
-        }
+        forbidden_roots = {"runtime", "tools", "integrations", "connectors", "knowledge", "memory"}
         imported_roots = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

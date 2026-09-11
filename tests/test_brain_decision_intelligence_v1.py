@@ -30,7 +30,7 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         values = {
             "decision_id": "D-1",
             "goal_id": "G-1",
-            "agent_id": BrainAgentId.STRATEGIST,
+            "agent_id": BrainAgentId.CONTENT,
             "statement": "Proceed with a bounded acquisition experiment",
             "rationale": "The tested hypothesis currently has supporting evidence.",
             "disposition": DecisionDisposition.PROCEED,
@@ -100,7 +100,7 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
         values = {
             "assessment_id": "RA-1",
             "goal_id": "G-1",
-            "agent_id": BrainAgentId.STRATEGIST,
+            "agent_id": BrainAgentId.CONTENT,
             "complexity": SignalLevel.LOW,
             "uncertainty": SignalLevel.LOW,
             "consequence": SignalLevel.LOW,
@@ -131,7 +131,7 @@ class BrainDecisionIntelligenceV1Tests(unittest.TestCase):
             "assessment_id": "CA-1",
             "goal_id": "G-1",
             "proposal_id": "D-1",
-            "author_agent": BrainAgentId.STRATEGIST,
+            "author_agent": BrainAgentId.CONTENT,
             "proposal_verdict": ClaimVerdict.SUPPORTED,
             "proposal_evidence_refs": ["E-1"],
             "reviews": [

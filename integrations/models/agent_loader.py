@@ -8,15 +8,34 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Optional, Set
-from schemas.base import BaseModel, Field
+from schemas.base import BaseModel
 
 PERMANENT_AGENT_IDS: Set[str] = {
     "cmo",
     "intelligence",
-    "strategist",
+    "content",
     "creative",
     "performance",
 }
+
+# Read-only migration aliases for historical runtime/checkpoint inputs.  These
+# labels are never returned as permanent identities and are never discovered by
+# load_all_agents().
+LEGACY_AGENT_ALIASES = {
+    "strategist": "content",
+}
+
+
+def normalize_agent_definition_id(agent_id: str) -> str:
+    """Resolve a canonical permanent agent id, accepting legacy read aliases."""
+    norm_id = str(agent_id or "").lower().strip()
+    norm_id = LEGACY_AGENT_ALIASES.get(norm_id, norm_id)
+    if norm_id not in PERMANENT_AGENT_IDS:
+        raise ValueError(
+            f"INVALID_AGENT_ID: '{agent_id}' is not one of the five permanent agents "
+            f"({sorted(PERMANENT_AGENT_IDS)}). Creating or invoking a sixth core agent is prohibited."
+        )
+    return norm_id
 
 
 class AgentDefinition(BaseModel):
@@ -33,24 +52,21 @@ class AgentLoader:
 
     def __init__(self, workspace_root: Optional[Path] = None) -> None:
         if workspace_root is None:
-            # Default to repository root
             self.workspace_root = Path(__file__).resolve().parent.parent.parent
         else:
             self.workspace_root = workspace_root
 
     def is_valid_agent_id(self, agent_id: str) -> bool:
-        """Verify if agent_id belongs to the exactly five permanent agents."""
-        return agent_id.lower().strip() in PERMANENT_AGENT_IDS
+        """Return whether input resolves to one of the five canonical identities."""
+        try:
+            normalize_agent_definition_id(agent_id)
+            return True
+        except ValueError:
+            return False
 
     def load_agent(self, agent_id: str) -> AgentDefinition:
-        """Load and parse an agent definition from disk."""
-        norm_id = agent_id.lower().strip()
-
-        if not self.is_valid_agent_id(norm_id):
-            raise ValueError(
-                f"INVALID_AGENT_ID: '{agent_id}' is not one of the five permanent agents "
-                f"({sorted(list(PERMANENT_AGENT_IDS))}). Creating or invoking a sixth core agent is prohibited."
-            )
+        """Load a canonical agent definition, normalizing historical aliases."""
+        norm_id = normalize_agent_definition_id(agent_id)
 
         agent_file = (
             self.workspace_root
@@ -78,7 +94,7 @@ class AgentLoader:
         )
 
     def load_all_agents(self) -> Dict[str, AgentDefinition]:
-        """Load all five permanent agent definitions."""
+        """Load exactly the five canonical permanent agent definitions."""
         return {aid: self.load_agent(aid) for aid in PERMANENT_AGENT_IDS}
 
     @staticmethod
@@ -106,7 +122,6 @@ class AgentLoader:
         if not found_closing:
             return {}, content
 
-        # Simple YAML key-value parser to avoid heavy external dependencies
         frontmatter: Dict[str, str] = {}
         for fline in frontmatter_lines:
             fline = fline.strip()

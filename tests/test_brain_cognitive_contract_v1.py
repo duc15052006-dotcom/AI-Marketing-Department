@@ -23,7 +23,7 @@ class BrainCognitiveContractV1Tests(unittest.TestCase):
     def test_exactly_five_permanent_agents_exist(self) -> None:
         self.assertEqual(
             [agent.value for agent in BrainAgentId],
-            ["CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"],
+            ["CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"],
         )
         with self.assertRaises(ValueError):
             BrainAgentId("AGENT_6")
@@ -45,13 +45,13 @@ class BrainCognitiveContractV1Tests(unittest.TestCase):
         goal = GoalSpec(
             goal_id=" G-1 ",
             objective=" Improve qualified revenue ",
-            owner_agent="strategist",
+            owner_agent="content",
             success_criteria=["Evidence-backed strategy", "Evidence-backed strategy"],
             constraints=["No fabricated metrics"],
         )
         dumped = goal.model_dump()
         self.assertEqual(goal.goal_id, "G-1")
-        self.assertEqual(goal.owner_agent, BrainAgentId.STRATEGIST)
+        self.assertEqual(goal.owner_agent, BrainAgentId.CONTENT)
         self.assertEqual(goal.success_criteria, ["Evidence-backed strategy"])
         for forbidden in ("provider_id", "model_id", "tool_id", "queue_id", "connector_id"):
             self.assertNotIn(forbidden, dumped)

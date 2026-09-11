@@ -242,7 +242,7 @@ class UnifiedCognitiveLoopV1Tests(unittest.TestCase):
             derive_cognitive_cycle(self.request(action_intents=[self.intent(decision_id="unknown-decision")]))
 
     def test_plan_action_intent_bindings_are_reused_not_reimplemented_loosely(self):
-        bad_intent = self.intent(owner_agent=BrainAgentId.STRATEGIST)
+        bad_intent = self.intent(owner_agent=BrainAgentId.CONTENT)
         with self.assertRaises(ValidationError):
             derive_cognitive_cycle(self.request(action_intents=[bad_intent]))
 

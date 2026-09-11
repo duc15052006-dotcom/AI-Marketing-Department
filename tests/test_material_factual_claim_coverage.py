@@ -315,7 +315,7 @@ class TestMaterialFactualClaimCoverage(unittest.TestCase):
         from governance.access_matrix import PERMANENT_FIVE_AGENTS
         self.assertEqual(
             set(PERMANENT_FIVE_AGENTS),
-            {"cmo", "intelligence", "strategist", "creative", "performance"},
+            {"cmo", "intelligence", "content", "creative", "performance"},
             "Architecture must maintain exactly Five Agents (no 6th verifier agent).",
         )
 

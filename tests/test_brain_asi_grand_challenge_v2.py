@@ -79,7 +79,7 @@ class BrainASIGrandChallengeV2Tests(unittest.TestCase):
         return LearningEpisode(
             episode_id="LE-FRONTIER",
             goal_id="G-FRONTIER",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             hypothesis_id="H-FRONTIER",
             claim_kind=claim_kind,
             method=method,
@@ -142,8 +142,9 @@ class BrainASIGrandChallengeV2Tests(unittest.TestCase):
     def test_exactly_five_permanent_asi_identities_exist(self) -> None:
         self.assertEqual(
             {member.value for member in BrainAgentId},
-            {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"},
+            {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"},
         )
+        self.assertNotIn("STRATEGIST", {member.value for member in BrainAgentId})
 
     def test_metacognition_nested_boolean_mutation_fails_closed(self) -> None:
         request = self._meta_request("META-BOOL", 2)

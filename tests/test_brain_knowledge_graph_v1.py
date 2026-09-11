@@ -247,11 +247,11 @@ class BrainKnowledgeGraphV1Tests(unittest.TestCase):
         first = self._snapshot("snapshot-shared")
         second = self._snapshot(
             "snapshot-shared",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             beliefs=[
                 self._belief(
                     "prop-strategy",
-                    agent_id=BrainAgentId.STRATEGIST,
+                    agent_id=BrainAgentId.CONTENT,
                 )
             ],
         )
@@ -267,11 +267,11 @@ class BrainKnowledgeGraphV1Tests(unittest.TestCase):
         )
         second = self._snapshot(
             "snapshot-strategist",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             beliefs=[
                 self._belief(
                     "prop-shared",
-                    agent_id=BrainAgentId.STRATEGIST,
+                    agent_id=BrainAgentId.CONTENT,
                 )
             ],
         )
@@ -287,11 +287,11 @@ class BrainKnowledgeGraphV1Tests(unittest.TestCase):
         )
         strategy = self._snapshot(
             "snapshot-strategy",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             beliefs=[
                 self._belief(
                     "prop-strategy",
-                    agent_id=BrainAgentId.STRATEGIST,
+                    agent_id=BrainAgentId.CONTENT,
                 )
             ],
         )
@@ -321,11 +321,11 @@ class BrainKnowledgeGraphV1Tests(unittest.TestCase):
         graph = build_knowledge_graph(request)
         self.assertEqual(
             graph.contributing_agents,
-            [BrainAgentId.INTELLIGENCE, BrainAgentId.STRATEGIST],
+            [BrainAgentId.INTELLIGENCE, BrainAgentId.CONTENT],
         )
         self.assertEqual(
             [relation.agent_id for relation in graph.relations],
-            [BrainAgentId.INTELLIGENCE, BrainAgentId.STRATEGIST],
+            [BrainAgentId.INTELLIGENCE, BrainAgentId.CONTENT],
         )
 
     def test_duplicate_entity_ids_fail_closed(self) -> None:

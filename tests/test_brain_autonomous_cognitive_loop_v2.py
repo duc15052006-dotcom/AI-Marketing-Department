@@ -88,7 +88,7 @@ class BrainAutonomousCognitiveLoopV2Tests(unittest.TestCase):
 
     @classmethod
     def _collective_candidate(cls, *, proposal_id: str = "P-1", refuting_peer: bool = False) -> CollectiveCandidate:
-        author = BrainAgentId.STRATEGIST
+        author = BrainAgentId.CONTENT
         proposal_request = cls._evidence_request(
             proposal_id=proposal_id, agent=author, suffix=f"{proposal_id}-P", verdict=ClaimVerdict.SUPPORTED,
         )

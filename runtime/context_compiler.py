@@ -197,7 +197,8 @@ class ContextCompiler:
         # ---------------------------------------------------------------------
         if self.knowledge_repo:
             prof = AgentAccessMatrix.get_profile(aid)
-            allowed_sources = prof.allowed_knowledge_sources if prof else [SourceType.CANONICAL_FACT, SourceType.VERIFIED_EVIDENCE]
+            # Unknown agents fail closed; recognized legacy aliases are normalized by AgentAccessMatrix.
+            allowed_sources = prof.allowed_knowledge_sources if prof else []
 
             # Canonical exact scopes come from immutable RuntimeContext authority.
             # Legacy exact scopes remain as migration compatibility only; no unscoped wildcard reads.

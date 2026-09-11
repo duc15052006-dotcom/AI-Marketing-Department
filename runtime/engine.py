@@ -1,6 +1,6 @@
 """Five-Agent Department Supervised Runtime Engine (Phase 5.2 - Live LLM Execution).
 
-Orchestrates the frozen Five-Agent Brain (CMO, Intelligence, Strategist, Creative, Performance)
+Orchestrates the frozen Five-Agent Brain (CMO, Intelligence, Content, Creative, Performance)
 with live UniversalModelGateway execution, ToolGateway execution, Knowledge retrieval,
 Memory scoping, durable checkpointing, and Human Approval gating.
 Permanent Logical Agent Count = 5. Zero Agent 6.
@@ -878,8 +878,8 @@ class FiveAgentDepartmentRuntime:
             "You are the Chief Marketing Officer (CMO) and Executive Master Orchestrator of the Five-Agent AI Marketing Department.\n"
             "Decompose the user's commercial marketing objective into clear, structured delegation directives for:\n"
             "- Intelligence: Competitor & market research focus\n"
-            "- Strategist: Value proposition & audience positioning\n"
-            "- Creative: High-converting hooks & multimedia concept directions\n"
+            "- Content: Messaging architecture, copy/scripts, editorial plan & channel adaptation\n"
+            "- Creative: Visual concepts, storyboards & multimedia asset directions\n"
             "- Performance: KPI tree, attribution model & budget allocation\n"
             "Mirror the language of the user objective (Vietnamese/English)."
         )
@@ -921,8 +921,8 @@ class FiveAgentDepartmentRuntime:
                 # COLLAB-05: directives reference the objective without
                 # re-quoting it (single-occurrence contract in prompts).
                 "intelligence_focus": "Investigate market landscape, customer pain points, and competitors for the stated objective",
-                "strategist_focus": "Define ICP segments, value proposition, and positioning hierarchy for the stated objective",
-                "creative_focus": "Develop creative angles, high-converting hooks, and ad copy for the stated objective",
+                "content_focus": "Turn CMO strategy and verified evidence into messaging hierarchy, copy/script directions, editorial plan, SEO briefs, and channel adaptation",
+                "creative_focus": "Develop visual concepts, storyboards, and multimedia asset directions from the approved Content brief",
                 "performance_focus": "Establish CAC/ROAS targets, channel mix, and experiment roadmap for the stated objective",
             },
             "citations": [c.citation_id for c in k_res.citations],
@@ -1284,22 +1284,22 @@ class FiveAgentDepartmentRuntime:
         context.create_checkpoint()
         return output
 
-    def execute_stage_strategist(self, context: RuntimeContext) -> Dict[str, Any]:
-        """Stage 3: Strategist Positioning & Value Architecture."""
-        context.current_stage = RuntimeStage.STRATEGIST
+    def execute_stage_content(self, context: RuntimeContext) -> Dict[str, Any]:
+        """Stage 3: Content Strategy, Messaging & Editorial Architecture."""
+        context.current_stage = RuntimeStage.CONTENT
         emitter = self._get_emitter(context)
         if emitter:
             emitter.emit(
                 ProgressEventType.STAGE_STARTED,
-                stage="STRATEGIST",
-                agent="STRATEGIST",
-                message="Bắt đầu giai đoạn Strategist (Positioning & Value Architecture)",
+                stage="CONTENT",
+                agent="CONTENT",
+                message="Bắt đầu giai đoạn Content (Messaging & Editorial Architecture)",
             )
 
-        k_res, m_res = self._build_stage_lineage_context("strategist", context, include_memory=True)
+        k_res, m_res = self._build_stage_lineage_context("content", context, include_memory=True)
 
         # Grounded Context Compilation is the authoritative model-input boundary.
-        grounded_pkg = self.context_compiler.compile_grounded_package("strategist", context)
+        grounded_pkg = self.context_compiler.compile_grounded_package("content", context)
         self._reconcile_grounded_stage_provenance(context, grounded_pkg, k_res, m_res)
         prov_map = context.working_state.setdefault("provenance_index", {})
         for sid, item in grounded_pkg.provenance_index.items():
@@ -1310,92 +1310,97 @@ class FiveAgentDepartmentRuntime:
             if emitter:
                 emitter.emit(
                     ProgressEventType.RUN_FAILED,
-                    stage="STRATEGIST",
-                    agent="STRATEGIST",
-                    message="Giai đoạn Strategist thất bại do giai đoạn trước gặp sự cố",
+                    stage="CONTENT",
+                    agent="CONTENT",
+                    message="Giai đoạn Content thất bại do giai đoạn trước gặp sự cố",
                     metadata={"error": "PREVIOUS_STAGE_FAILED"},
                 )
             output = {
-                "stage": "STRATEGIST",
-                "agent": "strategist",
+                "stage": "CONTENT",
+                "agent": "content",
                 "status": "FAILED",
                 "error": "PREVIOUS_STAGE_FAILED",
-                "positioning": "",
+                "content_strategy": "",
                 "target_segments": [],
                 "value_propositions": [],
                 "citations": [c.citation_id for c in k_res.citations],
             }
-            context.stage_outputs["strategist"] = output
+            context.stage_outputs["content"] = output
             context.create_checkpoint()
             return output
 
         # Dynamic LLM Strategy
         sys_prompt = (
-            "You are the Marketing Strategist in the Five-Agent AI Marketing Department.\n"
-            "Synthesize the market intelligence into a sharp positioning architecture, defining:\n"
-            "1. Primary Ideal Customer Profile (ICP) & Beachhead Segments\n"
-            "2. Core Value Proposition & Category Point-of-View\n"
-            "3. Messaging Hierarchy & Proof Pillars\n"
+            "You are the Content Strategy, Copywriting & Distribution Specialist in the Five-Agent AI Marketing Department.\n"
+            "Use CMO-approved strategy and verified Intelligence evidence to build content architecture without redefining positioning or commercial strategy. Define:\n"
+            "1. Messaging hierarchy and proof pillars\n"
+            "2. Copy/script and editorial directions\n"
+            "3. SEO/channel adaptation and CTA guidance\n"
             "Mirror the language of the user objective."
         )
         intel_findings = context.stage_outputs.get("intelligence", {}).get("market_findings", "")
+        cmo_strategy = context.stage_outputs.get("cmo_initial", {}).get("strategic_intent", "")
         evidence_section = grounded_pkg.render_prompt_section()
-        user_prompt = f"Objective: {context.objective}\nIntelligence Research: {intel_findings}\n\n{evidence_section}".strip()
+        user_prompt = f"Objective: {context.objective}\nCMO Strategy & Positioning: {cmo_strategy}\nIntelligence Research: {intel_findings}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
-        llm_strategy, err = self._call_agent_llm("strategist", sys_prompt, user_prompt, context=context)
+        llm_content, err = self._call_agent_llm("content", sys_prompt, user_prompt, context=context)
 
-        if not llm_strategy:
+        if not llm_content:
             context.status = RuntimeStatus.FAILED
-            context.risk_flags.append(f"STRATEGIST_FAILED: {err}")
+            context.risk_flags.append(f"CONTENT_FAILED: {err}")
             if emitter:
                 emitter.emit(
                     ProgressEventType.RUN_FAILED,
-                    stage="STRATEGIST",
-                    agent="STRATEGIST",
-                    message=f"Giai đoạn Strategist thất bại: {err}",
+                    stage="CONTENT",
+                    agent="CONTENT",
+                    message=f"Giai đoạn Content thất bại: {err}",
                     metadata={"error": str(err)},
                 )
             output = {
-                "stage": "STRATEGIST",
-                "agent": "strategist",
+                "stage": "CONTENT",
+                "agent": "content",
                 "status": "FAILED",
                 "error": err or "MODEL_PROVIDER_FAILURE",
-                "positioning": "",
+                "content_strategy": "",
                 "target_segments": [],
                 "value_propositions": [],
                 "citations": [c.citation_id for c in k_res.citations],
             }
-            context.stage_outputs["strategist"] = output
+            context.stage_outputs["content"] = output
             context.create_checkpoint()
             return output
 
         output = {
-            "stage": "STRATEGIST",
-            "agent": "strategist",
+            "stage": "CONTENT",
+            "agent": "content",
             "status": "COMPLETED",
-            "positioning": strip_handoff_block(llm_strategy),
+            "content_strategy": strip_handoff_block(llm_content),
             # COLLAB-04: no structured segment/proposition parser contract
             # exists; fields stay honestly empty instead of fabricated.
             "target_segments": [],
             "value_propositions": [],
             "field_origins": {
-                "positioning": "AGENT_DERIVED",
+                "content_strategy": "AGENT_DERIVED",
                 "target_segments": "NOT_PROVIDED",
                 "value_propositions": "NOT_PROVIDED",
             },
             "citations": [c.citation_id for c in k_res.citations],
         }
-        output, _payload, _parse_status = self._finalize_stage_handoff(context, "strategist", "strategist", llm_strategy, output)
+        output, _payload, _parse_status = self._finalize_stage_handoff(context, "content", "content", llm_content, output)
         if emitter:
             emitter.emit(
                 ProgressEventType.STAGE_COMPLETED,
-                stage="STRATEGIST",
-                agent="STRATEGIST",
-                message="Hoàn tất giai đoạn Strategist",
+                stage="CONTENT",
+                agent="CONTENT",
+                message="Hoàn tất giai đoạn Content",
             )
-        context.stage_outputs["strategist"] = output
+        context.stage_outputs["content"] = output
         context.create_checkpoint()
         return output
+
+    def execute_stage_strategist(self, context: RuntimeContext) -> Dict[str, Any]:
+        """Deprecated compatibility shim; executes canonical Content stage."""
+        return self.execute_stage_content(context)
 
     def execute_stage_creative(self, context: RuntimeContext) -> Dict[str, Any]:
         """Stage 4: Creative Generation & Asset Synthesis."""
@@ -1410,9 +1415,9 @@ class FiveAgentDepartmentRuntime:
             )
 
         # Creative prerequisite is terminal before retrieval/tool side effects.
-        # If Strategist already failed, this stage must not spend tool budget,
+        # If Content already failed, this stage must not spend tool budget,
         # create receipts/artifacts, or claim grounded Creative provenance.
-        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("content", {}).get("status") == "FAILED":
             context.status = RuntimeStatus.FAILED
             if emitter:
                 emitter.emit(
@@ -1468,7 +1473,7 @@ class FiveAgentDepartmentRuntime:
         for sid, item in grounded_pkg.provenance_index.items():
             prov_map[sid] = item.model_dump()
 
-        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("strategist", {}).get("status") == "FAILED":
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("content", {}).get("status") == "FAILED":
             context.status = RuntimeStatus.FAILED
             if emitter:
                 emitter.emit(
@@ -1495,13 +1500,13 @@ class FiveAgentDepartmentRuntime:
 
         # Dynamic LLM Creative Synthesis
         sys_prompt = (
-            "You are the Creative Director and Copywriter in the Five-Agent AI Marketing Department.\n"
-            "Develop 3-5 high-converting ad angles with scroll-stopping hooks, ad copy, and short-form video scripts (Meta, TikTok, YouTube Shorts).\n"
+            "You are the Creative Director & Multimedia Production Specialist in the Five-Agent AI Marketing Department.\n"
+            "Turn the approved Content brief into visual concepts, storyboards, asset systems, and multimedia production directions. Do not rewrite factual claims or take primary copy ownership.\n"
             "Mirror the language of the user objective."
         )
-        strat_pos = context.stage_outputs.get("strategist", {}).get("positioning", "")
+        content_strategy = context.stage_outputs.get("content", {}).get("content_strategy", "")
         evidence_section = grounded_pkg.render_prompt_section()
-        user_prompt = f"Objective: {context.objective}\nPositioning Strategy: {strat_pos}\n\n{evidence_section}".strip()
+        user_prompt = f"Objective: {context.objective}\nCMO Strategy & Positioning: {context.stage_outputs.get('cmo_initial', {}).get('strategic_intent', '')}\nContent Messaging & Editorial Brief: {content_strategy}\n\n{evidence_section}".strip()
         user_prompt = self._append_governance_block(context, user_prompt)
         llm_creative, err = self._call_agent_llm("creative", sys_prompt, user_prompt, temperature=0.7, context=context)
 
@@ -1657,7 +1662,7 @@ class FiveAgentDepartmentRuntime:
             "Build an attribution framework, media allocation model, KPI tree, and structured A/B experiment backlog for this campaign.\n"
             "Mirror the language of the user objective."
         )
-        strat_pos = context.stage_outputs.get("strategist", {}).get("positioning", "")
+        content_strategy = context.stage_outputs.get("content", {}).get("content_strategy", "")
         # COLLAB-06: Performance evaluates the ACTUAL creative work, not a
         # synthetic/absent concept_name.
         creative_synthesis = context.stage_outputs.get("creative", {}).get("creative_synthesis", "") or ""
@@ -1667,7 +1672,8 @@ class FiveAgentDepartmentRuntime:
         )
         user_prompt = (
             f"Objective: {context.objective}\n"
-            f"Strategy: {strat_pos}\n"
+            f"CMO Strategy & Positioning: {context.stage_outputs.get('cmo_initial', {}).get('strategic_intent', '')}\n"
+            f"Content Strategy & Messaging: {content_strategy}\n"
             f"Creative Synthesis (authoritative, from Creative this run): {creative_synthesis}\n\n"
             f"{evidence_section}"
         ).strip()
@@ -2444,12 +2450,12 @@ class FiveAgentDepartmentRuntime:
 
         cmo_init = context.stage_outputs.get("cmo_initial", {})
         intel_out = context.stage_outputs.get("intelligence", {})
-        strat_out = context.stage_outputs.get("strategist", {})
+        content_out = context.stage_outputs.get("content", {})
         crtv_out = context.stage_outputs.get("creative", {})
         perf_out = context.stage_outputs.get("performance", {})
 
         has_stage_failure = any(
-            s.get("status") == "FAILED" for s in (cmo_init, intel_out, strat_out, crtv_out, perf_out)
+            s.get("status") == "FAILED" for s in (cmo_init, intel_out, content_out, crtv_out, perf_out)
         ) or context.status == RuntimeStatus.FAILED
 
         if has_stage_failure:
@@ -2488,8 +2494,8 @@ class FiveAgentDepartmentRuntime:
             "Synthesize all specialist deliverables into an executive, beautifully formatted Markdown report containing:\n"
             "1. # Executive Summary & Strategic Intent\n"
             "2. ## Market Intelligence & Competitor Signals (from Intelligence)\n"
-            "3. ## Positioning Architecture & ICP Target Segments (from Strategist)\n"
-            "4. ## Creative Concepts, Ad Hooks & Video Scripts (from Creative)\n"
+            "3. ## Content Strategy, Messaging & Editorial System (from Content)\n"
+            "4. ## Creative Visual Concepts, Storyboards & Multimedia Assets (from Creative)\n"
             "5. ## Media Allocation, Full-Funnel KPIs & Experiment Backlog (from Performance)\n"
             "6. ## Governance, Autonomy & Next Action Steps\n\n"
             "CRITICAL: Always output complete, professional Markdown with headers, tables, and bullet points. "
@@ -2503,7 +2509,7 @@ class FiveAgentDepartmentRuntime:
             f"Specialist Deliverables:\n"
             f"- CMO Strategic Intent: {cmo_init.get('strategic_intent', '')}\n"
             f"- Intelligence Findings: {intel_out.get('market_findings', '')}\n"
-            f"- Strategist Positioning: {strat_out.get('positioning', '')}\n"
+            f"- Content Strategy & Messaging: {content_out.get('content_strategy', '')}\n"
             f"- Creative Synthesis: {crtv_out.get('creative_synthesis', crtv_out.get('copy_headlines', ''))}\n"
             f"- Performance Plan: {perf_out.get('funnel_kpi', '')}\n\n"
             f"{evidence_section}"
@@ -2585,7 +2591,8 @@ class FiveAgentDepartmentRuntime:
             "claim_audit": audit_res.model_dump(),
             "master_gtm_plan": {
                 "objective": context.objective,
-                "strategy": strat_out,
+                "strategy": cmo_init,
+                "content": content_out,
                 "creative": crtv_out,
                 "performance": perf_out,
             },
@@ -2770,7 +2777,7 @@ class FiveAgentDepartmentRuntime:
         Invariants:
         1. Context belongs to this runtime and is registered in active contexts.
         2. Strict 6-stage execution invariant with cooperative cancellation checks:
-           CMO_INITIAL -> INTELLIGENCE -> STRATEGIST -> CREATIVE -> PERFORMANCE -> FINAL_CMO
+           CMO_INITIAL -> INTELLIGENCE -> CONTENT -> CREATIVE -> PERFORMANCE -> FINAL_CMO
         3. Exception and failure ownership: unhandled errors mark context FAILED and do not skip to complete.
         4. Final CMO is the same CMO second pass (never Agent 6).
         """
@@ -2835,9 +2842,9 @@ class FiveAgentDepartmentRuntime:
             if _check_cancellation():
                 raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
 
-            # Stage 3: Strategist
+            # Stage 3: Content
             if context.status != RuntimeStatus.FAILED:
-                strat_out = self.execute_stage_strategist(context)
+                content_out = self.execute_stage_content(context)
             if _check_cancellation():
                 raise RuntimeError("RUN_CANCELLED_BY_OPERATOR")
 
@@ -2870,7 +2877,7 @@ class FiveAgentDepartmentRuntime:
                 # Preserve the first failing stage's error information honestly.
                 failing_stage = None
                 first_error = "WORKFLOW_FAILED"
-                for stg_key in ("cmo_initial", "intelligence", "strategist", "creative", "performance"):
+                for stg_key in ("cmo_initial", "intelligence", "content", "creative", "performance"):
                     stg_out = context.stage_outputs.get(stg_key, {})
                     if stg_out.get("status") == "FAILED":
                         failing_stage = stg_key.upper()
@@ -3008,7 +3015,7 @@ class FiveAgentDepartmentRuntime:
         2. execute_stage_intelligence (ToolGateway → EvidenceBuilder → GroundingContext → Intelligence synthesis)
         3. complete_run (seal artifact)
 
-        Bypasses: CMO Initial, Strategist, Creative, Performance, Final CMO.
+        Bypasses: CMO Initial, Content, Creative, Performance, Final CMO.
         Model call count: 1 (Intelligence synthesis only).
         Preserves: full evidence pipeline, B3 quality gates, B4 conflict/gap,
         scope isolation, canonical ObservationRecord identity.

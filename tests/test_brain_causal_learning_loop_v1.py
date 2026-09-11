@@ -72,7 +72,7 @@ class BrainCausalLearningLoopV1Tests(unittest.TestCase):
         return LearningEpisode(
             episode_id="LE-1",
             goal_id="G-LEARN",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             hypothesis_id="H-1",
             claim_kind=claim_kind,
             method=method,

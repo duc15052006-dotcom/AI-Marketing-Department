@@ -1,6 +1,6 @@
 """Adversarial regression for Creative prerequisite fail-closed ordering.
 
-Invariant: once Strategist has FAILED, Creative must not invoke downstream tools.
+Invariant: once Content has FAILED, Creative must not invoke downstream tools.
 A failed prerequisite is a control-flow terminal for the stage, not a condition
 that may be checked after image generation or other side effects.
 """
@@ -35,11 +35,12 @@ class _NoopContextCompiler:
 
 
 class CreativePrerequisiteToolGateAdversarialV1Tests(unittest.TestCase):
-    def test_failed_strategist_prevents_creative_tool_execution(self) -> None:
+    def test_failed_content_prevents_creative_tool_execution(self) -> None:
         runtime = FiveAgentDepartmentRuntime.__new__(FiveAgentDepartmentRuntime)
         runtime.tool_gateway = _SpyToolGateway()
         runtime.lineage_inspector = _NoopLineageInspector()
         runtime.context_compiler = _NoopContextCompiler()
+        runtime.brain_action_authority_resolver = None
         runtime._executed_tool_idempotency_keys = {}
         runtime._get_emitter = lambda _context: None
         runtime._build_stage_lineage_context = lambda *_args, **_kwargs: (
@@ -50,12 +51,12 @@ class CreativePrerequisiteToolGateAdversarialV1Tests(unittest.TestCase):
 
         context = RuntimeContext(
             run_id="RUN-CREATIVE-PREREQ-GATE-V1",
-            objective="Do not continue when the strategy prerequisite has failed.",
+            objective="Do not continue when the content prerequisite has failed.",
         )
         context.status = RuntimeStatus.RUNNING
-        context.stage_outputs["strategist"] = {
-            "stage": "STRATEGIST",
-            "agent": "strategist",
+        context.stage_outputs["content"] = {
+            "stage": "CONTENT",
+            "agent": "content",
             "status": "FAILED",
             "error": "MODEL_PROVIDER_FAILURE",
         }
@@ -67,7 +68,7 @@ class CreativePrerequisiteToolGateAdversarialV1Tests(unittest.TestCase):
         self.assertEqual(
             runtime.tool_gateway.calls,
             0,
-            "Creative must fail closed before image_generation when Strategist failed.",
+            "Creative must fail closed before image_generation when Content failed.",
         )
         self.assertEqual(context.execution_receipt_refs, [])
         self.assertEqual(context.artifact_refs, [])

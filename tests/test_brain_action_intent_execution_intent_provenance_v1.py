@@ -125,7 +125,7 @@ class BrainActionIntentExecutionIntentProvenanceV1Tests(unittest.TestCase):
                 category=CapabilityCategory.PUBLISH,
                 description="Test-only consequential capability for semantic journal provenance.",
                 provider=adapter.adapter_name,
-                supported_agents=["strategist"],
+                supported_agents=["content"],
                 required_permissions=[],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
@@ -144,7 +144,7 @@ class BrainActionIntentExecutionIntentProvenanceV1Tests(unittest.TestCase):
         return ToolRequest(
             request_id=f"REQ-{run_id}",
             run_id=run_id,
-            agent_id="strategist",
+            agent_id="content",
             capability_id=cls.CAPABILITY_ID,
             parameters={"payload": "semantic journal provenance"},
             approval_token=approval_token,

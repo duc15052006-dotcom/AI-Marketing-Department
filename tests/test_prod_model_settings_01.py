@@ -4,7 +4,7 @@ Guarantees:
 - Safe settings read without secret exposure (zero plaintext key returned).
 - Masked/encrypted secret persistence via SecureSecretStore (Windows DPAPI / safe vault).
 - Full custom OpenAI-compatible and Gemini Native provider management.
-- Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE).
+- Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE).
 - Strict rejection of FINAL_CMO or unknown agent overrides.
 - Deterministic fallback chain editing without duplicates.
 - Safe base URL validation (HTTPS remote, HTTP loopback only).
@@ -279,7 +279,7 @@ class TestProdModelSettings01(unittest.TestCase):
         safe_dict = self.settings_manager.get_safe_settings_dict()
         agents = safe_dict["allowed_agents"]
         self.assertEqual(len(agents), 5)
-        self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"})
+        self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"})
         self.assertNotIn("FINAL_CMO", agents)
 
     # =========================================================================
