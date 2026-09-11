@@ -1095,6 +1095,31 @@ class FiveAgentDepartmentRuntime:
                 message="Bắt đầu giai đoạn Intelligence (Research & Sensory Analysis)",
             )
 
+        # Upstream failure is authoritative before any retrieval or tool side effect.
+        # A failed CMO stage must not spend search/read quota or create receipts.
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("cmo_initial", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="INTELLIGENCE",
+                    agent="INTELLIGENCE",
+                    message="Giai đoạn Intelligence thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "INTELLIGENCE",
+                "agent": "intelligence",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "market_findings": "",
+                "search_receipt_id": None,
+                "citations": [],
+            }
+            context.stage_outputs["intelligence"] = output
+            context.create_checkpoint()
+            return output
+
         k_res, _ = self._build_stage_lineage_context("intelligence", context, include_memory=False)
 
         # Invoke ToolGateway for search observation
@@ -1639,6 +1664,34 @@ class FiveAgentDepartmentRuntime:
                 agent="PERFORMANCE",
                 message="Bắt đầu giai đoạn Performance (Attribution & Experiment Portfolio)",
             )
+
+        # Upstream failure is authoritative before analytics retrieval.
+        # A failed Creative stage must not create telemetry receipts or spend provider quota.
+        if context.status == RuntimeStatus.FAILED or context.stage_outputs.get("creative", {}).get("status") == "FAILED":
+            context.status = RuntimeStatus.FAILED
+            if emitter:
+                emitter.emit(
+                    ProgressEventType.RUN_FAILED,
+                    stage="PERFORMANCE",
+                    agent="PERFORMANCE",
+                    message="Giai đoạn Performance thất bại do giai đoạn trước gặp sự cố",
+                    metadata={"error": "PREVIOUS_STAGE_FAILED"},
+                )
+            output = {
+                "stage": "PERFORMANCE",
+                "agent": "performance",
+                "status": "FAILED",
+                "error": "PREVIOUS_STAGE_FAILED",
+                "funnel_kpi": "",
+                "experiment_blueprint": {},
+                "analytics_receipt_id": None,
+                "analytics_data_status": "NOT_ATTEMPTED:PREVIOUS_STAGE_FAILED",
+                "calc_receipt_id": None,
+                "citations": [],
+            }
+            context.stage_outputs["performance"] = output
+            context.create_checkpoint()
+            return output
 
         k_res, m_res = self._build_stage_lineage_context("performance", context, include_memory=True)
 
