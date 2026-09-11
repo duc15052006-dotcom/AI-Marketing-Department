@@ -1,0 +1,100 @@
+name: Convergence Brain Research Authority Trigger
+
+on:
+  pull_request:
+    branches:
+      - integration/brain-nonbrain-convergence-v1
+    paths:
+      - ".github/workflows/convergence-brain-research-authority-trigger.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-apply-source-only:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'integration/brain-nonbrain-mergework-v1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact triggering convergence SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact branch and stale-run guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ github.event.pull_request.head.ref }}" = "integration/brain-nonbrain-mergework-v1"
+          test "${{ github.event.pull_request.head.sha }}" = "$(git rev-parse HEAD)"
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
+          test "${{ github.event.pull_request.head.ref }}" != "main"
+
+      - name: Install repository test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Apply reviewed Brain research authority patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/convergence-brain-research-authority-apply.yml').read_text(encoding='utf-8')
+          start_marker = "          python - <<'PY'\n"
+          end_marker = "\n          PY\n\n      - name: Validate Brain research authority migration\n"
+          if workflow.count(start_marker) != 1 or workflow.count(end_marker) != 1:
+              raise SystemExit('Brain research authority patch markers changed; refusing unsafe extraction')
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          patch_code = textwrap.dedent(workflow[start:end])
+          compile(patch_code, '<brain-research-authority-patch>', 'exec')
+          namespace = {'__name__': '__main__'}
+          exec(compile(patch_code, '<brain-research-authority-patch>', 'exec'), namespace, namespace)
+          PY
+
+      - name: Validate Brain research authority migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q \
+            brain/research_authority.py runtime/brain_authority.py \
+            runtime/engine.py tools/tool_gateway.py app_api/server.py \
+            tests/test_brain_research_authority_runtime_integration_v1.py
+          python -m unittest -v \
+            tests.test_brain_research_authority_runtime_integration_v1 \
+            tests.test_brain_runtime_canonical_action_intent_handoff_v1 \
+            tests.test_brain_canonical_action_intent_tool_gateway_v1
+
+      - name: Commit source-only Brain migration slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin integration/brain-nonbrain-mergework-v1
+          test "$(git rev-parse origin/integration/brain-nonbrain-mergework-v1)" = "${{ github.event.pull_request.head.sha }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            brain/research_authority.py \
+            runtime/brain_authority.py \
+            runtime/engine.py \
+            tools/tool_gateway.py \
+            app_api/server.py \
+            tests/test_brain_research_authority_runtime_integration_v1.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No Brain research authority changes remain to commit."
+            exit 0
+          fi
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo "Refusing workflow mutation in source-only commit" >&2
+            exit 1
+          fi
+          git commit -m "feat(brain): wire canonical research authority into runtime"
+          git push origin HEAD:integration/brain-nonbrain-mergework-v1
