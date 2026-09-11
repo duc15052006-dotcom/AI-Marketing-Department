@@ -320,7 +320,9 @@ def authorize_action(intent: RuntimeActionIntent) -> ActionAuthorization:
 
     This function intentionally preserves the already-qualified ToolGateway V1
     behavior. Semantic Decision provenance is enforced by
-    :func:`authorize_action_intent` and will be wired into runtime separately.
+    :func:`authorize_action_intent`; production promotion of that stronger
+    provenance remains a separately certified migration so operator-approved
+    legacy V1 actions are not silently redefined by an unrelated hardening patch.
     """
 
     if not isinstance(intent, RuntimeActionIntent):
