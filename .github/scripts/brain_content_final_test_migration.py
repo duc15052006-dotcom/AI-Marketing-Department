@@ -128,6 +128,21 @@ replace(
     exact=1,
 )
 
+# Phase1A must exercise the canonical Content entrypoint and schema directly;
+# the deprecated Strategist shim is compatibility-only and not the active path.
+replace(
+    "tests/test_phase1a_runtime_integrity.py",
+    "execute_stage_strategist(ctx)",
+    "execute_stage_content(ctx)",
+    exact=11,
+)
+replace(
+    "tests/test_phase1a_runtime_integrity.py",
+    'strat_out["positioning"]',
+    'strat_out["content_strategy"]',
+    exact=1,
+)
+
 # Instrument the method execute_run actually calls, not the deprecated shim.
 replace(
     "tests/test_prod_core_authority_01a.py",
