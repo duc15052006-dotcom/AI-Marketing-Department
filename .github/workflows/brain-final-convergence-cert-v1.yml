@@ -149,7 +149,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: brain-final-convergence-windows-${{ github.event.pull_request.head.sha || github.sha }}
-          path: .ci-results/
+          path: |
+            .ci-results/
+            tests/test_applicationization_v1.py
+            tests/test_chat_first_app_v1.py
+            tests/test_chat_persistence_v1.py
+            tests/test_collaboration_adversarial_final.py
+            tests/test_collaboration_definition.py
+            tests/test_collaboration_integrity_audit.py
+            tests/test_model_execution_bridge.py
+            tests/test_phase1a_runtime_integrity.py
+            tests/test_phase5_1_foundation.py
+            tests/test_phase5_2_runtime_integration.py
+            tests/test_phase6_1_v1_connectors_and_workspace.py
+            tests/test_phase6_2_pilot_and_v1_release.py
+            tests/test_prod_core_authority_01a.py
+            tests/test_prod_runtime_01_single_run_authority.py
+            tests/test_schemas.py
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14
