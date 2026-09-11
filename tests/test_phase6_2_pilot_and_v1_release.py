@@ -438,7 +438,9 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
         # ---------------------------------------------------------------------
         # GATE 9: Final Lineage Validation
         # ---------------------------------------------------------------------
-        inspector = self.runtime.lineage_inspector
+        # Completed-run audit must use durable artifact receipts; complete_run()
+        # intentionally clears the runtime's transient lineage cache for isolation.
+        inspector = LineageInspector(receipts=receipts)
         # Trace published campaign receipt
         pub_receipt = next(r for r in receipts if r.capability_id == "social_publishing")
         trace = inspector.trace_claim_to_receipt("CardioVital Q4 Published Campaign", pub_receipt.execution_id)
