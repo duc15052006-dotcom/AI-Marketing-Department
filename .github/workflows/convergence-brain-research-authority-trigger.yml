@@ -55,13 +55,13 @@ jobs:
           raw_patch = workflow[start:end]
           prefix = "          "
           lines = raw_patch.splitlines()
-          bad = [line for line in lines if line and not line.startswith(prefix)]
+          bad = [line for line in lines if line.strip() and not line.startswith(prefix)]
           if bad:
               raise SystemExit(
                   'Brain research authority patch indentation contract changed; refusing unsafe extraction'
               )
           patch_code = "\n".join(
-              line[len(prefix):] if line else ""
+              line[len(prefix):] if line.strip() else ""
               for line in lines
           ) + "\n"
           compiled = compile(patch_code, '<brain-research-authority-patch>', 'exec')
