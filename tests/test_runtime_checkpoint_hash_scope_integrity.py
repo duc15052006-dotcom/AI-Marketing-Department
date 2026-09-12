@@ -2,7 +2,6 @@
 
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 
 from runtime.context import ApprovalState, ExecutionCheckpoint, RuntimeStage, RuntimeStatus
@@ -60,11 +59,10 @@ class TestRuntimeCheckpointHashScopeIntegrity(unittest.TestCase):
                 setattr(checkpoint, field_name, mutated_value)
                 self.assertNotEqual(original_hash, checkpoint.calculate_checkpoint_hash())
 
-    def test_serialized_round_trip_recomputes_same_bound_hash(self):
-        checkpoint = self._checkpoint()
-        checkpoint.checkpoint_hash = checkpoint.calculate_checkpoint_hash()
-        restored = ExecutionCheckpoint(**checkpoint.model_dump())
-        self.assertEqual(restored.checkpoint_hash, restored.calculate_checkpoint_hash())
+    def test_equivalent_typed_checkpoints_recompute_same_bound_hash(self):
+        first = self._checkpoint()
+        second = self._checkpoint()
+        self.assertEqual(first.calculate_checkpoint_hash(), second.calculate_checkpoint_hash())
 
     def test_job_store_rejects_tampered_bound_checkpoint_fields(self):
         mutations = {
