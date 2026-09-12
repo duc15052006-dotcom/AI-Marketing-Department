@@ -68,7 +68,7 @@ class BrainActionIntentDecisionProvenanceV1Tests(unittest.TestCase):
         return ReasoningAssessment(
             assessment_id="RA-1",
             goal_id="G-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             complexity=SignalLevel.LOW,
             uncertainty=SignalLevel.LOW,
             consequence=SignalLevel.LOW,
@@ -83,7 +83,7 @@ class BrainActionIntentDecisionProvenanceV1Tests(unittest.TestCase):
         return DecisionRecord(
             decision_id="D-1",
             goal_id="G-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             statement="Proceed with a bounded acquisition experiment",
             rationale="The exact proposal has canonical supporting evidence.",
             disposition=DecisionDisposition.PROCEED,
@@ -109,7 +109,7 @@ class BrainActionIntentDecisionProvenanceV1Tests(unittest.TestCase):
             assessment_id="CA-1",
             goal_id="G-1",
             proposal_id="D-1",
-            author_agent=BrainAgentId.STRATEGIST,
+            author_agent=BrainAgentId.CONTENT,
             proposal_verdict=ClaimVerdict.SUPPORTED,
             proposal_evidence_refs=["E-1"],
             reviews=[
@@ -142,7 +142,7 @@ class BrainActionIntentDecisionProvenanceV1Tests(unittest.TestCase):
         )
 
     @staticmethod
-    def _intent(*, decision_id=None, goal_id: str = "G-1", owner=BrainAgentId.STRATEGIST):
+    def _intent(*, decision_id=None, goal_id: str = "G-1", owner=BrainAgentId.CONTENT):
         values = {
             "intent_id": "AI-1",
             "goal_id": goal_id,

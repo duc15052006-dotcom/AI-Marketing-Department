@@ -68,7 +68,7 @@ class MockScriptedGateway(UniversalModelGateway):
                 ))
                 else "cmo_initial"
             )
-        elif resolved_agent in {"intelligence", "strategist", "creative", "performance"}:
+        elif resolved_agent in {"intelligence", "content", "creative", "performance"}:
             stage = resolved_agent
         else:
             stage = "unknown"
@@ -105,6 +105,23 @@ def _build_test_runtime(gateway: Optional[UniversalModelGateway] = None) -> Five
         knowledge_repo=LocalKnowledgeRepository(),
         memory_repo=LocalMemoryRepository(),
     )
+
+
+def _bind_deployment_ready_final_cmo(ctx: RuntimeContext) -> None:
+    """Prepare the canonical Final CMO deployment prerequisite for publish tests."""
+    ctx.current_stage = RuntimeStage.FINAL_CMO
+    ctx.status = RuntimeStatus.RUNNING
+    ctx.stage_outputs["final_cmo"] = {
+        "stage": "FINAL_CMO",
+        "agent": "cmo",
+        "status": "READY_FOR_DEPLOYMENT",
+        "approval_status": "APPROVED",
+        "reason": "",
+        "claim_audit": {"authorization_status": "APPROVED"},
+        "master_gtm_plan": {"objective": ctx.objective},
+        "master_gtm_plan_markdown": "# Final GTM\n\nApproved deployment plan.",
+    }
+    ctx.create_checkpoint()
 
 
 class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
@@ -174,7 +191,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         self.assertEqual(final_cmo.get("stage"), "FINAL_CMO")
 
         # Verify all stage agent identifiers across the 6 stages belong to {cmo, intelligence, strategist, creative, performance}
-        allowed_agents = {"cmo", "intelligence", "strategist", "creative", "performance"}
+        allowed_agents = {"cmo", "intelligence", "content", "creative", "performance"}
         for s_name, s_out in ctx.stage_outputs.items():
             self.assertIn(s_out.get("agent"), allowed_agents, f"Unexpected agent in stage {s_name}: {s_out.get('agent')}")
 
@@ -360,7 +377,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
 
     def test_11_middle_stage_failure_marks_context_failed_deterministically(self) -> None:
         """A failure in a middle stage (e.g. Strategist) fails closed and does not claim COMPLETED."""
-        failing_gw = MockScriptedGateway(fail_stage="strategist")
+        failing_gw = MockScriptedGateway(fail_stage="content")
         rt = _build_test_runtime(gateway=failing_gw)
 
         ctx, final_cmo, artifact = rt.run_workflow(objective="Fail on strategist", business_id="BIZ_001")
@@ -368,7 +385,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         self.assertEqual(ctx.status, RuntimeStatus.FAILED)
         self.assertEqual(artifact.status, RuntimeStatus.FAILED)
         self.assertEqual(final_cmo.get("status"), "NOT_REACHED")
-        self.assertEqual(final_cmo.get("failed_stage"), "STRATEGIST")
+        self.assertEqual(final_cmo.get("failed_stage"), "CONTENT")
         self.assertNotIn("PREVIOUS_STAGE_FAILED", final_cmo.get("reason", ""))
 
     def test_12_unhandled_exception_translates_to_deterministic_terminal_failure(self) -> None:
@@ -394,6 +411,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         rt = _build_test_runtime()
         ctx = rt.start_run(objective="Publishing approval test", business_id="BIZ_001")
         rt.execute_stage_cmo_initial(ctx)
+        _bind_deployment_ready_final_cmo(ctx)
 
         receipt = rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
@@ -570,6 +588,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         """A WAITING_FOR_APPROVAL run remains in _active_contexts so it can be resumed."""
         rt = _build_test_runtime()
         ctx = rt.start_run(objective="Approval wait test")
+        _bind_deployment_ready_final_cmo(ctx)
         rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
         self.assertIn(ctx.run_id, rt._active_contexts)
@@ -608,7 +627,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
             return orig_intel(c)
 
         def tracked_strat(c: RuntimeContext) -> Dict[str, Any]:
-            executed_stages.append("strategist")
+            executed_stages.append("content")
             return orig_strat(c)
 
         rt.execute_stage_cmo_initial = tracked_cmo
@@ -622,7 +641,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         self.assertEqual(art.status, RuntimeStatus.CANCELLED)
         self.assertIn("cmo_initial", executed_stages)
         self.assertNotIn("intelligence", executed_stages)
-        self.assertNotIn("strategist", executed_stages)
+        self.assertNotIn("content", executed_stages)
 
     def test_32_cancelled_run_cannot_become_completed(self) -> None:
         """A cancelled context cannot be converted to COMPLETED by complete_run."""
@@ -732,6 +751,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         item = mgr.enqueue_run(objective="Approval wait queue test", run_id=rid)
 
         ctx = rt.start_run(objective="Approval wait", reserved_run_id=rid)
+        _bind_deployment_ready_final_cmo(ctx)
         rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
 
@@ -749,6 +769,7 @@ class TestProdRuntime01SingleRunAuthority(unittest.TestCase):
         item = mgr.enqueue_run(objective="Approval resume queue test", run_id=rid)
 
         ctx = rt.start_run(objective="Approval wait", reserved_run_id=rid)
+        _bind_deployment_ready_final_cmo(ctx)
         rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(mgr.get_run(rid).status, RunQueueStatus.WAITING_APPROVAL)
 

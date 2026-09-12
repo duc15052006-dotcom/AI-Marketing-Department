@@ -29,7 +29,7 @@ class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
         return DecisionRecord(
             decision_id="D-RISK-1",
             goal_id="G-RISK-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             statement="Proceed with the evidence-backed decision",
             rationale="The proposal retains canonical supporting evidence.",
             disposition=DecisionDisposition.PROCEED,
@@ -62,7 +62,7 @@ class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
         values = {
             "assessment_id": "RA-RISK-1",
             "goal_id": "G-RISK-1",
-            "agent_id": BrainAgentId.STRATEGIST,
+            "agent_id": BrainAgentId.CONTENT,
             "complexity": SignalLevel.LOW,
             "uncertainty": SignalLevel.LOW,
             "consequence": SignalLevel.LOW,
@@ -79,7 +79,7 @@ class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
         values = {
             "signal_id": "RS-RISK-1",
             "goal_id": "G-RISK-1",
-            "agent_id": BrainAgentId.STRATEGIST,
+            "agent_id": BrainAgentId.CONTENT,
             "source_id": "POLICY-RISK-1",
             "consequence": SignalLevel.LOW,
             "evidence_conflict": SignalLevel.LOW,
@@ -93,7 +93,7 @@ class BrainReasoningRiskProvenanceV1Tests(unittest.TestCase):
         return DecisionRiskRequest(
             assessment_id="RA-RISK-1",
             goal_id="G-RISK-1",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             signals=list(signals) if signals is not None else [cls._risk_signal()],
         )
 

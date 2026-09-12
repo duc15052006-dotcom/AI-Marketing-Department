@@ -95,7 +95,7 @@ class BrainReflectionDecisionBindingV1Tests(unittest.TestCase):
             derive_cognitive_cycle(request)
 
     def test_reflection_agent_must_match_backing_decision_agent(self):
-        request = self.request(self.reflection(agent_id=BrainAgentId.STRATEGIST))
+        request = self.request(self.reflection(agent_id=BrainAgentId.CONTENT))
 
         with self.assertRaises(ValidationError):
             derive_cognitive_cycle(request)

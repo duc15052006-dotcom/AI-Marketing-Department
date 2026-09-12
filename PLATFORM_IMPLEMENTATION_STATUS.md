@@ -1,5 +1,16 @@
 # Platform / Infrastructure Implementation Status
 
+> [!WARNING]
+> **HISTORICAL / SUPERSEDED PLATFORM SNAPSHOT**
+>
+> This document records the state of the early `platform/plugin-mcp-foundation-v1`
+> batch. Statements below such as "not wired into the five-agent core yet" are
+> historical to that batch and do **not** describe the current converged runtime.
+>
+> For current behavior, use exact-head code/tests first, then `SOURCE_OF_TRUTH.md`,
+> the current integration PR exact-head certification, and the later platform
+> hardening documents. Preserve this file only as forensic implementation history.
+
 This file tracks platform work separately from the five-agent core so parallel hardening work can continue without conflating missing product infrastructure with agent defects.
 
 ## Baseline already present before Platform Batch 1

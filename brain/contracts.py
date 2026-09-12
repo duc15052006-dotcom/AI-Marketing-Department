@@ -24,9 +24,18 @@ class BrainAgentId(str, Enum):
 
     CMO = "CMO"
     INTELLIGENCE = "INTELLIGENCE"
-    STRATEGIST = "STRATEGIST"
+    CONTENT = "CONTENT"
     CREATIVE = "CREATIVE"
     PERFORMANCE = "PERFORMANCE"
+
+
+# Historical checkpoints and serialized plans may still carry the pre-contract
+# STRATEGIST label. It is accepted only at deserialization boundaries and is
+# immediately normalized to CONTENT; it is never exposed as a sixth or canonical
+# permanent identity.
+_LEGACY_BRAIN_AGENT_ALIASES = {
+    "STRATEGIST": BrainAgentId.CONTENT,
+}
 
 
 class GoalStatus(str, Enum):
@@ -89,8 +98,11 @@ def _enum(value: object, enum_cls: Type[E], field_name: str) -> E:
     if isinstance(value, enum_cls):
         return value
     if isinstance(value, str):
+        normalized = value.strip().upper()
+        if enum_cls is BrainAgentId and normalized in _LEGACY_BRAIN_AGENT_ALIASES:
+            return _LEGACY_BRAIN_AGENT_ALIASES[normalized]  # type: ignore[return-value]
         try:
-            return enum_cls(value.strip().upper())
+            return enum_cls(normalized)
         except ValueError:
             pass
     raise ValidationError(

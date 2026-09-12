@@ -81,7 +81,7 @@ class BrainAnalyticsSemanticCapabilityBindingV1Tests(unittest.TestCase):
 
     def test_attribution_semantics_preserve_supported_agent_authority(self):
         assessment = evaluate_action_intent_capability_binding(
-            self._intent("ATTRIBUTION_EVIDENCE", owner=BrainAgentId.STRATEGIST),
+            self._intent("ATTRIBUTION_EVIDENCE", owner=BrainAgentId.CONTENT),
             self._binding("attribution_data_access"),
         )
         self.assertEqual(CapabilityBindingDisposition.REJECTED, assessment.disposition)

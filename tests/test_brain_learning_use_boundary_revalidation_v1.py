@@ -46,7 +46,7 @@ class BrainLearningUseBoundaryRevalidationV1Tests(unittest.TestCase):
         return LearningEpisode(
             episode_id="LE-LUB",
             goal_id="G-LUB",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             hypothesis_id="H-LUB",
             claim_kind=LearningClaimKind.CAUSAL,
             method=LearningMethod.OBSERVATION,
@@ -73,7 +73,7 @@ class BrainLearningUseBoundaryRevalidationV1Tests(unittest.TestCase):
         episode = LearningEpisode(
             episode_id="LE-BIND",
             goal_id="G-LUB",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             hypothesis_id="H-LUB",
             claim_kind=LearningClaimKind.FACTUAL,
             method=LearningMethod.OBSERVATION,
@@ -89,7 +89,7 @@ class BrainLearningUseBoundaryRevalidationV1Tests(unittest.TestCase):
         episode = LearningEpisode(
             episode_id="LE-VALID",
             goal_id="G-LUB",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             hypothesis_id="H-LUB",
             claim_kind=LearningClaimKind.CAUSAL,
             method=LearningMethod.EXPERIMENT,

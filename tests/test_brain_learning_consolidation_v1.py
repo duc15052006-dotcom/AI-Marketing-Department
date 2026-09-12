@@ -193,7 +193,7 @@ class BrainLearningConsolidationV1Tests(unittest.TestCase):
             runs=[
                 LearningRunRecord(
                     run_id="RUN-Y",
-                    episode=self._episode(1, agent_id=BrainAgentId.STRATEGIST),
+                    episode=self._episode(1, agent_id=BrainAgentId.CONTENT),
                 )
             ],
         )
@@ -358,7 +358,7 @@ class BrainLearningConsolidationV1Tests(unittest.TestCase):
         self.assertEqual(len(BrainAgentId), 5)
         self.assertEqual(
             {agent.value for agent in BrainAgentId},
-            {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"},
+            {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"},
         )
 
 

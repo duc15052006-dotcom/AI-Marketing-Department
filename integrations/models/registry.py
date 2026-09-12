@@ -94,7 +94,6 @@ def validate_base_url(url: Optional[str]) -> Optional[str]:
         raise ValueError("INVALID_URL_HOST: Host contains illegal characters.")
 
     if scheme == "http":
-        # Exact parsed-host semantics only (never substring matching).
         is_loopback = (
             hostname == "127.0.0.1"
             or hostname == "::1"
@@ -107,7 +106,6 @@ def validate_base_url(url: Optional[str]) -> Optional[str]:
                 f"(127.0.0.1, localhost, ::1). Found '{hostname}'."
             )
 
-    # Canonicalize path: remove trailing /chat/completions or duplicate /v1/v1
     path = parsed.path or ""
     path = re.sub(r"/+", "/", path).rstrip("/")
     if path.endswith("/chat/completions"):
@@ -121,11 +119,10 @@ def validate_base_url(url: Optional[str]) -> Optional[str]:
         raise ValueError("INVALID_URL_PORT: Base URL port is malformed.")
 
     port_str = f":{port}" if port else ""
-    host_for_url = f"[{hostname}]" if ":" in hostname else hostname  # re-bracket IPv6
+    host_for_url = f"[{hostname}]" if ":" in hostname else hostname
     return f"{scheme}://{host_for_url}{port_str}{path}"
 
 
-# Adapter types that may actually be constructed by this registry.
 SUPPORTED_ADAPTER_TYPES = {
     "OPENAI_COMPATIBLE",
     "OPENAI",
@@ -134,7 +131,6 @@ SUPPORTED_ADAPTER_TYPES = {
     "CUSTOM_INJECTED",
 }
 
-# Sane execution upper bound consistent with gateway budgeting behavior.
 MAX_PROVIDER_TIMEOUT_SECONDS = 600.0
 
 _PROVIDER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -142,10 +138,6 @@ _MODEL_ID_RE = re.compile(r"^[^\x00-\x1f\x7f\\]{1,200}$")
 
 
 def validate_provider_id(provider_id: str) -> str:
-    """Canonical provider-id grammar: lowercase alnum start, then alnum/-/_ ,
-    max 64 chars. Rejects empty/whitespace-only values, path traversal,
-    slashes/backslashes, control characters, ':' (secret-ref delimiter),
-    and unreasonably long identifiers."""
     pid = str(provider_id or "").strip().lower()
     if not pid:
         raise ValueError("INVALID_PROVIDER_ID: provider_id cannot be empty.")
@@ -197,9 +189,6 @@ def validate_default_model(default_model: str) -> str:
 
 
 def validate_chat_completions_path(path: Optional[str]) -> Optional[str]:
-    """Must be a relative HTTP path appropriate to the base URL. Absolute URLs,
-    alternate origins, schemes and backslashes are rejected so the value can
-    never become a second SSRF URL authority."""
     if path is None:
         return None
     cleaned = str(path).strip()
@@ -217,11 +206,6 @@ def validate_chat_completions_path(path: Optional[str]) -> Optional[str]:
 
 
 def normalize_cost_policy(value: Any) -> CostPolicy:
-    """Normalize cost governance to the canonical enum and reject malformed values.
-
-    Cost policy is a security/governance boundary. Unknown spellings or non-string
-    values must never silently behave like a free provider under FREE_ONLY_MODE.
-    """
     if isinstance(value, CostPolicy):
         return value
     if isinstance(value, str):
@@ -239,11 +223,6 @@ def normalize_cost_policy(value: Any) -> CostPolicy:
 
 
 def validate_strict_bool(value: Any, field_name: str) -> bool:
-    """Accept only a real Python bool at governance boundaries.
-
-    bool is intentionally checked by exact type: integers and truthy strings
-    must never silently change execution/cost policy.
-    """
     if type(value) is bool:
         return value
     raise ValueError(
@@ -251,10 +230,6 @@ def validate_strict_bool(value: Any, field_name: str) -> bool:
     )
 
 
-# Security floor for built-ins already classified as paid by this repository.
-# Older persisted settings may say FREE_TIER_ALLOWED; such stale values must not
-# downgrade a paid provider. Providers not listed here may still be made more
-# restrictive (PAID/UNKNOWN/DISABLED) by settings without being forced back free.
 BUILTIN_PROVIDER_COST_POLICIES: Dict[str, CostPolicy] = {
     "openai": CostPolicy.PAID,
     "thespark": CostPolicy.PAID,
@@ -262,7 +237,6 @@ BUILTIN_PROVIDER_COST_POLICIES: Dict[str, CostPolicy] = {
 
 
 class ProviderDefinition(BaseModel):
-    """Configuration and capability descriptor for a model provider."""
     provider_id: str
     adapter_type: str = "OPENAI_COMPATIBLE"
     display_name: str = ""
@@ -275,44 +249,24 @@ class ProviderDefinition(BaseModel):
     cost_policy: CostPolicy = CostPolicy.FREE_TIER_ALLOWED
     timeout_seconds: float = 60.0
     metadata: Dict[str, Any] = Field(default_factory=dict)
-
-    # Legacy / Compatibility fields
     protocol: Optional[ProviderProtocol] = None
     api_key_env: Optional[str] = None
     capabilities: Optional[Dict[str, Any]] = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # Validate machine provider ID (canonical grammar; traversal/secret-ref safe)
         self.provider_id = validate_provider_id(self.provider_id)
-
-        # Default display name
         if not self.display_name:
             self.display_name = self.provider_id.capitalize()
-
-        # Adapter type must be an actually supported type (no silent coercion).
         if self.adapter_type:
             self.adapter_type = validate_adapter_type(self.adapter_type)
-
-        # Enable/disable is an execution-governance boundary: reject truthy
-        # strings/integers instead of relying on Python coercion.
         self.enabled = validate_strict_bool(self.enabled, "ProviderDefinition.enabled")
-
-        # Cost governance must be canonical and fail closed on malformed input.
         self.cost_policy = normalize_cost_policy(self.cost_policy)
-
-        # Execution timeout must be numeric, finite, > 0 and within sane bounds.
         if self.timeout_seconds is not None:
             self.timeout_seconds = validate_timeout_seconds(self.timeout_seconds)
-
-        # Model id: free-form but sane (no control chars, bounded size).
         self.default_model = validate_default_model(self.default_model)
-
-        # OpenAI-compatible request path must stay relative to the base URL.
         if self.chat_completions_path:
             self.chat_completions_path = validate_chat_completions_path(self.chat_completions_path)
-
-        # Handle backward compatibility fields
         if self.protocol is not None:
             if isinstance(self.protocol, str):
                 try:
@@ -326,30 +280,23 @@ class ProviderDefinition(BaseModel):
                 self.protocol = ProviderProtocol(self.adapter_type.lower())
             except Exception:
                 pass
-
         if self.api_key_env and not self.credential_ref:
             self.credential_ref = f"ENV:{self.api_key_env}"
         elif self.credential_ref and not self.api_key_env and self.credential_ref.startswith("ENV:"):
             self.api_key_env = self.credential_ref[4:]
-
         if self.capabilities and not self.supported_capabilities:
             self.supported_capabilities = self.capabilities
         elif self.supported_capabilities and not self.capabilities:
             self.capabilities = self.supported_capabilities
-
-        # Validate base_url if present
         if self.base_url:
             self.base_url = validate_base_url(self.base_url)
 
 
-# Backward compatibility alias
 class ProviderConfig(ProviderDefinition):
-    """Legacy alias for ProviderDefinition."""
     pass
 
 
 class ModelTarget(BaseModel):
-    """Target pairing a specific provider machine ID and model identifier."""
     provider_id: str
     model_id: str
 
@@ -364,25 +311,19 @@ class ModelTarget(BaseModel):
 
 
 class AgentId(str, Enum):
-    """The exactly five permanent logical agents in the AI Marketing Department."""
+    """Exactly five canonical permanent logical agents."""
     CMO = "CMO"
     INTELLIGENCE = "INTELLIGENCE"
-    STRATEGIST = "STRATEGIST"
+    CONTENT = "CONTENT"
     CREATIVE = "CREATIVE"
     PERFORMANCE = "PERFORMANCE"
 
 
 def normalize_agent_id(agent_name: str) -> str:
-    """Normalize agent identity to one of the 5 permanent logical agents.
+    """Normalize canonical and historical model-policy agent identifiers.
 
-    Mapping:
-    - 'cmo', 'CMO', 'final_cmo', 'FINAL_CMO' -> 'CMO'
-    - 'intelligence', 'INTELLIGENCE' -> 'INTELLIGENCE'
-    - 'strategist', 'STRATEGIST' -> 'STRATEGIST'
-    - 'creative', 'CREATIVE' -> 'CREATIVE'
-    - 'performance', 'PERFORMANCE' -> 'PERFORMANCE'
-
-    Rejects 'agent_6', 'UNKNOWN', or any unauthorized agent key.
+    Historical STRATEGIST/STRATEGY inputs are read-only compatibility aliases
+    and normalize immediately to CONTENT. FINAL_CMO is a second stage of CMO.
     """
     if not agent_name or not str(agent_name).strip():
         raise ValueError("INVALID_AGENT_ID: Agent identifier cannot be empty.")
@@ -391,16 +332,15 @@ def normalize_agent_id(agent_name: str) -> str:
         return AgentId.CMO.value
     if norm in ("INTELLIGENCE", "INTEL"):
         return AgentId.INTELLIGENCE.value
-    if norm in ("STRATEGIST", "STRATEGY"):
-        return AgentId.STRATEGIST.value
-    if norm in ("CREATIVE", "COPYWRITER"):
+    if norm in ("CONTENT", "STRATEGIST", "STRATEGY", "COPYWRITER"):
+        return AgentId.CONTENT.value
+    if norm == "CREATIVE":
         return AgentId.CREATIVE.value
     if norm in ("PERFORMANCE", "ANALYTICS"):
         return AgentId.PERFORMANCE.value
-
     raise ValueError(
         f"INVALID_AGENT_OVERRIDE_KEY: Unknown agent identifier '{agent_name}'. "
-        "Must be one of exactly 5 permanent logical agents: CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE."
+        "Must resolve to exactly one of: CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE."
     )
 
 
@@ -418,7 +358,6 @@ class ModelPolicy(BaseModel):
     def __post_init__(self) -> None:
         super().__post_init__()
         self.free_only_mode = validate_strict_bool(self.free_only_mode, "ModelPolicy.free_only_mode")
-        # Validate and normalize all agent override keys
         normalized_overrides: Dict[str, ModelTarget] = {}
         for k, target in self.agent_overrides.items():
             norm_key = normalize_agent_id(k)
@@ -426,7 +365,6 @@ class ModelPolicy(BaseModel):
                 target = ModelTarget(**target)
             normalized_overrides[norm_key] = target
         self.agent_overrides = normalized_overrides
-
         normalized_chain: List[ModelTarget] = []
         for t in self.fallback_chain:
             if isinstance(t, dict):
@@ -434,12 +372,10 @@ class ModelPolicy(BaseModel):
             else:
                 normalized_chain.append(t)
         self.fallback_chain = normalized_chain
-
         if isinstance(self.global_target, dict):
             self.global_target = ModelTarget(**self.global_target)
 
     def resolve_target_for_agent(self, agent_name: Optional[str] = None) -> ModelTarget:
-        """Resolve authoritative ModelTarget for a given agent or global fallback."""
         if agent_name:
             norm_key = normalize_agent_id(agent_name)
             if norm_key in self.agent_overrides:
@@ -447,11 +383,9 @@ class ModelPolicy(BaseModel):
         return self.global_target
 
     def get_target_for_agent(self, agent_name: Optional[str] = None) -> ModelTarget:
-        """Alias for resolve_target_for_agent."""
         return self.resolve_target_for_agent(agent_name)
 
     def get_candidate_chain_for_agent(self, agent_name: Optional[str] = None) -> List[ModelTarget]:
-        """Resolve ordered list of candidate ModelTargets for an agent execution."""
         primary = self.resolve_target_for_agent(agent_name)
         candidates = [primary]
         for fb in self.fallback_chain:
@@ -464,7 +398,6 @@ class ModelPolicy(BaseModel):
 
 
 class ConnectionTestStatus(str, Enum):
-    """Status of a model connection verification attempt."""
     CONNECTED = "CONNECTED"
     AUTH_FAILED = "AUTH_FAILED"
     TIMEOUT = "TIMEOUT"
@@ -475,7 +408,6 @@ class ConnectionTestStatus(str, Enum):
 
 
 class ConnectionTestResult(BaseModel):
-    """Result of testing connection to a model provider without saving configuration."""
     status: ConnectionTestStatus
     provider_id: str
     error: Optional[str] = None
@@ -484,24 +416,21 @@ class ConnectionTestResult(BaseModel):
 
 
 class ProviderRegistrySnapshot(BaseModel):
-    """Immutable snapshot of registered providers at a specific point in time."""
     providers: Dict[str, ProviderDefinition] = Field(default_factory=dict)
     timestamp: float = Field(default_factory=time.time)
 
     def get_provider(self, provider_id: str) -> Optional[ProviderDefinition]:
-        """Retrieve provider definition from frozen snapshot."""
         return self.providers.get(provider_id.lower())
 
 
 class ModelMetadata(BaseModel):
-    """Metadata and verified capability specification for a model."""
     provider_id: str
     model_id: str
     display_name: str
     capabilities: Dict[str, Any] = Field(default_factory=dict)
     context_window: Optional[int] = None
     cost_tier: CostPolicy = CostPolicy.FREE_TIER_ALLOWED
-    availability: str = "AVAILABLE"  # AVAILABLE | DEPRECATED | UNKNOWN
+    availability: str = "AVAILABLE"
     supports_json: bool = True
     supports_tools: bool = False
     supports_vision: bool = False
@@ -515,8 +444,6 @@ class ModelMetadata(BaseModel):
 
 
 class ProviderRegistry:
-    """Registry managing provider configurations, custom adapters, and connection testing."""
-
     def __init__(self, secret_store: Optional[Any] = None) -> None:
         self._lock = threading.RLock()
         self._configs: Dict[str, ProviderDefinition] = {}
@@ -528,15 +455,10 @@ class ProviderRegistry:
         self._load_builtin_providers()
 
     def bind_secret_store(self, secret_store: Any) -> None:
-        """Explicit dependency binding for the secure credential store.
-        Replaces direct private-attribute mutation by collaborators."""
         with self._lock:
             self._secret_store = secret_store
 
     def set_credential_usage_authority(self, authority: Optional[Any]) -> None:
-        """Register a callback(ref: str) -> bool answering whether an opaque
-        credential_ref is still referenced by any active execution run.
-        Used as the lifetime authority for credential version reclamation."""
         with self._lock:
             self._credential_usage_authority = authority
 
@@ -547,18 +469,9 @@ class ProviderRegistry:
         try:
             return bool(authority(credential_ref))
         except Exception:
-            # Fail safe: if the authority errors, treat the ref as in-use so an
-            # actively pinned credential is never prematurely reclaimed.
             return True
 
     def remove_provider_config(self, provider_id: str) -> bool:
-        """Remove a provider's configuration and its LIVE cached adapter so new
-        runs can no longer select it.
-
-        Credential-version-pinned adapters are also purged; they are safely
-        rebuildable while their pinned secret remains retained for active runs.
-        Returns True if a configuration existed and was removed.
-        """
         pid = provider_id.lower()
         with self._lock:
             existed = self._configs.pop(pid, None) is not None
@@ -571,12 +484,6 @@ class ProviderRegistry:
             return existed
 
     def restore_provider_configs(self, providers_map: Dict[str, "ProviderDefinition"]) -> None:
-        """Restore registry configuration to an exact prior committed snapshot
-        (transaction rollback). Non-injected providers absent from the map are
-        removed; all mapped definitions are (re)installed; live adapter cache
-        entries for restored/removed pids are evicted so subsequent requests
-        rebuild from the restored state. Injected DI adapters are preserved.
-        """
         with self._lock:
             injected = getattr(self, "_injected_adapters", {}) or {}
             for pid in [p for p in list(self._configs.keys()) if p not in providers_map]:
@@ -594,11 +501,6 @@ class ProviderRegistry:
                 self._adapters.pop(pid, None)
 
     def reconcile_provider_configs(self, valid_provider_ids: set) -> None:
-        """Reconcile registry configuration to the complete committed Settings
-        state: provider configs (and their adapters) absent from the authoritative
-        settings are removed. Explicitly injected DI adapters and their
-        auto-registered config entries are preserved per the generic DI contract.
-        """
         with self._lock:
             injected = getattr(self, "_injected_adapters", {}) or {}
             for pid in [p for p in list(self._configs.keys()) if p not in valid_provider_ids]:
@@ -612,79 +514,44 @@ class ProviderRegistry:
                 self._injected_adapters.pop(pid, None)
 
     def _load_builtin_providers(self) -> None:
-        """Register default production provider configurations."""
-        # 1. xKiro (Verified free OpenAI-compatible provider)
-        self.register_provider(
-            ProviderDefinition(
-                provider_id="xkiro",
-                adapter_type="OPENAI_COMPATIBLE",
-                display_name="xKiro AI",
-                base_url="https://api.xkiro.com/v1",
-                credential_ref="ENV:XKIRO_API_KEY",
-                default_model="mistralai/mistral-large-2512",
-                cost_policy=CostPolicy.FREE_TIER_ALLOWED,
-                supported_capabilities={"supports_json": True, "provider_type": "third_party"},
-            )
-        )
-
-        # 2. Google Gemini (Native first-party provider)
-        self.register_provider(
-            ProviderDefinition(
-                provider_id="gemini",
-                adapter_type="GEMINI_NATIVE",
-                display_name="Google Gemini",
-                credential_ref="ENV:GEMINI_API_KEY",
-                default_model="gemini-flash-latest",
-                cost_policy=CostPolicy.FREE_TIER_ALLOWED,
-                supported_capabilities={"supports_json": True, "supports_vision": True, "provider_type": "first_party"},
-            )
-        )
-
-        # 3. OpenAI (Paid OpenAI-compatible provider)
-        self.register_provider(
-            ProviderDefinition(
-                provider_id="openai",
-                adapter_type="OPENAI_COMPATIBLE",
-                display_name="OpenAI",
-                base_url="https://api.openai.com/v1",
-                credential_ref="ENV:OPENAI_API_KEY",
-                default_model="gpt-4o-mini",
-                cost_policy=CostPolicy.PAID,
-                supported_capabilities={"supports_json": True, "provider_type": "first_party"},
-            )
-        )
-
-        # 4. TheSpark (policy-classified paid third-party provider)
-        self.register_provider(
-            ProviderDefinition(
-                provider_id="thespark",
-                adapter_type="OPENAI_COMPATIBLE",
-                display_name="TheSpark",
-                base_url="https://api.thespark.io/v1",
-                credential_ref="ENV:THESPARK_API_KEY",
-                default_model="spark-default",
-                cost_policy=CostPolicy.PAID,
-                supported_capabilities={"supports_json": True, "provider_type": "third_party"},
-            )
-        )
+        self.register_provider(ProviderDefinition(
+            provider_id="xkiro", adapter_type="OPENAI_COMPATIBLE", display_name="xKiro AI",
+            base_url="https://api.xkiro.com/v1", credential_ref="ENV:XKIRO_API_KEY",
+            default_model="mistralai/mistral-large-2512", cost_policy=CostPolicy.FREE_TIER_ALLOWED,
+            supported_capabilities={"supports_json": True, "provider_type": "third_party"},
+        ))
+        self.register_provider(ProviderDefinition(
+            provider_id="gemini", adapter_type="GEMINI_NATIVE", display_name="Google Gemini",
+            credential_ref="ENV:GEMINI_API_KEY", default_model="gemini-flash-latest",
+            cost_policy=CostPolicy.FREE_TIER_ALLOWED,
+            supported_capabilities={"supports_json": True, "supports_vision": True, "provider_type": "first_party"},
+        ))
+        self.register_provider(ProviderDefinition(
+            provider_id="openai", adapter_type="OPENAI_COMPATIBLE", display_name="OpenAI",
+            base_url="https://api.openai.com/v1", credential_ref="ENV:OPENAI_API_KEY",
+            default_model="gpt-4o-mini", cost_policy=CostPolicy.PAID,
+            supported_capabilities={"supports_json": True, "provider_type": "first_party"},
+        ))
+        self.register_provider(ProviderDefinition(
+            provider_id="thespark", adapter_type="OPENAI_COMPATIBLE", display_name="TheSpark",
+            base_url="https://api.thespark.io/v1", credential_ref="ENV:THESPARK_API_KEY",
+            default_model="spark-default", cost_policy=CostPolicy.PAID,
+            supported_capabilities={"supports_json": True, "provider_type": "third_party"},
+        ))
 
     @staticmethod
     def _apply_builtin_cost_floor(config: ProviderDefinition) -> ProviderDefinition:
-        """Apply the non-downgrade cost floor for built-ins classified as paid."""
         pid = config.provider_id.lower()
         authoritative_cost = BUILTIN_PROVIDER_COST_POLICIES.get(pid)
         if authoritative_cost is not None and config.cost_policy != authoritative_cost:
             logger.warning(
                 "Overriding stale/mismatched built-in cost policy for '%s': %s -> %s",
-                pid,
-                getattr(config.cost_policy, "value", config.cost_policy),
-                authoritative_cost.value,
+                pid, getattr(config.cost_policy, "value", config.cost_policy), authoritative_cost.value,
             )
             config.cost_policy = authoritative_cost
         return config
 
     def register_provider(self, config: Union[ProviderDefinition, ProviderConfig], secret: Optional[str] = None) -> None:
-        """Register or update a provider configuration atomically."""
         if isinstance(config, dict):
             config = ProviderDefinition(**config)
         config = self._apply_builtin_cost_floor(config)
@@ -697,7 +564,6 @@ class ProviderRegistry:
             logger.info(f"Registered provider configuration: {pid} (type={config.adapter_type})")
 
     def update_provider(self, provider_id: str, updates: Dict[str, Any]) -> ProviderDefinition:
-        """Update fields on an existing registered provider."""
         pid = provider_id.lower()
         with self._lock:
             existing = self._configs.get(pid)
@@ -711,7 +577,6 @@ class ProviderRegistry:
             return updated
 
     def enable_provider(self, provider_id: str) -> None:
-        """Enable a registered provider."""
         pid = provider_id.lower()
         with self._lock:
             if pid not in self._configs:
@@ -720,7 +585,6 @@ class ProviderRegistry:
             self._adapters.pop(pid, None)
 
     def disable_provider(self, provider_id: str) -> None:
-        """Disable a registered provider without deleting its metadata."""
         pid = provider_id.lower()
         with self._lock:
             if pid not in self._configs:
@@ -729,14 +593,6 @@ class ProviderRegistry:
             self._adapters.pop(pid, None)
 
     def evict_adapter(self, provider_id: str) -> None:
-        """Evict the LIVE cached adapter for a provider, forcing re-instantiation
-        with updated credentials/config.
-
-        Deliberately does NOT purge credential-version-pinned adapters
-        ('<pid>@<credential_ref>' keys) so active runs may continue resolving
-        their run-start credential version. Use purge_provider_adapters() when
-        the provider (and all its credential versions) is being removed.
-        """
         pid = provider_id.lower()
         with self._lock:
             self._adapters.pop(pid, None)
@@ -744,8 +600,6 @@ class ProviderRegistry:
                 self._injected_adapters.pop(pid, None)
 
     def purge_provider_adapters(self, provider_id: str) -> None:
-        """Purge ALL cached adapters for a provider: the live entry plus every
-        pinned entry. Used on provider deletion."""
         pid = provider_id.lower()
         with self._lock:
             doomed = [k for k in self._adapters if k == pid or k.startswith(f"{pid}@")]
@@ -756,28 +610,23 @@ class ProviderRegistry:
                 self._injected_adapters.pop(pid, None)
 
     def get_provider(self, provider_id: str) -> Optional[ProviderDefinition]:
-        """Retrieve provider definition by ID."""
         with self._lock:
             return self._configs.get(provider_id.lower())
 
     def get_config(self, provider_id: str) -> Optional[ProviderDefinition]:
-        """Legacy compatibility alias for get_provider."""
         return self.get_provider(provider_id)
 
     def list_providers(self) -> List[str]:
-        """List all registered provider IDs."""
         with self._lock:
             return list(self._configs.keys())
 
     def list_provider_definitions(self, include_disabled: bool = True) -> List[ProviderDefinition]:
-        """List all registered provider definitions."""
         with self._lock:
             if include_disabled:
                 return list(self._configs.values())
             return [p for p in self._configs.values() if p.enabled]
 
     def _resolve_secret(self, cfg: ProviderDefinition) -> Optional[str]:
-        """Resolve API credential from secret storage, vault, or environment reference."""
         pid = cfg.provider_id.lower()
         if pid in self._secrets and self._secrets[pid]:
             return self._secrets[pid]
@@ -793,37 +642,24 @@ class ProviderRegistry:
         return None
 
     def _build_adapter(self, cfg: ProviderDefinition, secret: Optional[str]) -> BaseModelAdapter:
-        """Instantiate the correct adapter for a provider definition."""
         adapter_type_upper = str(cfg.adapter_type).upper()
         adapter: BaseModelAdapter
         if adapter_type_upper in ("GEMINI_NATIVE", "GEMINI"):
-            adapter = GeminiProviderAdapter(
-                default_model=cfg.default_model,
-                api_key=secret,
-            )
+            adapter = GeminiProviderAdapter(default_model=cfg.default_model, api_key=secret)
         elif adapter_type_upper in ("OPENAI_COMPATIBLE", "OPENAI"):
-            adapter_cls = (
-                OpenAICompatibleProviderAdapter
-                if provider_requires_api_key(adapter_type_upper, cfg.base_url)
-                else LocalNoAuthOpenAICompatibleProviderAdapter
-            )
+            adapter_cls = OpenAICompatibleProviderAdapter if provider_requires_api_key(adapter_type_upper, cfg.base_url) else LocalNoAuthOpenAICompatibleProviderAdapter
             adapter = adapter_cls(
-                provider_id=cfg.provider_id,
-                base_url=cfg.base_url or "",
+                provider_id=cfg.provider_id, base_url=cfg.base_url or "",
                 api_key_env=cfg.api_key_env or f"{cfg.provider_id.upper()}_API_KEY",
-                default_model=cfg.default_model,
-                api_key=secret,
-                chat_completions_path=cfg.chat_completions_path,
-                cost_policy=cfg.cost_policy,
-                timeout_seconds=cfg.timeout_seconds,
-                capabilities=cfg.supported_capabilities,
+                default_model=cfg.default_model, api_key=secret,
+                chat_completions_path=cfg.chat_completions_path, cost_policy=cfg.cost_policy,
+                timeout_seconds=cfg.timeout_seconds, capabilities=cfg.supported_capabilities,
             )
         else:
             raise ValueError(f"UNSUPPORTED_ADAPTER_TYPE: '{cfg.adapter_type}' for provider '{cfg.provider_id.lower()}'.")
         return adapter
 
     def get_adapter(self, provider_id: str, include_disabled: bool = False) -> Optional[BaseModelAdapter]:
-        """Retrieve or create adapter instance for given provider ID (live config)."""
         pid = provider_id.lower()
         with self._lock:
             cfg = self._configs.get(pid)
@@ -834,24 +670,17 @@ class ProviderRegistry:
                 return None
             if not cfg.enabled and not include_disabled:
                 return None
-
             if pid in getattr(self, "_injected_adapters", {}):
                 return self._injected_adapters[pid]
-
             if pid in self._adapters:
                 return self._adapters[pid]
-
             secret = self._resolve_secret(cfg)
             adapter = self._build_adapter(cfg, secret)
-
             self._adapters[pid] = adapter
             return adapter
 
     @staticmethod
     def _execution_fingerprint(cfg: ProviderDefinition) -> str:
-        """Deterministic SHA-256 fingerprint of the SAFE execution-influencing
-        ProviderDefinition fields. Contains no secret material (credential_ref
-        is an opaque non-secret handle; api keys are never part of identity)."""
         payload = json.dumps({
             "provider_id": cfg.provider_id.lower(),
             "adapter_type": str(cfg.adapter_type).upper(),
@@ -866,15 +695,6 @@ class ProviderRegistry:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def get_pinned_adapter(self, cfg: ProviderDefinition) -> Optional[BaseModelAdapter]:
-        """Retrieve or create an adapter PINNED to an exact provider definition.
-
-        Used when executing under a run-scoped ProviderRegistrySnapshot: the
-        cache key is provider_id + SHA-256 fingerprint over the complete safe
-        execution configuration (endpoint, path, model, timeout, cost policy,
-        credential version), so neither key rotation nor any other config
-        mutation can alias one run's adapter onto another run's definition.
-        No secret values ever appear in cache keys or the pin index.
-        """
         pid = cfg.provider_id.lower()
         with self._lock:
             if type(cfg.enabled) is not bool or not cfg.enabled:
@@ -882,22 +702,15 @@ class ProviderRegistry:
                 return None
             if pid in getattr(self, "_injected_adapters", {}):
                 return self._injected_adapters[pid]
-
             fingerprint = self._execution_fingerprint(cfg)
             cache_key = f"{pid}@{fingerprint}"
             if cache_key in self._adapters:
                 return self._adapters[cache_key]
-
             secret = self._resolve_secret(cfg)
             if provider_requires_api_key(cfg.adapter_type, cfg.base_url) and not secret:
-                # Credential-required pinned providers fail closed if the pinned
-                # secret was never configured or has already been reclaimed.
                 return None
             adapter = self._build_adapter(cfg, secret)
-
             self._adapters[cache_key] = adapter
-            # Pin index: credential_ref -> cache keys, enabling reclamation
-            # eviction without depending on the key format itself.
             ref = cfg.credential_ref or ""
             if ref:
                 index = getattr(self, "_pinned_adapter_index", None)
@@ -920,15 +733,11 @@ class ProviderRegistry:
                 del index[ref]
 
     def evict_pinned_adapter(self, credential_ref: str) -> None:
-        """Evict cached adapters PINNED to a specific opaque credential_ref
-        (across providers), e.g. after that credential version was reclaimed.
-        Uses the pin index; independent of cache-key format."""
         if not credential_ref:
             return
         with self._lock:
             index = getattr(self, "_pinned_adapter_index", None)
             keys = list(index.get(credential_ref, set())) if index else []
-            # Fallback scan for legacy entries created before the index existed.
             if not keys:
                 suffix = f"@{credential_ref}"
                 keys = [k for k in self._adapters if k.endswith(suffix)]
@@ -938,98 +747,50 @@ class ProviderRegistry:
                 index.pop(credential_ref, None)
 
     def register_custom_adapter(self, adapter: BaseModelAdapter) -> None:
-        """Test/Mock Dependency Injection: register a pre-instantiated adapter object."""
         pid = adapter.provider_name.lower()
         with self._lock:
             self._adapters[pid] = adapter
             self._injected_adapters[pid] = adapter
             if pid not in self._configs:
                 self._configs[pid] = ProviderDefinition(
-                    provider_id=pid,
-                    adapter_type="CUSTOM_INJECTED",
+                    provider_id=pid, adapter_type="CUSTOM_INJECTED",
                     display_name=getattr(adapter, "provider_name", pid),
                     default_model=getattr(adapter, "default_model", "default"),
                     cost_policy=getattr(adapter, "cost_policy", CostPolicy.FREE_TIER_ALLOWED),
                 )
 
     def snapshot(self) -> ProviderRegistrySnapshot:
-        """Create an immutable snapshot of all provider definitions for execution run pinning."""
         with self._lock:
             copied = {pid: ProviderDefinition(**cfg.model_dump()) for pid, cfg in self._configs.items()}
             return ProviderRegistrySnapshot(providers=copied)
 
-    def test_connection(
-        self,
-        definition: ProviderDefinition,
-        api_key: Optional[str] = None,
-        timeout_seconds: float = 10.0,
-    ) -> ConnectionTestResult:
-        """Test connection to a provider without saving or mutating the active registry."""
+    def test_connection(self, definition: ProviderDefinition, api_key: Optional[str] = None, timeout_seconds: float = 10.0) -> ConnectionTestResult:
         start_time = time.perf_counter()
         pid = definition.provider_id.lower()
         model_id = definition.default_model or "default"
         resolved_key = api_key or self._resolve_secret(definition)
-
         try:
             adapter_type_upper = str(definition.adapter_type).upper()
             temp_adapter: BaseModelAdapter
             if adapter_type_upper in ("GEMINI_NATIVE", "GEMINI"):
-                temp_adapter = GeminiProviderAdapter(
-                    default_model=model_id,
-                    api_key=resolved_key,
-                    timeout_seconds=timeout_seconds,
-                )
+                temp_adapter = GeminiProviderAdapter(default_model=model_id, api_key=resolved_key, timeout_seconds=timeout_seconds)
             else:
-                adapter_cls = (
-                    OpenAICompatibleProviderAdapter
-                    if provider_requires_api_key(adapter_type_upper, definition.base_url)
-                    else LocalNoAuthOpenAICompatibleProviderAdapter
-                )
+                adapter_cls = OpenAICompatibleProviderAdapter if provider_requires_api_key(adapter_type_upper, definition.base_url) else LocalNoAuthOpenAICompatibleProviderAdapter
                 temp_adapter = adapter_cls(
-                    provider_id=definition.provider_id,
-                    base_url=definition.base_url or "",
-                    api_key_env="TEMP_KEY",
-                    default_model=model_id,
-                    api_key=resolved_key,
-                    chat_completions_path=definition.chat_completions_path,
-                    cost_policy=definition.cost_policy,
-                    timeout_seconds=timeout_seconds,
+                    provider_id=definition.provider_id, base_url=definition.base_url or "", api_key_env="TEMP_KEY",
+                    default_model=model_id, api_key=resolved_key, chat_completions_path=definition.chat_completions_path,
+                    cost_policy=definition.cost_policy, timeout_seconds=timeout_seconds,
                     capabilities=definition.supported_capabilities,
                 )
-
-            req = ModelRequest(
-                model_name=model_id,
-                messages=[ModelMessage(role=ModelRole.USER, content="ping")],
-                max_tokens=5,
-                timeout_seconds=timeout_seconds,
-            )
+            req = ModelRequest(model_name=model_id, messages=[ModelMessage(role=ModelRole.USER, content="ping")], max_tokens=5, timeout_seconds=timeout_seconds)
             resp = temp_adapter.generate(req)
             latency_ms = (time.perf_counter() - start_time) * 1000.0
-
             if resp.status == ModelResponseStatus.SUCCESS:
-                return ConnectionTestResult(
-                    status=ConnectionTestStatus.CONNECTED,
-                    provider_id=pid,
-                    model_id=model_id,
-                    latency_ms=latency_ms,
-                )
+                return ConnectionTestResult(status=ConnectionTestStatus.CONNECTED, provider_id=pid, model_id=model_id, latency_ms=latency_ms)
             if resp.status == ModelResponseStatus.RATE_LIMITED:
-                return ConnectionTestResult(
-                    status=ConnectionTestStatus.RATE_LIMIT,
-                    provider_id=pid,
-                    model_id=model_id,
-                    error=sanitize_secrets(resp.error or "Rate limit exceeded", secret=resolved_key),
-                    latency_ms=latency_ms,
-                )
+                return ConnectionTestResult(status=ConnectionTestStatus.RATE_LIMIT, provider_id=pid, model_id=model_id, error=sanitize_secrets(resp.error or "Rate limit exceeded", secret=resolved_key), latency_ms=latency_ms)
             if resp.status == ModelResponseStatus.TIMEOUT:
-                return ConnectionTestResult(
-                    status=ConnectionTestStatus.TIMEOUT,
-                    provider_id=pid,
-                    model_id=model_id,
-                    error=sanitize_secrets(resp.error or "Request timed out", secret=resolved_key),
-                    latency_ms=latency_ms,
-                )
-
+                return ConnectionTestResult(status=ConnectionTestStatus.TIMEOUT, provider_id=pid, model_id=model_id, error=sanitize_secrets(resp.error or "Request timed out", secret=resolved_key), latency_ms=latency_ms)
             err_str = str(resp.error or "").upper()
             sanitized_err = sanitize_secrets(resp.error or "Provider error", secret=resolved_key)
             if any(k in err_str for k in ("401", "UNAUTHORIZED", "AUTH", "API_KEY", "MISSING_API_KEY")):
@@ -1040,29 +801,17 @@ class ProviderRegistry:
                 status = ConnectionTestStatus.INVALID_CONFIGURATION
             else:
                 status = ConnectionTestStatus.UNAVAILABLE
-
-            return ConnectionTestResult(
-                status=status,
-                provider_id=pid,
-                model_id=model_id,
-                error=sanitized_err,
-                latency_ms=latency_ms,
-            )
+            return ConnectionTestResult(status=status, provider_id=pid, model_id=model_id, error=sanitized_err, latency_ms=latency_ms)
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000.0
             sanitized = sanitize_secrets(str(e), secret=resolved_key)
             return ConnectionTestResult(
                 status=ConnectionTestStatus.INVALID_CONFIGURATION if "INVALID" in sanitized.upper() else ConnectionTestStatus.UNAVAILABLE,
-                provider_id=pid,
-                model_id=model_id,
-                error=sanitized,
-                latency_ms=latency_ms,
+                provider_id=pid, model_id=model_id, error=sanitized, latency_ms=latency_ms,
             )
 
 
 class ModelRegistry:
-    """Registry managing model definitions, capabilities, and cost tiers."""
-
     def __init__(self) -> None:
         self._models: Dict[str, ModelMetadata] = {}
         self._load_builtin_models()
@@ -1071,73 +820,34 @@ class ModelRegistry:
         return f"{provider_id.lower()}::{model_id}"
 
     def _load_builtin_models(self) -> None:
-        """Populate verified known models."""
-        # xKiro verified models
-        self.register_model(
-            ModelMetadata(
-                provider_id="xkiro",
-                model_id="mistralai/mistral-large-2512",
-                display_name="Mistral Large 2512 (xKiro Free)",
-                context_window=128000,
-                cost_tier=CostPolicy.FREE_TIER_ALLOWED,
-                supports_json=True,
-                supports_reasoning=True,
-            )
-        )
-
-        # Gemini models
+        self.register_model(ModelMetadata(
+            provider_id="xkiro", model_id="mistralai/mistral-large-2512",
+            display_name="Mistral Large 2512 (xKiro Free)", context_window=128000,
+            cost_tier=CostPolicy.FREE_TIER_ALLOWED, supports_json=True, supports_reasoning=True,
+        ))
         for m_id in ("gemini-flash-latest", "gemini-2.0-flash", "gemini-1.5-flash"):
-            self.register_model(
-                ModelMetadata(
-                    provider_id="gemini",
-                    model_id=m_id,
-                    display_name=f"Google {m_id}",
-                    context_window=1000000,
-                    cost_tier=CostPolicy.FREE_TIER_ALLOWED,
-                    supports_json=True,
-                    supports_vision=True,
-                )
-            )
-
-        # OpenAI models
-        self.register_model(
-            ModelMetadata(
-                provider_id="openai",
-                model_id="gpt-4o-mini",
-                display_name="OpenAI GPT-4o Mini",
-                context_window=128000,
-                cost_tier=CostPolicy.PAID,
-                supports_json=True,
-            )
-        )
-
-        # TheSpark models
-        self.register_model(
-            ModelMetadata(
-                provider_id="thespark",
-                model_id="spark-default",
-                display_name="TheSpark Default",
-                context_window=32000,
-                cost_tier=CostPolicy.PAID,
-                supports_json=True,
-            )
-        )
+            self.register_model(ModelMetadata(
+                provider_id="gemini", model_id=m_id, display_name=f"Google {m_id}", context_window=1000000,
+                cost_tier=CostPolicy.FREE_TIER_ALLOWED, supports_json=True, supports_vision=True,
+            ))
+        self.register_model(ModelMetadata(
+            provider_id="openai", model_id="gpt-4o-mini", display_name="OpenAI GPT-4o Mini",
+            context_window=128000, cost_tier=CostPolicy.PAID, supports_json=True,
+        ))
+        self.register_model(ModelMetadata(
+            provider_id="thespark", model_id="spark-default", display_name="TheSpark Default",
+            context_window=32000, cost_tier=CostPolicy.PAID, supports_json=True,
+        ))
 
     def register_model(self, model: ModelMetadata) -> None:
-        """Register or update a model specification."""
-        key = self._make_key(model.provider_id, model.model_id)
-        self._models[key] = model
+        self._models[self._make_key(model.provider_id, model.model_id)] = model
 
     def get_model(self, provider_id: str, model_id: str) -> Optional[ModelMetadata]:
-        """Retrieve model metadata by provider and model ID."""
-        key = self._make_key(provider_id, model_id)
-        return self._models.get(key)
+        return self._models.get(self._make_key(provider_id, model_id))
 
     def list_models_for_provider(self, provider_id: str) -> List[ModelMetadata]:
-        """List all models registered under a given provider."""
         pid = provider_id.lower()
         return [m for m in self._models.values() if m.provider_id.lower() == pid]
 
     def list_free_models(self) -> List[ModelMetadata]:
-        """List all models classified as FREE or FREE_TIER_ALLOWED."""
         return [m for m in self._models.values() if m.cost_tier == CostPolicy.FREE_TIER_ALLOWED]

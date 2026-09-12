@@ -181,7 +181,7 @@ class BrainSafeSelfImprovementV1Tests(unittest.TestCase):
     def test_policy_owner_must_bind_exactly(self) -> None:
         with self.assertRaises(ValidationError):
             self._request(
-                policy=self._policy(owner=BrainAgentId.STRATEGIST),
+                policy=self._policy(owner=BrainAgentId.CONTENT),
                 meta=self._meta_request("prefer"),
             )
 

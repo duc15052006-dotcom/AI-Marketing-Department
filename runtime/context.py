@@ -6,6 +6,7 @@ and durable execution checkpoints for the Five-Agent Department runtime.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import uuid
@@ -14,6 +15,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from schemas.base import BaseModel, Field
+from runtime.deployment_binding import (
+    canonical_pending_approval_id,
+    prepare_final_cmo_checkpoint_binding,
+    register_final_cmo_checkpoint,
+)
 
 
 class RunIdAlreadyExistsError(RuntimeError):
@@ -48,15 +54,26 @@ class ApprovalState(str, Enum):
 
 
 class RuntimeStage(str, Enum):
-    """Execution stages across the Five-Agent Department."""
+    """Canonical execution stages across the Five-Agent Department.
+
+    FINAL_CMO is a second stage executed by the same permanent CMO identity; it
+    is not a sixth agent. Historical serialized STRATEGIST stage values are
+    accepted by ``_missing_`` and normalized to CONTENT at read boundaries.
+    """
     INIT = "INIT"
     CMO_INITIAL = "CMO_INITIAL"
     INTELLIGENCE = "INTELLIGENCE"
-    STRATEGIST = "STRATEGIST"
+    CONTENT = "CONTENT"
     CREATIVE = "CREATIVE"
     PERFORMANCE = "PERFORMANCE"
     FINAL_CMO = "FINAL_CMO"
     COMPLETED = "COMPLETED"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.strip().upper() == "STRATEGIST":
+            return cls.CONTENT
+        return None
 
 
 class ExecutionCheckpoint(BaseModel):
@@ -85,18 +102,23 @@ class ExecutionCheckpoint(BaseModel):
             separators=(",", ":"),
             default=str,
         )
-        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{working_state}"
+        raw = (
+            f"{self.run_id}:{self.stage.value}:{self.status.value}:"
+            f"{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:"
+            f"{self.approval_state.value}:{self.pending_approval_id}:"
+            f"{self.business_id}:{self.project_id}:{self.chat_id}:{working_state}"
+        )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 class EpistemicTier(str, Enum):
     """Canonical epistemic trust tiers for grounded context and evidence."""
-    VERIFIED_SOURCE = "VERIFIED_SOURCE"            # Canonical ground truth or Tier 1-2 verified documents
-    VERIFIED_MEMORY = "VERIFIED_MEMORY"            # Formally promoted/verified institutional memory
-    SOURCE_BACKED_OBSERVATION = "SOURCE_BACKED_OBSERVATION"  # Real tool execution results (Real mode)
-    CANDIDATE_MEMORY = "CANDIDATE_MEMORY"          # Unverified/unpromoted memory items (explicitly not fact)
-    MOCK_OR_SANDBOX = "MOCK_OR_SANDBOX"            # Simulated/mock tool results (non-production)
-    UNVERIFIED_SOURCE = "UNVERIFIED_SOURCE"        # Raw web/social snippets or unverified attachments
+    VERIFIED_SOURCE = "VERIFIED_SOURCE"
+    VERIFIED_MEMORY = "VERIFIED_MEMORY"
+    SOURCE_BACKED_OBSERVATION = "SOURCE_BACKED_OBSERVATION"
+    CANDIDATE_MEMORY = "CANDIDATE_MEMORY"
+    MOCK_OR_SANDBOX = "MOCK_OR_SANDBOX"
+    UNVERIFIED_SOURCE = "UNVERIFIED_SOURCE"
 
 
 class EvidenceItem(BaseModel):
@@ -114,8 +136,6 @@ class EvidenceItem(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # Trust Boundary Enforcement:
-        # VERIFIED_SOURCE requires canonical knowledge authority metadata (TIER_1 or TIER_2) or canonical source_type
         if self.epistemic_tier == EpistemicTier.VERIFIED_SOURCE:
             auth = str(self.metadata.get("authority", "")).upper()
             stype = str(self.source_type).upper()
@@ -124,21 +144,17 @@ class EvidenceItem(BaseModel):
             if not (is_valid_auth or is_valid_stype):
                 self.epistemic_tier = EpistemicTier.UNVERIFIED_SOURCE
 
-        # VERIFIED_MEMORY requires canonical promotion level (VERIFIED_MEMORY or PROMOTED_LEARNING)
         if self.epistemic_tier == EpistemicTier.VERIFIED_MEMORY:
             prom = str(self.metadata.get("promotion_level", "")).upper()
             if not ("VERIFIED_MEMORY" in prom or "PROMOTED_LEARNING" in prom):
                 self.epistemic_tier = EpistemicTier.CANDIDATE_MEMORY
 
-        # SOURCE_BACKED_OBSERVATION requires execution_mode == REAL and not MOCK/SANDBOX, plus OBSERVATION evidence role
         if self.epistemic_tier == EpistemicTier.SOURCE_BACKED_OBSERVATION:
             mode = str(self.metadata.get("execution_mode", "REAL")).upper()
             if mode in ("MOCK", "SANDBOX", "SIMULATED"):
                 self.epistemic_tier = EpistemicTier.MOCK_OR_SANDBOX
             ev_role = str(self.metadata.get("evidence_role", "")).upper()
             if ev_role and ev_role not in ("OBSERVATION", "OBSERVATION_SOURCE"):
-                # Non-observation items cannot have SOURCE_BACKED_OBSERVATION tier.
-                # Fail-closed downgrade to UNVERIFIED_SOURCE (never MOCK_OR_SANDBOX if real execution)
                 self.epistemic_tier = EpistemicTier.UNVERIFIED_SOURCE
 
 
@@ -259,6 +275,11 @@ class RuntimeContext(BaseModel):
 
     def create_checkpoint(self, pending_approval_id: Optional[str] = None) -> ExecutionCheckpoint:
         """Create and record an immutable checkpoint of the current state."""
+        deployment_binding_prepared = prepare_final_cmo_checkpoint_binding(self)
+        authoritative_pending_id = canonical_pending_approval_id(
+            pending_approval_id,
+            run_id=self.run_id,
+        )
         chkpt = ExecutionCheckpoint(
             run_id=self.run_id,
             business_id=self.business_id,
@@ -269,11 +290,12 @@ class RuntimeContext(BaseModel):
             completed_stages=list(self.stage_outputs.keys()),
             receipt_ids=list(self.execution_receipt_refs),
             approval_state=ApprovalState.PENDING_APPROVAL if self.status == RuntimeStatus.WAITING_FOR_APPROVAL else ApprovalState.NOT_REQUIRED,
-            pending_approval_id=pending_approval_id,
-            working_state_snapshot=dict(self.working_state),
+            pending_approval_id=authoritative_pending_id,
+            working_state_snapshot=copy.deepcopy(self.working_state),
         )
         chkpt.checkpoint_hash = chkpt.calculate_checkpoint_hash()
         self.checkpoints.append(chkpt)
+        register_final_cmo_checkpoint(self, chkpt, deployment_binding_prepared)
         return chkpt
 
     def compute_context_hash(self) -> str:

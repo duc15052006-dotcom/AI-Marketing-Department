@@ -48,7 +48,7 @@ DEPTH_RANK = {
 SIGNALS = [SignalLevel.LOW, SignalLevel.MEDIUM, SignalLevel.HIGH, SignalLevel.CRITICAL]
 PEERS = [
     BrainAgentId.INTELLIGENCE,
-    BrainAgentId.STRATEGIST,
+    BrainAgentId.CONTENT,
     BrainAgentId.CREATIVE,
     BrainAgentId.PERFORMANCE,
 ]
@@ -92,13 +92,7 @@ def backed_review(
         goal_id="G",
         claim_id="P",
         agent_id=reviewer,
-        evidence=[
-            evidence(
-                eid,
-                source=f"{review_id}-source",
-                relation=relation,
-            )
-        ],
+        evidence=[evidence(eid, source=f"{review_id}-source", relation=relation)],
     )
     return PeerReview(
         review_id=review_id,
@@ -137,9 +131,10 @@ class TestFiveASIIdentityAndReasoning(unittest.TestCase):
     def test_exactly_five_permanent_asi_identities(self):
         self.assertEqual(
             [agent.value for agent in AGENTS],
-            ["CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"],
+            ["CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"],
         )
         self.assertEqual(len(AGENTS), 5)
+        self.assertNotIn("STRATEGIST", {agent.value for agent in AGENTS})
 
     def test_reasoning_signal_monotonicity_exhaustive_all_five_asi(self):
         """Raising any cognitive signal must never make reasoning shallower."""
@@ -341,7 +336,7 @@ class TestFiveASICollaborationAdversarial(unittest.TestCase):
     def test_majority_support_cannot_average_away_evidence_backed_refutation(self):
         reviews = [
             backed_review("s1", BrainAgentId.INTELLIGENCE),
-            backed_review("s2", BrainAgentId.STRATEGIST),
+            backed_review("s2", BrainAgentId.CONTENT),
             backed_review("s3", BrainAgentId.CREATIVE),
             backed_review("r1", BrainAgentId.PERFORMANCE, ClaimVerdict.REFUTED),
         ]
@@ -361,7 +356,7 @@ class TestFiveASICollaborationAdversarial(unittest.TestCase):
             review_id="challenge",
             goal_id="G",
             proposal_id="P",
-            reviewer_agent=BrainAgentId.STRATEGIST,
+            reviewer_agent=BrainAgentId.CONTENT,
             verdict=ClaimVerdict.REFUTED,
             rationale="challenge without canonical raw evidence",
             evidence_refs=[],
@@ -380,7 +375,7 @@ class TestFiveASICollaborationAdversarial(unittest.TestCase):
     def test_review_order_cannot_change_disposition_or_authority_sets(self):
         reviews = [
             backed_review("s1", BrainAgentId.INTELLIGENCE),
-            backed_review("s2", BrainAgentId.STRATEGIST),
+            backed_review("s2", BrainAgentId.CONTENT),
             backed_review("r1", BrainAgentId.CREATIVE, ClaimVerdict.REFUTED),
         ]
         baseline = evaluate_collaboration(collaboration(reviews, quorum=2))

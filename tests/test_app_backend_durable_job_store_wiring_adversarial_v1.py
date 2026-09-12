@@ -44,7 +44,13 @@ class AppBackendDurableJobStoreWiringAdversarialV1Tests(unittest.TestCase):
         now = datetime.now(timezone.utc).isoformat()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            env = {"APPDATA": tmpdir, "LOCALAPPDATA": tmpdir}
+            env = {
+                "APPDATA": tmpdir,
+                "LOCALAPPDATA": tmpdir,
+                "AI_MARKETING_KNOWLEDGE_EPHEMERAL": "0",
+                "AI_MARKETING_MEMORY_EPHEMERAL": "0",
+                "AI_MARKETING_LEARNING_EPHEMERAL": "0",
+            }
             with patch.dict(os.environ, env, clear=False):
                 first = DepartmentAppBackend()
                 first_repo = first.run_manager.job_repository
@@ -71,6 +77,11 @@ class AppBackendDurableJobStoreWiringAdversarialV1Tests(unittest.TestCase):
                     )
                 )
                 first.close()
+                for repository in (first.learning_repo, first.memory_repo, first.knowledge_repo):
+                    self.assertIsNone(
+                        getattr(repository, "_connection", None),
+                        "DepartmentAppBackend.close() must release every owned durable SQLite repository.",
+                    )
 
                 second = DepartmentAppBackend()
                 second_repo = second.run_manager.job_repository

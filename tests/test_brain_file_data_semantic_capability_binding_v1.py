@@ -81,7 +81,7 @@ class BrainFileDataSemanticCapabilityBindingV1Tests(unittest.TestCase):
 
     def test_file_write_semantics_preserve_supported_agent_authority(self):
         assessment = evaluate_action_intent_capability_binding(
-            self._intent("WORKSPACE_WRITE", owner=BrainAgentId.STRATEGIST),
+            self._intent("WORKSPACE_WRITE", owner=BrainAgentId.CONTENT),
             self._binding("file_write"),
         )
         self.assertEqual(CapabilityBindingDisposition.REJECTED, assessment.disposition)

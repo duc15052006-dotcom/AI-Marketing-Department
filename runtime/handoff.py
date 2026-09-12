@@ -146,6 +146,38 @@ EXPERIMENT_EXECUTION_STATES = (
 DATA_ORIGINS = ("REAL", "MOCK", "SANDBOX", "UNVERIFIED", "NO_DATA")
 
 
+def _resolve_provenance_ref(provenance_index: Dict[str, Any], ref: Any) -> Any:
+    """Resolve a source id or a real receipt id already admitted to provenance.
+
+    Receipt ids are aliases only for TOOL_RECEIPT evidence items that already
+    survived ContextCompiler scope/status/evidence-role filtering. This keeps
+    fail-closed provenance semantics while allowing the machine handoff contract
+    to cite the actual EXEC-* receipt exposed to the model.
+    """
+    key = str(ref or "").strip().upper()
+    if not key:
+        return None
+
+    direct = provenance_index.get(key)
+    if direct is not None:
+        return direct
+
+    for candidate in provenance_index.values():
+        if isinstance(candidate, dict):
+            source_type = str(candidate.get("source_type") or "").strip().upper()
+            metadata = candidate.get("metadata") or {}
+        else:
+            source_type = str(getattr(candidate, "source_type", "") or "").strip().upper()
+            metadata = getattr(candidate, "metadata", {}) or {}
+        if source_type != "TOOL_RECEIPT" or not isinstance(metadata, dict):
+            continue
+        receipt_id = str(metadata.get("receipt_id") or "").strip().upper()
+        if receipt_id and receipt_id == key:
+            return candidate
+
+    return None
+
+
 class CreativeSpec(BaseModel):
     """Truthful structured representation of the Creative stage's work.
 
@@ -264,7 +296,7 @@ def build_performance_evaluation(
     _NON_EMPIRICAL_METRIC_CAPABILITIES = {"kpi_calculation", "plan_generation", "calculator"}
 
     for ref in [str(m).upper() for m in (evaluation_payload.get("metric_refs") or [])]:
-        entry = provenance_index.get(ref)
+        entry = _resolve_provenance_ref(provenance_index, ref)
         if entry is None:
             continue
         if isinstance(entry, dict):
@@ -437,12 +469,13 @@ def build_epistemic_item(
 
     item_id = f"{source_stage[:4].upper()}-{bucket_type.value[:4].upper()}-{index:03d}"
 
-    # Bind references ONLY to ids that exist in this run's provenance index;
-    # invented IDs are dropped silently (the citation simply does not count).
+    # Bind references ONLY to evidence already admitted to this run's provenance
+    # index. Real receipt ids may resolve as aliases of their accepted TOOL_RECEIPT
+    # item; invented or rejected receipts still fail closed.
     valid_refs: List[str] = []
     tiers: List[str] = []
     for ref in claimed_refs:
-        entry = provenance_index.get(ref)
+        entry = _resolve_provenance_ref(provenance_index, ref)
         if entry is None:
             continue
         valid_refs.append(ref)

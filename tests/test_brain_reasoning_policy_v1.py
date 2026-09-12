@@ -23,7 +23,7 @@ class BrainReasoningPolicyV1Tests(unittest.TestCase):
         values = {
             "assessment_id": "RA-1",
             "goal_id": "G-1",
-            "agent_id": "STRATEGIST",
+            "agent_id": "CONTENT",
             "complexity": SignalLevel.LOW,
             "uncertainty": SignalLevel.LOW,
             "consequence": SignalLevel.LOW,

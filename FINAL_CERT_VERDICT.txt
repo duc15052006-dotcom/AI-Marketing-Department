@@ -1,3 +1,18 @@
+=== HISTORICAL / SUPERSEDED CERTIFICATION RECORD ===
+
+This file preserves the FINAL-CORE-E2E-01 certification evidence for the historical
+HEAD recorded below. It is NOT certification evidence for the current checked-out
+HEAD and must not be used to certify a newer commit.
+
+Current-state authority order: exact-head code/tests -> SOURCE_OF_TRUTH.md ->
+current integration PR exact-head CI/certification evidence. The last fully qualified
+convergence head before this release-hygiene cleanup was:
+  1ebfe16a7c8c7512f0b541d8b935c8b0ac3b7ae3
+with full hermetic discovery: 3,252 tests, OK, 30 skipped, 0 failures, 0 errors,
+and all returned exact-head PR workflow runs completed successfully.
+
+The record below is preserved verbatim for forensic provenance.
+
 === FINAL-CORE-E2E-01 CERTIFICATION VERDICT ===
 
 HEAD:                          88568ee fix: unify capability scope and chat authority

@@ -27,7 +27,7 @@ class HandoffGateway(UniversalModelGateway):
         ("final_cmo", "Final Governed Go-To-Market"),
         ("performance", "Performance Marketing & Analytics Director"),
         ("creative", "Creative Director"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Content Strategy"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
     ]
@@ -93,7 +93,7 @@ def run(gateway, objective="demo objective", business_id="BIZ_AUDIT", real_adapt
     ctx = rt.start_run(objective=objective, business_id=business_id)
     rt.execute_stage_cmo_initial(ctx)
     rt.execute_stage_intelligence(ctx)
-    rt.execute_stage_strategist(ctx)
+    rt.execute_stage_content(ctx)
     rt.execute_stage_creative(ctx)
     perf_out = rt.execute_stage_performance(ctx)
     final_out = rt.execute_stage_final_cmo(ctx)
@@ -154,7 +154,7 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         record_constraint(ctx, "Khong duoc noi chua mun.", origin="USER_CONSTRAINT")
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         rt.execute_stage_performance(ctx)
         self.assertEqual(ctx.working_state["creative_spec"]["constraints"], ["Khong duoc noi chua mun."])
@@ -207,7 +207,7 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         ctx = rt.start_run(objective="demo", business_id="BIZ_AUDIT")
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         gw.replies["creative"] = {
             "_text": self.CREATIVE_TEXT,
             "_payload": {"hypotheses": [{"text": "Hook H2 tang CTR"}]},
@@ -293,7 +293,7 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         }
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         perf_out = rt.execute_stage_performance(ctx)
         ev = perf_out["evaluation"]
@@ -353,7 +353,7 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         ctx = rt.start_run(objective="demo", business_id="BIZ_AUDIT")
         rt.execute_stage_cmo_initial(ctx)
         rt.execute_stage_intelligence(ctx)
-        rt.execute_stage_strategist(ctx)
+        rt.execute_stage_content(ctx)
         rt.execute_stage_creative(ctx)
         hyp_id = ctx.working_state["creative_spec"]["hypotheses"][0]["item_id"]
         gw.replies["performance"] = {
@@ -379,7 +379,7 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         ctx_a = rt_a.start_run(objective="A", business_id="BIZ_BRAND_A")
         rt_a.execute_stage_cmo_initial(ctx_a)
         rt_a.execute_stage_intelligence(ctx_a)
-        rt_a.execute_stage_strategist(ctx_a)
+        rt_a.execute_stage_content(ctx_a)
         rt_a.execute_stage_creative(ctx_a)
         id_a = ctx_a.working_state["creative_spec"]["creative_id"]
 
@@ -388,7 +388,7 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
         ctx_b = rt_b.start_run(objective="B", business_id="BIZ_BRAND_B")
         rt_b.execute_stage_cmo_initial(ctx_b)
         rt_b.execute_stage_intelligence(ctx_b)
-        rt_b.execute_stage_strategist(ctx_b)
+        rt_b.execute_stage_content(ctx_b)
         rt_b.execute_stage_creative(ctx_b)
 
         id_b = ctx_b.working_state["creative_spec"]["creative_id"]
@@ -400,9 +400,23 @@ class TestCreativePerformanceTrueHandoff(unittest.TestCase):
     # 25. five-agent invariant
     def test_25_five_agent_invariant(self):
         from governance.access_matrix import PERMANENT_FIVE_AGENTS
-        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "strategist", "creative", "performance"})
+        self.assertEqual(PERMANENT_FIVE_AGENTS, {"cmo", "intelligence", "content", "creative", "performance"})
         rt = build_rt(HandoffGateway())
-        self.assertEqual(len({m for m in dir(rt) if m.startswith("execute_stage_")}), 6)
+        canonical_stage_methods = {
+            "execute_stage_cmo_initial",
+            "execute_stage_intelligence",
+            "execute_stage_content",
+            "execute_stage_creative",
+            "execute_stage_performance",
+            "execute_stage_final_cmo",
+        }
+        stage_methods = {m for m in dir(rt) if m.startswith("execute_stage_")}
+        self.assertEqual(
+            stage_methods - {"execute_stage_strategist"},
+            canonical_stage_methods,
+            "Only six canonical stages may represent the five permanent ASIs; "
+            "execute_stage_strategist is a deprecated compatibility shim, not an agent.",
+        )
 
 
 if __name__ == "__main__":

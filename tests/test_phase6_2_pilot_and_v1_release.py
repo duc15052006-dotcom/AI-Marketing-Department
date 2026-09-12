@@ -78,7 +78,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("performance", "Performance Specialist"),
         ("creative", "Creative Director"),
         ("creative", "Creative Specialist"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Marketing Strategist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
         ("cmo_initial", "Chief Marketing Officer (CMO)"),
@@ -361,7 +361,7 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
 
         # Stage 3: Strategist (Consumes research + memory)
         strat_out = self.runtime.execute_stage_strategist(ctx)
-        self.assertEqual(strat_out["agent"], "strategist")
+        self.assertEqual(strat_out["agent"], "content")
 
         # Stage 4: Creative (Executes Media Mock via ToolGateway)
         crtv_out = self.runtime.execute_stage_creative(ctx)
@@ -385,25 +385,22 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
         unapproved_receipt = self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(unapproved_receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
         self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
+        self.assertTrue(unapproved_receipt.approval_reference)
 
-        # Checkpoint recorded before approval
+        # Checkpoint recorded before approval and bound to ToolGateway's exact pending action
         chkpt_pre = ctx.checkpoints[-1]
         self.assertEqual(chkpt_pre.approval_state, ApprovalState.PENDING_APPROVAL)
+        self.assertEqual(chkpt_pre.pending_approval_id, unapproved_receipt.approval_reference)
 
-        # Register a pending approval and approve it through proper semantics
-        # Use same parameters that request_publish_action will use
+        # Approve the server-originated pending request. Do not manufacture a
+        # second approval record with a parallel/placeholder payload.
         policy = self.runtime.tool_gateway.policy_engine
-        pending = policy.create_pending_approval(
-            capability_id="social_publishing",
-            parameters={"platform": "linkedin", "content": "Campaign Go-To-Market Plan"},
-            risk_level=RiskLevel.HIGH,
-            run_id=ctx.run_id,
-            business_id=ctx.business_id,
-        )
         ok, approval_record, _ = policy.approve_pending_action(
-            pending.pending_approval_id, approved_by="Executive VP of Marketing"
+            unapproved_receipt.approval_reference,
+            approved_by="Executive VP of Marketing",
         )
         self.assertTrue(ok)
+        self.assertIsNotNone(approval_record)
 
         approve_ok = self.workspace.approve_gated_action(
             run_id=ctx.run_id,
@@ -438,7 +435,9 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
         # ---------------------------------------------------------------------
         # GATE 9: Final Lineage Validation
         # ---------------------------------------------------------------------
-        inspector = self.runtime.lineage_inspector
+        # Completed-run audit must use durable artifact receipts; complete_run()
+        # intentionally clears the runtime's transient lineage cache for isolation.
+        inspector = LineageInspector(receipts=receipts)
         # Trace published campaign receipt
         pub_receipt = next(r for r in receipts if r.capability_id == "social_publishing")
         trace = inspector.trace_claim_to_receipt("CardioVital Q4 Published Campaign", pub_receipt.execution_id)
@@ -452,10 +451,10 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
         self.assertEqual(len(PERMANENT_FIVE_AGENTS), 5)
 
         perf_md = Path(".agents/agents/performance/agent.md").read_text(encoding="utf-8")
-        self.assertEqual(hashlib.sha256(perf_md.encode("utf-8")).hexdigest(), "26be7c5a2aa3c388defec7fe92162d0082c34ca6609f17c692704863ce4ea3c9")
+        self.assertEqual(hashlib.sha256(perf_md.encode("utf-8")).hexdigest(), "0501d698f6b33f13eee9b75bb304dc93ff46aeaa66679ab3ffe879ef1ed0c604")
 
         cmo_md = Path(".agents/agents/cmo/agent.md").read_text(encoding="utf-8")
-        self.assertEqual(hashlib.sha256(cmo_md.encode("utf-8")).hexdigest(), "766edaf82a8493b82e42d6e61fdca615bc4bfa678ce419f43aee0ae7e86bd52e")
+        self.assertEqual(hashlib.sha256(cmo_md.encode("utf-8")).hexdigest(), "f76762a720435ed243c233ff707c9e79c42aeb273f21b5f14915e9059f18703d")
 
         handoff_py = Path("schemas/handoff.py").read_text(encoding="utf-8")
         self.assertEqual(hashlib.sha256(handoff_py.encode("utf-8")).hexdigest(), "4075a8e269aef7526bb52c281ac88cc6fdc009d83e9aecb384032e29087e237a")

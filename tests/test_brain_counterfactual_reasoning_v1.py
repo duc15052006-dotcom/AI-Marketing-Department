@@ -44,7 +44,7 @@ class BrainCounterfactualReasoningV1Tests(unittest.TestCase):
         *,
         snapshot_id: str = "world-1",
         goal_id: str = "goal-growth",
-        agent_id: BrainAgentId = BrainAgentId.STRATEGIST,
+        agent_id: BrainAgentId = BrainAgentId.CONTENT,
         status: BeliefStatus = BeliefStatus.ESTABLISHED,
     ):
         proposition = WorldProposition(
@@ -139,7 +139,7 @@ class BrainCounterfactualReasoningV1Tests(unittest.TestCase):
         *,
         scenario_id: str = "scenario-price-counterfactual",
         goal_id: str = "goal-growth",
-        agent_id: BrainAgentId = BrainAgentId.STRATEGIST,
+        agent_id: BrainAgentId = BrainAgentId.CONTENT,
         source_state=None,
         interventions=None,
         predictions=None,
@@ -276,7 +276,7 @@ class BrainCounterfactualReasoningV1Tests(unittest.TestCase):
             CounterfactualComparisonRequest(
                 comparison_id="comparison-price",
                 goal_id="goal-growth",
-                agent_id=BrainAgentId.STRATEGIST,
+                agent_id=BrainAgentId.CONTENT,
                 scenarios=[first, second],
             )
         )
@@ -300,7 +300,7 @@ class BrainCounterfactualReasoningV1Tests(unittest.TestCase):
             CounterfactualComparisonRequest(
                 comparison_id="comparison-price",
                 goal_id="goal-growth",
-                agent_id=BrainAgentId.STRATEGIST,
+                agent_id=BrainAgentId.CONTENT,
                 scenarios=[first, second],
             )
         )
@@ -320,7 +320,7 @@ class BrainCounterfactualReasoningV1Tests(unittest.TestCase):
                 CounterfactualComparisonRequest(
                     comparison_id="comparison-price",
                     goal_id="goal-growth",
-                    agent_id=BrainAgentId.STRATEGIST,
+                    agent_id=BrainAgentId.CONTENT,
                     scenarios=[first, second],
                 )
             )
@@ -333,7 +333,7 @@ class BrainCounterfactualReasoningV1Tests(unittest.TestCase):
         request = CounterfactualComparisonRequest(
             comparison_id="comparison-price",
             goal_id="goal-growth",
-            agent_id=BrainAgentId.STRATEGIST,
+            agent_id=BrainAgentId.CONTENT,
             scenarios=[first, second],
         )
         request.scenarios[0].source_state.agent_id = BrainAgentId.CREATIVE

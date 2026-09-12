@@ -389,7 +389,7 @@ class TestPythonStreamingEndpoint01(unittest.TestCase):
         ]
         self.assertEqual(
             progress_stages,
-            ["CMO_INITIAL", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE", "FINAL_CMO"],
+            ["CMO_INITIAL", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE", "FINAL_CMO"],
         )
 
     # 20. Final CMO has agent=CMO
@@ -434,7 +434,7 @@ class TestPythonStreamingEndpoint01(unittest.TestCase):
             if idx < first_delta_idx and f["event"] == "progress" and isinstance(f["data"], dict)
         ]
         stages_before_delta = [p.get("stage") for p in progress_types_before_delta if p.get("event_type") == "STAGE_STARTED"]
-        self.assertEqual(stages_before_delta, ["CMO_INITIAL", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE", "FINAL_CMO"])
+        self.assertEqual(stages_before_delta, ["CMO_INITIAL", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE", "FINAL_CMO"])
 
     # 23. Streaming path does not perform second final generate() call
     def test_23_streaming_path_does_not_perform_second_generate_call(self) -> None:

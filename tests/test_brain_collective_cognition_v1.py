@@ -30,7 +30,7 @@ class BrainCollectiveCognitionV1Tests(unittest.TestCase):
     ALL_AGENTS = [
         BrainAgentId.CMO,
         BrainAgentId.INTELLIGENCE,
-        BrainAgentId.STRATEGIST,
+        BrainAgentId.CONTENT,
         BrainAgentId.CREATIVE,
         BrainAgentId.PERFORMANCE,
     ]
@@ -104,7 +104,7 @@ class BrainCollectiveCognitionV1Tests(unittest.TestCase):
         cls,
         *,
         candidate_id: str = "P-1",
-        author: BrainAgentId = BrainAgentId.STRATEGIST,
+        author: BrainAgentId = BrainAgentId.CONTENT,
         proposal_verdict: ClaimVerdict = ClaimVerdict.SUPPORTED,
         reviewer_agents=None,
         review_verdicts=None,
@@ -225,7 +225,7 @@ class BrainCollectiveCognitionV1Tests(unittest.TestCase):
             synthesize_collective_cognition(self._request([candidate]))
 
     def test_multiple_independently_accepted_candidates_require_arbitration_not_vote(self) -> None:
-        first = self._candidate(candidate_id="P-1", author=BrainAgentId.STRATEGIST)
+        first = self._candidate(candidate_id="P-1", author=BrainAgentId.CONTENT)
         second = self._candidate(candidate_id="P-2", author=BrainAgentId.CREATIVE)
         result = synthesize_collective_cognition(self._request([first, second]))
         self.assertEqual(

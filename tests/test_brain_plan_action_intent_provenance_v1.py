@@ -63,7 +63,7 @@ class TestBrainPlanActionIntentProvenanceV1(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "owner_agent"):
             validate_plan_action_intent_bindings(
                 self._plan(),
-                [self._intent(owner=BrainAgentId.STRATEGIST)],
+                [self._intent(owner=BrainAgentId.CONTENT)],
             )
 
 

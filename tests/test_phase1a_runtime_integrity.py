@@ -79,8 +79,8 @@ class ControllableMockAdapter(BaseModelAdapter):
         detected_role = "unknown"
         if "you are the intelligence specialist" in sys_content:
             detected_role = "intelligence"
-        elif "you are the marketing strategist" in sys_content:
-            detected_role = "strategist"
+        elif "content asi" in sys_content:
+            detected_role = "content"
         elif "you are the creative director" in sys_content:
             detected_role = "creative"
         elif "you are the performance marketing" in sys_content:
@@ -155,7 +155,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         intel_out = runtime.execute_stage_intelligence(ctx)
         self.assertEqual(intel_out["status"], "FAILED")
 
-        strat_out = runtime.execute_stage_strategist(ctx)
+        strat_out = runtime.execute_stage_content(ctx)
         self.assertEqual(strat_out["status"], "FAILED")
 
         crtv_out = runtime.execute_stage_creative(ctx)
@@ -199,7 +199,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         ctx = runtime.start_run(objective="Tối ưu ROAS kênh TikTok")
         runtime.execute_stage_cmo_initial(ctx)
         runtime.execute_stage_intelligence(ctx)
-        runtime.execute_stage_strategist(ctx)
+        runtime.execute_stage_content(ctx)
         runtime.execute_stage_creative(ctx)
 
         perf_out = runtime.execute_stage_performance(ctx)
@@ -215,7 +215,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         ctx = runtime.start_run(objective="Kế hoạch tăng trưởng Q4")
         runtime.execute_stage_cmo_initial(ctx)
         runtime.execute_stage_intelligence(ctx)
-        runtime.execute_stage_strategist(ctx)
+        runtime.execute_stage_content(ctx)
         runtime.execute_stage_creative(ctx)
         runtime.execute_stage_performance(ctx)
         cmo_final = runtime.execute_stage_final_cmo(ctx)
@@ -245,7 +245,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
             responses={
                 "cmo": "# BÁO CÁO CHIẾN LƯỢC GTM CHÍNH THỨC\n\n1. Định hướng tổng thể: Mở rộng thị trường.",
                 "intelligence": "Nghiên cứu thị trường cho thấy nhu cầu phân khúc cao cấp tăng 45%.",
-                "strategist": "Định vị sản phẩm: Chất lượng vượt trội với chi phí tối ưu.",
+                "content": "Định vị sản phẩm: Chất lượng vượt trội với chi phí tối ưu.",
                 "creative": "Concept: Bứt phá giới hạn — 3 video hooks cho Meta & TikTok.",
                 "performance": "Mục tiêu: CAC < 200k, ROAS > 3.5, 4 thử nghiệm A/B.",
             }
@@ -261,9 +261,9 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         self.assertEqual(intel_out["status"], "COMPLETED")
         self.assertIn("nhu cầu phân khúc cao cấp", intel_out["market_findings"])
 
-        strat_out = runtime.execute_stage_strategist(ctx)
+        strat_out = runtime.execute_stage_content(ctx)
         self.assertEqual(strat_out["status"], "COMPLETED")
-        self.assertIn("Định vị sản phẩm", strat_out["positioning"])
+        self.assertIn("Định vị sản phẩm", strat_out["content_strategy"])
 
         crtv_out = runtime.execute_stage_creative(ctx)
         self.assertEqual(crtv_out["status"], "COMPLETED")
@@ -290,7 +290,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         ctx = runtime.start_run(objective="Lập kế hoạch tiếp thị số")
         runtime.execute_stage_cmo_initial(ctx)
         runtime.execute_stage_intelligence(ctx)
-        runtime.execute_stage_strategist(ctx)
+        runtime.execute_stage_content(ctx)
         runtime.execute_stage_creative(ctx)
         runtime.execute_stage_performance(ctx)
         runtime.execute_stage_final_cmo(ctx)
@@ -328,7 +328,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         self.assertEqual(len(adapter.invocations), 2)
 
         # Subsequent stages must immediately fail without making model calls
-        s3 = runtime.execute_stage_strategist(ctx)
+        s3 = runtime.execute_stage_content(ctx)
         self.assertEqual(s3["status"], "FAILED")
         self.assertEqual(s3["error"], "PREVIOUS_STAGE_FAILED")
         self.assertEqual(len(adapter.invocations), 2)  # No 3rd call
@@ -360,7 +360,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         ctx = runtime.start_run(objective="Test unverified empirical injection rejection")
         runtime.execute_stage_cmo_initial(ctx)
         runtime.execute_stage_intelligence(ctx)
-        runtime.execute_stage_strategist(ctx)
+        runtime.execute_stage_content(ctx)
         runtime.execute_stage_creative(ctx)
         runtime.execute_stage_performance(ctx)
         runtime.execute_stage_final_cmo(ctx)
@@ -412,7 +412,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         self.assertEqual(s1["status"], "COMPLETED")
         s2 = runtime.execute_stage_intelligence(ctx)
         self.assertEqual(s2["status"], "COMPLETED")
-        s3 = runtime.execute_stage_strategist(ctx)
+        s3 = runtime.execute_stage_content(ctx)
         self.assertEqual(s3["status"], "COMPLETED")
         s4 = runtime.execute_stage_creative(ctx)
         self.assertEqual(s4["status"], "COMPLETED")
@@ -452,7 +452,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         ctx = runtime.start_run(objective="Test spoofed verified dictionary rejection")
         runtime.execute_stage_cmo_initial(ctx)
         runtime.execute_stage_intelligence(ctx)
-        runtime.execute_stage_strategist(ctx)
+        runtime.execute_stage_content(ctx)
         runtime.execute_stage_creative(ctx)
         runtime.execute_stage_performance(ctx)
         runtime.execute_stage_final_cmo(ctx)
@@ -477,7 +477,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         ctx = runtime.start_run(objective="Test fabricated numerical payload rejection")
         runtime.execute_stage_cmo_initial(ctx)
         runtime.execute_stage_intelligence(ctx)
-        runtime.execute_stage_strategist(ctx)
+        runtime.execute_stage_content(ctx)
         runtime.execute_stage_creative(ctx)
         runtime.execute_stage_performance(ctx)
         runtime.execute_stage_final_cmo(ctx)
@@ -500,7 +500,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
         ctx = runtime.start_run(objective="Test model self-promotion prevention")
         runtime.execute_stage_cmo_initial(ctx)
         runtime.execute_stage_intelligence(ctx)
-        runtime.execute_stage_strategist(ctx)
+        runtime.execute_stage_content(ctx)
         runtime.execute_stage_creative(ctx)
         runtime.execute_stage_performance(ctx)
 
