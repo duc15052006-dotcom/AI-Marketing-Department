@@ -103,15 +103,15 @@ class TestContentMigrationDefinition(unittest.TestCase):
         cmo_owned_legacy_ids = tuple(i for i in range(1, 26) if i not in (8, 18))
         for legacy_id in cmo_owned_legacy_ids:
             self.assertIn(
-                f"Legacy S{legacy_id}",
+                f"### Legacy S{legacy_id} ",
                 cmo_eval,
                 f"CMO evaluation lost migrated executive-strategy coverage for legacy S{legacy_id}",
             )
 
         self.assertNotIn("### Legacy S8 ", cmo_eval)
         self.assertNotIn("### Legacy S18 ", cmo_eval)
-        self.assertIn("Legacy S8", content_eval)
-        self.assertIn("Legacy S18", content_eval)
+        self.assertIn("### Legacy S8 ", content_eval)
+        self.assertIn("### Legacy S18 ", content_eval)
         self.assertIn("exactly five permanent ASIs", content_eval)
         self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", content_eval)
         self.assertIn("Creative then owns visual concepts", content_eval)
