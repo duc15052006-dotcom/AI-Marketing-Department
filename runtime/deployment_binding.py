@@ -182,7 +182,7 @@ def register_final_cmo_checkpoint(context: Any, checkpoint: Any, prepared: bool)
     if getattr(checkpoint, "calculate_checkpoint_hash")() != getattr(checkpoint, "checkpoint_hash", ""):
         _fail("Durable Final CMO checkpoint integrity verification failed.")
 
-    output[DEPLOYMENT_PROVENANCE_FIELD] = {
+    provenance = {
         **expected_seed,
         "checkpoint_id": str(getattr(checkpoint, "checkpoint_id", "")),
         "checkpoint_hash": str(getattr(checkpoint, "checkpoint_hash", "")),
@@ -190,6 +190,7 @@ def register_final_cmo_checkpoint(context: Any, checkpoint: Any, prepared: bool)
     run_id = str(context.run_id)
     with _REGISTRY_LOCK:
         _assert_registry_context_compatible(context)
+        output[DEPLOYMENT_PROVENANCE_FIELD] = provenance
         _BOUND_CONTEXTS[run_id] = weakref.ref(context)
 
 
