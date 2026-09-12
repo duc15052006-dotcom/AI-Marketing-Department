@@ -1,0 +1,151 @@
+name: Candidate Approval Reference Scope Isolation
+
+on:
+  push:
+    branches:
+      - candidate/approval-reference-scope-isolation-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install runtime dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Apply byte-guarded scope patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          def git_blob_sha(data: bytes) -> str:
+              return hashlib.sha1(f'blob {len(data)}\0'.encode('ascii') + data).hexdigest()
+
+          deployment_path = Path('runtime/deployment_binding.py')
+          context_path = Path('runtime/context.py')
+
+          deployment_raw = deployment_path.read_bytes()
+          context_raw = context_path.read_bytes()
+          if git_blob_sha(deployment_raw) != '0b5551190319e5534a844f2741145f15a865b9f3':
+              raise SystemExit('DEPLOYMENT_BINDING_SOURCE_DRIFT')
+          if git_blob_sha(context_raw) != 'cd925ecbd5ca87052bae1500431fcf05322a8bb1':
+              raise SystemExit('RUNTIME_CONTEXT_SOURCE_DRIFT')
+
+          deployment = deployment_raw.decode('utf-8')
+          context = context_raw.decode('utf-8')
+
+          deployment_replacements = [
+              (
+                  '_APPROVAL_REFERENCE_BY_EXECUTION: Dict[str, str] = {}\n',
+                  '_APPROVAL_REFERENCE_BY_EXECUTION: Dict[tuple[str, str], str] = {}\n',
+              ),
+              (
+                  'def canonical_pending_approval_id(candidate_id: Optional[str]) -> Optional[str]:\n'
+                  '    """Translate a receipt execution id to its server-originated pending approval id."""\n'
+                  '    if not candidate_id:\n'
+                  '        return candidate_id\n'
+                  '    with _REGISTRY_LOCK:\n'
+                  '        return _APPROVAL_REFERENCE_BY_EXECUTION.get(str(candidate_id), str(candidate_id))\n',
+                  'def canonical_pending_approval_id(\n'
+                  '    candidate_id: Optional[str],\n'
+                  '    *,\n'
+                  '    run_id: Optional[str] = None,\n'
+                  ') -> Optional[str]:\n'
+                  '    """Translate an execution id only inside its authoritative runtime scope."""\n'
+                  '    if not candidate_id:\n'
+                  '        return candidate_id\n'
+                  '    candidate = str(candidate_id)\n'
+                  '    authoritative_run_id = str(run_id or "")\n'
+                  '    if not authoritative_run_id:\n'
+                  '        return candidate\n'
+                  '    with _REGISTRY_LOCK:\n'
+                  '        return _APPROVAL_REFERENCE_BY_EXECUTION.get(\n'
+                  '            (authoritative_run_id, candidate),\n'
+                  '            candidate,\n'
+                  '        )\n',
+              ),
+              (
+                  '        if _enum_value(getattr(instance, "status", None)) == "APPROVAL_REQUIRED":\n'
+                  '            execution_id = str(getattr(instance, "execution_id", "") or "")\n'
+                  '            approval_reference = str(getattr(instance, "approval_reference", "") or "")\n'
+                  '            if execution_id and approval_reference:\n'
+                  '                with _REGISTRY_LOCK:\n'
+                  '                    _APPROVAL_REFERENCE_BY_EXECUTION[execution_id] = approval_reference\n'
+                  '        return\n',
+                  '        if _enum_value(getattr(instance, "status", None)) == "APPROVAL_REQUIRED":\n'
+                  '            run_id = str(getattr(instance, "run_id", "") or "")\n'
+                  '            execution_id = str(getattr(instance, "execution_id", "") or "")\n'
+                  '            approval_reference = str(getattr(instance, "approval_reference", "") or "")\n'
+                  '            if run_id and execution_id and approval_reference:\n'
+                  '                registry_key = (run_id, execution_id)\n'
+                  '                with _REGISTRY_LOCK:\n'
+                  '                    existing = _APPROVAL_REFERENCE_BY_EXECUTION.get(registry_key)\n'
+                  '                    if existing is not None and existing != approval_reference:\n'
+                  '                        _fail(\n'
+                  '                            "Conflicting approval references were observed for the same run/execution id."\n'
+                  '                        )\n'
+                  '                    _APPROVAL_REFERENCE_BY_EXECUTION[registry_key] = approval_reference\n'
+                  '        return\n',
+              ),
+          ]
+
+          for old, new in deployment_replacements:
+              count = deployment.count(old)
+              if count != 1:
+                  raise SystemExit(f'DEPLOYMENT_PATCH_ANCHOR_INVALID:{count}:{old[:80]!r}')
+              deployment = deployment.replace(old, new, 1)
+
+          old_context = '        authoritative_pending_id = canonical_pending_approval_id(pending_approval_id)\n'
+          new_context = (
+              '        authoritative_pending_id = canonical_pending_approval_id(\n'
+              '            pending_approval_id,\n'
+              '            run_id=self.run_id,\n'
+              '        )\n'
+          )
+          count = context.count(old_context)
+          if count != 1:
+              raise SystemExit(f'CONTEXT_PATCH_ANCHOR_INVALID:{count}')
+          context = context.replace(old_context, new_context, 1)
+
+          deployment_path.write_text(deployment, encoding='utf-8', newline='')
+          context_path.write_text(context, encoding='utf-8', newline='')
+          print('DEPLOYMENT_BLOB=' + git_blob_sha(deployment_path.read_bytes()))
+          print('CONTEXT_BLOB=' + git_blob_sha(context_path.read_bytes()))
+          PY
+
+      - name: Compile and run focused regressions
+        shell: bash
+        run: |
+          python -m py_compile runtime/deployment_binding.py runtime/context.py tests/test_approval_reference_scope_isolation.py
+          python -m unittest \
+            tests.test_approval_reference_scope_isolation \
+            tests.test_final_cmo_direct_publish_seam \
+            tests.test_final_cmo_deployment_provenance \
+            tests.test_final_cmo_deployment_registry_isolation
+          git diff --check
+
+      - name: Commit validated runtime patch and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "candidate-hardening-bot"
+          git config user.email "candidate-hardening-bot@users.noreply.github.com"
+          git rm .github/workflows/candidate_approval_reference_scope_isolation.yml
+          git add runtime/deployment_binding.py runtime/context.py
+          git diff --cached --check
+          git status --short
+          git commit -m "fix(runtime): scope approval reference mapping by run"
+          git push origin HEAD:candidate/approval-reference-scope-isolation-v1
