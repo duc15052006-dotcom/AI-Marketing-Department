@@ -271,7 +271,10 @@ class RuntimeContext(BaseModel):
     def create_checkpoint(self, pending_approval_id: Optional[str] = None) -> ExecutionCheckpoint:
         """Create and record an immutable checkpoint of the current state."""
         deployment_binding_prepared = prepare_final_cmo_checkpoint_binding(self)
-        authoritative_pending_id = canonical_pending_approval_id(pending_approval_id)
+        authoritative_pending_id = canonical_pending_approval_id(
+            pending_approval_id,
+            run_id=self.run_id,
+        )
         chkpt = ExecutionCheckpoint(
             run_id=self.run_id,
             business_id=self.business_id,

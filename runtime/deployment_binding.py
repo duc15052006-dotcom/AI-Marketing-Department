@@ -25,7 +25,7 @@ LEGACY_RUNTIME_PUBLISH_PLACEHOLDER = "Campaign Go-To-Market Plan"
 _APPROVED_DEPLOYMENT_AUTHORIZATION_STATUSES = frozenset({"APPROVED", "APPROVED_WITH_CONDITIONS"})
 
 _BOUND_CONTEXTS: Dict[str, weakref.ReferenceType[Any]] = {}
-_APPROVAL_REFERENCE_BY_EXECUTION: Dict[str, str] = {}
+_APPROVAL_REFERENCE_BY_EXECUTION: Dict[tuple[str, str], str] = {}
 _REGISTRY_LOCK = RLock()
 
 
@@ -194,12 +194,23 @@ def register_final_cmo_checkpoint(context: Any, checkpoint: Any, prepared: bool)
         _BOUND_CONTEXTS[run_id] = weakref.ref(context)
 
 
-def canonical_pending_approval_id(candidate_id: Optional[str]) -> Optional[str]:
-    """Translate a receipt execution id to its server-originated pending approval id."""
+def canonical_pending_approval_id(
+    candidate_id: Optional[str],
+    *,
+    run_id: Optional[str] = None,
+) -> Optional[str]:
+    """Translate an execution id only inside its authoritative runtime scope."""
     if not candidate_id:
         return candidate_id
+    candidate = str(candidate_id)
+    authoritative_run_id = str(run_id or "")
+    if not authoritative_run_id:
+        return candidate
     with _REGISTRY_LOCK:
-        return _APPROVAL_REFERENCE_BY_EXECUTION.get(str(candidate_id), str(candidate_id))
+        return _APPROVAL_REFERENCE_BY_EXECUTION.get(
+            (authoritative_run_id, candidate),
+            candidate,
+        )
 
 
 def _get_bound_context(run_id: str) -> Optional[Any]:
@@ -301,11 +312,18 @@ def _deployment_model_post_init_hook(instance: Any) -> None:
 
     if cls.__name__ == "ExecutionReceipt" and cls.__module__ == "tools.receipts":
         if _enum_value(getattr(instance, "status", None)) == "APPROVAL_REQUIRED":
+            run_id = str(getattr(instance, "run_id", "") or "")
             execution_id = str(getattr(instance, "execution_id", "") or "")
             approval_reference = str(getattr(instance, "approval_reference", "") or "")
-            if execution_id and approval_reference:
+            if run_id and execution_id and approval_reference:
+                registry_key = (run_id, execution_id)
                 with _REGISTRY_LOCK:
-                    _APPROVAL_REFERENCE_BY_EXECUTION[execution_id] = approval_reference
+                    existing = _APPROVAL_REFERENCE_BY_EXECUTION.get(registry_key)
+                    if existing is not None and existing != approval_reference:
+                        _fail(
+                            "Conflicting approval references were observed for the same run/execution id."
+                        )
+                    _APPROVAL_REFERENCE_BY_EXECUTION[registry_key] = approval_reference
         return
 
     if cls.__name__ != "ToolRequest" or cls.__module__ != "tools.tool_gateway":
