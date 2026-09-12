@@ -25,6 +25,9 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.source_of_truth_path = repo_root / "SOURCE_OF_TRUTH.md"
         self.architecture_path = repo_root / "ARCHITECTURE.md"
         self.agent_protocol_path = repo_root / "AGENT_PROTOCOL.md"
+        self.security_model_path = repo_root / "SECURITY_MODEL.md"
+        self.ui_permission_model_path = repo_root / "UI_PERMISSION_MODEL.md"
+        self.roadmap_path = repo_root / "ROADMAP.md"
         self.assertFalse(
             self.strategist_path.exists(),
             "strategist/agent.md must not exist after canonical Content migration",
@@ -37,6 +40,9 @@ class TestContentMigrationDefinition(unittest.TestCase):
             self.source_of_truth_path,
             self.architecture_path,
             self.agent_protocol_path,
+            self.security_model_path,
+            self.ui_permission_model_path,
+            self.roadmap_path,
         ):
             self.assertTrue(required_path.exists(), f"required canonical/migration document missing: {required_path.name}")
         self.content = self.content_path.read_text(encoding="utf-8")
@@ -155,6 +161,29 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.assertIn("An empty fallback chain means no fallback", protocol)
         self.assertNotIn('"supporting_agents": ["STRATEGIST"]', protocol)
         self.assertNotIn("Pass validated ResearchReport to STRATEGIST", protocol)
+
+    def test_governance_docs_cannot_regrant_legacy_or_mode_based_authority(self):
+        security = self.security_model_path.read_text(encoding="utf-8")
+        ui_permissions = self.ui_permission_model_path.read_text(encoding="utf-8")
+        roadmap = self.roadmap_path.read_text(encoding="utf-8")
+
+        self.assertIn("Exactly five permanent logical agents", security)
+        self.assertIn("Agent identity is not execution authority", security)
+        self.assertIn("## 5. Autonomy modes do not create authority", security)
+        self.assertIn("an empty chain means no fallback", security)
+        self.assertNotIn("| **STRATEGIST** |", security)
+        self.assertNotIn("Agents execute", security)
+
+        self.assertIn("There is no permanent Strategist or Agent 6", ui_permissions)
+        self.assertIn("does **not** create new permission", ui_permissions)
+        self.assertIn("an empty fallback chain means no fallback", ui_permissions)
+        self.assertNotIn("Pre-approved budgets & variants execute", ui_permissions)
+
+        self.assertIn("LEGACY / NON-AUTHORITATIVE ROADMAP", roadmap)
+        self.assertIn("4f51ac5c0d7bba98751246afc54ceee1475e03de", roadmap)
+        self.assertIn("exactly five permanent logical agents", roadmap)
+        self.assertIn("an empty fallback chain means no fallback", roadmap)
+        self.assertNotIn("### PHASE 1 — Agent Core & Foundational Architecture (CURRENT)", roadmap)
 
 
 if __name__ == "__main__":
