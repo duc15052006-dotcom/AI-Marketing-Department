@@ -6,6 +6,7 @@ and durable execution checkpoints for the Five-Agent Department runtime.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import uuid
@@ -282,7 +283,7 @@ class RuntimeContext(BaseModel):
             receipt_ids=list(self.execution_receipt_refs),
             approval_state=ApprovalState.PENDING_APPROVAL if self.status == RuntimeStatus.WAITING_FOR_APPROVAL else ApprovalState.NOT_REQUIRED,
             pending_approval_id=authoritative_pending_id,
-            working_state_snapshot=dict(self.working_state),
+            working_state_snapshot=copy.deepcopy(self.working_state),
         )
         chkpt.checkpoint_hash = chkpt.calculate_checkpoint_hash()
         self.checkpoints.append(chkpt)
