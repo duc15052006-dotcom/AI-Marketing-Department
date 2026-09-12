@@ -68,9 +68,9 @@ class PerformanceTwoPass32Tests(unittest.TestCase):
         # This suite isolates Performance orchestration rather than run-pinned
         # ModelPolicy reconstruction, which has its own dedicated regressions.
         context.model_policy = {}
-        context.stage_outputs["strategist"] = {
+        context.stage_outputs["content"] = {
             "status": "COMPLETED",
-            "positioning": "Grounded positioning",
+            "content_strategy": "Grounded content strategy",
         }
         context.stage_outputs["creative"] = {
             "status": "COMPLETED",

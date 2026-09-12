@@ -74,8 +74,8 @@ class ScriptedAgentGateway(UniversalModelGateway):
             agent_name = "cmo_initial"
         elif "intelligence" in sys_low:
             agent_name = "intelligence"
-        elif "strategist" in sys_low:
-            agent_name = "strategist"
+        elif "content" in sys_low:
+            agent_name = "content"
         elif "creative" in sys_low:
             agent_name = "creative"
         elif "performance" in sys_low:
@@ -468,7 +468,7 @@ class TestClaimEvidenceBinding(unittest.TestCase):
     def test_21_five_agent_invariant(self) -> None:
         self.assertEqual(
             set(PERMANENT_FIVE_AGENTS),
-            {"cmo", "intelligence", "strategist", "creative", "performance"},
+            {"cmo", "intelligence", "content", "creative", "performance"},
             "Architecture must maintain exactly Five Agents.",
         )
 

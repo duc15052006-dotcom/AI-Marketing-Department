@@ -1,0 +1,69 @@
+name: Production Dynamic Tool Gateway Wiring V1
+
+on:
+  pull_request:
+    paths:
+      - "app_api/server.py"
+      - "tools/dynamic_gateway/**"
+      - "plugins/**"
+      - "integrations/mcp/**"
+      - "tests/test_production_dynamic_tool_gateway_wiring_adversarial_v1.py"
+      - "tests/test_platform_dynamic_tool_gateway_v1.py"
+      - ".github/workflows/production-dynamic-tool-gateway-wiring-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-dynamic-tool-gateway-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-wiring:
+    name: Production dynamic gateway composition
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      AI_MARKETING_MEMORY_EPHEMERAL: "1"
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact CI identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "expected_head_sha=${expected}"
+          echo "actual_head_sha=${actual}"
+          test "${actual}" = "${expected}"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile and run production composition regressions
+        run: |
+          python -m compileall -q app_api tools plugins integrations/mcp tests/test_production_dynamic_tool_gateway_wiring_adversarial_v1.py
+          python -m unittest -v \
+            tests.test_production_dynamic_tool_gateway_wiring_adversarial_v1 \
+            tests.test_platform_dynamic_tool_gateway_v1 \
+            tests.test_prod_core_authority_01b \
+            tests.test_prod_truth_01_execution_truthfulness

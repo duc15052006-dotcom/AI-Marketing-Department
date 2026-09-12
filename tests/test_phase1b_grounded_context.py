@@ -8,7 +8,7 @@ Verifies:
 - Prompt injection structural firewall
 - Per-source truncation tracking
 - System-generated source IDs and provenance index
-- Model request forensics across all 6 stages
+- Model request forensics across all 6 logical stages (7 model calls with Performance 5A/5B)
 """
 
 from __future__ import annotations
@@ -257,13 +257,16 @@ class TestPhase1BGroundContext(unittest.TestCase):
             def execute(self, req: ToolRequest) -> ExecutionReceipt:
                 return ExecutionReceipt(
                     execution_id="EXEC-SEARCH-9182",
-                    run_id="RUN-TEST-F",
+                    run_id=req.run_id,
                     agent_id="intelligence",
                     capability_id="web_search",
                     provider="mock_search",
                     request_hash="mock_hash_f",
                     status=ExecutionStatus.SUCCESS,
                     execution_mode=ExecutionMode.MOCK,
+                    business_id=req.business_id,
+                    project_id=req.project_id,
+                    chat_id=req.chat_id,
                     output={"query": req.parameters.get("query"), "result": "Competitor landscape: TOOL_EVIDENCE_MARKER_9182"},
                 )
 
@@ -291,18 +294,21 @@ class TestPhase1BGroundContext(unittest.TestCase):
     # -------------------------------------------------------------------------
     def test_g_tool_receipt_alone_is_insufficient(self) -> None:
         """Empty tool output produces zero synthetic marketing claims."""
+        ctx = self.runtime.start_run(objective="Explore market")
         receipt = ExecutionReceipt(
             execution_id="EXEC-EMPTY-001",
-            run_id="RUN-TEST-G",
+            run_id=ctx.run_id,
             agent_id="intelligence",
             capability_id="web_search",
             provider="mock_search",
             request_hash="mock_hash_g",
             status=ExecutionStatus.SUCCESS,
             execution_mode=ExecutionMode.MOCK,
+            business_id=ctx.business_id,
+            project_id=ctx.project_id,
+            chat_id=ctx.chat_id,
             output="",
         )
-        ctx = self.runtime.start_run(objective="Explore market")
         pkg = self.context_compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[receipt])
 
         tool_items = [it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT"]
@@ -353,7 +359,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
         ctx = self.runtime.start_run(objective="Analyze whitepaper")
         # Compile with a constrained character budget
-        pkg = self.context_compiler.compile_grounded_package("strategist", ctx, char_budget=1000)
+        pkg = self.context_compiler.compile_grounded_package("content", ctx, char_budget=1000)
 
         self.assertGreater(pkg.diagnostics["truncated_sources_count"], 0)
         large_item = next(it for it in pkg.evidence_items if it.source_id.startswith("SRC-"))
@@ -480,18 +486,21 @@ class TestPhase1BGroundContext(unittest.TestCase):
     # -------------------------------------------------------------------------
     def test_successful_mock_tool_result_is_not_verified_evidence(self) -> None:
         """Successful MOCK tool execution is labeled MOCK_OR_SANDBOX, never VERIFIED."""
+        ctx = self.runtime.start_run(objective="Assess market share")
         mock_receipt = ExecutionReceipt(
             execution_id="EXEC-MOCK-SUCCESS",
-            run_id="RUN-TEST-MOCK",
+            run_id=ctx.run_id,
             agent_id="intelligence",
             capability_id="web_search",
             provider="mock_search",
             request_hash="mock_hash_success",
             status=ExecutionStatus.SUCCESS,
             execution_mode=ExecutionMode.MOCK,
+            business_id=ctx.business_id,
+            project_id=ctx.project_id,
+            chat_id=ctx.chat_id,
             output={"claim": "MARKET_SHARE_IS_92_PERCENT"},
         )
-        ctx = self.runtime.start_run(objective="Assess market share")
         pkg = self.context_compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[mock_receipt])
 
         tool_item = next(it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT")
@@ -508,7 +517,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
     # PART 20: Model Request Forensics Across All Six Stages
     # -------------------------------------------------------------------------
     def test_model_request_forensics_all_six_stages(self) -> None:
-        """Capture and verify model requests across all six stages with grounded context."""
+        """Capture all six logical stages; Performance contributes two model requests (5A/5B)."""
         # 1. Setup grounded test environment with known markers
         att = ChatAttachment(
             attachment_id="ATT-FORENSIC-01",
@@ -551,17 +560,14 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
         out1 = self.runtime.execute_stage_cmo_initial(ctx)
         out2 = self.runtime.execute_stage_intelligence(ctx)
-        out3 = self.runtime.execute_stage_strategist(ctx)
+        out3 = self.runtime.execute_stage_content(ctx)
         out4 = self.runtime.execute_stage_creative(ctx)
         out5 = self.runtime.execute_stage_performance(ctx)
         out6 = self.runtime.execute_stage_final_cmo(ctx)
 
         self.assertEqual(len(self.mock_adapter.captured_requests), 7)
 
-        stage_names = [
-            "CMO Initial", "Intelligence", "Strategist", "Creative",
-            "Performance 5A", "Performance 5B", "Final CMO",
-        ]
+        stage_names = ["CMO Initial", "Intelligence", "Content", "Creative", "Performance 5A", "Performance 5B", "Final CMO"]
         forensics_rows = []
 
         for idx, req in enumerate(self.mock_adapter.captured_requests):
@@ -596,8 +602,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
         self.assertGreater(forensics_rows[0]["evidence_count"], 0)
         # Stage 2 Intelligence received observation tool evidence (web_search)
         self.assertGreater(forensics_rows[1]["tool_count"], 0)
-        # Creative (GENERATIVE) and both Performance 5A/5B requests (COMPUTATION)
-        # produce non-observation receipts, which must NOT compile into EvidenceItems.
+        # Creative and both internal Performance passes must not turn non-observation receipts into EvidenceItems.
         self.assertEqual(forensics_rows[3]["tool_count"], 0)
         self.assertEqual(forensics_rows[4]["tool_count"], 0)
         self.assertEqual(forensics_rows[5]["tool_count"], 0)
@@ -655,17 +660,20 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
     def test_real_tool_success_not_automatically_verified_source(self) -> None:
         """REAL successful tool execution produces SOURCE_BACKED_OBSERVATION, never VERIFIED_SOURCE."""
+        ctx = RuntimeContext(objective="Find market share for CRM", business_id="BIZ_TEST")
         receipt = ExecutionReceipt(
-            run_id="RUN-REAL-TOOL",
+            run_id=ctx.run_id,
             agent_id="intelligence",
             capability_id="web_search",
             provider="google_search",
             request_hash="hash123",
             status=ExecutionStatus.SUCCESS,
             execution_mode=ExecutionMode.REAL,
+            business_id=ctx.business_id,
+            project_id=ctx.project_id,
+            chat_id=ctx.chat_id,
             output={"content": "MARKET_SHARE_IS_92_PERCENT"},
         )
-        ctx = RuntimeContext(objective="Find market share for CRM", business_id="BIZ_TEST")
         pkg = self.context_compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[receipt])
 
         tool_items = [it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT"]
@@ -718,7 +726,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
             self.assertIn(sid, pkg.provenance_index)
 
     def test_no_recursive_context_duplication_across_stages(self) -> None:
-        """Verify bounded evidence across 6 stages / 7 model requests (Performance 5A + 5B)."""
+        """Verify evidence markers stay bounded across 6 logical stages / 7 model requests."""
         doc = KnowledgeDocument(
             knowledge_id="KNOW-DUP-01",
             source_id="SRC-DUP-01",
@@ -737,7 +745,7 @@ class TestPhase1BGroundContext(unittest.TestCase):
 
         self.runtime.execute_stage_cmo_initial(ctx)
         self.runtime.execute_stage_intelligence(ctx)
-        self.runtime.execute_stage_strategist(ctx)
+        self.runtime.execute_stage_content(ctx)
         self.runtime.execute_stage_creative(ctx)
         self.runtime.execute_stage_performance(ctx)
         self.runtime.execute_stage_final_cmo(ctx)

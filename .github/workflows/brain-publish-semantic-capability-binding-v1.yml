@@ -1,0 +1,63 @@
+name: Brain Publish Semantic Capability Binding V1
+
+on:
+  pull_request:
+    branches:
+      - fix/brain-runtime-canonical-action-intent-handoff-v1
+    paths:
+      - "tools/capabilities.py"
+      - "brain/action_policy.py"
+      - "brain/contracts.py"
+      - "tests/test_brain_publish_semantic_capability_binding_v1.py"
+      - ".github/workflows/brain-publish-semantic-capability-binding-v1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  publish-semantic-binding-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact head identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          ACTUAL="$(git rev-parse HEAD)"
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          printf 'expected_sha=%s\nactual_sha=%s\n' "$EXPECTED" "$ACTUAL" | tee .ci-results/identity.txt
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile touched production source
+        run: python -m py_compile tools/capabilities.py brain/action_policy.py brain/contracts.py
+
+      - name: Run publish semantic binding regressions
+        shell: bash
+        run: |
+          python -m unittest -v \
+            tests.test_brain_publish_semantic_capability_binding_v1 \
+            tests.test_brain_action_intent_capability_binding_v1 \
+            2>&1 | tee .ci-results/targeted-test.log
+
+      - name: Upload targeted evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-publish-semantic-binding-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true

@@ -1,197 +1,248 @@
-# Creative Engine Architecture (CREATIVE_ENGINE.md)
+# Creative Engine Architecture
 
-## 1. Vision & Overview
+## 1. Purpose and canonical boundary
 
-The **Creative Engine** is a modular, provider-agnostic multimedia synthesis pipeline directed by the **Creative Agent**. It automates the transformation of strategic marketing briefs into high-converting visual and audio assets—ranging from static ad banners to multi-scene short-form video ads (TikTok, Reels, Shorts) and long-form video content.
+The **Creative Engine** is the provider-neutral multimedia production layer used by the canonical **Creative** ASI. It transforms an approved, evidence-grounded semantic brief into visual, image, video, audio, storyboard, shot-list, editing, and rendered-media artifacts.
 
-The system is designed with **zero vendor lock-in**: image generation, video synthesis, voice generation, and video editing are decoupled into standardized abstract adapters.
+The Creative Engine does **not** replace the Content ASI.
 
----
+Canonical ownership is:
 
-## 2. End-to-End Creative Production Pipeline
+- **CMO** — executive strategy, positioning, GTM choices, commercial trade-offs, final commercial governance.
+- **Intelligence** — evidence acquisition, freshness verification, customer/market/competitor research, explicit knowledge gaps.
+- **Content** — message architecture, hooks, copy, scripts, CTA wording, editorial/SEO/channel semantics, and the semantic brief sent to Creative.
+- **Creative** — visual/multimedia concept, art direction, storyboard, shot list, production specifications, image/video/audio generation, editing, rendering, and media QA.
+- **Performance** — measurement, attribution, observed outcome analysis, experiment evidence, and governed performance operations.
 
-```
-┌─────────────────┐
-│ Research Input  │ (Target Persona, Competitor Hooks, Pain Points)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│Creative Strategy│ (Core Theme, Emotional Angle, Value Proposition)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│Creative Concepts│ (Angle Exploration: e.g., "UGC Skeptic", "POV Nightmare")
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Hook Generation │ (3-5 Second Hook Variants: Question, Contrarian, Visual Shock)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Scriptwriting   │ (Full Narrative: Hook -> Problem -> Agitation -> Solution -> Proof -> CTA)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  Storyboarding  │ (Scene-by-scene breakdown with visual descriptions, camera cues & pacing)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│    Shot List    │ (Asset Manifest: Prompts, seed references, audio cues, overlays)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│Asset Generation │ ──┬──> [Image Generation] (Product hero, backdrops, character poses)
-│                 │   ├──> [Video Generation] (AI B-roll, talking avatars, dynamic actions)
-│                 │   ├──> [Voice Synthesis]  (ElevenLabs/OpenAI TTS/Local Bark)
-│                 │   └──> [Music & SFX]      (Background audio, stingers, whooshes)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│Automated Video  │ (Timeline Assembly, Trims, Speed Ramping, Transitions, Overlays)
-│    Editing      │
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Subtitles & OST │ (Word-level timed captions, stylized typography, kinetic text)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Thumbnail Synth │ (High-CTR frame capture, sticker overlays, title typography)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ Final Rendering │ (FFmpeg / GPU Cloud Renderer: Multi-resolution 9:16, 16:9, 1:1)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│  Creative QA    │ (Automated checks: Safe-zone compliance, audio normalization, brand colors)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│   CMO Review    │ (Sign-off on brand consistency and legal compliance)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│Platform Ready   │ (Handed off to Performance Agent for campaign staging)
-└─────────────────┘
-```
+There is no permanent Strategist identity and no sixth agent. A Creative tool or adapter never grants publishing, spend, credential, or other consequential external authority by itself.
 
 ---
 
-## 3. Modular Adapter Architecture
+## 2. Required Creative input contract
 
-The Creative Engine relies on abstract base interfaces, allowing seamless swapping between cloud APIs and local inference engines.
+Before production, Creative should receive a grounded semantic brief from Content, derived from CMO-approved strategy and verified evidence. Material inputs include, when applicable:
 
-```
-                         ┌─────────────────────────────┐
-                         │   Creative Engine Core      │
-                         └──────────────┬──────────────┘
-                                        │
-      ┌──────────────────┬──────────────┴───────┬──────────────────┐
-      │                  │                      │                  │
-      ▼                  ▼                      ▼                  ▼
-┌─────────────┐   ┌─────────────┐        ┌─────────────┐    ┌─────────────┐
-│    Image    │   │    Video    │        │    Audio    │    │    Video    │
-│  Generator  │   │  Generator  │        │  Synthesis  │    │   Editor    │
-│  Interface  │   │  Interface  │        │  Interface  │    │  Interface  │
-└──────┬──────┘   └──────┬──────┘        └──────┬──────┘    └──────┬──────┘
-       │                 │                      │                  │
- ┌─────┴─────┐     ┌─────┴─────┐          ┌─────┴─────┐      ┌─────┴─────┐
- │ Midjourney│     │ Runway Gen│          │ ElevenLabs│      │ FFmpeg    │
- │ Flux.1    │     │ Kling AI  │          │ OpenAI TTS│      │ Remotion  │
- │ SDXL      │     │ Luma/Sora │          │ Coqui/Bark│      │ MoviePy   │
- └───────────┘     └───────────┘          └───────────┘      └───────────┘
-```
+- business/content objective;
+- product/business/workspace identity;
+- target audience and funnel/customer state;
+- CMO-approved positioning and offer guardrails;
+- verified message hierarchy;
+- approved hook/copy/script/CTA text or clearly marked semantic placeholders;
+- required proof/evidence and factual constraints;
+- brand visual/verbal constraints;
+- channel, format, aspect ratio, duration, and placement requirements;
+- prohibited claims or mandatory exclusions;
+- experiment/variant identity and measurement question;
+- known unknowns that Creative must not invent.
 
-### 3.1 Standard Interface Contracts
-- **`ImageGeneratorAdapter`**: `generate_image(prompt, aspect_ratio, style_ref, negative_prompt) -> ImageAsset`
-- **`VideoGeneratorAdapter`**: `generate_video(prompt, image_ref, duration_seconds, motion_bucket) -> VideoClip`
-- **`VoiceSynthesisAdapter`**: `synthesize_voice(text, voice_id, emotion, speaking_rate) -> AudioAsset`
-- **`AudioMusicAdapter`**: `fetch_or_synthesize_bgm(mood, bpm, duration_seconds) -> AudioAsset`
-- **`VideoEditorAdapter`**: `assemble_timeline(timeline_manifest: TimelineManifest) -> RenderedVideo`
+If a material semantic input is missing, Creative may request clarification/revision from Content or CMO as appropriate. It must not silently manufacture product facts, positioning, customer evidence, pricing, guarantees, or performance claims.
 
 ---
 
-## 4. Video Editing Capabilities Specification
+## 3. Canonical production pipeline
 
-The automated editing subsystem consumes a declarative `TimelineManifest` and executes non-linear editing via headless engines (FFmpeg / Remotion / MoviePy):
+```text
+CMO-approved strategy + Intelligence evidence
+                    ↓
+        CONTENT SEMANTIC BRIEF
+  message / hook / copy / script / CTA
+  evidence + factual constraints + format
+                    ↓
+              CREATIVE ASI
+                    ↓
+        Visual / Multimedia Concept
+                    ↓
+             Storyboard / Shot List
+                    ↓
+       Production Manifest / Prompts
+                    ↓
+      Image / Video / Audio Generation
+                    ↓
+        Editing / Compositing / Timing
+                    ↓
+       Subtitles / Graphics / Packaging
+                    ↓
+             Render / Media QA
+                    ↓
+       Creative production artifacts
+                    ↓
+              PERFORMANCE
+  measurement / attribution / experiment evidence
+                    ↓
+            FINAL CMO GOVERNANCE
+```
+
+### 3.1 What Creative may adapt
+
+Creative may make **production-level** adaptations needed to express the approved semantic brief in media, for example:
+
+- visual metaphor, composition, art direction, lighting, camera language, pacing, transitions;
+- scene allocation and shot order;
+- subtitle timing/layout and on-screen typography;
+- voice performance direction, music/SFX choices, edit rhythm;
+- aspect-ratio and placement-specific visual adaptation;
+- non-semantic timing edits that preserve approved meaning.
+
+If a production constraint requires changing the **meaning** of a claim, hook, script, CTA, positioning, or factual promise, Creative must return the issue to Content/CMO rather than silently rewriting semantic authority.
+
+---
+
+## 4. Provider-neutral adapter architecture
+
+The engine should depend on capability contracts rather than permanent agent logic tied to one vendor.
+
+Conceptual interfaces may include:
+
+- `ImageGeneratorAdapter`
+- `VideoGeneratorAdapter`
+- `VoiceSynthesisAdapter`
+- `AudioMusicAdapter`
+- `VideoEditorAdapter`
+- rendering/packaging adapters
+
+Illustrative providers or engines such as Flux, SDXL, Kling, Runway, FFmpeg, Remotion, MoviePy, ElevenLabs, OpenAI-compatible services, or local models are **examples only**. Their presence in documentation does not mean they are installed, enabled, configured, free, approved, or selected for the current run.
+
+Actual provider/tool selection must be resolved through current provider/capability/tool configuration and policy. Secrets must remain behind safe credential references/settings, and an unavailable adapter must not be replaced by an implicit unauthorized provider fallback.
+
+---
+
+## 5. Production manifests and reproducibility
+
+A production manifest should preserve enough structured information to reproduce or audit the intended media operation where the active tools support it. Typical fields may include:
+
+- run/task/product/brand identity;
+- source semantic brief / content artifact ID;
+- visual concept ID;
+- storyboard/scene/shot IDs;
+- aspect ratio, resolution, frame rate, duration;
+- prompt/specification inputs and negative constraints;
+- referenced assets;
+- provider/model/tool identity where material;
+- seed or deterministic parameters when a provider exposes them;
+- edit/timeline instructions;
+- output artifact IDs/paths/hashes where actually produced by the implementation;
+- warnings, unsupported capabilities, and failed/ambiguous tool results.
+
+Do not call metadata “cryptographic,” “immutable,” or “reproducible” unless the exact implementation and test evidence establish that property for the artifact in question.
+
+---
+
+## 6. Video and multimedia assembly
+
+A declarative timeline may describe operations such as:
+
+- trim, split, crop, resize, reframe, pan, zoom;
+- scene timing and speed changes;
+- B-roll, overlays, lower-thirds, CTA graphics, progress indicators;
+- subtitle timing/layout and on-screen text;
+- voiceover, BGM, SFX alignment and ducking;
+- audio-level normalization where supported;
+- multi-format exports and encoding/packaging.
+
+These are capabilities, not promises. The runtime/tool gateway must truthfully report whether a requested operation is actually supported by the selected adapter.
+
+Example conceptual timeline fragment:
 
 ```json
 {
-  "project_id": "EDIT-20260816-01",
   "aspect_ratio": "9:16",
   "fps": 30,
-  "canvas": {"width": 1080, "height": 1920},
-  "audio_tracks": [
-    {
-      "track_id": "voiceover",
-      "src": "assets/vo_hook_01.wav",
-      "start_time": 0.0,
-      "volume_db": 0.0,
-      "ducking": true
-    },
-    {
-      "track_id": "bgm",
-      "src": "assets/bgm_upbeat.mp3",
-      "start_time": 0.0,
-      "volume_db": -16.0,
-      "fade_out": 1.5
-    }
-  ],
-  "video_tracks": [
+  "scenes": [
     {
       "scene_id": "SCN-01",
-      "clip_src": "assets/clip_hook.mp4",
-      "start_time": 0.0,
-      "duration": 2.5,
-      "operations": [
-        {"type": "reframe", "mode": "center_crop"},
-        {"type": "zoom", "start_scale": 1.0, "end_scale": 1.15},
-        {"type": "speed", "factor": 1.1}
-      ]
-    },
-    {
-      "scene_id": "SCN-02",
-      "clip_src": "assets/clip_problem.mp4",
-      "start_time": 2.5,
-      "duration": 3.0,
-      "transition_in": {"type": "jump_cut"}
+      "duration_seconds": 2.5,
+      "visual_spec": "product close-up with approved visual direction",
+      "voiceover_source": "CONTENT_SCRIPT_SEGMENT_01"
     }
   ],
-  "subtitles": {
-    "src": "assets/captions.srt",
-    "font": "Proxima Nova Black",
-    "font_size": 56,
-    "highlight_color": "#FFE500",
-    "animation": "word_by_word_pop"
+  "semantic_source": {
+    "hook_id": "HOOK-042",
+    "script_id": "SCRIPT-108",
+    "cta_id": "CTA-014"
   }
 }
 ```
 
-### Supported Editing Operations:
-- **Spatial**: Trim, split, crop, resize, reframe (16:9 to 9:16), dynamic pan, punch-in zooms.
-- **Temporal**: Speed ramping, jump cuts, scene pacing adjustment.
-- **Compositing**: B-roll cutaways, sticker overlays, lower-thirds, CTA buttons, progress bars.
-- **Typography**: Dynamic animated subtitles with word-by-word active karaoke highlights, safe-margin positioning.
-- **Audio Engineering**: Voiceover noise suppression, BGM auto-ducking under dialogue, sound effect (SFX) cue alignment, LUFS audio normalization (-14 LUFS for social).
-- **Rendering & Packaging**: Multi-format exports with bitrate optimization for Meta, TikTok, and YouTube algorithms.
+The hook/script/CTA identifiers point back to Content-owned semantic artifacts; Creative owns how those semantics are rendered into media.
 
 ---
 
-## 5. Closed-Loop Creative Component Attribution
+## 7. Creative QA
 
-To enable scientific optimization, every rendered asset maintains a cryptographic metadata manifest linking each frame and second to its creative atomic components:
+Creative QA should validate only properties it can actually observe or deterministically check, such as applicable:
 
+- requested aspect ratio/resolution/duration;
+- missing or corrupt assets;
+- scene/timeline continuity;
+- subtitle/overlay bounds;
+- required brand visual constraints;
+- required product/logo/reference visibility;
+- unsupported or failed adapter operations;
+- preservation of mandatory semantic text/claims supplied by Content;
+- production artifacts and provenance references.
+
+Creative QA must not self-certify legal compliance, product truth, conversion lift, ROAS, or campaign success unless the relevant canonical authority/evidence exists.
+
+---
+
+## 8. Component-level provenance and measurement handoff
+
+Media artifacts should retain structured links between the produced asset and the inputs that matter for later analysis, for example:
+
+```text
+Rendered / Produced Asset
+  ├── Content hook ID
+  ├── Content script / CTA ID
+  ├── Creative visual concept ID
+  ├── Storyboard / scene / shot IDs
+  ├── production tool/provider metadata when available
+  ├── editing / audio / visual treatment metadata
+  └── product / run / experiment identity
 ```
-[Rendered Video Ad]
-  │
-  ├── Hook Component        ──> [Hook ID: HOOK-042 (Type: "Contrarian Mythbuster")]
-  ├── Visual Angle          ──> [Angle: "Overwhelmed Solo Founder"]
-  ├── Narrative Script      ──> [Script ID: SCRIPT-108]
-  ├── Scene Breakdown       ──> [Scenes 1..5: durations, pacing, visuals]
-  ├── Audio Style           ──> [Voice: "Energetic Creator", BGM: "Tech House"]
-  ├── Editing Style         ──> [Style: "Fast-Paced UGC Jumpcuts"]
-  └── CTA Style             ──> [CTA: "Free 14-Day Trial"]
+
+Performance may later associate observed results with these component IDs, but correlation is not automatically causal proof. Performance owns authoritative measurement/attribution; causal conclusions must obey the current experiment/evidence policy.
+
+Creative must not rewrite a winning/losing pattern into permanent organizational truth by itself.
+
+---
+
+## 9. Governed execution boundary
+
+Producing a media file does not mean it was published or used in a live campaign.
+
+Any consequential external action must follow the current governed path:
+
+```text
+semantic/action intent
+      ↓
+governed runtime
+      ↓
+tool/capability policy
+      ↓
+permission / approval when required
+      ↓
+external adapter
+      ↓
+truthful receipt or ambiguous-outcome record
 ```
 
-When the **Performance Agent** reports that `Ad_Variant_A` achieved a 3.4x higher ROAS and 45% lower CPA than `Ad_Variant_B`, the analytics pipeline isolates the differing component (e.g., *Hook-042 vs Hook-011*) and feeds the winning pattern directly into the **Learning System**.
+Creative has no direct authority to bypass this path.
+
+---
+
+## 10. Fail-closed architecture invariants
+
+A Creative Engine change fails review if it:
+
+- moves primary hook/copy/script/CTA semantic ownership from Content into Creative;
+- restores Strategist as an independent permanent authority;
+- invents product/customer/market facts to fill a production gap;
+- treats provider/tool examples as configured defaults;
+- hard-codes a vendor dependency into permanent Creative logic;
+- silently performs provider fallback without explicit current policy;
+- claims unsupported media generation/rendering capability;
+- claims “cryptographic,” “immutable,” or successful external execution without implementation evidence;
+- lets Creative self-certify campaign performance or causal learning;
+- allows produced media to bypass governed publishing/spend/approval controls.
+
+Current executable code/tests, `SOURCE_OF_TRUTH.md`, `ARCHITECTURE.md`, and `AGENT_PROTOCOL.md` are authoritative over historical Creative Engine descriptions.

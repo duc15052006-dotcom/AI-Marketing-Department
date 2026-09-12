@@ -6,6 +6,7 @@ and central registry for tool capabilities.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -70,6 +71,10 @@ class CapabilityDescriptor(BaseModel):
     risk_level: RiskLevel = Field(default=RiskLevel.LOW)
     human_approval_required: bool = Field(default=False)
     supported_agents: List[str] = Field(default_factory=list, description="List of agent roles permitted to request this capability")
+    semantic_needs: List[str] = Field(
+        default_factory=list,
+        description="Provider-neutral Brain ActionIntent semantic needs this capability may satisfy",
+    )
     provider: str = Field(default="system_local", description="Provider adapter name")
     availability: str = Field(default="AVAILABLE", description="AVAILABLE | DEGRADED | UNAVAILABLE | MOCK_ONLY")
     cost_policy: CostPolicy = Field(default=CostPolicy.FREE_LOCAL)
@@ -82,8 +87,32 @@ class CapabilityDescriptor(BaseModel):
     )
 
     def fingerprint(self) -> str:
-        """Cryptographic hash of the capability declaration."""
-        raw = f"{self.capability_id}:{self.category.value}:{self.risk_level.value}:{self.human_approval_required}:{self.provider}"
+        """Cryptographic hash of execution and semantic authority metadata."""
+        authority = json.dumps(
+            {
+                "semantic_needs": sorted(
+                    {
+                        str(value).strip().upper()
+                        for value in self.semantic_needs
+                        if str(value).strip()
+                    }
+                ),
+                "supported_agents": sorted(
+                    {
+                        str(value).strip().lower()
+                        for value in self.supported_agents
+                        if str(value).strip()
+                    }
+                ),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        raw = (
+            f"{self.capability_id}:{self.category.value}:{self.risk_level.value}:"
+            f"{self.human_approval_required}:{self.provider}:{authority}"
+        )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -95,25 +124,28 @@ class CapabilityRegistry:
         self._load_builtin_capabilities()
 
     def register_capability(self, descriptor: CapabilityDescriptor) -> None:
-        """Register or update a capability."""
+        """Register or update a capability using an isolated policy snapshot."""
         cid = descriptor.capability_id.lower()
-        self._capabilities[cid] = descriptor
+        self._capabilities[cid] = copy.deepcopy(descriptor)
 
     def get_capability(self, capability_id: str) -> Optional[CapabilityDescriptor]:
-        """Retrieve capability descriptor by ID."""
-        return self._capabilities.get(capability_id.lower())
+        """Retrieve an isolated capability descriptor by ID."""
+        descriptor = self._capabilities.get(capability_id.lower())
+        return copy.deepcopy(descriptor) if descriptor is not None else None
 
     def list_capabilities(self, category: Optional[CapabilityCategory] = None) -> List[CapabilityDescriptor]:
-        """List all capabilities, optionally filtered by category."""
+        """List isolated capability snapshots, optionally filtered by category."""
         if category is None:
-            return list(self._capabilities.values())
-        return [c for c in self._capabilities.values() if c.category == category]
+            capabilities = self._capabilities.values()
+        else:
+            capabilities = (c for c in self._capabilities.values() if c.category == category)
+        return [copy.deepcopy(c) for c in capabilities]
 
     def list_capabilities_for_agent(self, agent_id: str) -> List[CapabilityDescriptor]:
-        """List capabilities available for a specific agent role."""
+        """List isolated capability snapshots available for a specific agent role."""
         aid = agent_id.lower()
         return [
-            c for c in self._capabilities.values()
+            copy.deepcopy(c) for c in self._capabilities.values()
             if aid in [sa.lower() for sa in c.supported_agents] or "all" in [sa.lower() for sa in c.supported_agents]
         ]
 
@@ -130,7 +162,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["intelligence", "strategist", "cmo"],
+                supported_agents=["intelligence", "content", "cmo"],
+                semantic_needs=["MARKET_RESEARCH"],
                 provider="search_adapter",
                 timeout_policy=15.0,
             )
@@ -145,7 +178,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["intelligence", "strategist", "cmo"],
+                supported_agents=["intelligence", "content", "cmo"],
+                semantic_needs=["MARKET_RESEARCH"],
                 provider="http_adapter",
                 timeout_policy=20.0,
             )
@@ -161,6 +195,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["intelligence", "performance", "cmo"],
+                semantic_needs=["MARKET_RESEARCH"],
                 provider="data_retrieval_adapter",
                 timeout_policy=15.0,
             )
@@ -177,7 +212,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.CREATE_LOCAL],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["creative", "strategist", "cmo"],
+                supported_agents=["creative", "content", "cmo"],
+                semantic_needs=["TEXT_CREATION"],
                 provider="creative_text_adapter",
                 timeout_policy=30.0,
             )
@@ -193,7 +229,9 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.MEDIUM,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["IMAGE_GENERATION"],
                 provider="image_gen_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=45.0,
             )
         )
@@ -208,7 +246,9 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["IMAGE_EDITING"],
                 provider="image_edit_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=30.0,
             )
         )
@@ -223,7 +263,9 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.MEDIUM,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["VIDEO_GENERATION"],
                 provider="video_gen_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=60.0,
             )
         )
@@ -238,7 +280,9 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["creative", "cmo"],
+                semantic_needs=["VIDEO_EDITING"],
                 provider="video_edit_adapter",
+                availability="MOCK_ONLY",
                 timeout_policy=60.0,
             )
         )
@@ -255,6 +299,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.CRITICAL,
                 human_approval_required=True,
                 supported_agents=["cmo"],
+                semantic_needs=["CONTENT_PUBLISHING"],
                 provider="social_publish_adapter",
                 timeout_policy=30.0,
             )
@@ -270,6 +315,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.HIGH,
                 human_approval_required=True,
                 supported_agents=["cmo"],
+                semantic_needs=["CONTENT_PUBLISHING"],
                 provider="schedule_adapter",
                 timeout_policy=20.0,
             )
@@ -285,6 +331,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.CRITICAL,
                 human_approval_required=True,
                 supported_agents=["cmo"],
+                semantic_needs=["CAMPAIGN_OPERATIONS"],
                 provider="ad_platform_adapter",
                 timeout_policy=30.0,
             )
@@ -301,7 +348,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY, PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["performance", "cmo", "strategist"],
+                supported_agents=["performance", "cmo"],
+                semantic_needs=["PERFORMANCE_TELEMETRY"],
                 provider="analytics_adapter",
                 timeout_policy=20.0,
             )
@@ -316,7 +364,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["performance", "cmo", "strategist"],
+                supported_agents=["performance", "cmo"],
+                semantic_needs=["KPI_COMPUTATION"],
                 provider="kpi_calc_adapter",
                 timeout_policy=15.0,
             )
@@ -332,6 +381,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["performance", "cmo"],
+                semantic_needs=["ATTRIBUTION_EVIDENCE"],
                 provider="attribution_adapter",
                 timeout_policy=20.0,
             )
@@ -346,7 +396,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.ANALYTICS],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["performance", "cmo", "strategist"],
+                supported_agents=["performance", "cmo"],
+                semantic_needs=["EXPERIMENT_ANALYSIS"],
                 provider="stats_analysis_adapter",
                 timeout_policy=20.0,
             )
@@ -363,7 +414,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["cmo", "intelligence", "strategist", "creative", "performance"],
+                supported_agents=["cmo", "intelligence", "content", "creative", "performance"],
+                semantic_needs=["WORKSPACE_READ"],
                 provider="file_io_adapter",
                 timeout_policy=10.0,
             )
@@ -379,6 +431,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["cmo", "creative", "performance", "intelligence"],
+                semantic_needs=["WORKSPACE_WRITE"],
                 provider="file_io_adapter",
                 timeout_policy=15.0,
             )
@@ -393,7 +446,8 @@ class CapabilityRegistry:
                 required_permissions=[PermissionLevel.READ_ONLY],
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
-                supported_agents=["cmo", "intelligence", "performance", "strategist"],
+                supported_agents=["cmo", "intelligence", "performance", "content"],
+                semantic_needs=["STRUCTURED_DATA_QUERY"],
                 provider="db_storage_adapter",
                 timeout_policy=20.0,
             )
@@ -409,6 +463,7 @@ class CapabilityRegistry:
                 risk_level=RiskLevel.LOW,
                 human_approval_required=False,
                 supported_agents=["cmo", "performance", "creative"],
+                semantic_needs=["ARTIFACT_EXPORT"],
                 provider="export_adapter",
                 timeout_policy=25.0,
             )

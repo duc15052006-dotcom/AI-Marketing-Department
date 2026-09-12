@@ -10,11 +10,26 @@ from __future__ import annotations
 import abc
 import hashlib
 import json
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from memory.models import PromotionState
 from schemas.base import BaseModel, Field
+
+
+def get_default_learning_database_path() -> Path:
+    """Return the durable per-user production learning database path."""
+
+    override = os.environ.get("AI_MARKETING_LEARNING_DB_PATH")
+    if override:
+        return Path(override).expanduser()
+
+    app_data = os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA")
+    if app_data:
+        return Path(app_data) / "AI-Marketing-Department" / "learning" / "learning.sqlite3"
+    return Path.home() / ".ai-marketing-department" / "learning" / "learning.sqlite3"
 
 
 class LearningEvent(BaseModel):
@@ -66,7 +81,19 @@ class LearningRepository(abc.ABC):
 
 
 class LocalLearningRepository(LearningRepository):
-    """In-memory and local repository for learning event management."""
+    """Compatibility facade for local learning event management.
+
+    Normal runtime construction is durable and returns SQLiteLearningRepository.
+    AI_MARKETING_LEARNING_EPHEMERAL=1 preserves the historical in-memory
+    implementation for hermetic tests.
+    """
+
+    def __new__(cls):
+        if cls is LocalLearningRepository and os.environ.get("AI_MARKETING_LEARNING_EPHEMERAL") != "1":
+            from memory.sqlite_learning_repository import SQLiteLearningRepository
+
+            return SQLiteLearningRepository(get_default_learning_database_path())
+        return super().__new__(cls)
 
     def __init__(self) -> None:
         self._learnings: Dict[str, LearningEvent] = {}

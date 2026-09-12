@@ -1,119 +1,182 @@
-# Security & Governance Model (SECURITY_MODEL.md)
+# Security & Governance Model
 
-## 1. Core Principles: Defense-in-Depth & Least Privilege
+## 1. Security principles
 
-The AI Marketing Department operates under a strict Zero-Trust and Least-Privilege security architecture. Autonomous agents are powerful tools; left unrestricted, they present significant risks of data leaks, brand damage, runaway spending, and credential exposure.
+The AI Marketing Department uses defense-in-depth, least privilege, explicit authority, product/workspace isolation, and truthful execution evidence.
 
-### 1.1 Fundamental Security Invariants
-1. **No Raw Secrets in Prompts**: API keys, OAuth tokens, and system credentials **never** enter agent context windows, prompt templates, or scratchpads.
-2. **Backend Secret Management**: All credentials reside exclusively in isolated backend configuration environments (e.g., `.env`, Vault, or KMS-backed secret managers).
-3. **Strict Capability Matrix**: No agent possesses universal authority. Each agent has hardcoded execution boundaries.
-4. **Mandatory Audit Logging**: Every tool invocation, data read, state mutation, and external API call is recorded in an immutable, timestamped audit trail.
+Core invariants:
 
----
-
-## 2. Agent Permission Matrix
-
-| Agent | Read Research / Data | Create Strategy & Hypotheses | Generate Content Assets | Create Ad Accounts / Campaigns | Publish Content Live | Modify Budgets / Spend | Mutate Credentials / Config |
-|---|---|---|---|---|---|---|---|
-| **CMO** | ALL | Approves | Reviews | Approves | Approves Drafts | Approves Allocations | ❌ FORBIDDEN |
-| **INTELLIGENCE** | Read Public & Allowed Product Data | ❌ | ❌ | ❌ | ❌ FORBIDDEN | ❌ FORBIDDEN | ❌ FORBIDDEN |
-| **STRATEGIST** | Read Intelligence & Product Data | Author | ❌ | ❌ | ❌ FORBIDDEN | ❌ FORBIDDEN | ❌ FORBIDDEN |
-| **CREATIVE** | Read Strategy & Product Data | ❌ | Author | ❌ | ❌ FORBIDDEN | ❌ FORBIDDEN | ❌ FORBIDDEN |
-| **PERFORMANCE** | Read Campaign & Product Analytics | ❌ | ❌ | Prepares Payloads | Permitted via Autonomy Gate | Permitted under Strict Thresholds | ❌ FORBIDDEN |
-
-### Agent-Specific Restrictions:
-- **Research / Intelligence**: Sensory read-only. Cannot write to external platforms or trigger publishing actions.
-- **Strategist**: Advisory and planning. Cannot directly execute ad buys or publish creatives.
-- **Creative**: Generates assets and timeline manifests. Cannot directly publish to social channels or ad networks.
-- **Performance**: The only agent equipped with platform dispatch tools, but gated strictly by the runtime autonomy policy.
-- **CMO**: Strategic governor. Can review and approve or reject tasks, but possesses no raw credential manipulation tools.
+1. **Exactly five permanent logical agents**: CMO, Intelligence, Content, Creative, Performance. There is no permanent Strategist and no Agent 6.
+2. **Agent identity is not execution authority.** Brain/agents may reason and emit semantic intent, but consequential external effects require governed runtime/tool/policy/approval authority.
+3. **No raw secrets in prompts or agent DNA.** Credentials are referenced through backend/provider/connection configuration and must not be serialized into ordinary model context or logs.
+4. **Fail closed on missing authority.** Missing permission, malformed authority, unavailable approval, unknown provider cost, or uncertain external outcome must not be silently converted into success.
+5. **Truthful receipts and provenance.** External writes/spend/publishing require execution evidence; model prose cannot prove that a side effect occurred.
+6. **Strict product/business scope.** Retrieval, memory, tools, artifacts, and actions must not silently cross workspace/product boundaries.
+7. **No implicit provider fallback.** Fallback is authorized only by explicit current model policy.
 
 ---
 
-## 3. Autonomy Modes & Policy Engine
+## 2. Canonical agent authority matrix
 
-The system supports three operational autonomy modes configured globally or per-product:
+| Agent | Evidence / Data | Executive Strategy | Message / Copy / Editorial | Visual / Multimedia Production | Measurement / Attribution | Consequential External Action |
+|---|---|---|---|---|---|---|
+| **CMO** | May consume governed evidence | **Owns** strategy, positioning, GTM, major trade-offs, final commercial sign-off | Reviews / directs via Content | Reviews / directs via Creative | Reviews Performance evidence | **No direct bypass**; must use governed runtime/tool/approval path |
+| **INTELLIGENCE** | **Owns** research/evidence acquisition within allowed scope | Advisory evidence only | No authority | No authority | No authoritative campaign outcome claim | Forbidden unless a separately governed observation/read tool is authorized |
+| **CONTENT** | Consumes verified evidence | Must follow CMO-approved strategy; no final sign-off | **Owns** message architecture, copy/scripts, editorial/SEO/channel content | Semantic brief only; no final media-production authority | Proposes measurement questions/hypotheses only | No direct publish/spend/credential authority |
+| **CREATIVE** | Consumes grounded brief/evidence constraints | No final strategy authority | Must preserve Content semantic/factual constraints | **Owns** visual/multimedia concept and production | No authoritative outcome claim | No direct publish/spend/credential authority |
+| **PERFORMANCE** | Consumes campaign/analytics evidence | Advisory performance implications | No primary copy authority | No primary production authority | **Owns** measurement, attribution, observed performance analysis | May prepare/request governed actions but cannot bypass policy/approval/budget/credential gates |
 
-```
-┌────────────────────────────────────────────────────────┐
-│                     AUTONOMY MODES                     │
-├─────────────────┬──────────────────┬───────────────────┤
-│     MANUAL      │  SUPERVISED (Def)│    AUTONOMOUS     │
-├─────────────────┼──────────────────┼───────────────────┤
-│ Human must      │ Human approves   │ Agents execute    │
-│ approve every   │ high-risk ops;   │ within strict pre-│
-│ agent sub-task  │ low-risk runs    │ authorized budget │
-│ & tool call     │ automatically    │ & risk boundaries │
-└─────────────────┴──────────────────┴───────────────────┘
-```
-
-### 3.1 Mode Definitions
-- **`MANUAL`**: All agent actions (including asset rendering, research queries, and plan finalizations) require human sign-off. Intended for initial onboarding and high-security compliance testing.
-- **`SUPERVISED` (Default)**: Routine internal tasks (research, copy generation, storyboard rendering, internal metric analysis) execute autonomously. External actions (launching campaigns, modifying budgets, publishing live posts) halt and generate a `HumanApprovalRequest`.
-- **`AUTONOMOUS`**: The system may automatically adjust budgets within predefined caps (e.g., ±15% daily spend) and publish pre-approved creative variants to active campaigns. Any anomaly triggers immediate rollback and downgrade to `SUPERVISED`.
+Historical `STRATEGIST` / `STRATEGY` identifiers may exist only at explicit compatibility boundaries and must normalize to canonical `CONTENT` where required. They never grant independent permission.
 
 ---
 
-## 4. Guardrails & High-Risk Authorization Gates
+## 3. Cognition versus side effects
 
-The backend Security Enforcement Gate automatically blocks execution and requires explicit human two-factor authorization for the following actions:
+The security boundary is structural:
 
+```text
+Agent / Brain reasoning
+        ↓
+Semantic intent / artifact
+        ↓
+Governed Runtime
+        ↓
+Capability / Tool Gateway
+        ↓
+Policy + permission + scope checks
+        ↓
+Human approval when required
+        ↓
+External adapter / system
+        ↓
+Truthful receipt: success | failure | ambiguous/unknown
 ```
-[Agent Action Proposed] 
-          │
-          ▼
-   [Security Gate] ──(High-Risk Action Detected?)
-          │                                  │
-         NO                                 YES
-          │                                  │
-          ▼                                  ▼
-   [Execute Tool]               [Freeze & Generate Approval Gate]
-                                             │
-                                    (Human Approves?)
-                                       ├── YES ──> [Execute Tool]
-                                       └── NO  ──> [Abort & Log Alert]
-```
 
-### High-Risk Trigger Categories:
-1. **Financial Spend**: Any action initiating ad spend, committing budget, or modifying daily bid caps.
-2. **Destructive Operations**: Deletion of creative assets, purging memory stores, dropping database tables, or resetting historical performance records.
-3. **Credential & System Configuration**: Any attempt to modify API keys, rotate tokens, alter security thresholds, or reconfigure autonomy modes.
-4. **Public Brand Actions**: Deleting live social media posts or publishing un-vetted media outside pre-cleared brand guidelines.
+No stage may skip directly from model text to an external write merely because the CMO or another agent “approved” it in prose.
 
 ---
 
-## 5. Multitenancy & Workspace Isolation
+## 4. Risk classes and approval
 
-To prevent catastrophic data cross-contamination across brands and products:
-- **Directory Jails**: Agents operating on `PROD-001` are restricted to the filesystem subtree `products/PROD-001/` and global shared knowledge.
-- **Vector Search Partitioning**: All vector embeddings are tagged with `tenant_id`, `brand_id`, and `product_id`. Semantic similarity searches enforce strict metadata filtering.
-- **Payload Sanitization**: Before passing data to any external tool or LLM, an automated sanitizer scrubs private customer PII (email, phone numbers, payment details).
+Exact executable risk/approval enums are defined by current code/tests. Conceptually:
+
+### Read / observation / internal reasoning
+Examples: bounded research, internal analysis, composing a draft, building an internal brief.
+
+These may run automatically when current tool/data policy permits them. Read access must still honor product/business scope, network/tool policy, privacy, provider cost, and capability health.
+
+### Internal artifact generation
+Examples: copy draft, storyboard, internal media render, report, experiment plan.
+
+These may be permitted by current policy but do not imply public publication or financial commitment.
+
+### Consequential external write
+Examples: publishing content, creating/modifying a live campaign, sending external messages, mutating production records.
+
+Requires explicit governed action authority and any approval required by current policy. A prepared payload is not proof of execution.
+
+### Financial / budget mutation
+Examples: initiating spend, changing bids/budgets, committing paid resources.
+
+Must be bounded by current budget/security policy and approval requirements. No permanent agent may self-grant a new spending limit.
+
+### Credential / provider / security mutation
+Examples: rotating keys, changing credential refs, enabling providers, altering security policy, changing privileged configuration.
+
+Must remain outside ordinary agent self-authorization. Use dedicated settings/configuration authority and preserve auditability.
+
+### Destructive / irreversible operation
+Examples: deleting durable records, destructive production mutations, irreversible external actions.
+
+Require the strongest applicable validation/approval and must fail closed on uncertainty.
 
 ---
 
-## 6. Audit Logging Specification
+## 5. Autonomy modes do not create authority
 
-Every event is written to append-only, tamper-evident logs under `logs/audit_YYYYMMDD.jsonl`:
+The product may expose labels such as Manual, Supervised, or other automation/autonomy settings. These settings control how much already-authorized low-risk work can proceed without repeated human interaction; they do **not** override action-specific security policy.
 
-```json
-{
-  "timestamp": "2026-08-16T19:41:00Z",
-  "event_id": "EVT-89210",
-  "agent": "PERFORMANCE",
-  "product_id": "PROD-001",
-  "action": "MUTATE_CAMPAIGN_BUDGET",
-  "autonomy_mode": "SUPERVISED",
-  "authorization": {
-    "status": "APPROVED",
-    "approver_id": "USER-ADMIN-01",
-    "approval_timestamp": "2026-08-16T19:40:55Z"
-  },
-  "parameters": {
-    "campaign_id": "CAMP-004",
-    "delta": "+10%",
-    "new_budget_usd": 550.00
-  },
-  "result": "SUCCESS"
-}
-```
+Hard rules:
+- A mode cannot turn a forbidden action into an allowed action.
+- A mode cannot create credentials, provider permission, spend authority, or public-publishing authority by itself.
+- A mode cannot bypass an approval that current policy requires.
+- “Pre-approved” is valid only when represented by current trusted policy/approval state, not by model text.
+- If authority state is absent, malformed, expired, scope-mismatched, or ambiguous, fail closed.
+
+This supersedes historical descriptions in which an `AUTONOMOUS` label alone appeared to permit agents to publish or alter budgets.
+
+---
+
+## 6. Secrets and provider security
+
+- Store secrets in the configured backend/secret store or environment integration, never permanent agent prompts.
+- Use opaque credential references where supported.
+- Sanitize secrets from transport errors, logs, receipts, and serialized settings.
+- Provider definitions must be enabled/configured and pass current security/cost policy before use.
+- Custom/OpenAI-compatible base URLs must pass current validation policy.
+- Paid/unknown providers must not silently execute in a policy mode that forbids them.
+- Fallback candidates require explicit ordered configuration; an empty chain means no fallback.
+- Run-pinned provider/model snapshots must remain immutable where required for reproducibility.
+
+---
+
+## 7. Workspace and data isolation
+
+Every relevant artifact, retrieval, memory operation, tool request, and action must preserve canonical business/product/workspace scope.
+
+Required properties:
+- no cross-product memory/research leakage;
+- exact/bounded retrieval scopes rather than accidental global reads;
+- no model-generated scope widening;
+- private/sensitive data minimization before external provider/tool transmission;
+- explicit audit trail for any authorized scope transition.
+
+A context mismatch is a security failure, not merely a quality issue.
+
+---
+
+## 8. Idempotency, retries, and ambiguous outcomes
+
+External actions must use current idempotency/retry semantics so transport uncertainty cannot silently duplicate a consequential action.
+
+If the system cannot prove whether an external action succeeded:
+- record the outcome as ambiguous/unknown according to current receipt model;
+- do not fabricate success;
+- do not blindly retry when duplication is possible;
+- require reconciliation/verification before a new irreversible attempt.
+
+---
+
+## 9. Audit and evidence
+
+Audit records should preserve as applicable:
+- run/task/product/business identity;
+- canonical agent/stage;
+- semantic action/decision intent;
+- tool/capability/provider identity;
+- permission/policy decision;
+- approval record/reference;
+- idempotency key;
+- request/result status with secret sanitization;
+- receipt/provenance/checkpoint identity;
+- timestamp and failure/ambiguity reason.
+
+Do not claim an immutable or cryptographic audit mechanism unless the exact implementation/test proves that property at current HEAD.
+
+---
+
+## 10. Security invariants for future changes
+
+A change fails security review if it:
+- restores Strategist as a permanent permission principal;
+- creates a separate Final CMO permission principal;
+- grants any agent universal tool/data authority;
+- allows model prose to bypass runtime/tool/policy/approval checks;
+- introduces implicit provider fallback or silent paid-provider execution;
+- permits external publishing/spend solely because an “autonomous” mode is selected;
+- exposes raw secrets in prompts, logs, serialized user-visible state, or receipts;
+- weakens product/workspace isolation;
+- turns ambiguous external results into success;
+- removes provenance/idempotency/approval evidence required by current executable policy.
+
+Current executable code/tests and `SOURCE_OF_TRUTH.md` override historical security/autonomy descriptions.

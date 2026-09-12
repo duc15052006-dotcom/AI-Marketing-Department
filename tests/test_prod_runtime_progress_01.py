@@ -4,7 +4,7 @@ Validates:
 1. Typed finite event enums and schema validation
 2. Run ID propagation and sequence monotonicity (1, 2, 3...)
 3. Full workflow 6 real stages with Final CMO = agent CMO (zero Agent 6)
-4. Research fast path emits Intelligence only with 0 CMO/Strategist/Creative/Performance/Final CMO events
+4. Research fast path emits Intelligence only with 0 CMO/Content/Creative/Performance/Final CMO events
 5. Evidence boundary ordering: RESEARCH_EVIDENCE_READY occurs strictly before Intelligence model start
 6. General conversation emits no research events and no fake multi-agent stages
 7. Honest failure handling: RUN_FAILED emitted, never RUN_COMPLETED after failure, no fake STAGE_COMPLETED
@@ -95,7 +95,7 @@ class FakeModelGateway(UniversalModelGateway):
             content = "# CHIẾN LƯỢC GTM TỔNG THỂ\n\nKế hoạch tiếp thị phân rã chi tiết cho các bộ phận chuyên môn."
         elif agent_key == "intelligence":
             content = "## Báo cáo nghiên cứu thị trường: Phân tích đối thủ và insight khách hàng mục tiêu."
-        elif agent_key == "strategist":
+        elif agent_key == "content":
             content = "## Định vị thương hiệu: Khách hàng ICP và thông điệp cốt lõi."
         elif agent_key == "creative":
             content = "## Ý tưởng sáng tạo: 3 góc tiếp cận quảng cáo và kịch bản video ngắn."
@@ -180,7 +180,7 @@ class TestProdRuntimeProgress01(unittest.TestCase):
             progress_sink=events.append,
         )
         stages_started = [ev.stage for ev in events if ev.event_type == ProgressEventType.STAGE_STARTED]
-        expected_stages = ["CMO_INITIAL", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE", "FINAL_CMO"]
+        expected_stages = ["CMO_INITIAL", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE", "FINAL_CMO"]
         self.assertEqual(stages_started, expected_stages)
 
     # 6. Final CMO stage uses agent=CMO
@@ -205,7 +205,7 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         for ev in events:
             self.assertNotIn(ev.agent, ["AGENT_6", "FINAL_CMO", "SYNTHESIS_AGENT", "AGENT6"])
 
-    # 8. research fast path emits Intelligence only (0 CMO, 0 Strategist, 0 Creative, 0 Performance, 0 Final CMO)
+    # 8. research fast path emits Intelligence only (0 CMO, 0 Content, 0 Creative, 0 Performance, 0 Final CMO)
     def test_08_research_fast_path_emits_intelligence_only(self) -> None:
         events: List[RuntimeProgressEvent] = []
         ctx, out, art = self.runtime.run_research_inquiry(
@@ -325,7 +325,7 @@ class TestProdRuntimeProgress01(unittest.TestCase):
 
         completed_stages = [ev.stage for ev in events if ev.event_type == ProgressEventType.STAGE_COMPLETED]
         self.assertNotIn("INTELLIGENCE", completed_stages)
-        self.assertNotIn("STRATEGIST", completed_stages)
+        self.assertNotIn("CONTENT", completed_stages)
         self.assertNotIn("FINAL_CMO", completed_stages)
 
     # 16. event sink absence does not change run result
@@ -351,8 +351,6 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         rt2.run_workflow(objective="Đo lường model call", progress_sink=events.append)
 
         self.assertEqual(gw1.call_count, gw2.call_count)
-        # Six workflow stages now require seven model calls because the single
-        # permanent Performance agent executes mandatory internal Pass 5A + 5B.
         self.assertEqual(gw2.call_count, 7)
 
     # 18. event sink does not add search calls
@@ -379,7 +377,6 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         ctx, out, art = rt.run_workflow(objective="Chiến dịch sink hỏng", progress_sink=broken_sink)
 
         self.assertEqual(ctx.status, RuntimeStatus.COMPLETED)
-        # A broken progress sink must not add calls beyond the canonical seven.
         self.assertEqual(gw.call_count, 7)
 
     # 20. event sink failure does not mutate ModelPolicy or runtime status
@@ -626,7 +623,7 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         expected_stages = {
             "CMO_INITIAL",
             "INTELLIGENCE",
-            "STRATEGIST",
+            "CONTENT",
             "CREATIVE",
             "PERFORMANCE",
             "FINAL_CMO",
@@ -641,7 +638,7 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         expected_agents = {
             "CMO",
             "INTELLIGENCE",
-            "STRATEGIST",
+            "CONTENT",
             "CREATIVE",
             "PERFORMANCE",
         }
@@ -705,7 +702,7 @@ class TestProdRuntimeProgress01(unittest.TestCase):
         # Canonical mappings
         self.assertEqual(runtime_stage_to_progress_stage(RuntimeStage.CMO_INITIAL), ProgressStage.CMO_INITIAL)
         self.assertEqual(runtime_stage_to_progress_stage(RuntimeStage.INTELLIGENCE), ProgressStage.INTELLIGENCE)
-        self.assertEqual(runtime_stage_to_progress_stage(RuntimeStage.STRATEGIST), ProgressStage.STRATEGIST)
+        self.assertEqual(runtime_stage_to_progress_stage(RuntimeStage.CONTENT), ProgressStage.CONTENT)
         self.assertEqual(runtime_stage_to_progress_stage(RuntimeStage.CREATIVE), ProgressStage.CREATIVE)
         self.assertEqual(runtime_stage_to_progress_stage(RuntimeStage.PERFORMANCE), ProgressStage.PERFORMANCE)
         self.assertEqual(runtime_stage_to_progress_stage(RuntimeStage.FINAL_CMO), ProgressStage.FINAL_CMO)

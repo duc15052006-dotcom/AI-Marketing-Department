@@ -6,11 +6,62 @@ for each of the 5 permanent agents with full citation provenance.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 from governance.access_matrix import AgentAccessMatrix
 from knowledge.models import AuthorityLevel, KnowledgeCitation, KnowledgeDocument, SourceType
 from knowledge.repository import KnowledgeRepository
 from schemas.base import BaseModel, Field
+
+
+_INACTIVE_KNOWLEDGE_STATES = {"SUPERSEDED", "RETIRED", "DELETED"}
+_KNOWLEDGE_AUTHORITY_RANK = {
+    AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH: 0,
+    AuthorityLevel.TIER_2_VERIFIED_RESEARCH: 1,
+    AuthorityLevel.TIER_3_SECONDARY_INDUSTRY_DATA: 2,
+    AuthorityLevel.TIER_4_UNVERIFIED_OBSERVATION: 3,
+}
+
+
+def _knowledge_authority_rank(document: KnowledgeDocument) -> int:
+    """Rank higher-authority knowledge first while leaving unknown future tiers last."""
+    return _KNOWLEDGE_AUTHORITY_RANK.get(
+        document.authority_level,
+        len(_KNOWLEDGE_AUTHORITY_RANK),
+    )
+
+
+def _knowledge_relevance_tokens(value: object) -> set[str]:
+    """Tokenize semantic text while ignoring opaque underscore-delimited machine identifiers."""
+    return {
+        token
+        for token in re.findall(r"\w+", str(value or "").casefold(), flags=re.UNICODE)
+        if "_" not in token
+    }
+
+
+def _knowledge_relevance_score(document: KnowledgeDocument, query_text: object) -> int:
+    """Return deterministic lexical overlap between a natural-language query and a document."""
+    query_tokens = _knowledge_relevance_tokens(query_text)
+    if not query_tokens:
+        return 0
+
+    searchable_text = " ".join(
+        [
+            str(getattr(document, "title", "") or ""),
+            " ".join(str(tag) for tag in (getattr(document, "tags", None) or [])),
+            str(getattr(document, "content", "") or ""),
+        ]
+    )
+    document_tokens = _knowledge_relevance_tokens(searchable_text)
+    return len(query_tokens.intersection(document_tokens))
+
+
+def _is_retrievable_knowledge(document: KnowledgeDocument) -> bool:
+    """Match the governed repository lifecycle contract without blocking STALE."""
+    freshness = getattr(document, "freshness", "")
+    lifecycle_state = str(getattr(freshness, "value", freshness)).strip().upper()
+    return lifecycle_state not in _INACTIVE_KNOWLEDGE_STATES
 
 
 class KnowledgeQuery(BaseModel):
@@ -46,7 +97,11 @@ class KnowledgeContextBuilder:
         scope: Optional[str] = None,
         max_chars: int = 3500,
     ) -> KnowledgeRetrievalResult:
-        """Retrieve and format role-authorized knowledge with provenance tracking."""
+        """Retrieve and format role-authorized knowledge with provenance tracking.
+
+        Missing/blank scope is deliberately GLOBAL, never a repository wildcard.
+        Callers that need business/project knowledge must provide its exact scope.
+        """
         aid = agent_id.lower()
         prof = AgentAccessMatrix.get_profile(aid)
         if not prof:
@@ -55,22 +110,47 @@ class KnowledgeContextBuilder:
                 context_text=f"=== KNOWLEDGE RETRIEVAL DENIED: Unrecognized agent '{agent_id}' ===",
             )
 
-        # Filter by agent's authorized knowledge sources and exclude RETIRED documents
-        allowed_sources = prof.allowed_knowledge_sources
-        all_docs = self.repository.list_documents(scope=scope)
-        scoped_docs = [d for d in all_docs if d.source_type in allowed_sources and d.freshness != "RETIRED"]
+        # Fail closed at the builder authority boundary. Legacy repositories use
+        # scope=None as "all documents", which can cross tenant/project borders.
+        effective_scope = str(scope or "GLOBAL").strip() or "GLOBAL"
 
-        # Match by query if provided, or take high-authority scoped docs
+        # Match the governed repository lifecycle contract. STALE remains
+        # retrievable; SUPERSEDED/RETIRED/DELETED must never become context.
+        allowed_sources = prof.allowed_knowledge_sources
+        all_docs = self.repository.list_documents(scope=effective_scope)
+        scoped_docs = [
+            d
+            for d in all_docs
+            if d.source_type in allowed_sources and _is_retrievable_knowledge(d)
+        ]
+        # Bound selection only after a stable authority sort so earlier low-tier
+        # insertion order cannot crowd out higher-authority evidence.
+        scoped_docs = sorted(scoped_docs, key=_knowledge_authority_rank)
+
+        # Preserve exact full-query compatibility first. Natural-language queries
+        # that do not occur verbatim fall back to relevance-before-quota ranking;
+        # zero-overlap queries retain the prior stable authority-first behavior.
         if query_text:
             matched = []
             q_low = query_text.lower()
             for d in scoped_docs:
                 if q_low in d.title.lower() or q_low in d.content.lower() or any(q_low in t.lower() for t in d.tags):
                     matched.append(d)
-            target_docs = matched if matched else scoped_docs[:4]
+            if matched:
+                target_docs = matched
+            else:
+                ranked_docs = sorted(
+                    scoped_docs,
+                    key=lambda d: (
+                        -_knowledge_relevance_score(d, query_text),
+                        _knowledge_authority_rank(d),
+                    ),
+                )
+                target_docs = ranked_docs[:4]
         else:
             target_docs = scoped_docs[:4]
 
+        rendered_docs: List[KnowledgeDocument] = []
         citations: List[KnowledgeCitation] = []
         lines = [f"=== VERIFIED KNOWLEDGE CONTEXT FOR [{aid.upper()}] ==="]
         total_chars = 0
@@ -78,15 +158,6 @@ class KnowledgeContextBuilder:
         for doc in target_docs:
             chunk = doc.chunks[0] if doc.chunks else None
             chunk_id = chunk.chunk_id if chunk else "CHUNK-0"
-            citation = KnowledgeCitation(
-                knowledge_id=doc.knowledge_id,
-                chunk_id=chunk_id,
-                source_id=doc.source_id,
-                claim_ref=doc.title,
-                confidence=1.0 if doc.authority_level == AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH else 0.85,
-            )
-            citations.append(citation)
-
             doc_header = f"\n[KNOWLEDGE REF: {doc.knowledge_id} | Ver: {doc.version} | Auth: {doc.authority_level.value} | SourceType: {doc.source_type.value}]"
             doc_body = f"Title: {doc.title}\nContent: {doc.content[:600]}..."
             entry = f"{doc_header}\n{doc_body}"
@@ -95,6 +166,15 @@ class KnowledgeContextBuilder:
                 lines.append(f"\n[... Knowledge context truncated at {max_chars} chars budget limit ...]")
                 break
 
+            citation = KnowledgeCitation(
+                knowledge_id=doc.knowledge_id,
+                chunk_id=chunk_id,
+                source_id=doc.source_id,
+                claim_ref=doc.title,
+                confidence=1.0 if doc.authority_level == AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH else 0.85,
+            )
+            rendered_docs.append(doc)
+            citations.append(citation)
             lines.append(entry)
             total_chars += len(entry)
 
@@ -103,8 +183,8 @@ class KnowledgeContextBuilder:
 
         return KnowledgeRetrievalResult(
             agent_id=aid,
-            documents=target_docs,
+            documents=rendered_docs,
             citations=citations,
             context_text="\n".join(lines),
-            retrieved_count=len(target_docs),
+            retrieved_count=len(rendered_docs),
         )

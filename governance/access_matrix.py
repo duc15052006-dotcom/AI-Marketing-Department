@@ -1,7 +1,7 @@
 """Agent Infrastructure Access Contract (Phase 5.1).
 
 Defines the formal Role-Based Access Control (RBAC) and data store access matrix
-for the Five-Agent Department: CMO, Intelligence, Strategist, Creative, and Performance.
+for the Five-Agent Department: CMO, Intelligence, Content, Creative, and Performance.
 Guarantees permanent logical agent count = 5 and zero Agent 6.
 """
 
@@ -16,9 +16,14 @@ from tools.capabilities import CapabilityCategory, PermissionLevel
 PERMANENT_FIVE_AGENTS: Set[str] = {
     "cmo",
     "intelligence",
-    "strategist",
+    "content",
     "creative",
     "performance",
+}
+
+_LEGACY_AGENT_ID_ALIASES: Dict[str, str] = {
+    "strategist": "content",
+    "strategy": "content",
 }
 
 
@@ -94,10 +99,10 @@ class AgentAccessMatrix:
             can_access_raw_telemetry=False,
             can_record_learning_events=False,
         ),
-        # 3. Strategist
-        "strategist": AgentAccessProfile(
-            agent_id="strategist",
-            role_title="Marketing Strategy & Growth Specialist",
+        # 3. Content
+        "content": AgentAccessProfile(
+            agent_id="content",
+            role_title="Content Strategy, Copywriting & Distribution Specialist",
             allowed_capability_categories=[
                 CapabilityCategory.OBSERVE,
                 CapabilityCategory.CREATE,
@@ -133,7 +138,7 @@ class AgentAccessMatrix:
         # 4. Creative
         "creative": AgentAccessProfile(
             agent_id="creative",
-            role_title="Creative Director & Copywriter",
+            role_title="Creative Director & Multimedia Production Specialist",
             allowed_capability_categories=[
                 CapabilityCategory.CREATE,
                 CapabilityCategory.FILE_DATA,
@@ -193,8 +198,10 @@ class AgentAccessMatrix:
 
     @classmethod
     def get_profile(cls, agent_id: str) -> Optional[AgentAccessProfile]:
-        """Retrieve access profile for a recognized agent."""
-        return cls.PROFILES.get(agent_id.lower())
+        """Retrieve access profile, canonicalizing narrow legacy role aliases."""
+        key = str(agent_id or "").strip().lower()
+        key = _LEGACY_AGENT_ID_ALIASES.get(key, key)
+        return cls.PROFILES.get(key)
 
     @classmethod
     def validate_agent_count(cls) -> bool:

@@ -4,7 +4,7 @@ Tests:
 1. ProviderDefinition validation, defaults, normalization, and backward-compat.
 2. Base URL security validation (rejects file://, ftp://, javascript:, data:, credentials, remote plain HTTP).
 3. Base URL loopback allowance and path canonicalization.
-4. ModelTarget and AgentId normalization (strictly 5 agents: CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE).
+4. ModelTarget and AgentId normalization (strictly 5 agents: CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE).
 5. Final CMO normalization (maps strictly to CMO policy; no Agent 6).
 6. ModelPolicy routing resolution precedence (Agent Override -> Global Target -> Fallback Chain).
 7. ProviderRegistry CRUD, thread-safety, enable/disable, and adapter lifecycle.
@@ -178,7 +178,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
         """Verify exact 5 logical agents are accepted and normalized."""
         self.assertEqual(normalize_agent_id("cmo"), "CMO")
         self.assertEqual(normalize_agent_id("intelligence"), "INTELLIGENCE")
-        self.assertEqual(normalize_agent_id("strategist"), "STRATEGIST")
+        self.assertEqual(normalize_agent_id("strategist"), "CONTENT")
         self.assertEqual(normalize_agent_id("creative"), "CREATIVE")
         self.assertEqual(normalize_agent_id("performance"), "PERFORMANCE")
 
@@ -1223,7 +1223,7 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
         out5 = runtime.execute_stage_performance(ctx1)
         out6 = runtime.execute_stage_final_cmo(ctx1)
 
-        # Provider A was invoked for all 6 stages of RUN-1
+        # Six logical stages include Performance 5A/5B, so RUN-1 makes seven model calls.
         self.assertEqual(mock_a.generate.call_count, 7)
         mock_b.generate.assert_not_called()
 

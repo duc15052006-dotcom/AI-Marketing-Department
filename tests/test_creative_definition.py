@@ -24,13 +24,14 @@ class TestCreativeDefinition(unittest.TestCase):
         self.assertIn("Creative Director", self.frontmatter.get("description", ""))
 
     def test_creative_identity_and_role_boundaries(self):
-        """Verify Creative is defined as creative production engine and NOT primary researcher, strategist, or publisher."""
-        self.assertIn("Creative Director, Copywriter, Scriptwriter, Visual Director & Creative Production Orchestrator", self.content)
-        self.assertIn("transform validated market intelligence and strategic positioning into original", self.content)
+        """Verify Creative owns visual/media production, not strategy or substantive content/copy."""
+        self.assertIn("Creative Director, Visual Director & Creative Production Orchestrator", self.content)
+        self.assertIn("transform CMO-approved strategy/positioning and Content-approved messaging", self.content)
         self.assertIn("primary market researcher", self.content)
-        self.assertIn("final business strategist", self.content)
+        self.assertIn("strategy or positioning owner", self.content)
+        self.assertIn("primary content strategist, copywriter, hook writer, or scriptwriter", self.content)
         self.assertIn("performance measurement authority", self.content)
-        self.assertIn("ad network publisher", self.content)
+        self.assertIn("live publisher or deployment authority", self.content)
         self.assertIn("final commercial and budgetary authority", self.content)
 
     def test_creative_input_contract_and_reference_coverage(self):
@@ -67,8 +68,8 @@ class TestCreativeDefinition(unittest.TestCase):
         self.assertIn("OBJECTION NEUTRALIZED", self.content)
 
     def test_creative_territories_and_angle_generation(self):
-        """Verify creative territories and diverse angle generation without cosmetic variations."""
-        self.assertIn("Creative Territories & Angle Generation", self.content)
+        """Verify visual treatment territories and diverse angle generation without cosmetic variations."""
+        self.assertIn("Visual Creative Territories & Treatment Generation", self.content)
         self.assertIn("Transformation", self.content)
         self.assertIn("Live Demonstration", self.content)
         self.assertIn("Angle Generation Discipline (No Cosmetic Variations)", self.content)
@@ -83,23 +84,22 @@ class TestCreativeDefinition(unittest.TestCase):
         self.assertIn("EXECUTION LAYER", self.content)
 
     def test_hook_engineering_and_promise_consistency(self):
-        """Verify hook archetypes and strict hook-promise consistency to eliminate deceptive clickbait."""
-        self.assertIn("Hook Engineering & Hook-Promise Consistency", self.content)
-        self.assertIn("Hook Archetypes", self.content)
-        self.assertIn("The Hook-Promise Consistency Mandate", self.content)
-        self.assertIn("Clickbait that fails to deliver damages brand trust", self.content)
+        """Verify visual hook execution preserves Content-owned verbal promise."""
+        self.assertIn("Visual Hook Execution & Hook-Promise Fidelity", self.content)
+        self.assertIn("Visual Opening Treatments", self.content)
+        self.assertIn("Hook-Promise Fidelity Mandate", self.content)
+        self.assertIn("must not overstate, contradict, or silently rewrite", self.content)
 
     def test_copywriting_and_anti_generic_ai_rules(self):
-        """Verify copywriting standards and active elimination of generic synthetic AI writing tropes."""
-        self.assertIn("Copywriting & Anti-Generic-AI Writing Standard", self.content)
-        self.assertIn("Clarity over Cleverness", self.content)
-        self.assertIn("Anti-Generic-AI Writing Protocol", self.content)
-        self.assertIn("Formulaic Openings", self.content)
-        self.assertIn("Generic Superlatives", self.content)
+        """Verify Creative preserves Content-owned substantive copy while performing on-asset text QA."""
+        self.assertIn("Copy Fidelity & On-Asset Text QA", self.content)
+        self.assertIn("Content owns substantive copy, hooks, scripts, storytelling, CTA wording, and editorial voice", self.content)
+        self.assertIn("Creative Text QA", self.content)
+        self.assertIn("Revision Handoff", self.content)
 
     def test_storytelling_and_content_relative_retention(self):
-        """Patch 2B.4.1: Verify non-dogmatic storytelling and content-relative retention analysis across varying durations."""
-        self.assertIn("Storytelling (Non-Dogmatic & Context-Appropriate)", self.content)
+        """Verify visual narrative production and content-relative retention analysis across varying durations."""
+        self.assertIn("Visual Storytelling & Narrative Production", self.content)
         self.assertIn("Video Retention Diagnosis (Content-Relative Analysis)", self.content)
         self.assertIn("Contextual Timeline Diagnosis", self.content)
         self.assertIn("ACTUAL_DURATION", self.content)

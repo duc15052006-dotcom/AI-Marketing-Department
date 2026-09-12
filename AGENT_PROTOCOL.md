@@ -1,147 +1,270 @@
-# Inter-Agent Communication Protocol (AGENT_PROTOCOL.md)
+# Inter-Agent Communication Protocol
 
-## 1. Core Principles of Agent Communication
+## 1. Canonical participants
 
-The AI Marketing Department relies on rigorous, deterministic, and typed messaging between all agents. To prevent hallucination, misalignment, and uncontrolled cascades, every message and delegation must conform to the standard **Task Envelope**.
+All permanent inter-agent communication is bounded to exactly five logical identities:
 
-### 1.1 The Four Epistemic Tiers
-Every claim, data point, or statement transmitted by an agent must be categorized into one of four epistemic tiers:
+- `CMO`
+- `INTELLIGENCE`
+- `CONTENT`
+- `CREATIVE`
+- `PERFORMANCE`
 
-| Tier | Definition | Standard of Proof | Example |
-|---|---|---|---|
-| **FACT** | Ground truth verified by reliable internal records or primary empirical measurement. | Immutable system record, confirmed transaction log, or historical analytics report. | *"Product A's price is $49.00 with 1,240 orders in July."* |
-| **OBSERVATION** | Direct sensory or scraped data captured from an external platform or public source. | Raw data payload, URL, timestamp, and scrape snapshot. | *"Competitor X launched 12 new video ads on Meta Ad Library on August 10."* |
-| **INFERENCE** | Logical deduction or pattern derived by analyzing facts and observations. | Explicit reasoning chain linking known facts to the derived conclusion. | *"Competitor X is shifting focus toward UGC testimonials targeting working moms."* |
-| **HYPOTHESIS** | An unproven assumption, prediction, or proposed experiment design. | Falsifiable prediction accompanied by a defined test condition and success metric. | *"If we test a 3-second problem-agitation hook, then 3s view rate will increase by 25%."* |
+There is no permanent `STRATEGIST` identity. Historical `STRATEGIST` / `STRATEGY` values may be accepted only by explicit compatibility code and must normalize to canonical `CONTENT` where the compatibility contract requires it. Final CMO is the same `CMO` identity reused at the final governance stage.
 
-> **CRITICAL LAW**: Agents must **NEVER** present an Inference or Hypothesis as a Fact. Violations of epistemic categorization trigger automated validation rejection.
+The protocol exists to prevent hallucination, authority drift, information loss, cross-workspace contamination, and uncontrolled action cascades.
 
 ---
 
-## 2. Standard Task Envelope Specification
+## 2. Epistemic and provenance discipline
 
-All task requests, delegations, and deliverables between agents must wrap their payload inside the following typed schema.
+Material claims transmitted between agents must preserve their epistemic status and origin. Canonical concepts include verified/observed evidence, inference, hypothesis, and unknown/gap states. Exact executable enum names are defined by current schemas/runtime code.
+
+Rules:
+1. Never promote an inference or hypothesis to fact merely because a downstream agent repeats it.
+2. Never fill an unknown with plausible prose.
+3. Preserve source/citation/value origin for material claims and structured fields.
+4. Surface contradictions instead of silently choosing one source.
+5. Current external claims require fresh evidence when freshness is material.
+6. Model recommendations are not binding constraints unless an authorized user/business/policy source makes them binding.
+
+---
+
+## 3. Standard task envelope
+
+Task requests/delegations should carry the following semantics. Current executable schemas are authoritative for exact field names and serialization.
 
 ```json
 {
-  "task_id": "TASK-20260816-001",
+  "task_id": "TASK-20260912-001",
   "parent_task_id": null,
-  "objective": "Identify top 3 competitor hooks in the B2B CRM space for Q3",
-  "business_context": "Launching new sales automation feature targeting SMB founders.",
+  "objective": "Identify evidence-backed competitor messages in the B2B CRM category",
+  "business_context": "CMO is evaluating Q4 positioning options for an SMB sales-automation product.",
   "product_id": "PROD-CRM-01",
   "brand_id": "BRAND-NEXUS",
 
   "known_facts": [
-    "Product retail price is $99/mo.",
-    "Target audience is US founders with 5-50 employees."
+    "The active product is PROD-CRM-01."
   ],
   "unknown_facts": [
-    "Exact ad spend of Competitor Alpha on TikTok Ads."
+    "Which competitor message themes are currently repeated across verified ads and landing pages."
   ],
-  "assumptions": [
-    "Competitor Alpha runs their highest spending ads on Meta and YouTube."
-  ],
+  "assumptions": [],
   "hypotheses": [
-    "Pain-point hooks highlighting 'lost sales leads' convert higher than feature-led hooks."
+    "Pain-point messaging may be more prevalent than feature-led messaging."
   ],
 
   "owner_agent": "INTELLIGENCE",
-  "supporting_agents": ["STRATEGIST"],
+  "supporting_agents": [],
 
   "tools_allowed": [
     "web_search",
-    "social_ad_library_parser",
-    "structured_data_extractor"
+    "read_page"
   ],
   "data_allowed": [
-    "knowledge/marketing/hooks",
     "products/PROD-CRM-01/*"
   ],
 
   "evidence_required": true,
   "output_schema": "ResearchReport",
   "success_criteria": [
-    "Minimum 5 validated competitor ads analyzed",
-    "Hook breakdown classified into Hook Taxonomy",
-    "Confidence score >= 0.80"
+    "Material competitor claims have source lineage",
+    "Unknown or unverifiable claims remain explicit gaps",
+    "No cross-product evidence is introduced"
   ],
 
-  "confidence": 0.85,
+  "confidence": 0.0,
   "risks": [
-    "Competitor ad library data may be geo-restricted."
+    "Competitor pages may be geo- or time-dependent."
   ],
   "blockers": [],
 
-  "escalation_rule": "IF confidence < 0.70 OR evidence count < 3 THEN escalate to CMO",
-  "next_action": "Pass validated ResearchReport to STRATEGIST for angle synthesis."
+  "escalation_rule": "Escalate material evidence gaps or strategic conflicts to CMO",
+  "next_action": "Return verified evidence to CMO; downstream Content consumes CMO-approved strategic direction plus verified evidence."
 }
 ```
 
----
-
-## 3. Envelope Field Definitions & Validation Rules
-
-### 3.1 Task Identifiers & Context
-- **`TASK_ID`**: Unique alphanumeric task identifier (Format: `TASK-YYYYMMDD-XXXX`).
-- **`PARENT_TASK_ID`**: ID of the parent task if this is a subagent delegation; `null` for root tasks initiated by CMO.
-- **`OBJECTIVE`**: Single, clear, unambiguous statement of work.
-- **`BUSINESS_CONTEXT`**: Background rationale explaining *why* this task is being performed.
-- **`PRODUCT_ID`**: Strict product workspace identifier. Enforces isolated data partition.
-- **`BRAND_ID`**: Parent brand entity identifier.
-
-### 3.2 Epistemic Declaration
-- **`KNOWN_FACTS`**: List of verified facts relevant to this task.
-- **`UNKNOWN_FACTS`**: Known gaps in information required to solve the task.
-- **`ASSUMPTIONS`**: Working premises taken as true for the duration of the task.
-- **`HYPOTHESES`**: Testable propositions formulated for experimentation.
-
-### 3.3 Ownership & Access Controls
-- **`OWNER_AGENT`**: The primary responsible agent (`CMO`, `INTELLIGENCE`, `STRATEGIST`, `CREATIVE`, `PERFORMANCE`).
-- **`SUPPORTING_AGENTS`**: Secondary agents permitted to provide inputs or reviews.
-- **`TOOLS_ALLOWED`**: Explicit whitelist of tools the agent may invoke.
-- **`DATA_ALLOWED`**: Strict file and directory URI paths the agent is permitted to read. Any attempt to access paths outside this list is blocked.
-
-### 3.4 Quality & Governance
-- **`EVIDENCE_REQUIRED`**: Boolean flag. When `true`, no output is accepted without verifiable citations/sources.
-- **`OUTPUT_SCHEMA`**: Target Pydantic/JSON Schema class expected in the deliverable.
-- **`SUCCESS_CRITERIA`**: Deterministic checklist determining whether the deliverable is accepted.
-- **`CONFIDENCE`**: Numerical float `[0.0 - 1.0]` representing agent certainty in the output.
-- **`RISKS`**: Potential failure modes, data degradation risks, or brand risks.
-- **`BLOCKERS`**: Active impediments preventing task completion.
-- **`ESCALATION_RULE`**: Condition triggering automatic escalation back to CMO or Human Supervisor.
-- **`NEXT_ACTION`**: Explicit downstream task or handoff protocol upon successful completion.
+The example is illustrative. It does not grant a tool, provider, permission, or schema field that current executable policy does not authorize.
 
 ---
 
-## 4. Agent Lifecycle & State Transitions
+## 4. Envelope semantics and validation
 
-```
-    [TASK CREATED]
-          │
-          ▼
-   [VALIDATE INPUT] ──(Validation Failed)──> [REJECT / ESCALATE]
-          │
-          ▼
-    [IN PROGRESS]
-          │
-    ┌─────┴────────────────┐
-    ▼                      ▼
-[EXECUTE TOOLS]    [COLLABORATE]
-    │                      │
-    └─────┬────────────────┘
-          ▼
-   [VALIDATE OUTPUT] ──(Schema or Criteria Fail)──> [REVISE or ESCALATE]
-          │
-          ▼
-     [DELIVERED]
-          │
-          ▼
-   [CMO SIGN-OFF] ──(Approved)──> [ARCHIVE TO MEMORY]
+### 4.1 Identity and context
+- **Task/run IDs** uniquely identify work and support provenance/idempotency.
+- **Parent task ID** preserves decomposition lineage.
+- **Objective** is a single unambiguous statement of work.
+- **Business context** explains why the work matters without creating new facts.
+- **Product/business/brand/workspace scope** must remain stable and must not be inferred from unrelated memory.
+
+### 4.2 Knowledge state
+- **Known/verified facts** require trusted evidence or authoritative internal records.
+- **Unknown facts/gaps** remain unknown until evidence resolves them.
+- **Assumptions/inferences** must remain labeled.
+- **Hypotheses** must be falsifiable/decision-relevant when used for experiments.
+
+### 4.3 Ownership
+`OWNER_AGENT` must resolve to exactly one of:
+
+```text
+CMO | INTELLIGENCE | CONTENT | CREATIVE | PERFORMANCE
 ```
 
-1. **Task Dispatch**: CMO constructs `TaskEnvelope` with validated schemas and permissions.
-2. **Acceptance & Validation**: Target agent checks permissions, tool availability, and data bounds.
-3. **Execution**: Agent performs reasoning and tool invocations within strict sandbox limits.
-4. **Epistemic Classification**: Agent categorizes all findings into Fact, Observation, Inference, or Hypothesis.
-5. **Output Verification**: Result is verified against `OUTPUT_SCHEMA` and `SUCCESS_CRITERIA`.
-6. **Handoff / Escalation**: Deliverable passed to next pipeline stage or escalated if confidence falls below threshold.
+Role intent:
+- `CMO`: executive strategy, prioritization, commercial trade-offs, conflict resolution, sign-off.
+- `INTELLIGENCE`: research/evidence/freshness/knowledge gaps.
+- `CONTENT`: message architecture, copy/scripts, editorial/SEO/channel content, semantic brief.
+- `CREATIVE`: visual/multimedia concept and production.
+- `PERFORMANCE`: measurement, attribution, observed performance, governed performance operations.
+
+A supporting agent can advise or supply artifacts but cannot silently inherit the owner’s authority.
+
+### 4.4 Tools and data
+- Tool access is an explicit whitelist/capability decision, not implied by agent identity.
+- Data access must preserve exact workspace/product scope.
+- Missing tools/credentials/authority must fail closed where current runtime policy requires it.
+- A tool being installed or registered does not imply permission to use it for the current run.
+
+### 4.5 Quality and governance
+As applicable, a handoff should include:
+- acceptance/success criteria;
+- evidence/citations and value origins;
+- risks/blockers/unknowns;
+- handoff target and next decision;
+- measurement question;
+- tool/approval requirements for consequential actions.
+
+Confidence is never a substitute for evidence.
+
+---
+
+## 5. Canonical collaboration flow
+
+The supervised cognitive flow contains six stages but five identities:
+
+```text
+CMO (initial)
+   ↓
+INTELLIGENCE
+   ↓
+CONTENT
+   ↓
+CREATIVE
+   ↓
+PERFORMANCE
+   ↓
+CMO (final; same identity)
+```
+
+### 5.1 CMO → Intelligence
+Transmit objective, product/business scope, strategic questions, constraints, evidence requirements, and explicit unknowns. CMO does not dictate fabricated research conclusions.
+
+### 5.2 Intelligence → CMO / Content
+Intelligence returns verified evidence, source lineage, uncertainty, contradictions, and knowledge gaps. CMO owns strategic decisions derived from the evidence. Content may consume verified evidence together with CMO-approved strategic guardrails.
+
+### 5.3 CMO → Content
+CMO supplies target audience priorities, positioning/offer boundaries, business objective, non-pursuits, and material commercial constraints. Content must not self-grant missing executive decisions.
+
+### 5.4 Content → Creative
+Content supplies an actionable semantic brief: message hierarchy, copy/script, CTA, required proof, factual constraints, prohibited unsupported claims, channel/format needs, and experiment hypothesis/measurement question when applicable.
+
+Creative owns visual concepts, storyboards/shotlists, media specifications, rendering, and final multimedia production.
+
+### 5.5 Creative → Performance
+Creative passes asset IDs/artifacts, production metadata, intended message/variant identity, and any unresolved production constraints. It must not invent performance conclusions.
+
+### 5.6 Performance → final CMO
+Performance returns observed metrics/evidence, attribution/causal caveats, experiment status, budget/risk implications, and governed execution readiness. It cannot self-approve forbidden spend/external writes.
+
+### 5.7 Final CMO
+The same CMO identity resolves contradictions, audits evidence/authority, chooses a commercial path, and produces the final governed synthesis. Final CMO is not Agent 6.
+
+---
+
+## 6. Constraint and information preservation
+
+Handoffs must preserve material constraints structurally rather than relying on prose memory alone.
+
+Never silently drop:
+- user/system/business/brand/policy restrictions;
+- product/workspace scope;
+- explicit non-pursuits;
+- evidence lineage;
+- unknowns and unresolved contradictions;
+- approval requirements;
+- value/source origin required for auditability.
+
+A downstream model suggestion must not become a binding constraint unless current authority policy permits that promotion.
+
+---
+
+## 7. Lifecycle and state transitions
+
+```text
+[TASK CREATED]
+      ↓
+[VALIDATE IDENTITY / SCOPE / INPUT / AUTHORITY]
+      ├── invalid → [REJECT / ESCALATE]
+      ↓
+[BUILD GROUNDED CONTEXT]
+      ↓
+[REASON / PRODUCE SEMANTIC ARTIFACT]
+      ↓
+[VALIDATE OUTPUT / CLAIMS / HANDOFF]
+      ├── fail → [REVISE / RESEARCH / ESCALATE]
+      ↓
+[DELIVER TO NEXT CANONICAL STAGE]
+      ↓
+[FINAL CMO GOVERNANCE WHEN REQUIRED]
+      ↓
+[GOVERNED RUNTIME / TOOL / APPROVAL PATH FOR CONSEQUENT ACTION]
+      ↓
+[TRUTHFUL RECEIPT / OUTCOME / LEARNING]
+```
+
+Completion of a cognitive task does not prove that an external side effect occurred.
+
+---
+
+## 8. Execution authority boundary
+
+Agent prose, task ownership, or CMO sign-off does not by itself bypass runtime/tool/policy approval.
+
+Consequential execution must preserve:
+- canonical action/decision intent;
+- run/task/product identity;
+- permission/policy decisions;
+- human approval where required;
+- idempotency/retry semantics;
+- provider/tool provenance where material;
+- truthful success/failure/ambiguous-outcome receipts.
+
+Never report “published,” “spent,” “changed,” or similar side effects solely because a model proposed or approved them.
+
+---
+
+## 9. Provider/model boundary
+
+Task envelopes and permanent agent definitions must remain provider-neutral. Provider/model selection is resolved through current model policy/registry settings.
+
+- Global target and per-agent overrides may be configured.
+- Historical `STRATEGIST` model-policy keys may normalize to `CONTENT` at explicit compatibility boundaries.
+- Fallback is allowed only when the ordered fallback policy is explicitly configured and current security/cost rules allow it.
+- An empty fallback chain means no fallback.
+- Run-pinned provider/model state should be preserved where current runtime requires reproducibility.
+
+---
+
+## 10. Fail-closed protocol invariants
+
+A protocol/handoff fails review if it:
+- names `STRATEGIST` as a current permanent owner/support authority;
+- creates a sixth permanent agent or separate Final CMO identity;
+- lets Content take final CMO strategy/sign-off authority;
+- lets Creative own unsupported factual claims or authoritative measurement;
+- lets Performance bypass approval/budget/policy boundaries;
+- drops material constraints, evidence lineage, or workspace scope;
+- increases epistemic certainty without new evidence;
+- treats model text as proof of an external side effect;
+- hard-codes a provider into permanent agent logic;
+- introduces implicit fallback authority.

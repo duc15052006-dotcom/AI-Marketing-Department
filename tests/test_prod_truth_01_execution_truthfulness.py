@@ -294,6 +294,7 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
             request_hash="req_h",
             execution_mode=ExecutionMode.MOCK,
             status=ExecutionStatus.SUCCESS,
+            business_id="BIZ_TECH",
             data={"query": "battery tech", "findings": "Solid state advancement"},
             output=None,
         )
@@ -436,6 +437,7 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
             request_hash="h_meta",
             execution_mode=ExecutionMode.REAL,
             status=ExecutionStatus.SUCCESS,
+            business_id="BIZ_META",
             data={"content": "Verified payload"},
         )
         ctx = RuntimeContext(run_id="RUN-TEST-17", objective="Metadata test", business_id="BIZ_META")
@@ -527,27 +529,35 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_conn = RealFileConnector(base_dir=Path(tmp_dir))
             self.tool_gateway.register_adapter(file_conn, aliases=["file_io_adapter"])
+            ctx = RuntimeContext(run_id="RUN-FILE-READ", objective="File observation")
 
             # Setup file on disk
             req_write = ToolRequest(
+                run_id=ctx.run_id,
                 agent_id="cmo",
                 capability_id="file_write",
                 parameters={"path": "market_notes.txt", "content": "Organic search traffic grew 35% MoM."},
+                business_id=ctx.business_id,
+                project_id=ctx.project_id,
+                chat_id=ctx.chat_id,
             )
             self.tool_gateway.execute(req_write)
 
             # Read file via ToolGateway
             req_read = ToolRequest(
+                run_id=ctx.run_id,
                 agent_id="intelligence",
                 capability_id="file_read",
                 parameters={"path": "market_notes.txt"},
+                business_id=ctx.business_id,
+                project_id=ctx.project_id,
+                chat_id=ctx.chat_id,
             )
             rec_read = self.tool_gateway.execute(req_read)
             self.assertEqual(rec_read.status, ExecutionStatus.SUCCESS)
             self.assertEqual(rec_read.execution_mode, ExecutionMode.REAL)
 
             # Compile into GroundedContextPackage
-            ctx = RuntimeContext(run_id="RUN-FILE-READ", objective="File observation")
             pkg = self.compiler.compile_grounded_package("intelligence", ctx, tool_receipts=[rec_read])
 
             tool_items = [it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT"]
@@ -560,26 +570,34 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_conn = RealFileConnector(base_dir=Path(tmp_dir))
             self.tool_gateway.register_adapter(file_conn, aliases=["file_io_adapter", "db_storage_adapter"])
+            ctx = RuntimeContext(run_id="RUN-DB-QUERY", objective="Storage query")
 
             # Seed a JSON record
             req_write = ToolRequest(
+                run_id=ctx.run_id,
                 agent_id="cmo",
                 capability_id="file_write",
                 parameters={"path": "metrics.json", "content": '{"customer_retention_rate": 0.88}'},
+                business_id=ctx.business_id,
+                project_id=ctx.project_id,
+                chat_id=ctx.chat_id,
             )
             self.tool_gateway.execute(req_write)
 
             # Query structured storage
             req_query = ToolRequest(
+                run_id=ctx.run_id,
                 agent_id="performance",
                 capability_id="structured_storage_query",
                 parameters={"path": "metrics.json"},
+                business_id=ctx.business_id,
+                project_id=ctx.project_id,
+                chat_id=ctx.chat_id,
             )
             rec_query = self.tool_gateway.execute(req_query)
             self.assertEqual(rec_query.status, ExecutionStatus.SUCCESS)
             self.assertEqual(rec_query.execution_mode, ExecutionMode.REAL)
 
-            ctx = RuntimeContext(run_id="RUN-DB-QUERY", objective="Storage query")
             pkg = self.compiler.compile_grounded_package("performance", ctx, tool_receipts=[rec_query])
 
             tool_items = [it for it in pkg.evidence_items if it.source_type == "TOOL_RECEIPT"]
@@ -592,18 +610,22 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_conn = RealFileConnector(base_dir=Path(tmp_dir))
             self.tool_gateway.register_adapter(file_conn, aliases=["file_io_adapter"])
+            ctx = RuntimeContext(run_id="RUN-WRITE-01", objective="Write test")
 
             req_write = ToolRequest(
+                run_id=ctx.run_id,
                 agent_id="cmo",
                 capability_id="file_write",
                 parameters={"path": "output.txt", "content": "Generated campaign draft."},
+                business_id=ctx.business_id,
+                project_id=ctx.project_id,
+                chat_id=ctx.chat_id,
             )
             rec_write = self.tool_gateway.execute(req_write)
             self.assertEqual(rec_write.status, ExecutionStatus.SUCCESS)
             self.assertEqual(rec_write.execution_mode, ExecutionMode.REAL)
 
             # Compile through ContextCompiler
-            ctx = RuntimeContext(run_id="RUN-WRITE-01", objective="Write test")
             pkg = self.compiler.compile_grounded_package("cmo", ctx, tool_receipts=[rec_write])
 
             # Action receipt must NOT compile into EvidenceItems
@@ -706,6 +728,7 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
                 agent_id="cmo",
                 capability_id="file_write",
                 parameters={"path": "spec.txt", "content": "Hardware test spec: Device features 5000mAh battery."},
+                business_id="BIZ_TEST",
             )
             rec_write = self.tool_gateway.execute(req_write)
             self.assertEqual(rec_write.status, ExecutionStatus.SUCCESS)
@@ -748,6 +771,7 @@ class TestProdTruth01ExecutionTruthfulness(unittest.TestCase):
             request_hash="req_h_pub",
             status=ExecutionStatus.SUCCESS,
             execution_mode=ExecutionMode.REAL,
+            business_id="BIZ_TEST",
             data={"post_id": "POST-12345", "status": "LIVE"},
         )
         self.receipt_repo.save_receipt(pub_receipt)

@@ -53,7 +53,7 @@ class ConnectorRegistry:
         self._fallback_chains[capability_id.lower()] = [cid.lower() for cid in connector_ids]
 
     def get_fallback_chain(self, capability_id: str) -> List[str]:
-        """Get configured connector fallback chain for a capability."""
+        """Get configured fallback chain of connector IDs."""
         return self._fallback_chains.get(capability_id.lower(), [])
 
     def refresh_connector_health(self, connector_id: str) -> ConnectorHealthStatus:
@@ -65,6 +65,25 @@ class ConnectorRegistry:
 
         now = datetime.now(timezone.utc)
         conn.last_health_check = now
+
+        credential_authority = str(
+            (conn.configuration_metadata or {}).get("credential_authority") or ""
+        ).strip().lower()
+        if credential_authority == "connection_manager":
+            # Descriptor availability and credential readiness are separate facts.
+            # ConnectionManager/ConnectorControlPlane owns scope/account readiness;
+            # this legacy registry must not invent env-based credential health.
+            if conn.health_status == ConnectorHealthStatus.DISABLED:
+                return ConnectorHealthStatus.DISABLED
+            conn.health_status = ConnectorHealthStatus.AVAILABLE
+            self._credential_statuses[cid] = ConnectorCredentialStatus(
+                connector_id=cid,
+                credential_env_names=[],
+                state=CredentialState.UNKNOWN,
+                last_verified=now,
+                detail="Credential readiness delegated to ConnectionManager/ConnectorControlPlane",
+            )
+            return ConnectorHealthStatus.AVAILABLE
 
         # Check credentials if required
         if conn.authentication_type in (AuthenticationType.API_KEY, AuthenticationType.BEARER_TOKEN, AuthenticationType.OAUTH2):

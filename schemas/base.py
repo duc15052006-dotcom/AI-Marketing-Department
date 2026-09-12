@@ -11,6 +11,8 @@ from dataclasses import dataclass, field as dc_field, fields
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
+from schemas.model_hooks import run_model_post_init_hooks
+
 T = TypeVar("T", bound="BaseModel")
 
 
@@ -134,6 +136,10 @@ class BaseModel:
                         current_val = getattr(self, target_field)
                         validated_val = attr(cls, current_val)
                         setattr(self, target_field, validated_val)
+
+        # Infrastructure extension hooks run only after canonical field and
+        # class validation has completed. Hook failures propagate fail-closed.
+        run_model_post_init_hooks(self)
 
     def model_dump(self, mode: Optional[str] = None, **kwargs: Any) -> Dict[str, Any]:
         """Serialize model to dictionary."""

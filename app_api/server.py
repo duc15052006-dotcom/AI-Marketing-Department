@@ -63,6 +63,31 @@ def get_backend_state_file_path() -> Path:
     return runtime_dir / "backend_instance.json"
 
 
+def get_job_store_file_path() -> Path:
+    """Return the durable queue database in the canonical per-user runtime directory."""
+    return get_backend_state_file_path().with_name("jobs.sqlite3")
+
+
+def get_receipt_store_file_path() -> Path:
+    """Return the durable execution receipt / intent journal database path."""
+    return get_backend_state_file_path().with_name("execution_receipts.sqlite3")
+
+
+def get_provider_preflight_store_file_path() -> Path:
+    """Return the durable provider-preflight database beside other runtime state."""
+    return get_backend_state_file_path().with_name("provider_preflights.sqlite3")
+
+
+def get_provider_operation_store_file_path() -> Path:
+    """Return the durable external-operation database beside other runtime state."""
+    return get_backend_state_file_path().with_name("provider_operations.sqlite3")
+
+
+def get_connection_profile_store_file_path() -> Path:
+    """Return the durable non-secret connection-profile database."""
+    return get_backend_state_file_path().with_name("connection_profiles.sqlite3")
+
+
 def write_backend_state(host: str, port: int) -> None:
     state_path = get_backend_state_file_path()
     payload = {
@@ -75,7 +100,11 @@ def write_backend_state(host: str, port: int) -> None:
     }
     temp_path = state_path.with_suffix(".tmp")
     try:
-        temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        serialized = json.dumps(payload, indent=2)
+        with temp_path.open("w", encoding="utf-8") as state_file:
+            state_file.write(serialized)
+            state_file.flush()
+            os.fsync(state_file.fileno())
         temp_path.replace(state_path)
     except Exception as ex:
         logger.warning(f"Could not write backend state file: {ex}")
@@ -162,6 +191,13 @@ from integrations.models.config_service import GLOBAL_PROVIDER_CONFIG, ProviderC
 from connectors.analytics_connector import RealAnalyticsConnector
 from connectors.file_connector import RealFileConnector
 from connectors.publishing_connector import SandboxPublishingConnector
+from connections.manager import ConnectionManager
+from connections.secrets import SecureStoreSecretProvider
+from connectors.control_plane import ConnectorControlPlane
+from connectors.marketing.catalog import MarketingProviderCatalog, default_live_executors
+from connectors.marketing.operations import ProviderOperationRepository
+from connectors.marketing.preflight import ProviderPreflightRepository
+from connectors.marketing.registry import MarketingConnectorRegistry
 from connectors.registry import ConnectorRegistry
 from connectors.web_connector import RealWebConnector
 from knowledge.ingestion import IngestionFormat, KnowledgeIngestionRequest, KnowledgeLifecycleManager
@@ -176,6 +212,7 @@ from runtime.artifacts import DepartmentRunArtifact
 from runtime.context import ApprovalState, RuntimeContext, RuntimeStage, RuntimeStatus
 from runtime.context_compiler import ContextCompiler
 from runtime.engine import FiveAgentDepartmentRuntime, extract_explicit_user_constraints
+from runtime.job_store import SQLiteJobRepository
 from runtime.queue import ResourceLimiter, RunManager
 from integrations.models.settings_manager import (
     ModelSettingsManager,
@@ -184,6 +221,7 @@ from integrations.models.settings_manager import (
 )
 from integrations.models.provider_auth import provider_requires_api_key
 from tools.capabilities import CapabilityRegistry, RiskLevel
+from tools.dynamic_gateway.gateway import DynamicToolGateway
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
 from tools.security import (
     HumanApprovalRecord,
@@ -204,14 +242,62 @@ class DepartmentAppBackend:
     """Singleton backend managing application runtime state, chats, and workspaces."""
 
     def __init__(self) -> None:
+        self._closed = False
         self.cap_registry = CapabilityRegistry()
         self.policy_engine = PolicyEngine()
-        self.receipt_repo = ExecutionReceiptRepository()
-        self.tool_gateway = ToolGateway(
-            capability_registry=self.cap_registry,
+        self.receipt_repo = ExecutionReceiptRepository(
+            database_path=get_receipt_store_file_path()
+        )
+        self.execution_recovery_assessments = (
+            self.receipt_repo.reconcile_unfinished_intents()
+        )
+
+        # Compose the provider-neutral marketing control plane without granting
+        # LIVE execution. Account binding, credential access, and runtime LIVE
+        # opt-in remain separate explicit authorities.
+        self.conn_registry = ConnectorRegistry()
+        self.connection_manager = ConnectionManager(
+            SecureStoreSecretProvider(),
+            database_path=get_connection_profile_store_file_path(),
+        )
+        self.connector_control_plane = ConnectorControlPlane(
+            self.conn_registry,
+            self.connection_manager,
+        )
+        self.marketing_registry = MarketingConnectorRegistry(
+            self.connector_control_plane,
+            allow_live_registration=True,
+        )
+        self.provider_preflight_repository = ProviderPreflightRepository(
+            get_provider_preflight_store_file_path()
+        )
+        self.provider_operation_repository = ProviderOperationRepository(
+            get_provider_operation_store_file_path()
+        )
+        self.dynamic_tool_gateway = DynamicToolGateway(
+            base_registry=self.cap_registry,
+            marketing_registry=self.marketing_registry,
+            allow_live_marketing_execution=False,
             policy_engine=self.policy_engine,
             receipt_repository=self.receipt_repo,
         )
+        self.cap_registry = self.dynamic_tool_gateway.registry
+        self.tool_gateway = self.dynamic_tool_gateway.gateway
+        self.marketing_executor_registry = (
+            self.dynamic_tool_gateway.marketing_live_executor_registry
+        )
+        self.marketing_provider_catalog = MarketingProviderCatalog(
+            connector_registry=self.conn_registry,
+            marketing_registry=self.marketing_registry,
+            executor_registry=self.marketing_executor_registry,
+        )
+        self.marketing_provider_install_report = self.marketing_provider_catalog.install(
+            executors=default_live_executors(
+                preflight_repository=self.provider_preflight_repository,
+                operation_repository=self.provider_operation_repository,
+            )
+        )
+        self.marketing_sync_report = self.dynamic_tool_gateway.sync_marketing()
 
         # Register real local connectors with capability provider aliases
         self.web_conn = RealWebConnector()
@@ -246,7 +332,6 @@ class DepartmentAppBackend:
             context_compiler=self.context_compiler,
         )
 
-        self.conn_registry = ConnectorRegistry()
         self.biz_registry = BusinessRegistry()
         self.workspace = OperatorWorkspace(
             runtime=self.runtime,
@@ -273,10 +358,12 @@ class DepartmentAppBackend:
 
         # Context Compiler & Multi-Run Queue
         self.resource_limiter = ResourceLimiter()
+        self.job_repository = SQLiteJobRepository(get_job_store_file_path())
         self.run_manager = RunManager(
             runtime=self.runtime,
             max_workers=2,
             resource_limiter=self.resource_limiter,
+            job_repository=self.job_repository,
         )
 
         # Authoritative Model & Provider Settings Manager (PROD-MODEL-SETTINGS-01)
@@ -296,8 +383,26 @@ class DepartmentAppBackend:
             )
         )
 
+    def close(self) -> None:
+        """Release every process-owned runtime and SQLite authority exactly once."""
+        if self._closed:
+            return
+        self._closed = True
+        self.run_manager.shutdown(wait=True, cancel_pending=True)
+        for repository in (self.learning_repo, self.memory_repo, self.knowledge_repo):
+            close_repository = getattr(repository, "close", None)
+            if callable(close_repository):
+                close_repository()
+        self.job_repository.close()
+        self.provider_preflight_repository.close()
+        self.provider_operation_repository.close()
+        self.connection_manager.close()
+        self.dynamic_tool_gateway.close()
+        self.receipt_repo.close()
+
 
 APP_BACKEND = DepartmentAppBackend()
+atexit.register(APP_BACKEND.close)
 
 
 class DepartmentAPIHandler(BaseHTTPRequestHandler):
@@ -781,7 +886,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                     "build_id": "20260820-RELEASE-V1",
                     "status": "ONLINE",
                     "brain_version": "FIVE_AGENT_BRAIN_V1_RC3",
-                    "permanent_agents": ["cmo", "intelligence", "strategist", "creative", "performance"],
+                    "permanent_agents": ["cmo", "intelligence", "content", "creative", "performance"],
                     "permanent_agent_count": 5,
                     "chat_sessions_count": len(APP_BACKEND.chat_mgr._sessions),
                     "projects_count": len(APP_BACKEND.project_registry._projects),
@@ -792,11 +897,20 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
             )
             return
 
-        elif path in ("/api/system/health", "/api/connections"):
+        elif path == "/api/system/health":
             health = APP_BACKEND.workspace.inspect_connector_health()
             health["app_backend_version"] = "1.0.0"
             health["build_id"] = "20260820-RELEASE-V1"
             health["providers"] = self._authoritative_provider_report()
+            self._send_json(health)
+            return
+
+        elif path == "/api/connections":
+            health = APP_BACKEND.workspace.inspect_connector_health()
+            health["app_backend_version"] = "1.0.0"
+            health["build_id"] = "20260820-RELEASE-V1"
+            health["providers"] = self._authoritative_provider_report()
+            health["connection_profiles"] = self._connection_profiles_report()
             self._send_json(health)
             return
 
@@ -1172,6 +1286,23 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 "last_error_category": None,
             })
         return report
+
+    @staticmethod
+    def _connection_profiles_report() -> List[Dict[str, Any]]:
+        """Return UI-safe connection metadata without secret locators or values."""
+        return [
+            {
+                "connection_id": profile.connection_id,
+                "provider": profile.provider,
+                "display_name": profile.display_name,
+                "endpoint": profile.endpoint,
+                "enabled": profile.enabled,
+                "business_id": profile.business_id,
+                "project_ids": list(profile.project_ids),
+                "brand_ids": list(profile.brand_ids),
+            }
+            for profile in APP_BACKEND.connection_manager.list_profiles()
+        ]
 
     def do_POST(self) -> None:
         host = self.headers.get("Host", "")
@@ -1573,7 +1704,7 @@ class DepartmentAPIHandler(BaseHTTPRequestHandler):
                 format=fmt,
                 title=body.get("title", ""),
                 scope=body.get("scope", "GLOBAL"),
-                authority_level=AuthorityLevel[body.get("authority_level", "TIER_1_CANONICAL_GROUND_TRUTH")] if body.get("authority_level") in AuthorityLevel.__members__ else AuthorityLevel.TIER_1_CANONICAL_GROUND_TRUTH,
+                authority_level=AuthorityLevel[body.get("authority_level", "TIER_2_VERIFIED_RESEARCH")] if body.get("authority_level") in AuthorityLevel.__members__ else AuthorityLevel.TIER_2_VERIFIED_RESEARCH,
             )
             res = APP_BACKEND.workspace.knowledge_lifecycle.ingest(req)
             self._send_json({"success": res.success, "document_id": res.document_id, "chunk_count": res.chunk_count, "error": res.error})

@@ -264,6 +264,11 @@ class EvidenceItem(BaseModel):
     business_id: str = ""
     project_id: str = ""
 
+    # Causal execution provenance is copied verbatim from the source ObservationRecord.
+    # EvidenceBuilder is not an authority source and must never mint or replace either ID.
+    execution_id: str = ""
+    action_intent_id: Optional[str] = None
+
     source_platform: str
     source_type: str
     source_url_or_id: str
