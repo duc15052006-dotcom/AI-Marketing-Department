@@ -108,6 +108,24 @@ def _expected_seed(context: Any, output: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _assert_registry_context_compatible(context: Any) -> None:
+    """Fail closed if a different live context already owns this run id."""
+    run_id = str(getattr(context, "run_id", "") or "")
+    if not run_id:
+        _fail("RuntimeContext has no authoritative run_id for deployment binding.")
+
+    with _REGISTRY_LOCK:
+        existing_ref = _BOUND_CONTEXTS.get(run_id)
+        if existing_ref is None:
+            return
+        existing = existing_ref()
+        if existing is None:
+            _BOUND_CONTEXTS.pop(run_id, None)
+            return
+        if existing is not context:
+            _fail("A different live RuntimeContext is already registered for this run_id.")
+
+
 def prepare_final_cmo_checkpoint_binding(context: Any) -> bool:
     """Place an immutable deployment seed in working_state before checkpoint hashing."""
     if _enum_value(getattr(context, "current_stage", None)) != "FINAL_CMO":
@@ -123,6 +141,8 @@ def prepare_final_cmo_checkpoint_binding(context: Any) -> bool:
         _fail("Deployment-ready Final CMO output has no publishable Markdown content.")
     if not _deployment_approved(output):
         _fail("Deployment-ready Final CMO output is not explicitly deployment-approved.")
+
+    _assert_registry_context_compatible(context)
 
     # Already committed. Later WAITING/RUNNING approval checkpoints must not
     # silently rebind the deployment artifact.
@@ -140,6 +160,8 @@ def register_final_cmo_checkpoint(context: Any, checkpoint: Any, prepared: bool)
     """Attach derived checkpoint provenance and register the live bound context."""
     if not prepared:
         return
+
+    _assert_registry_context_compatible(context)
 
     output = getattr(context, "stage_outputs", {}).get("final_cmo")
     if not isinstance(output, dict) or output.get("status") != "READY_FOR_DEPLOYMENT":
@@ -160,13 +182,16 @@ def register_final_cmo_checkpoint(context: Any, checkpoint: Any, prepared: bool)
     if getattr(checkpoint, "calculate_checkpoint_hash")() != getattr(checkpoint, "checkpoint_hash", ""):
         _fail("Durable Final CMO checkpoint integrity verification failed.")
 
-    output[DEPLOYMENT_PROVENANCE_FIELD] = {
+    provenance = {
         **expected_seed,
         "checkpoint_id": str(getattr(checkpoint, "checkpoint_id", "")),
         "checkpoint_hash": str(getattr(checkpoint, "checkpoint_hash", "")),
     }
+    run_id = str(context.run_id)
     with _REGISTRY_LOCK:
-        _BOUND_CONTEXTS[str(context.run_id)] = weakref.ref(context)
+        _assert_registry_context_compatible(context)
+        output[DEPLOYMENT_PROVENANCE_FIELD] = provenance
+        _BOUND_CONTEXTS[run_id] = weakref.ref(context)
 
 
 def canonical_pending_approval_id(candidate_id: Optional[str]) -> Optional[str]:
@@ -301,6 +326,13 @@ def _deployment_model_post_init_hook(instance: Any) -> None:
     context = _get_bound_context(run_id)
     if context is None:
         _fail("No deployment-ready Final CMO context is registered for this runtime publish request.")
+    if run_id != str(getattr(context, "run_id", "") or ""):
+        _fail("Runtime publish request run scope does not match registered Final CMO context.")
+    for field_name in ("business_id", "project_id", "chat_id"):
+        if getattr(instance, field_name, None) != getattr(context, field_name, None):
+            _fail(
+                f"Runtime publish request {field_name} scope does not match registered Final CMO context."
+            )
     instance.parameters = build_final_cmo_publish_parameters(
         context,
         str(parameters.get("platform") or ""),
