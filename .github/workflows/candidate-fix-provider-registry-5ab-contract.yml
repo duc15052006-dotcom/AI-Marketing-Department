@@ -26,13 +26,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify exact repair parent
+      - name: Verify exact repair ancestry
         shell: pwsh
         run: |
           $expected = '06900344811bc424c20342624a4ca01d732a2572'
-          $parent = git rev-parse HEAD^
-          if ($parent -ne $expected) {
-            throw "unexpected repair parent: $parent (expected $expected)"
+          $grandparent = git rev-parse HEAD^^
+          if ($grandparent -ne $expected) {
+            throw "unexpected repair ancestry: $grandparent (expected $expected)"
           }
       - name: Install runtime dependencies
         shell: pwsh
@@ -46,14 +46,24 @@ jobs:
 
           path = Path('tests/test_prod_model_gateway_01_provider_registry.py')
           text = path.read_text(encoding='utf-8')
-          old = '''        # Provider A was invoked for all 6 stages of RUN-1
-          self.assertEqual(mock_a.generate.call_count, 6)'''
-          new = '''        # Six logical stages include Performance 5A/5B, so RUN-1 makes seven model calls.
-          self.assertEqual(mock_a.generate.call_count, 7)'''
-          count = text.count(old)
-          if count != 1:
-              raise RuntimeError(f'expected exactly one stale provider-registry anchor, found {count}')
-          text = text.replace(old, new, 1)
+          start_marker = '    def test_58_active_run_provider_disable_does_not_change_run_routing(self):'
+          end_marker = '    def test_59_new_run_observes_provider_disable(self):'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          section = text[start:end]
+
+          old_assert = 'self.assertEqual(mock_a.generate.call_count, 6)'
+          new_assert = 'self.assertEqual(mock_a.generate.call_count, 7)'
+          if section.count(old_assert) != 1:
+              raise RuntimeError(f'expected exactly one stale assertion inside test_58, found {section.count(old_assert)}')
+
+          old_comment = '# Provider A was invoked for all 6 stages of RUN-1'
+          new_comment = '# Six logical stages include Performance 5A/5B, so RUN-1 makes seven model calls.'
+          if section.count(old_comment) != 1:
+              raise RuntimeError(f'expected exactly one stale comment inside test_58, found {section.count(old_comment)}')
+
+          section = section.replace(old_assert, new_assert, 1).replace(old_comment, new_comment, 1)
+          text = text[:start] + section + text[end:]
           path.write_text(text, encoding='utf-8')
           '@ | python -
       - name: Run complete provider-registry regression
