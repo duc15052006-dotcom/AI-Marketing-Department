@@ -4,6 +4,13 @@ on:
   push:
     branches: [integration/final-main-reconciliation-v1]
 
+env:
+  PYTHONUTF8: '1'
+  PYTHONDONTWRITEBYTECODE: '1'
+  AI_MARKETING_KNOWLEDGE_EPHEMERAL: '1'
+  AI_MARKETING_MEMORY_EPHEMERAL: '1'
+  AI_MARKETING_LEARNING_EPHEMERAL: '1'
+
 permissions:
   contents: write
 
