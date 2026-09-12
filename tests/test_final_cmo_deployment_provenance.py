@@ -1,5 +1,6 @@
 """Regression tests for Final CMO deployment provenance binding."""
 
+import hashlib
 import unittest
 from types import SimpleNamespace
 
@@ -114,14 +115,70 @@ class TestFinalCmoDeploymentProvenance(unittest.TestCase):
         request = runtime.dispatched[0]
         self.assertEqual(request.parameters["content"], final_output["master_gtm_plan_markdown"])
         self.assertNotEqual(request.parameters["content"], "Campaign Go-To-Market Plan")
+        self.assertIs(request.parameters["deployment_approved"], True)
         self.assertEqual(request.parameters["final_cmo_checkpoint_id"], final_checkpoint.checkpoint_id)
         self.assertEqual(request.parameters["final_cmo_checkpoint_hash"], final_checkpoint.checkpoint_hash)
         self.assertEqual(
             request.parameters["final_cmo_output_hash"],
             final_output[DEPLOYMENT_PROVENANCE_FIELD]["output_hash"],
         )
+        self.assertEqual(
+            request.parameters["final_cmo_content_hash"],
+            hashlib.sha256(final_output["master_gtm_plan_markdown"].encode("utf-8")).hexdigest(),
+        )
+        self.assertEqual(
+            request.parameters["final_cmo_content_hash"],
+            final_output[DEPLOYMENT_PROVENANCE_FIELD]["content_hash"],
+        )
+        self.assertEqual(
+            request.parameters["final_cmo_manifest_hash"],
+            final_output[DEPLOYMENT_PROVENANCE_FIELD]["manifest_hash"],
+        )
+        self.assertIs(final_output[DEPLOYMENT_PROVENANCE_FIELD]["deployment_approved"], True)
         self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
         self.assertEqual(ctx.checkpoints[-1].pending_approval_id, "pending_appr_server_001")
+
+    def test_explicitly_unapproved_ready_output_cannot_bind_or_dispatch(self):
+        ctx = self._context("UNAPPROVED")
+        output = self._ready_output()
+        output["approval_status"] = "REJECTED"
+        output["claim_audit"]["authorization_status"] = "REJECTED"
+        ctx.stage_outputs["final_cmo"] = output
+        runtime = _RuntimeHarness()
+
+        with self.assertRaisesRegex(RuntimeError, DEPLOYMENT_ERROR_PREFIX):
+            ctx.create_checkpoint()
+
+        self.assertNotIn(DEPLOYMENT_PROVENANCE_FIELD, output)
+        with self.assertRaisesRegex(RuntimeError, DEPLOYMENT_ERROR_PREFIX):
+            runtime.request_publish_action(ctx, platform="linkedin")
+        self.assertEqual(runtime.dispatched, [])
+        self.assertEqual(ctx.execution_receipt_refs, [])
+
+    def test_approval_tamper_after_checkpoint_fails_closed_without_dispatch(self):
+        ctx = self._context("APPROVALTAMPER")
+        final_output, _ = self._bind_ready_output(ctx)
+        final_output["approval_status"] = "REJECTED"
+        final_output["claim_audit"]["authorization_status"] = "REJECTED"
+        runtime = _RuntimeHarness()
+
+        with self.assertRaisesRegex(RuntimeError, DEPLOYMENT_ERROR_PREFIX):
+            runtime.request_publish_action(ctx, platform="linkedin")
+
+        self.assertEqual(runtime.dispatched, [])
+        self.assertEqual(ctx.execution_receipt_refs, [])
+
+    def test_provenance_deployment_approval_tamper_fails_closed_without_dispatch(self):
+        ctx = self._context("PROVAPPROVALTAMPER")
+        final_output, _ = self._bind_ready_output(ctx)
+        final_output[DEPLOYMENT_PROVENANCE_FIELD]["deployment_approved"] = False
+        runtime = _RuntimeHarness()
+
+        with self.assertRaisesRegex(RuntimeError, DEPLOYMENT_ERROR_PREFIX):
+            runtime.request_publish_action(ctx, platform="linkedin")
+
+        self.assertEqual(runtime.dispatched, [])
+        self.assertEqual(ctx.execution_receipt_refs, [])
 
     def test_markdown_tamper_after_checkpoint_fails_closed(self):
         ctx = self._context("TAMPER")

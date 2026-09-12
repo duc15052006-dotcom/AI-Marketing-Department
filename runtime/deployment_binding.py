@@ -22,6 +22,7 @@ DEPLOYMENT_BINDING_STATE_KEY = "final_cmo_deployment_binding"
 DEPLOYMENT_PROVENANCE_FIELD = "deployment_provenance"
 DEPLOYMENT_ERROR_PREFIX = "FINAL_CMO_DEPLOYMENT_PROVENANCE_REQUIRED"
 LEGACY_RUNTIME_PUBLISH_PLACEHOLDER = "Campaign Go-To-Market Plan"
+_APPROVED_DEPLOYMENT_AUTHORIZATION_STATUSES = frozenset({"APPROVED", "APPROVED_WITH_CONDITIONS"})
 
 _BOUND_CONTEXTS: Dict[str, weakref.ReferenceType[Any]] = {}
 _APPROVAL_REFERENCE_BY_EXECUTION: Dict[str, str] = {}
@@ -34,6 +35,10 @@ def _fail(detail: str) -> None:
 
 def _enum_value(value: Any) -> str:
     return str(getattr(value, "value", value) or "")
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def final_cmo_semantic_output_hash(output: Dict[str, Any]) -> str:
@@ -52,6 +57,19 @@ def final_cmo_semantic_output_hash(output: Dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _deployment_approved(output: Dict[str, Any]) -> bool:
+    """Return True only when Final CMO authorization is explicitly deployment-approved."""
+    approval_status = str(output.get("approval_status") or "").strip().upper()
+    claim_audit = output.get("claim_audit")
+    if not isinstance(claim_audit, dict):
+        return False
+    audit_status = str(claim_audit.get("authorization_status") or "").strip().upper()
+    return (
+        approval_status in _APPROVED_DEPLOYMENT_AUTHORIZATION_STATUSES
+        and audit_status == approval_status
+    )
+
+
 def _binding_id(run_id: str, output_hash: str) -> str:
     raw = f"FINAL_CMO_DEPLOYMENT:{run_id}:{output_hash}"
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest().upper()
@@ -60,6 +78,22 @@ def _binding_id(run_id: str, output_hash: str) -> str:
 
 def _expected_seed(context: Any, output: Dict[str, Any]) -> Dict[str, Any]:
     output_hash = final_cmo_semantic_output_hash(output)
+    content = output.get("master_gtm_plan_markdown")
+    content_hash = _sha256_text(content) if isinstance(content, str) else ""
+    manifest = {
+        "artifact_type": "FINAL_CMO_MASTER_GTM_PLAN_MARKDOWN",
+        "hash_algorithm": "sha256",
+        "content_hash": content_hash,
+        "semantic_output_hash": output_hash,
+    }
+    manifest_hash = _sha256_text(
+        json.dumps(
+            manifest,
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    )
     return {
         "run_id": str(context.run_id),
         "business_id": getattr(context, "business_id", None),
@@ -67,7 +101,10 @@ def _expected_seed(context: Any, output: Dict[str, Any]) -> Dict[str, Any]:
         "chat_id": getattr(context, "chat_id", None),
         "binding_id": _binding_id(str(context.run_id), output_hash),
         "status": "READY_FOR_DEPLOYMENT",
+        "deployment_approved": _deployment_approved(output),
         "output_hash": output_hash,
+        "content_hash": content_hash,
+        "manifest_hash": manifest_hash,
     }
 
 
@@ -84,13 +121,18 @@ def prepare_final_cmo_checkpoint_binding(context: Any) -> bool:
     content = output.get("master_gtm_plan_markdown")
     if not isinstance(content, str) or not content.strip():
         _fail("Deployment-ready Final CMO output has no publishable Markdown content.")
+    if not _deployment_approved(output):
+        _fail("Deployment-ready Final CMO output is not explicitly deployment-approved.")
 
     # Already committed. Later WAITING/RUNNING approval checkpoints must not
     # silently rebind the deployment artifact.
     if isinstance(output.get(DEPLOYMENT_PROVENANCE_FIELD), dict):
         return False
 
-    getattr(context, "working_state")[DEPLOYMENT_BINDING_STATE_KEY] = _expected_seed(context, output)
+    expected_seed = _expected_seed(context, output)
+    if expected_seed.get("deployment_approved") is not True:
+        _fail("Final CMO deployment approval could not be bound into checkpoint provenance.")
+    getattr(context, "working_state")[DEPLOYMENT_BINDING_STATE_KEY] = expected_seed
     return True
 
 
@@ -102,8 +144,12 @@ def register_final_cmo_checkpoint(context: Any, checkpoint: Any, prepared: bool)
     output = getattr(context, "stage_outputs", {}).get("final_cmo")
     if not isinstance(output, dict) or output.get("status") != "READY_FOR_DEPLOYMENT":
         _fail("Final CMO changed before deployment checkpoint registration.")
+    if not _deployment_approved(output):
+        _fail("Final CMO authorization changed before deployment checkpoint registration.")
 
     expected_seed = _expected_seed(context, output)
+    if expected_seed.get("deployment_approved") is not True:
+        _fail("Final CMO deployment approval is not explicitly true.")
     snapshot = getattr(checkpoint, "working_state_snapshot", {}) or {}
     if snapshot.get(DEPLOYMENT_BINDING_STATE_KEY) != expected_seed:
         _fail("Final CMO deployment seed was not committed by the checkpoint.")
@@ -150,6 +196,8 @@ def build_final_cmo_publish_parameters(context: Any, platform: str) -> Dict[str,
         _fail("Final CMO output is missing.")
     if final_output.get("status") != "READY_FOR_DEPLOYMENT":
         _fail("Final CMO is not READY_FOR_DEPLOYMENT.")
+    if not _deployment_approved(final_output):
+        _fail("Final CMO is not explicitly deployment-approved.")
 
     content = final_output.get("master_gtm_plan_markdown")
     if not isinstance(content, str) or not content.strip():
@@ -158,8 +206,12 @@ def build_final_cmo_publish_parameters(context: Any, platform: str) -> Dict[str,
     provenance = final_output.get(DEPLOYMENT_PROVENANCE_FIELD)
     if not isinstance(provenance, dict):
         _fail("Final CMO deployment provenance is missing.")
+    if provenance.get("deployment_approved") is not True:
+        _fail("Final CMO provenance does not carry deployment_approved=true.")
 
     expected_seed = _expected_seed(context, final_output)
+    if expected_seed.get("deployment_approved") is not True:
+        _fail("Current Final CMO authorization is no longer deployment-approved.")
     for key, value in expected_seed.items():
         if provenance.get(key) != value:
             _fail(f"Final CMO provenance field '{key}' does not match current semantic output/scope.")
@@ -210,8 +262,11 @@ def build_final_cmo_publish_parameters(context: Any, platform: str) -> Dict[str,
         "content": content,
         "final_cmo_binding_id": expected_seed["binding_id"],
         "final_cmo_output_hash": expected_seed["output_hash"],
+        "final_cmo_content_hash": expected_seed["content_hash"],
+        "final_cmo_manifest_hash": expected_seed["manifest_hash"],
         "final_cmo_checkpoint_id": checkpoint_id,
         "final_cmo_checkpoint_hash": checkpoint_hash,
+        "deployment_approved": True,
     }
 
 
