@@ -2,8 +2,9 @@
 
 The former Strategist ASI was removed from the permanent five-agent architecture.
 These tests intentionally verify that no strategist DNA file is resurrected, that
-Content owns the semantic/content responsibilities that replaced it, and that the
-historical Strategist evaluation surface cannot be mistaken for current authority.
+Content owns the semantic/content responsibilities that replaced it, that CMO owns
+executive strategy, and that the historical Strategist evaluation surface cannot be
+mistaken for current authority.
 """
 
 import unittest
@@ -19,6 +20,8 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.strategist_path = root / "strategist" / "agent.md"
         self.content_path = root / "content" / "agent.md"
         self.legacy_strategist_evaluation_path = repo_root / "STRATEGIST_EVALUATION.md"
+        self.cmo_evaluation_path = repo_root / "CMO_EVALUATION.md"
+        self.content_evaluation_path = repo_root / "CONTENT_EVALUATION.md"
         self.assertFalse(
             self.strategist_path.exists(),
             "strategist/agent.md must not exist after canonical Content migration",
@@ -28,6 +31,8 @@ class TestContentMigrationDefinition(unittest.TestCase):
             self.legacy_strategist_evaluation_path.exists(),
             "legacy Strategist evaluation migration landmark does not exist",
         )
+        self.assertTrue(self.cmo_evaluation_path.exists(), "CMO_EVALUATION.md does not exist")
+        self.assertTrue(self.content_evaluation_path.exists(), "CONTENT_EVALUATION.md does not exist")
         self.content = self.content_path.read_text(encoding="utf-8")
         self.frontmatter = parse_yaml_frontmatter(self.content)
 
@@ -85,6 +90,31 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", legacy)
         self.assertIn("must never recreate a sixth agent", legacy)
         self.assertNotIn("The Strategist acts as the strategic engine", legacy)
+
+    def test_legacy_benchmark_ownership_is_split_across_cmo_and_content(self):
+        cmo_eval = self.cmo_evaluation_path.read_text(encoding="utf-8")
+        content_eval = self.content_evaluation_path.read_text(encoding="utf-8")
+
+        self.assertIn("There is no permanent Strategist identity and no sixth agent", cmo_eval)
+        self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", cmo_eval)
+        self.assertNotIn("The Strategist acts as the strategic engine", cmo_eval)
+        self.assertNotIn("Strategist:", cmo_eval)
+
+        cmo_owned_legacy_ids = tuple(i for i in range(1, 26) if i not in (8, 18))
+        for legacy_id in cmo_owned_legacy_ids:
+            self.assertIn(
+                f"Legacy S{legacy_id}",
+                cmo_eval,
+                f"CMO evaluation lost migrated executive-strategy coverage for legacy S{legacy_id}",
+            )
+
+        self.assertNotIn("### Legacy S8 ", cmo_eval)
+        self.assertNotIn("### Legacy S18 ", cmo_eval)
+        self.assertIn("Legacy S8", content_eval)
+        self.assertIn("Legacy S18", content_eval)
+        self.assertIn("exactly five permanent ASIs", content_eval)
+        self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", content_eval)
+        self.assertIn("Creative then owns visual concepts", content_eval)
 
 
 if __name__ == "__main__":
