@@ -1223,8 +1223,8 @@ class TestProdModelGateway01ProviderRegistry(unittest.TestCase):
         out5 = runtime.execute_stage_performance(ctx1)
         out6 = runtime.execute_stage_final_cmo(ctx1)
 
-        # Provider A was invoked for all 6 stages of RUN-1
-        self.assertEqual(mock_a.generate.call_count, 6)
+        # Six logical stages include Performance 5A/5B, so RUN-1 makes seven model calls.
+        self.assertEqual(mock_a.generate.call_count, 7)
         mock_b.generate.assert_not_called()
 
     def test_59_new_run_observes_provider_disable(self):
