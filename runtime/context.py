@@ -14,6 +14,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from schemas.base import BaseModel, Field
+from runtime.deployment_binding import (
+    canonical_pending_approval_id,
+    prepare_final_cmo_checkpoint_binding,
+    register_final_cmo_checkpoint,
+)
 
 
 class RunIdAlreadyExistsError(RuntimeError):
@@ -264,6 +269,8 @@ class RuntimeContext(BaseModel):
 
     def create_checkpoint(self, pending_approval_id: Optional[str] = None) -> ExecutionCheckpoint:
         """Create and record an immutable checkpoint of the current state."""
+        deployment_binding_prepared = prepare_final_cmo_checkpoint_binding(self)
+        authoritative_pending_id = canonical_pending_approval_id(pending_approval_id)
         chkpt = ExecutionCheckpoint(
             run_id=self.run_id,
             business_id=self.business_id,
@@ -274,11 +281,12 @@ class RuntimeContext(BaseModel):
             completed_stages=list(self.stage_outputs.keys()),
             receipt_ids=list(self.execution_receipt_refs),
             approval_state=ApprovalState.PENDING_APPROVAL if self.status == RuntimeStatus.WAITING_FOR_APPROVAL else ApprovalState.NOT_REQUIRED,
-            pending_approval_id=pending_approval_id,
+            pending_approval_id=authoritative_pending_id,
             working_state_snapshot=dict(self.working_state),
         )
         chkpt.checkpoint_hash = chkpt.calculate_checkpoint_hash()
         self.checkpoints.append(chkpt)
+        register_final_cmo_checkpoint(self, chkpt, deployment_binding_prepared)
         return chkpt
 
     def compute_context_hash(self) -> str:

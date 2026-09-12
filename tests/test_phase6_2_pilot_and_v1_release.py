@@ -385,25 +385,22 @@ class TestPhase62PilotAndV1Release(unittest.TestCase):
         unapproved_receipt = self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(unapproved_receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
         self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
+        self.assertTrue(unapproved_receipt.approval_reference)
 
-        # Checkpoint recorded before approval
+        # Checkpoint recorded before approval and bound to ToolGateway's exact pending action
         chkpt_pre = ctx.checkpoints[-1]
         self.assertEqual(chkpt_pre.approval_state, ApprovalState.PENDING_APPROVAL)
+        self.assertEqual(chkpt_pre.pending_approval_id, unapproved_receipt.approval_reference)
 
-        # Register a pending approval and approve it through proper semantics
-        # Use same parameters that request_publish_action will use
+        # Approve the server-originated pending request. Do not manufacture a
+        # second approval record with a parallel/placeholder payload.
         policy = self.runtime.tool_gateway.policy_engine
-        pending = policy.create_pending_approval(
-            capability_id="social_publishing",
-            parameters={"platform": "linkedin", "content": "Campaign Go-To-Market Plan"},
-            risk_level=RiskLevel.HIGH,
-            run_id=ctx.run_id,
-            business_id=ctx.business_id,
-        )
         ok, approval_record, _ = policy.approve_pending_action(
-            pending.pending_approval_id, approved_by="Executive VP of Marketing"
+            unapproved_receipt.approval_reference,
+            approved_by="Executive VP of Marketing",
         )
         self.assertTrue(ok)
+        self.assertIsNotNone(approval_record)
 
         approve_ok = self.workspace.approve_gated_action(
             run_id=ctx.run_id,
