@@ -62,6 +62,7 @@ from runtime.progress import (
     runtime_stage_to_progress_stage,
 )
 from runtime.context_compiler import ContextCompiler
+from runtime.deployment_binding import build_final_cmo_publish_parameters
 from runtime.handoff import (
     HANDOFF_PROMPT_INSTRUCTION,
     HandoffStreamFilter,
@@ -2748,11 +2749,12 @@ class FiveAgentDepartmentRuntime:
 
     def request_publish_action(self, context: RuntimeContext, platform: str = "linkedin", approval_token: Optional[str] = None) -> ExecutionReceipt:
         """Attempt to execute a publishing action, triggering Human Approval Gate if unapproved."""
+        publish_parameters = build_final_cmo_publish_parameters(context, platform)
         pub_req = ToolRequest(
             run_id=context.run_id,
             agent_id="cmo",
             capability_id="social_publishing",
-            parameters={"platform": platform, "content": "Campaign Go-To-Market Plan"},
+            parameters=publish_parameters,
             approval_token=approval_token,
             business_id=context.business_id,
             project_id=context.project_id,
@@ -2764,7 +2766,9 @@ class FiveAgentDepartmentRuntime:
 
         if receipt.status == ExecutionStatus.APPROVAL_REQUIRED:
             context.status = RuntimeStatus.WAITING_FOR_APPROVAL
-            context.create_checkpoint(pending_approval_id=receipt.execution_id)
+            context.create_checkpoint(
+                pending_approval_id=receipt.approval_reference or receipt.execution_id
+            )
         elif receipt.status == ExecutionStatus.SUCCESS:
             context.status = RuntimeStatus.RUNNING
             context.create_checkpoint()
