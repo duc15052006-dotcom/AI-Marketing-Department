@@ -28,6 +28,7 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.security_model_path = repo_root / "SECURITY_MODEL.md"
         self.ui_permission_model_path = repo_root / "UI_PERMISSION_MODEL.md"
         self.roadmap_path = repo_root / "ROADMAP.md"
+        self.creative_engine_path = repo_root / "CREATIVE_ENGINE.md"
         self.assertFalse(
             self.strategist_path.exists(),
             "strategist/agent.md must not exist after canonical Content migration",
@@ -43,6 +44,7 @@ class TestContentMigrationDefinition(unittest.TestCase):
             self.security_model_path,
             self.ui_permission_model_path,
             self.roadmap_path,
+            self.creative_engine_path,
         ):
             self.assertTrue(required_path.exists(), f"required canonical/migration document missing: {required_path.name}")
         self.content = self.content_path.read_text(encoding="utf-8")
@@ -184,6 +186,19 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.assertIn("exactly five permanent logical agents", roadmap)
         self.assertIn("an empty fallback chain means no fallback", roadmap)
         self.assertNotIn("### PHASE 1 — Agent Core & Foundational Architecture (CURRENT)", roadmap)
+
+    def test_creative_engine_preserves_content_semantics_and_media_boundary(self):
+        creative_engine = self.creative_engine_path.read_text(encoding="utf-8")
+
+        self.assertIn("The Creative Engine does **not** replace the Content ASI", creative_engine)
+        self.assertIn("**Content** — message architecture, hooks, copy, scripts, CTA wording", creative_engine)
+        self.assertIn("**Creative** — visual/multimedia concept, art direction, storyboard", creative_engine)
+        self.assertIn("The hook/script/CTA identifiers point back to Content-owned semantic artifacts", creative_engine)
+        self.assertIn("Producing a media file does not mean it was published", creative_engine)
+        self.assertIn("examples only", creative_engine)
+        self.assertNotIn("│ Hook Generation │", creative_engine)
+        self.assertNotIn("│ Scriptwriting   │", creative_engine)
+        self.assertNotIn("cryptographic metadata manifest", creative_engine)
 
 
 if __name__ == "__main__":
