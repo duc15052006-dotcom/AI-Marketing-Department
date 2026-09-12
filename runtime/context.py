@@ -102,7 +102,12 @@ class ExecutionCheckpoint(BaseModel):
             separators=(",", ":"),
             default=str,
         )
-        raw = f"{self.run_id}:{self.stage.value}:{self.status.value}:{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:{self.approval_state.value}:{working_state}"
+        raw = (
+            f"{self.run_id}:{self.stage.value}:{self.status.value}:"
+            f"{json.dumps(self.completed_stages)}:{json.dumps(self.receipt_ids)}:"
+            f"{self.approval_state.value}:{self.pending_approval_id}:"
+            f"{self.business_id}:{self.project_id}:{self.chat_id}:{working_state}"
+        )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
