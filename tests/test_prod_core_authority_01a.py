@@ -203,6 +203,7 @@ class TestDefect1RunPinnedFailOpen(unittest.TestCase):
         ctx = rt.start_run(objective="Test pin", business_id="BIZ_001")
         ctx.model_policy = {"policy": {"totally": "invalid", "missing_fields": True}}
 
+        # After fix: _call_agent_llm raises RuntimeError on reconstruction failure
         with self.assertRaises(RuntimeError) as cm:
             rt._call_agent_llm(
                 agent_name="cmo",
@@ -247,7 +248,8 @@ class TestDefect1RunPinnedFailOpen(unittest.TestCase):
             user_prompt="Test",
             context=ctx,
         )
-        self.assertEqual(gw.call_count, 0)
+        # After fix: 1 call only (no retry), TypeError propagates as error
+        self.assertEqual(gw.call_count, 0)  # generate() never succeeded
         self.assertIsNotNone(err)
         self.assertIn("TypeErrorGateway", err)
 
@@ -261,6 +263,8 @@ class TestDefect1RunPinnedFailOpen(unittest.TestCase):
 
         ctx = rt.start_run(objective="Test drift", business_id="BIZ_001")
         ctx.model_policy = {"broken": True}
+
+        # Mutate the live gateway to configuration B
         rt.model_gateway.model_policy = ModelPolicy(
             global_target=ModelTarget(provider_id="provider_b", model_id="model_v2"),
             configuration_version="v2",
@@ -289,6 +293,7 @@ class TestDefect2DualExecutionAuthority(unittest.TestCase):
         rt = _build_runtime(gateway=gw)
         ws = OperatorWorkspace(runtime=rt)
 
+        # Track if execute_run is called
         execute_run_called = [False]
         original_execute_run = rt.execute_run
         def tracking_execute_run(ctx):
@@ -296,6 +301,7 @@ class TestDefect2DualExecutionAuthority(unittest.TestCase):
             return original_execute_run(ctx)
         rt.execute_run = tracking_execute_run
 
+        # Track individual stage calls
         called_stages: List[str] = []
         for stage_name, attr in [
             ("cmo_initial", "execute_stage_cmo_initial"),
@@ -318,7 +324,9 @@ class TestDefect2DualExecutionAuthority(unittest.TestCase):
             objective="Test canonical delegation",
         )
 
+        # After fix: execute_run IS called (workspace delegates)
         self.assertTrue(execute_run_called[0])
+        # All 6 stages are called through execute_run
         self.assertEqual(called_stages, [
             "cmo_initial", "intelligence", "content",
             "creative", "performance", "final_cmo",
@@ -351,19 +359,24 @@ class TestDefect3AutoApprovalAuthority(unittest.TestCase):
         gw = MockScriptedGateway()
         rt = _build_runtime(gateway=gw)
 
+        # Create a pending approval for the run
         ctx = rt.start_run(objective="Test approval", business_id="BIZ_001",
                            trusted_run_id="RUN-AUTO-TEST-001")
         _bind_deployment_ready_final_cmo(ctx)
 
+        # Request a publish action to create a pending approval
         rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
         self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
 
+        # Call approve_gated_action with NO token and NO pending_id
         ws = OperatorWorkspace(runtime=rt)
         result = ws.approve_gated_action(
             run_id="RUN-AUTO-TEST-001",
             approval_token=None,
             pending_approval_id=None,
         )
+
+        # After fix: must fail-closed — no auto-approval without explicit token or pending_id
         self.assertFalse(result)
 
 
@@ -417,23 +430,28 @@ class TestRunImmutability(unittest.TestCase):
         )
         rt = _build_runtime_with_gateway(model_policy=policy_a)
 
+        # Start RUN-A
         ctx_a = rt.start_run(objective="Run A", business_id="BIZ_A",
                              trusted_run_id="RUN-IMMUT-A")
 
+        # Verify pinned policy is stored
         stored_pol = ctx_a.model_policy
         self.assertIn("policy", stored_pol)
         self.assertEqual(stored_pol["policy"]["global_target"]["provider_id"], "provider_a")
         self.assertEqual(stored_pol["configuration_version"], "v1")
 
+        # Mutate live gateway to config B
         policy_b = ModelPolicy(
             global_target=ModelTarget(provider_id="provider_b", model_id="model_v2"),
             configuration_version="v2",
         )
         rt.model_gateway.model_policy = policy_b
 
+        # Execute RUN-A — should still use A's pinned config
         ctx_a, _, art_a = rt.execute_run(ctx_a)
         self.assertEqual(art_a.run_id, "RUN-IMMUT-A")
 
+        # The stored policy should still be config A
         stored_pol_after = ctx_a.model_policy
         self.assertEqual(stored_pol_after["configuration_version"], "v1")
         self.assertEqual(stored_pol_after["policy"]["global_target"]["provider_id"], "provider_a")
@@ -446,15 +464,18 @@ class TestRunImmutability(unittest.TestCase):
         )
         rt = _build_runtime_with_gateway(model_policy=policy_a)
 
+        # Start RUN-A under config A
         ctx_a = rt.start_run(objective="Run A", business_id="BIZ_A",
                              trusted_run_id="RUN-IMMUT-A2")
 
+        # Mutate to config B
         policy_b = ModelPolicy(
             global_target=ModelTarget(provider_id="provider_b", model_id="model_v2"),
             configuration_version="v2",
         )
         rt.model_gateway.model_policy = policy_b
 
+        # Start RUN-B under config B
         ctx_b = rt.start_run(objective="Run B", business_id="BIZ_B",
                              trusted_run_id="RUN-IMMUT-B")
 
@@ -543,6 +564,7 @@ class TestFailureShortCircuit(unittest.TestCase):
             objective="Fail at performance", business_id="BIZ_001"
         )
 
+        # An unreached Final CMO must not start after a failed prerequisite stage.
         self.assertFalse(final_cmo_called[0])
         self.assertEqual(final_out.get("status"), "NOT_REACHED")
         self.assertEqual(final_out.get("failed_stage"), "PERFORMANCE")
@@ -575,6 +597,7 @@ class TestCrossRunApprovalIsolation(unittest.TestCase):
                              trusted_run_id="RUN-CROSS-B")
         _bind_deployment_ready_final_cmo(ctx_b)
 
+        # Token from RUN-A used in RUN-B — must fail
         rec = rt.request_publish_action(ctx_b, platform="linkedin",
                                          approval_token=rec_a.approval_token)
         self.assertNotEqual(rec.status.value, "SUCCESS")
@@ -663,6 +686,7 @@ class TestPublishingRequiresHumanApproval(unittest.TestCase):
         _bind_deployment_ready_final_cmo(ctx)
         rec = rt.request_publish_action(ctx, platform="linkedin", approval_token=None)
 
+        # Must be WAITING_FOR_APPROVAL, not SUCCESS
         self.assertEqual(rec.status, ExecutionStatus.APPROVAL_REQUIRED)
         self.assertEqual(ctx.status, RuntimeStatus.WAITING_FOR_APPROVAL)
 
@@ -778,6 +802,8 @@ class TestSecurityUIAuthRegression(unittest.TestCase):
         )
         ok, rec, _ = policy.approve_pending_action(pending.pending_approval_id, approved_by="Op")
         self.assertTrue(ok)
+
+        # Mark as consumed
         rec.consumed = True
 
         tool_gw = ToolGateway(capability_registry=CapabilityRegistry(), policy_engine=policy)
@@ -862,6 +888,8 @@ class TestTypeErrorFallbackRemoval(unittest.TestCase):
             context=ctx,
         )
 
+        # After fix: TypeError is a real error — no legacy retry fallback
+        # call_count = 0 because generate() was never successfully called
         self.assertEqual(gw.call_count, 0)
         self.assertIsNotNone(err)
         self.assertIn("TypeErrorGateway", err)
@@ -880,6 +908,7 @@ class TestStartRunSnapshotFailure(unittest.TestCase):
         gw.model_policy = ModelPolicy(
             global_target=ModelTarget(provider_id="p", model_id="m"),
         )
+        # Make snapshot() raise
         gw.provider_registry = MagicMock()
         gw.provider_registry.snapshot.side_effect = RuntimeError("SNAPSHOT_FAILURE")
 
@@ -890,6 +919,8 @@ class TestStartRunSnapshotFailure(unittest.TestCase):
             memory_repo=LocalMemoryRepository(),
         )
 
+        # Before fix: start_run silently swallows and creates partial pol_dict
+        # After fix: start_run raises RUN_PINNED_MODEL_CONFIGURATION_INVALID
         with self.assertRaises(RuntimeError) as ctx:
             rt.start_run(objective="Snapshot failure test", business_id="BIZ_001")
         self.assertIn("RUN_PINNED_MODEL_CONFIGURATION_INVALID", str(ctx.exception))
