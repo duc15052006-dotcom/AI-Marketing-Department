@@ -386,8 +386,8 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
 
         def guarded_gen(req: ModelRequest) -> ModelResponse:
             call_count[0] += 1
-            if call_count[0] <= 5:
-                # Stages 1-5 (CMO initial, Intel, Strat, Crtv, Perf) succeed
+            if call_count[0] <= 6:
+                # Calls 1-6 succeed: CMO initial, Intelligence, Content, Creative, Performance 5A, Performance 5B
                 return ModelResponse(
                     request_id=req.request_id,
                     provider="mock_provider",
@@ -395,7 +395,7 @@ class TestPhase1ARuntimeIntegrity(unittest.TestCase):
                     status=ModelResponseStatus.SUCCESS,
                     content=f"Stage {call_count[0]} Successful Deliverable",
                 )
-            # Stage 6 CMO Final fails
+            # Call 7 / Stage 6 Final CMO fails
             return ModelResponse(
                 request_id=req.request_id,
                 provider="mock_provider",
