@@ -3,8 +3,8 @@
 The former Strategist ASI was removed from the permanent five-agent architecture.
 These tests intentionally verify that no strategist DNA file is resurrected, that
 Content owns the semantic/content responsibilities that replaced it, that CMO owns
-executive strategy, and that the historical Strategist evaluation surface cannot be
-mistaken for current authority.
+executive strategy, and that historical Strategist surfaces cannot be mistaken for
+current authority.
 """
 
 import unittest
@@ -22,17 +22,23 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.legacy_strategist_evaluation_path = repo_root / "STRATEGIST_EVALUATION.md"
         self.cmo_evaluation_path = repo_root / "CMO_EVALUATION.md"
         self.content_evaluation_path = repo_root / "CONTENT_EVALUATION.md"
+        self.source_of_truth_path = repo_root / "SOURCE_OF_TRUTH.md"
+        self.architecture_path = repo_root / "ARCHITECTURE.md"
+        self.agent_protocol_path = repo_root / "AGENT_PROTOCOL.md"
         self.assertFalse(
             self.strategist_path.exists(),
             "strategist/agent.md must not exist after canonical Content migration",
         )
         self.assertTrue(self.content_path.exists(), "content/agent.md does not exist")
-        self.assertTrue(
-            self.legacy_strategist_evaluation_path.exists(),
-            "legacy Strategist evaluation migration landmark does not exist",
-        )
-        self.assertTrue(self.cmo_evaluation_path.exists(), "CMO_EVALUATION.md does not exist")
-        self.assertTrue(self.content_evaluation_path.exists(), "CONTENT_EVALUATION.md does not exist")
+        for required_path in (
+            self.legacy_strategist_evaluation_path,
+            self.cmo_evaluation_path,
+            self.content_evaluation_path,
+            self.source_of_truth_path,
+            self.architecture_path,
+            self.agent_protocol_path,
+        ):
+            self.assertTrue(required_path.exists(), f"required canonical/migration document missing: {required_path.name}")
         self.content = self.content_path.read_text(encoding="utf-8")
         self.frontmatter = parse_yaml_frontmatter(self.content)
 
@@ -115,6 +121,40 @@ class TestContentMigrationDefinition(unittest.TestCase):
         self.assertIn("exactly five permanent ASIs", content_eval)
         self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", content_eval)
         self.assertIn("Creative then owns visual concepts", content_eval)
+
+    def test_authoritative_docs_define_only_canonical_five_agents(self):
+        source = self.source_of_truth_path.read_text(encoding="utf-8")
+        architecture = self.architecture_path.read_text(encoding="utf-8")
+        protocol = self.agent_protocol_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            "`CMO`, `Intelligence`, `Content`, `Creative`, and `Performance`",
+            source,
+        )
+        self.assertIn("no permanent Strategist agent and no Agent 6", source)
+        self.assertIn("Final CMO reuses CMO", source)
+        self.assertIn("An empty fallback chain means no fallback", source)
+        self.assertIn("chronological implementation/evaluation history", source)
+        self.assertNotIn(
+            "`CMO`, `Intelligence`, `Strategist`, `Creative`, and `Performance`",
+            source,
+        )
+
+        self.assertIn("## 2. Exactly five permanent agents", architecture)
+        self.assertIn("Historical `STRATEGIST` / `STRATEGY` names are not permanent identities", architecture)
+        self.assertIn("3. CONTENT", architecture)
+        self.assertIn("6. CMO (final; same CMO identity)", architecture)
+        self.assertIn("An empty fallback chain grants no fallback authority", architecture)
+        self.assertNotIn("### 2.3 Strategist", architecture)
+        self.assertNotIn("3. STRATEGIST:", architecture)
+
+        self.assertIn("All permanent inter-agent communication is bounded to exactly five logical identities", protocol)
+        self.assertIn("CMO | INTELLIGENCE | CONTENT | CREATIVE | PERFORMANCE", protocol)
+        self.assertIn("INTELLIGENCE\n   ↓\nCONTENT", protocol)
+        self.assertIn("Final CMO is not Agent 6", protocol)
+        self.assertIn("An empty fallback chain means no fallback", protocol)
+        self.assertNotIn('"supporting_agents": ["STRATEGIST"]', protocol)
+        self.assertNotIn("Pass validated ResearchReport to STRATEGIST", protocol)
 
 
 if __name__ == "__main__":
