@@ -1,0 +1,72 @@
+name: Candidate Fix Provider Registry 5A5B Contract
+
+on:
+  push:
+    branches: [integration/final-main-reconciliation-v1]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-provider-registry-contract:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: '1'
+      AI_MARKETING_MEMORY_EPHEMERAL: '1'
+      AI_MARKETING_LEARNING_EPHEMERAL: '1'
+      RUN_LIVE_PROVIDER_TESTS: '0'
+      RUN_REAL_MODEL_TEST: '0'
+      RUN_LIVE_MODEL_TESTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact repair parent
+        shell: pwsh
+        run: |
+          $expected = '06900344811bc424c20342624a4ca01d732a2572'
+          $parent = git rev-parse HEAD^
+          if ($parent -ne $expected) {
+            throw "unexpected repair parent: $parent (expected $expected)"
+          }
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements.txt
+      - name: Patch only stale provider-registry model-call contract
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path('tests/test_prod_model_gateway_01_provider_registry.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''        # Provider A was invoked for all 6 stages of RUN-1
+          self.assertEqual(mock_a.generate.call_count, 6)'''
+          new = '''        # Six logical stages include Performance 5A/5B, so RUN-1 makes seven model calls.
+          self.assertEqual(mock_a.generate.call_count, 7)'''
+          count = text.count(old)
+          if count != 1:
+              raise RuntimeError(f'expected exactly one stale provider-registry anchor, found {count}')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          '@ | python -
+      - name: Run complete provider-registry regression
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_prod_model_gateway_01_provider_registry
+      - name: Remove temporary workflow and commit clean repair
+        shell: pwsh
+        run: |
+          Remove-Item .github/workflows/candidate-fix-provider-registry-5ab-contract.yml -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_prod_model_gateway_01_provider_registry.py .github/workflows/candidate-fix-provider-registry-5ab-contract.yml
+          git diff --cached --check
+          git commit -m "test(provider-registry): align active-run contract with Performance 5A/5B"
+          git push origin HEAD:integration/final-main-reconciliation-v1
