@@ -1,0 +1,106 @@
+name: Candidate Final CMO Engine Seam Patch
+
+on:
+  push:
+    branches:
+      - candidate/final-cmo-engine-seam-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply byte-guarded direct seam patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          path = Path('runtime/engine.py')
+          raw = path.read_bytes()
+
+          def git_blob_sha(data: bytes) -> str:
+              header = f'blob {len(data)}\0'.encode('ascii')
+              return hashlib.sha1(header + data).hexdigest()
+
+          original_sha = git_blob_sha(raw)
+          expected_original = '9e4d0b50e88c289b6808eefe7befb9f36b5e6517'
+          if original_sha != expected_original:
+              raise SystemExit(f'ENGINE_SOURCE_DRIFT: {original_sha} != {expected_original}')
+
+          text = raw.decode('utf-8')
+          replacements = [
+              (
+                  'from runtime.context_compiler import ContextCompiler\n',
+                  'from runtime.context_compiler import ContextCompiler\n'
+                  'from runtime.deployment_binding import build_final_cmo_publish_parameters\n',
+              ),
+              (
+                  '        """Attempt to execute a publishing action, triggering Human Approval Gate if unapproved."""\n'
+                  '        pub_req = ToolRequest(\n',
+                  '        """Attempt to execute a publishing action, triggering Human Approval Gate if unapproved."""\n'
+                  '        publish_parameters = build_final_cmo_publish_parameters(context, platform)\n'
+                  '        pub_req = ToolRequest(\n',
+              ),
+              (
+                  '            parameters={"platform": platform, "content": "Campaign Go-To-Market Plan"},\n',
+                  '            parameters=publish_parameters,\n',
+              ),
+              (
+                  '            context.create_checkpoint(pending_approval_id=receipt.execution_id)\n',
+                  '            context.create_checkpoint(\n'
+                  '                pending_approval_id=receipt.approval_reference or receipt.execution_id\n'
+                  '            )\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'PATCH_ANCHOR_COUNT_INVALID: expected 1, found {count}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+
+          new_raw = text.encode('utf-8')
+          candidate_sha = git_blob_sha(new_raw)
+          expected_candidate = 'f02e9d6f542d93719508cc9f28a7b6e0e00336c7'
+          if candidate_sha != expected_candidate:
+              raise SystemExit(f'ENGINE_CANDIDATE_SHA_MISMATCH: {candidate_sha} != {expected_candidate}')
+
+          path.write_bytes(new_raw)
+          print(f'ENGINE_BLOB_OK={candidate_sha}')
+          PY
+
+      - name: Compile and run focused regressions
+        shell: bash
+        run: |
+          python -m py_compile runtime/engine.py
+          python -m unittest \
+            tests.test_final_cmo_deployment_provenance \
+            tests.test_final_cmo_deployment_registry_isolation \
+            tests.test_final_cmo_direct_publish_seam
+          git diff --check
+
+      - name: Commit only validated engine change and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "candidate-hardening-bot"
+          git config user.email "candidate-hardening-bot@users.noreply.github.com"
+          git rm .github/workflows/candidate_final_cmo_engine_seam.yml
+          git add runtime/engine.py
+          git status --short
+          git diff --cached --check
+          git commit -m "fix(runtime): bind publish directly to Final CMO provenance"
+          git push origin HEAD:candidate/final-cmo-engine-seam-v1
