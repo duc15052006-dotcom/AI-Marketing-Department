@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   fix-provider-registry-contract:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     env:
       PYTHONUTF8: '1'
       PYTHONDONTWRITEBYTECODE: '1'
@@ -26,22 +26,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify exact repair ancestry
-        shell: pwsh
+      - name: Verify exact repair ancestry and untouched target blob
+        shell: bash
         run: |
-          $expected = '06900344811bc424c20342624a4ca01d732a2572'
-          $grandparent = git rev-parse HEAD^^
-          if ($grandparent -ne $expected) {
-            throw "unexpected repair ancestry: $grandparent (expected $expected)"
-          }
+          set -euo pipefail
+          expected='06900344811bc424c20342624a4ca01d732a2572'
+          git merge-base --is-ancestor "$expected" HEAD
+          expected_blob="$(git rev-parse "$expected:tests/test_prod_model_gateway_01_provider_registry.py")"
+          current_blob="$(git rev-parse 'HEAD:tests/test_prod_model_gateway_01_provider_registry.py')"
+          test "$current_blob" = "$expected_blob"
       - name: Install runtime dependencies
-        shell: pwsh
+        shell: bash
         run: |
           python -m pip install -r requirements.txt
       - name: Patch only stale provider-registry model-call contract
-        shell: pwsh
+        shell: bash
         run: |
-          @'
+          python - <<'PY'
           from pathlib import Path
 
           path = Path('tests/test_prod_model_gateway_01_provider_registry.py')
@@ -65,15 +66,16 @@ jobs:
           section = section.replace(old_assert, new_assert, 1).replace(old_comment, new_comment, 1)
           text = text[:start] + section + text[end:]
           path.write_text(text, encoding='utf-8')
-          '@ | python -
+          PY
       - name: Run complete provider-registry regression
-        shell: pwsh
+        shell: bash
         run: |
           python -m unittest -v tests.test_prod_model_gateway_01_provider_registry
       - name: Remove temporary workflow and commit clean repair
-        shell: pwsh
+        shell: bash
         run: |
-          Remove-Item .github/workflows/candidate-fix-provider-registry-5ab-contract.yml -Force
+          set -euo pipefail
+          rm .github/workflows/candidate-fix-provider-registry-5ab-contract.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tests/test_prod_model_gateway_01_provider_registry.py .github/workflows/candidate-fix-provider-registry-5ab-contract.yml
