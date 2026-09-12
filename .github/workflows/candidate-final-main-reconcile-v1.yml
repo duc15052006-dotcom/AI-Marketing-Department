@@ -2,22 +2,16 @@ name: Candidate Final Main Reconciliation V1
 
 on:
   push:
-    branches:
-      - integration/final-main-reconciliation-v1
+    branches: [integration/final-main-reconciliation-v1]
 
 permissions:
   contents: write
 
 jobs:
   reconcile:
-    if: contains(github.event.head_commit.message, 'chore(reconcile): run final main reconciliation')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout final integration branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: integration/final-main-reconciliation-v1
-
-      - name: Reconcile main hardening and run targeted regressions
-        run: python scripts/_candidate_final_main_reconcile.py
+      - run: python scripts/_candidate_final_main_reconcile.py
