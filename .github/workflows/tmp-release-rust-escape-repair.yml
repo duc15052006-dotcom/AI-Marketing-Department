@@ -1,0 +1,48 @@
+name: Temporary Release Rust Escape Repair
+
+on:
+  push:
+    branches: [release/v1-productization-final]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/v1-productization-final
+          fetch-depth: 0
+
+      - name: Repair Rust test helper escaping
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src-tauri/src/main.rs")
+          text = path.read_text(encoding="utf-8")
+          old1 = 'b\\\\\"\\r\\n\\r\\n\\\\\"'
+          new1 = 'b\"\\r\\n\\r\\n\"'
+          old2 = 'eq_ignore_ascii_case(\\\\\"content-length\\\\\")'
+          new2 = 'eq_ignore_ascii_case(\"content-length\")'
+          if old1 not in text:
+              raise SystemExit("byte-string escape anchor not found")
+          if old2 not in text:
+              raise SystemExit("content-length escape anchor not found")
+          text = text.replace(old1, new1, 1).replace(old2, new2, 1)
+          path.write_text(text, encoding="utf-8", newline="\n")
+          PY
+          git diff --check
+
+      - name: Commit Rust escape repair
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src/main.rs
+          git commit -m "test(desktop): fix Windows mock request helper escaping"
+          git push origin HEAD:release/v1-productization-final
