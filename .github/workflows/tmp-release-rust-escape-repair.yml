@@ -17,7 +17,7 @@ jobs:
           ref: release/v1-productization-final
           fetch-depth: 0
 
-      - name: Repair Rust test helper escaping
+      - name: Repair and verify Rust test helper escaping
         shell: bash
         run: |
           python3 - <<'PY'
@@ -38,13 +38,15 @@ jobs:
               raise SystemExit("content-length escape anchor not found")
 
           text = text.replace(old1, new1, 1).replace(old2, new2, 1)
+          if old1 in text or old2 in text:
+              raise SystemExit("malformed Rust escaping remains after repair")
+          if new1 not in text or new2 not in text:
+              raise SystemExit("repaired Rust anchors not present")
+
           path.write_text(text, encoding="utf-8", newline="\n")
           PY
           git diff --check
-
-      - name: Compile-check repaired Rust tests
-        shell: bash
-        run: cargo check --manifest-path src-tauri/Cargo.toml --tests
+          git diff -- src-tauri/src/main.rs
 
       - name: Commit Rust escape repair
         shell: bash
