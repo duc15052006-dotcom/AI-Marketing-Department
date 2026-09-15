@@ -456,7 +456,12 @@ class TestFinalCmoApprovalGateSafety(unittest.TestCase):
         final_out = rt.execute_stage_final_cmo(ctx)
 
         self.assertIn(final_out["approval_status"], ("APPROVED", "APPROVED_WITH_CONDITIONS"))
-        self.assertEqual(final_out["status"], "READY_FOR_DEPLOYMENT")
+        expected_status = (
+            "READY_FOR_DEPLOYMENT"
+            if final_out["approval_status"] == "APPROVED"
+            else "READY_FOR_HUMAN_APPROVAL"
+        )
+        self.assertEqual(final_out["status"], expected_status)
         self.assertGreaterEqual(final_out["claim_audit"]["hypotheses_count"], 1)
         self.assertEqual(final_out["claim_audit"]["blocked_claims"], 0)
 
@@ -915,7 +920,15 @@ class TestDataOriginIntegrity(unittest.TestCase):
         self.assertEqual(ctx.stage_outputs["intelligence"]["market_findings"], replies["intelligence"])
         self.assertEqual(ctx.stage_outputs["content"]["content_strategy"], replies["content"])
         self.assertEqual(ctx.stage_outputs["creative"]["creative_synthesis"], replies["creative"])
-        self.assertEqual(ctx.stage_outputs["performance"]["funnel_kpi"], replies["performance"])
+        perf = ctx.stage_outputs["performance"]
+        self.assertEqual(perf["measurement_attribution"], replies["performance"])
+        self.assertEqual(perf["experimentation_governance"], replies["performance"])
+        self.assertEqual(perf["field_origins"]["measurement_attribution"], "AGENT_DERIVED")
+        self.assertEqual(perf["field_origins"]["experimentation_governance"], "AGENT_DERIVED")
+        self.assertEqual(perf["field_origins"]["funnel_kpi"], "DETERMINISTIC_COMPUTED")
+        self.assertIn("## Pass 5A — Measurement & Attribution", perf["funnel_kpi"])
+        self.assertIn("## Pass 5B — Experimentation & Governance", perf["funnel_kpi"])
+        self.assertEqual(perf["funnel_kpi"].count(replies["performance"]), 2)
 
     # 12/13/14. invariants
     def test_12_five_agent_invariant_intact(self):
