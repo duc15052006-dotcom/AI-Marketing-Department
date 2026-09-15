@@ -425,7 +425,7 @@ export function ModelSettingsView() {
     );
   }
 
-  const agentList = settings.allowed_agents || ['CMO', 'INTELLIGENCE', 'STRATEGIST', 'CREATIVE', 'PERFORMANCE'];
+  const agentList = settings.allowed_agents || ['CMO', 'INTELLIGENCE', 'CONTENT', 'CREATIVE', 'PERFORMANCE'];
 
   return (
     <div style={{ padding: '30px 40px', maxWidth: '960px', margin: '0 auto', width: '100%', color: '#F2F2F2' }}>
@@ -539,7 +539,7 @@ export function ModelSettingsView() {
           Global Model Authority
         </h2>
         <p style={{ fontSize: '12px', color: '#888888', margin: '0 0 16px 0' }}>
-          Default model target used by all 5 agents (CMO, Intelligence, Strategist, Creative, Performance) unless individually overridden.
+          Default model target used by all 5 agents (CMO, Intelligence, Content, Creative, Performance) unless individually overridden.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div>
