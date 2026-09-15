@@ -32,7 +32,13 @@ try {
     }
     Copy-Item -Force $BackendExe $BackendResourceExe
 
-    Write-Host "[4/7] Smoke-testing standalone backend bootstrap, health, and model connection..." -ForegroundColor Yellow
+    Write-Host "[4/7] Smoke-testing standalone backend bootstrap, health, model connection, and full workflow..." -ForegroundColor Yellow
+    $releaseSmokeConfig = Join-Path $Root "build\release-smoke-config"
+    if (Test-Path $releaseSmokeConfig) {
+        Remove-Item -Recurse -Force $releaseSmokeConfig
+    }
+    New-Item -ItemType Directory -Force -Path $releaseSmokeConfig | Out-Null
+
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $BackendResourceExe
     $psi.Arguments = "--emit-bootstrap --port 18765"
@@ -40,6 +46,7 @@ try {
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
+    $psi.EnvironmentVariables["AI_MARKETING_CONFIG_DIR"] = $releaseSmokeConfig
     $proc = [System.Diagnostics.Process]::Start($psi)
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -83,8 +90,13 @@ try {
         Write-Host "      Backend bootstrap + health OK" -ForegroundColor Green
 
         & (Join-Path $Root "scripts\smoke_packaged_model_connection.ps1") -BackendBaseUrl $backendBaseUrl -BearerToken $bootstrapToken
+        & (Join-Path $Root "scripts\smoke_packaged_full_workflow.ps1") -BackendBaseUrl $backendBaseUrl -BearerToken $bootstrapToken
     } finally {
-        if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+        if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            $null = $proc.WaitForExit(5000)
+        }
+        Remove-Item -Recurse -Force $releaseSmokeConfig -ErrorAction SilentlyContinue
     }
 
     Write-Host "[5/7] Installing and testing frontend..." -ForegroundColor Yellow
