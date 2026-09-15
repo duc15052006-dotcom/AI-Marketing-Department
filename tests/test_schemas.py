@@ -58,7 +58,7 @@ class TestSchemas(unittest.TestCase):
             assumptions=["Competitors focus on video ads"],
             hypotheses=["Pain-led hooks perform better"],
             owner_agent=AgentRole.INTELLIGENCE,
-            supporting_agents=[AgentRole.STRATEGIST],
+            supporting_agents=[AgentRole.CONTENT],
             tools_allowed=["web_search"],
             data_allowed=["products/PROD-CRM-01/*"],
             evidence_required=True,

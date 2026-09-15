@@ -6,6 +6,7 @@ execution receipts, tool outputs, knowledge citations, and origin sources.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict, List, Optional
 from knowledge.models import KnowledgeCitation
 from schemas.base import BaseModel, Field
@@ -52,8 +53,28 @@ class LineageInspector:
     def get_all_receipts(self) -> List[ExecutionReceipt]:
         return list(self._receipts_by_id.values())
 
-    def trace_claim_to_receipt(self, claim: str, receipt_id: str) -> LineageTrace:
-        """Trace an assertion back to an underlying tool execution receipt."""
+    def remove_receipts_for_run(self, run_id: str) -> None:
+        """Discard only transient receipt indexes owned by one terminal run."""
+        for execution_id in [
+            execution_id
+            for execution_id, receipt in self._receipts_by_id.items()
+            if receipt.run_id == run_id
+        ]:
+            self._receipts_by_id.pop(execution_id, None)
+
+    @staticmethod
+    def _claim_node_id(claim: str) -> str:
+        digest = hashlib.sha256(str(claim).encode("utf-8")).hexdigest()
+        return f"CLAIM-{digest}"
+
+    def trace_claim_to_receipt(
+        self,
+        claim: str,
+        receipt_id: str,
+        *,
+        run_id: Optional[str] = None,
+    ) -> LineageTrace:
+        """Trace a claim to a receipt, optionally enforcing exact run scope."""
         trace = LineageTrace(target_claim=claim)
         receipt = self._receipts_by_id.get(receipt_id)
 
@@ -61,11 +82,17 @@ class LineageInspector:
             trace.valid = False
             trace.missing_links.append(f"EXECUTION_RECEIPT_NOT_FOUND: {receipt_id}")
             return trace
+        if run_id is not None and receipt.run_id != run_id:
+            trace.valid = False
+            trace.missing_links.append(
+                f"RUN_SCOPE_MISMATCH: expected {run_id}, got {receipt.run_id}"
+            )
+            return trace
 
         # Build lineage chain
         trace.chain.append(
             LineageNode(
-                node_id=f"CLAIM-{hash(claim)}",
+                node_id=self._claim_node_id(claim),
                 node_type="CLAIM",
                 title=claim,
                 parent_ids=[receipt.execution_id],
@@ -100,7 +127,7 @@ class LineageInspector:
         trace = LineageTrace(target_claim=claim)
         trace.chain.append(
             LineageNode(
-                node_id=f"CLAIM-{hash(claim)}",
+                node_id=self._claim_node_id(claim),
                 node_type="CLAIM",
                 title=claim,
                 parent_ids=[citation.citation_id],

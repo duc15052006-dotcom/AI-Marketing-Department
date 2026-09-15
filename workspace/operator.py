@@ -62,6 +62,8 @@ class OperatorWorkspace:
             business_id=business_id,
             campaign_id=cid,
             user_id=user_id,
+            trusted_knowledge_scope=biz.knowledge_scope if biz else None,
+            trusted_memory_scope=biz.memory_scope if biz else None,
         )
         if biz:
             ctx.constraints.extend(biz.default_constraints)
@@ -147,52 +149,35 @@ class OperatorWorkspace:
 
     # 5. Reject Gated Action
     def reject_gated_action(self, run_id: str, reason: str = "Rejected by operator") -> bool:
-        """Record human rejection of a gated action."""
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.PAUSED
-        ctx.working_state["rejection_reason"] = reason
-        ctx.create_checkpoint()
-        return True
+        """Record rejection and cooperatively pause through runtime authority."""
+        return self.runtime.pause_run(
+            run_id,
+            working_state_updates={"rejection_reason": reason},
+        )
 
     # 6. Pause / Resume / Cancel
     def pause_run(self, run_id: str) -> bool:
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.PAUSED
-        ctx.create_checkpoint()
-        return True
+        return self.runtime.pause_run(run_id)
 
     def resume_run(self, run_id: str) -> bool:
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.RUNNING
-        ctx.create_checkpoint()
-        return True
+        return self.runtime.resume_run(run_id)
 
     def cancel_run(self, run_id: str, reason: str = "Cancelled by operator") -> bool:
-        ctx = self.runtime._active_contexts.get(run_id)
-        if not ctx:
-            return False
-        ctx.status = RuntimeStatus.CANCELLED
-        ctx.working_state["cancellation_reason"] = reason
-        ctx.create_checkpoint()
-        return True
+        return self.runtime.cancel_run(run_id, reason=reason)
 
-    # 7. Complete Supervised Campaign Workflow
+    # 7. Complete Supervised Campaign Cognition Workflow
     def execute_supervised_campaign(
         self,
         business_id: str,
         objective: str,
         auto_approve_token: Optional[str] = None,
     ) -> DepartmentRunArtifact:
-        """Execute full end-to-end campaign workflow under operator supervision.
+        """Execute the full six-stage cognition workflow under operator supervision.
 
-        Delegates to the canonical FiveAgentDepartmentRuntime.execute_run authority.
-        Auto-approval of human-gated actions is strictly forbidden.
+        This helper intentionally does NOT emit a publishing request. Consequential
+        deployment must be requested only through the post-Final-CMO deployment
+        pathway after a deployment-ready Final CMO artifact has been durably bound
+        to its checkpoint/provenance. Auto-approval remains strictly forbidden.
         """
         if auto_approve_token:
             raise RuntimeError(
@@ -202,10 +187,9 @@ class OperatorWorkspace:
 
         ctx = self.create_run(business_id=business_id, objective=objective)
 
-        # Gated publishing step
-        self.runtime.request_publish_action(ctx, platform="linkedin", approval_token=None)
-
-        # Delegate all 6 stages to canonical runtime authority
-        ctx, cmo_final, artifact = self.runtime.execute_run(ctx)
+        # Canonical ordering: cognition first. Do not emit any consequential
+        # publishing request from this convenience helper before Final CMO.
+        # Deployment is a separate, provenance-bound workstream.
+        _ctx, _cmo_final, artifact = self.runtime.execute_run(ctx)
 
         return artifact

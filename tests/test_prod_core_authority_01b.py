@@ -490,7 +490,7 @@ class TestAgentStageInvariants(unittest.TestCase):
         self.assertEqual(len(AgentAccessMatrix.PROFILES), 5)
 
     def test_six_stages(self):
-        workflow = [RuntimeStage.CMO_INITIAL, RuntimeStage.INTELLIGENCE, RuntimeStage.STRATEGIST,
+        workflow = [RuntimeStage.CMO_INITIAL, RuntimeStage.INTELLIGENCE, RuntimeStage.CONTENT,
                     RuntimeStage.CREATIVE, RuntimeStage.PERFORMANCE, RuntimeStage.FINAL_CMO]
         self.assertEqual(len(workflow), 6)
 

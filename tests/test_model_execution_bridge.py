@@ -72,7 +72,7 @@ class TestModelExecutionBridge(unittest.TestCase):
     def test_agent_loader_only_accepts_five_permanent_agents(self):
         """Verify loader loads all 5 permanent agents and rejects any 6th agent."""
         self.assertEqual(len(PERMANENT_AGENT_IDS), 5)
-        for agent_id in ["cmo", "intelligence", "strategist", "creative", "performance"]:
+        for agent_id in ["cmo", "intelligence", "content", "creative", "performance"]:
             agent_def = self.loader.load_agent(agent_id)
             self.assertEqual(agent_def.agent_id, agent_id)
             self.assertTrue(len(agent_def.system_dna) > 100)
@@ -288,7 +288,7 @@ class TestModelExecutionBridge(unittest.TestCase):
             steps=[
                 WorkflowStep(agent_id="cmo"),
                 WorkflowStep(agent_id="intelligence"),
-                WorkflowStep(agent_id="strategist"),
+                WorkflowStep(agent_id="content"),
             ],
             max_agent_steps=5,
             timeout_seconds=30.0,
@@ -305,7 +305,7 @@ class TestModelExecutionBridge(unittest.TestCase):
         self.assertEqual(summary.traces[0].from_agent, AgentRole.CMO)
         self.assertEqual(summary.traces[0].to_agent, AgentRole.INTELLIGENCE)
         self.assertEqual(summary.traces[1].from_agent, AgentRole.INTELLIGENCE)
-        self.assertEqual(summary.traces[1].to_agent, AgentRole.STRATEGIST)
+        self.assertEqual(summary.traces[1].to_agent, AgentRole.CONTENT)
 
 
 if __name__ == "__main__":

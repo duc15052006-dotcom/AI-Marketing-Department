@@ -169,7 +169,7 @@ class TestPhase43C15RC3Architecture(unittest.TestCase):
 
     def test_j_five_permanent_agent_count_remains_five(self):
         """Test J: Five permanent agent count remains exactly 5."""
-        permanent_agents = ["cmo", "intelligence", "strategist", "creative", "performance"]
+        permanent_agents = ["cmo", "intelligence", "content", "creative", "performance"]
         agent_dir = REPO_ROOT / ".agents" / "agents"
         existing_agents = [p.name for p in agent_dir.iterdir() if p.is_dir()]
         for a in permanent_agents:

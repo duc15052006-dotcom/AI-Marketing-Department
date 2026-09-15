@@ -6,7 +6,7 @@ Validates:
 3. Sanitized health reporting (zero secret / token exposure)
 4. Stale backend version & build ID contract
 5. Error classification into standardized ProviderErrorCode
-6. UniversalModelGateway fallback chain with config service
+6. UniversalModelGateway fallback chain with explicit policy authority
 """
 
 import os
@@ -18,6 +18,7 @@ from typing import Any, Dict
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus
 from integrations.models.config_service import GLOBAL_PROVIDER_CONFIG, ProviderConfigService, ProviderErrorCode
 from integrations.models.gateway import UniversalModelGateway, classify_error
+from integrations.models.registry import ModelPolicy, ModelTarget
 
 
 class TestProviderBootstrapHardening(unittest.TestCase):
@@ -104,14 +105,24 @@ class TestProviderBootstrapHardening(unittest.TestCase):
         self.assertEqual(classify_error("Connection refused / Network unreachable"), ProviderErrorCode.NETWORK_ERROR)
 
     def test_provider_fallback_chain(self) -> None:
-        """UniversalModelGateway resolves fallback candidates with config service."""
-        gateway = UniversalModelGateway(free_only_mode=True)
+        """UniversalModelGateway resolves only fallback candidates authorized by explicit policy."""
+        policy = ModelPolicy(
+            global_target=ModelTarget(provider_id="provider_primary", model_id="model-primary"),
+            fallback_chain=[
+                ModelTarget(provider_id="provider_secondary", model_id="model-secondary"),
+            ],
+            free_only_mode=True,
+        )
+        gateway = UniversalModelGateway(model_policy=policy, free_only_mode=True)
         candidates = gateway.resolve_candidate_chain()
 
-        self.assertIsInstance(candidates, list)
-        self.assertTrue(len(candidates) >= 2)
-        self.assertEqual(candidates[0][0], "xkiro")
-        self.assertEqual(candidates[1][0], "gemini")
+        self.assertEqual(
+            candidates,
+            [
+                ("provider_primary", "model-primary"),
+                ("provider_secondary", "model-secondary"),
+            ],
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,77 @@
+name: Brain Decision Evidence Provenance V1
+
+on:
+  pull_request:
+    branches:
+      - fix/brain-collaboration-duplicate-dissent-v1
+    paths:
+      - "brain/decisions.py"
+      - "brain/evidence.py"
+      - "tests/test_brain_decision_intelligence_v1.py"
+      - ".github/workflows/brain-decision-evidence-provenance-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Brain decision evidence provenance V1
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact CI identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $expectedHead = "${{ github.event.pull_request.head.sha || github.sha }}"
+          $actualHead = (git rev-parse HEAD).Trim()
+          "expected_head_sha=$expectedHead" | Tee-Object -FilePath .ci-results/brain-decision-evidence-provenance-v1-identity.txt
+          "actual_head_sha=$actualHead" | Tee-Object -FilePath .ci-results/brain-decision-evidence-provenance-v1-identity.txt -Append
+          if ($actualHead -ne $expectedHead) {
+            Write-Error "EXACT_HEAD_MISMATCH: expected $expectedHead but checked out $actualHead"
+            exit 1
+          }
+
+      - name: Install runtime dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Run Brain decision evidence provenance adversarial V1
+        shell: pwsh
+        run: |
+          python -m unittest -v tests.test_brain_decision_intelligence_v1 `
+            2>&1 | Tee-Object -FilePath .ci-results/brain-decision-evidence-provenance-v1.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-decision-evidence-provenance-v1-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14

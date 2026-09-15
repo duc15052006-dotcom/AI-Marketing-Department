@@ -51,6 +51,16 @@ class MemoryItem(BaseModel):
     expiry_or_review_date: Optional[datetime] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    @property
+    def promotion_state(self) -> PromotionState:
+        """Read-only compatibility alias for the canonical ``promotion_level`` field.
+
+        Historical Brain tests and adapters used ``promotion_state`` terminology.
+        Keeping a read-only alias preserves those callers without introducing a
+        second persisted field or a competing promotion authority.
+        """
+        return self.promotion_level
+
     def calculate_content_hash(self) -> str:
         """Compute SHA-256 hash of the memory content and context."""
         raw = f"{self.memory_type.value}:{self.agent_source}:{self.content}:{json.dumps(self.context, sort_keys=True, ensure_ascii=False)}"

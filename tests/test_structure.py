@@ -6,7 +6,7 @@ from pathlib import Path
 REQUIRED_DIRECTORIES = [
     ".agents/agents/cmo",
     ".agents/agents/intelligence",
-    ".agents/agents/strategist",
+    ".agents/agents/content",
     ".agents/agents/creative",
     ".agents/agents/performance",
     ".agents/skills",
@@ -75,7 +75,7 @@ REQUIRED_DOCUMENTS = [
     "CHAT_WORKSPACE_SPEC.md",
     "CMO_EVALUATION.md",
     "INTELLIGENCE_EVALUATION.md",
-    "STRATEGIST_EVALUATION.md",
+    "CONTENT_EVALUATION.md",
     "CREATIVE_EVALUATION.md",
     "PERFORMANCE_EVALUATION.md",
     "COLLABORATION_EVALUATION.md",

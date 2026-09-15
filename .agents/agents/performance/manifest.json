@@ -27,6 +27,6 @@
   ],
   "dependencies": [
     "creative",
-    "strategist"
+    "content"
   ]
 }

@@ -54,7 +54,7 @@ class TestConditionalApprovalNoDeploy(unittest.TestCase):
         context.stage_outputs = {
             "cmo_initial": {"status": "COMPLETED", "strategic_intent": "Plan"},
             "intelligence": {"status": "COMPLETED", "market_findings": "Findings"},
-            "strategist": {"status": "COMPLETED", "positioning": "Positioning"},
+            "content": {"status": "COMPLETED", "content_strategy": "Content strategy"},
             "creative": {"status": "COMPLETED", "creative_synthesis": "Creative"},
             "performance": {"status": "COMPLETED", "funnel_kpi": "Measurement plan"},
         }

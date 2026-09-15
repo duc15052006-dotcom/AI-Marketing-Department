@@ -27,10 +27,10 @@ class TestCMODefinition(unittest.TestCase):
         """Verify CMO is defined as orchestrator and NOT primary executor of specialist tasks."""
         self.assertIn("Executive Master Orchestrator", self.content)
         self.assertIn("the primary market researcher", self.content)
-        self.assertIn("the primary copywriter", self.content)
-        self.assertIn("the primary video creator", self.content)
+        self.assertIn("the primary content strategist or copywriter", self.content)
+        self.assertIn("the primary media producer", self.content)
         self.assertIn("the analytics processor", self.content)
-        self.assertIn("the publishing worker", self.content)
+        self.assertIn("a publishing worker or live campaign executor", self.content)
 
     def test_epistemic_discipline_sections(self):
         """Verify CMO enforces the 4 epistemic tiers and rejects hypotheses as facts."""
@@ -50,11 +50,12 @@ class TestCMODefinition(unittest.TestCase):
         self.assertIn("DOWNSIDE RISK & REVERSIBILITY", self.content)
 
     def test_specialist_delegation_mapping(self):
-        """Verify all 4 specialist targets are clearly mapped."""
+        """Verify all 4 canonical specialist targets are clearly mapped."""
         self.assertIn("INTELLIGENCE", self.content)
-        self.assertIn("STRATEGIST", self.content)
+        self.assertIn("CONTENT", self.content)
         self.assertIn("CREATIVE", self.content)
         self.assertIn("PERFORMANCE", self.content)
+        self.assertNotIn("delegate to **STRATEGIST**", self.content)
 
     def test_delegation_quality_standard(self):
         """Verify TaskEnvelope field mandates and prohibition of vague delegations."""

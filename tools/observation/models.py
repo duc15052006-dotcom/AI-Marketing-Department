@@ -284,6 +284,18 @@ class ObservationRecord(BaseModel):
     business_id: str = Field(default="", description="Trusted business scope from RuntimeContext")
     project_id: str = Field(default="", description="Trusted project scope from RuntimeContext")
 
+    # Causal execution provenance is bound only by the outer ToolGateway.
+    # Observation backends may construct records with these fields empty,
+    # but adapters/model payloads never become authority for either ID.
+    execution_id: str = Field(
+        default="",
+        description="Actual outer ExecutionReceipt identity that produced this observation",
+    )
+    action_intent_id: Optional[str] = Field(
+        default=None,
+        description="Canonical Brain ActionIntent identity when semantic authority was validated",
+    )
+
     def __post_init__(self) -> None:
         super().__post_init__()
         # Sync legacy confidence field if not explicitly supplied

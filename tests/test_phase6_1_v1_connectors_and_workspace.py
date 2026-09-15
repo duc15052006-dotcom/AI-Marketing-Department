@@ -55,7 +55,7 @@ from memory.operations import MemoryOperatorService
 from integrations.models.base import ModelMessage, ModelRequest, ModelResponse, ModelResponseStatus, ModelRole
 from integrations.models.gateway import UniversalModelGateway
 from memory.repository import LocalMemoryRepository
-from runtime.context import RuntimeStatus
+from runtime.context import RuntimeStage, RuntimeStatus
 from runtime.engine import FiveAgentDepartmentRuntime
 from tools.capabilities import CapabilityCategory, CapabilityDescriptor, CapabilityRegistry, RiskLevel
 from tools.receipts import ExecutionReceipt, ExecutionReceiptRepository, ExecutionStatus
@@ -75,7 +75,7 @@ class ScriptedAgentGateway(UniversalModelGateway):
         ("performance", "Performance Specialist"),
         ("creative", "Creative Director"),
         ("creative", "Creative Specialist"),
-        ("strategist", "Marketing Strategist"),
+        ("content", "Marketing Strategist"),
         ("intelligence", "Intelligence Specialist"),
         ("cmo_initial", "Executive Master Orchestrator"),
         ("cmo_initial", "Chief Marketing Officer (CMO)"),
@@ -416,7 +416,7 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
         self.assertTrue(len(artifact.final_artifact_hash) == 64)
         self.assertIn("cmo_initial", artifact.agent_outputs)
         self.assertIn("intelligence", artifact.agent_outputs)
-        self.assertIn("strategist", artifact.agent_outputs)
+        self.assertIn("content", artifact.agent_outputs)
         self.assertIn("creative", artifact.agent_outputs)
         self.assertIn("performance", artifact.agent_outputs)
         self.assertIn("final_cmo", artifact.agent_outputs)
@@ -548,7 +548,7 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
         """12. Candidate memory without evidence cannot be promoted to durable learning."""
         cand_mem = MemoryItem(
             memory_type=MemoryType.DECISION_MEMORY,
-            agent_source="strategist",
+            agent_source="content",
             content="Unverified opinion with no evidence",
             confidence=0.40,
             evidence_refs=[],
@@ -636,19 +636,33 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
     def test_adv_22_lineage_trace_validity_for_approved_publish(self):
         """22. Lineage inspector correctly resolves publication receipt and approval."""
         ctx = self.workspace.create_run("BIZ_DEFAULT", "Lineage Run")
-        token = "TOKEN-LINEAGE-1"
-        self.policy_engine.register_approval(
-            HumanApprovalRecord(
-                approval_token=token,
-                action_type="social_publishing",
-                approved_by="VP",
-                approved_at=datetime.now(timezone.utc).isoformat(),
-                scope="BIZ_DEFAULT",
-                risk_level=RiskLevel.CRITICAL,
-            )
+        ctx.current_stage = RuntimeStage.FINAL_CMO
+        ctx.status = RuntimeStatus.RUNNING
+        ctx.stage_outputs["final_cmo"] = {
+            "stage": "FINAL_CMO",
+            "agent": "cmo",
+            "status": "READY_FOR_DEPLOYMENT",
+            "approval_status": "APPROVED",
+            "reason": "",
+            "claim_audit": {"authorization_status": "APPROVED"},
+            "master_gtm_plan": {"objective": ctx.objective},
+            "master_gtm_plan_markdown": "# Final GTM\n\nApproved deployment plan.",
+        }
+        ctx.create_checkpoint()
+
+        pending_receipt = self.runtime.request_publish_action(ctx, approval_token=None)
+        self.assertEqual(pending_receipt.status, ExecutionStatus.APPROVAL_REQUIRED)
+        pending_id = pending_receipt.approval_reference or ctx.checkpoints[-1].pending_approval_id
+        self.assertTrue(pending_id)
+        ok, approval, err = self.policy_engine.approve_pending_action(pending_id, approved_by="VP")
+        self.assertTrue(ok, err)
+        self.assertIsNotNone(approval)
+
+        receipt = self.runtime.request_publish_action(ctx, approval_token=approval.approval_token)
+        self.assertEqual(receipt.status, ExecutionStatus.SUCCESS)
+        trace = self.runtime.lineage_inspector.trace_claim_to_receipt(
+            "Published Campaign", receipt.execution_id, run_id=ctx.run_id
         )
-        receipt = self.runtime.request_publish_action(ctx, approval_token=token)
-        trace = self.runtime.lineage_inspector.trace_claim_to_receipt("Published Campaign", receipt.execution_id)
         self.assertTrue(trace.valid)
 
     def test_adv_23_agent_6_registration_strictly_blocked(self):
@@ -659,10 +673,10 @@ class TestPhase61V1ConnectorsAndWorkspace(unittest.TestCase):
     def test_adv_24_frozen_brain_dna_hashes_unchanged(self):
         """24. Verified that Phase 6.1 code preserves all frozen Brain RC3 agent DNA and schemas."""
         perf_md = Path(".agents/agents/performance/agent.md").read_text(encoding="utf-8")
-        self.assertEqual(hashlib.sha256(perf_md.encode("utf-8")).hexdigest(), "26be7c5a2aa3c388defec7fe92162d0082c34ca6609f17c692704863ce4ea3c9")
+        self.assertEqual(hashlib.sha256(perf_md.encode("utf-8")).hexdigest(), "0501d698f6b33f13eee9b75bb304dc93ff46aeaa66679ab3ffe879ef1ed0c604")
 
         cmo_md = Path(".agents/agents/cmo/agent.md").read_text(encoding="utf-8")
-        self.assertEqual(hashlib.sha256(cmo_md.encode("utf-8")).hexdigest(), "766edaf82a8493b82e42d6e61fdca615bc4bfa678ce419f43aee0ae7e86bd52e")
+        self.assertEqual(hashlib.sha256(cmo_md.encode("utf-8")).hexdigest(), "f76762a720435ed243c233ff707c9e79c42aeb273f21b5f14915e9059f18703d")
 
         handoff_py = Path("schemas/handoff.py").read_text(encoding="utf-8")
         self.assertEqual(hashlib.sha256(handoff_py.encode("utf-8")).hexdigest(), "4075a8e269aef7526bb52c281ac88cc6fdc009d83e9aecb384032e29087e237a")

@@ -4,7 +4,7 @@ Defines deterministic, typed, runtime-owned progress events:
 - Strictly emitted by trusted runtime code (never model-controlled).
 - Monotonically increasing per-run sequence numbers (1, 2, 3...).
 - Distinct typed modes: FULL_WORKFLOW, RESEARCH_INQUIRY, GENERAL_CONVERSATION.
-- Typed stage and agent enums with validation preventing rogue entities (e.g. AGENT_6).
+- Typed stage and agent enums preventing rogue permanent entities.
 - Isolates event sinks so consumer failures never corrupt business execution.
 - Lifecycle finalization releases sink references upon terminalization.
 - Prevents secret/credential leakage in event payloads and metadata.
@@ -15,14 +15,13 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from schemas.base import BaseModel, Field, ValidationError
 
 logger = logging.getLogger("runtime_progress")
 
 
 class ProgressEventType(str, Enum):
-    """Finite, typed lifecycle progress event types."""
     RUN_STARTED = "RUN_STARTED"
     ROUTE_SELECTED = "ROUTE_SELECTED"
     RESEARCH_STARTED = "RESEARCH_STARTED"
@@ -38,43 +37,47 @@ class ProgressEventType(str, Enum):
 
 
 class ProgressMode(str, Enum):
-    """Execution modality for progress classification."""
     FULL_WORKFLOW = "FULL_WORKFLOW"
     RESEARCH_INQUIRY = "RESEARCH_INQUIRY"
     GENERAL_CONVERSATION = "GENERAL_CONVERSATION"
 
 
 class ProgressStage(str, Enum):
-    """Finite canonical execution stages for progress events (exactly 6 stages)."""
+    """Canonical execution stages. FINAL_CMO reuses the same CMO identity."""
     CMO_INITIAL = "CMO_INITIAL"
     INTELLIGENCE = "INTELLIGENCE"
-    STRATEGIST = "STRATEGIST"
+    CONTENT = "CONTENT"
     CREATIVE = "CREATIVE"
     PERFORMANCE = "PERFORMANCE"
     FINAL_CMO = "FINAL_CMO"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.strip().upper() == "STRATEGIST":
+            return cls.CONTENT
+        return None
+
 
 class ProgressAgent(str, Enum):
-    """Finite canonical agent identifiers for progress events."""
+    """Exactly five canonical permanent agent identifiers."""
     CMO = "CMO"
     INTELLIGENCE = "INTELLIGENCE"
-    STRATEGIST = "STRATEGIST"
+    CONTENT = "CONTENT"
     CREATIVE = "CREATIVE"
     PERFORMANCE = "PERFORMANCE"
 
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.strip().upper() == "STRATEGIST":
+            return cls.CONTENT
+        return None
+
 
 def runtime_stage_to_progress_stage(stage: Any) -> Optional[ProgressStage]:
-    """Map runtime stage lifecycle to canonical ProgressStage.
+    """Map runtime lifecycle stages to canonical progress stages.
 
-    Canonical mappings:
-      - CMO_INITIAL -> ProgressStage.CMO_INITIAL
-      - INTELLIGENCE -> ProgressStage.INTELLIGENCE
-      - STRATEGIST -> ProgressStage.STRATEGIST
-      - CREATIVE -> ProgressStage.CREATIVE
-      - PERFORMANCE -> ProgressStage.PERFORMANCE
-      - FINAL_CMO -> ProgressStage.FINAL_CMO
-
-    Noncanonical lifecycle values (INIT, COMPLETED, FAILED, CANCELLED, etc.) -> None.
+    Historical STRATEGIST values normalize to CONTENT via ProgressStage._missing_.
+    INIT/COMPLETED and unrelated lifecycle values return None.
     """
     if stage is None:
         return None
@@ -88,7 +91,6 @@ def runtime_stage_to_progress_stage(stage: Any) -> Optional[ProgressStage]:
 
 
 def _sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """Sanitize metadata to strictly prevent secret, credential or token exposure."""
     sanitized: Dict[str, Any] = {}
     sensitive_keys = {
         "api_key", "apikey", "secret", "token", "authorization", "auth",
@@ -119,39 +121,26 @@ class RuntimeProgressEvent(BaseModel):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-
-        # Enforce typed event_type
         if not isinstance(self.event_type, ProgressEventType):
             try:
                 object.__setattr__(self, "event_type", ProgressEventType(self.event_type))
             except Exception as e:
                 raise ValidationError(f"INVALID_PROGRESS_EVENT_TYPE: '{self.event_type}' is not a valid ProgressEventType.") from e
-
-        # Enforce typed mode
-        if self.mode is not None:
-            if not isinstance(self.mode, ProgressMode):
-                try:
-                    object.__setattr__(self, "mode", ProgressMode(self.mode))
-                except Exception as e:
-                    raise ValidationError(f"INVALID_PROGRESS_MODE: '{self.mode}' is not a valid ProgressMode.") from e
-
-        # Enforce typed stage
-        if self.stage is not None:
-            if not isinstance(self.stage, ProgressStage):
-                try:
-                    object.__setattr__(self, "stage", ProgressStage(self.stage))
-                except Exception as e:
-                    raise ValidationError(f"INVALID_PROGRESS_STAGE: '{self.stage}' is not a valid ProgressStage.") from e
-
-        # Enforce typed agent
-        if self.agent is not None:
-            if not isinstance(self.agent, ProgressAgent):
-                try:
-                    object.__setattr__(self, "agent", ProgressAgent(self.agent))
-                except Exception as e:
-                    raise ValidationError(f"INVALID_PROGRESS_AGENT: '{self.agent}' is not a valid ProgressAgent.") from e
-
-        # Enforce sanitization on metadata
+        if self.mode is not None and not isinstance(self.mode, ProgressMode):
+            try:
+                object.__setattr__(self, "mode", ProgressMode(self.mode))
+            except Exception as e:
+                raise ValidationError(f"INVALID_PROGRESS_MODE: '{self.mode}' is not a valid ProgressMode.") from e
+        if self.stage is not None and not isinstance(self.stage, ProgressStage):
+            try:
+                object.__setattr__(self, "stage", ProgressStage(self.stage))
+            except Exception as e:
+                raise ValidationError(f"INVALID_PROGRESS_STAGE: '{self.stage}' is not a valid ProgressStage.") from e
+        if self.agent is not None and not isinstance(self.agent, ProgressAgent):
+            try:
+                object.__setattr__(self, "agent", ProgressAgent(self.agent))
+            except Exception as e:
+                raise ValidationError(f"INVALID_PROGRESS_AGENT: '{self.agent}' is not a valid ProgressAgent.") from e
         if self.metadata:
             object.__setattr__(self, "metadata", _sanitize_metadata(self.metadata))
 
@@ -188,7 +177,6 @@ class ProgressEmitter:
         return self._closed
 
     def finalize(self) -> None:
-        """Terminalize emitter, releasing sink callback reference."""
         self._closed = True
         self.sink = None
 
@@ -201,11 +189,6 @@ class ProgressEmitter:
         metadata: Optional[Dict[str, Any]] = None,
         mode: Optional[Union[ProgressMode, str]] = None,
     ) -> Optional[RuntimeProgressEvent]:
-        """Emit a typed progress event with strictly monotonic sequence numbers.
-
-        Late emit guard: if emitter has been finalized, do not advance sequence,
-        do not append to event history, and do not invoke sink.
-        """
         if self._closed:
             logger.warning(
                 f"Attempted to emit progress event on finalized emitter for run {self.run_id} (ignored)."
@@ -215,7 +198,6 @@ class ProgressEmitter:
         self._sequence += 1
         meta = dict(metadata) if metadata else {}
         event_mode = mode or self.mode
-
         event = RuntimeProgressEvent(
             event_type=event_type if isinstance(event_type, ProgressEventType) else ProgressEventType(event_type),
             run_id=self.run_id,
@@ -227,14 +209,11 @@ class ProgressEmitter:
             metadata=meta,
         )
         self._events.append(event)
-
         if self.sink is not None:
             try:
                 self.sink(event)
             except Exception as exc:
-                # Event sink failure policy: isolated & logged, never crashes business run
                 logger.warning(
                     f"Progress sink error on event {event.event_type.value} for run {self.run_id}: {exc}"
                 )
-
         return event

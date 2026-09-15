@@ -1,0 +1,159 @@
+name: Brain Final Convergence Certification V1
+
+on:
+  pull_request:
+    paths:
+      - "brain/**"
+      - "tests/test_brain_*.py"
+      - "tests/test_asi_brain_expert_holdout_v1.py"
+      - ".github/workflows/brain-final-convergence-cert-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brain-final-convergence-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  brain-convergence-linux:
+    name: Linux full Brain adversarial convergence
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      AI_MARKETING_MEMORY_EPHEMERAL: "1"
+      AI_MARKETING_LEARNING_EPHEMERAL: "1"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact CI identity
+        shell: bash
+        run: |
+          mkdir -p .ci-results
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          printf 'expected_head_sha=%s\nactual_head_sha=%s\n' "$expected" "$actual" | tee .ci-results/final-brain-linux-identity.txt
+          test "$expected" = "$actual"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile Brain and Brain tests
+        shell: bash
+        run: |
+          python -m compileall -q brain tests
+
+      - name: Run complete Brain test namespace
+        shell: bash
+        timeout-minutes: 28
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -p "test_brain_*.py" -v 2>&1 | tee .ci-results/final-brain-linux.log
+
+      - name: Run expert five-ASI holdout
+        if: always()
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m unittest -v tests.test_asi_brain_expert_holdout_v1 2>&1 | tee .ci-results/final-brain-expert-holdout-linux.log
+
+      - name: Upload Linux convergence evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-final-convergence-linux-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+
+  canonical-full-windows:
+    name: Windows canonical full hermetic certification
+    runs-on: windows-latest
+    timeout-minutes: 55
+    env:
+      RUN_LIVE_PROVIDER_TESTS: "0"
+      RUN_REAL_MODEL_TEST: "0"
+      RUN_LIVE_MODEL_TESTS: "0"
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      AI_MARKETING_MEMORY_EPHEMERAL: "1"
+      AI_MARKETING_LEARNING_EPHEMERAL: "1"
+      PYTHONUTF8: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify exact CI identity
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .ci-results | Out-Null
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          $actual = (git rev-parse HEAD).Trim()
+          "expected_head_sha=$expected" | Tee-Object -FilePath .ci-results/final-brain-windows-identity.txt
+          "actual_head_sha=$actual" | Tee-Object -FilePath .ci-results/final-brain-windows-identity.txt -Append
+          if ($actual -ne $expected) { Write-Error "EXACT_HEAD_MISMATCH"; exit 1 }
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Compile repository Python sources
+        shell: pwsh
+        run: |
+          python -m compileall -q brain app_api chat config connections connectors creative_engine governance integrations knowledge memory observability runtime schemas scripts tools workspace tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run canonical full hermetic unittest discovery
+        shell: pwsh
+        timeout-minutes: 40
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v 2>&1 | Tee-Object -FilePath .ci-results/final-full-hermetic-windows.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows canonical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-final-convergence-windows-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .ci-results/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14

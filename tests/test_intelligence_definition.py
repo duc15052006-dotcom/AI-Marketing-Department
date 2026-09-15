@@ -28,7 +28,7 @@ class TestIntelligenceDefinition(unittest.TestCase):
         self.assertIn("Market & Consumer Intelligence Specialist", self.content)
         self.assertIn("reduce uncertainty before commercial marketing decisions are made", self.content)
         self.assertIn("final strategic decision-maker", self.content)
-        self.assertIn("primary copywriter", self.content)
+        self.assertIn("primary content strategist, copywriter, or scriptwriter", self.content)
         self.assertIn("creative production director", self.content)
         self.assertIn("publishing operator", self.content)
         self.assertIn("final internal performance analyst", self.content)
@@ -156,9 +156,10 @@ class TestIntelligenceDefinition(unittest.TestCase):
         """Verify stopping criteria and structured specialist handoffs."""
         self.assertIn("Research Stopping Rule", self.content)
         self.assertIn("To CMO", self.content)
-        self.assertIn("To STRATEGIST", self.content)
+        self.assertIn("To CONTENT", self.content)
         self.assertIn("To CREATIVE", self.content)
         self.assertIn("To PERFORMANCE", self.content)
+        self.assertNotIn("To STRATEGIST", self.content)
         self.assertIn("Failure Protocol", self.content)
 
     def test_intelligence_preflight_self_check_questions(self):

@@ -37,7 +37,7 @@ class TestCollaborationDefinition(unittest.TestCase):
         self.assertEqual(len(AgentRole), 5)
         self.assertEqual(
             {r.value for r in AgentRole},
-            {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"},
+            {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"},
         )
 
     def test_task_envelope_collaboration_compatibility(self):
@@ -52,13 +52,13 @@ class TestCollaborationDefinition(unittest.TestCase):
             unknown_facts=["Customer price sensitivity above $300"],
             assumptions=["Remote workers will pay for premium ergonomics"],
             hypotheses=["Highlighting Sunday night back pain will increase CTR by 20%"],
-            owner_agent=AgentRole.STRATEGIST,
+            owner_agent=AgentRole.CONTENT,
             supporting_agents=[AgentRole.INTELLIGENCE, AgentRole.CREATIVE],
             output_schema="CreativeStrategyBrief",
             escalation_rule="Escalate to CMO if CPC exceeds $2.50 in test",
             next_action="Handoff to Creative for concept production",
         )
-        self.assertEqual(envelope.owner_agent, AgentRole.STRATEGIST)
+        self.assertEqual(envelope.owner_agent, AgentRole.CONTENT)
         self.assertEqual(len(envelope.supporting_agents), 2)
         self.assertEqual(envelope.product_id, "PROD_ERGO_CHAIR_01")
 
@@ -68,7 +68,7 @@ class TestCollaborationDefinition(unittest.TestCase):
             trace_id="TRACE-20260816-0001",
             task_id="TASK-20260816-COL-001",
             from_agent=AgentRole.INTELLIGENCE,
-            to_agent=AgentRole.STRATEGIST,
+            to_agent=AgentRole.CONTENT,
             handoff_type=HandoffType.DELEGATION,
             input_summary="Delivered 15 customer review pain points and competitor pricing audit",
             facts_preserved=["Competitor average price is $249"],
@@ -77,7 +77,7 @@ class TestCollaborationDefinition(unittest.TestCase):
             output_reference="research/PROD_ERGO_CHAIR_01/customer_intelligence.json",
         )
         self.assertEqual(trace.from_agent, AgentRole.INTELLIGENCE)
-        self.assertEqual(trace.to_agent, AgentRole.STRATEGIST)
+        self.assertEqual(trace.to_agent, AgentRole.CONTENT)
         self.assertEqual(trace.handoff_type, HandoffType.DELEGATION)
         # Ensure schema has no private chain-of-thought or raw reasoning token fields
         self.assertNotIn("chain_of_thought", trace.model_dump())
@@ -133,7 +133,7 @@ class TestCollaborationDefinition(unittest.TestCase):
             owner_agent=AgentRole.INTELLIGENCE,
             output_schema="MarketReport",
             escalation_rule="Escalate to CMO",
-            next_action="Handoff to Strategist",
+            next_action="Handoff to Content",
         )
         result_b = AgentResult(
             task_id="TASK-A",

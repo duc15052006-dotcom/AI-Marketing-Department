@@ -236,7 +236,7 @@ class TestConversationRouterAndGptMode(unittest.TestCase):
         self.assertIn("intelligence", intel_out["agent"])
 
         strat_out = runtime.execute_stage_strategist(ctx)
-        self.assertIn("strategist", strat_out["agent"])
+        self.assertIn("content", strat_out["agent"])
 
         crtv_out = runtime.execute_stage_creative(ctx)
         self.assertIn("creative", crtv_out["agent"])

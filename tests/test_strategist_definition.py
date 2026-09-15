@@ -1,191 +1,204 @@
-"""Tests verifying the Strategist Agent Definition, Hardening Patch 2B.3.1, and Professional DNA integrity."""
+"""Regression tests for the canonical Content migration.
+
+The former Strategist ASI was removed from the permanent five-agent architecture.
+These tests intentionally verify that no strategist DNA file is resurrected, that
+Content owns the semantic/content responsibilities that replaced it, that CMO owns
+executive strategy, and that historical Strategist surfaces cannot be mistaken for
+current authority.
+"""
 
 import unittest
 from pathlib import Path
+
 from tests.test_agent_manifests import parse_yaml_frontmatter
 
 
-class TestStrategistDefinition(unittest.TestCase):
+class TestContentMigrationDefinition(unittest.TestCase):
     def setUp(self):
-        self.strat_md_path = (
-            Path(__file__).resolve().parent.parent
-            / ".agents"
-            / "agents"
-            / "strategist"
-            / "agent.md"
+        repo_root = Path(__file__).resolve().parent.parent
+        root = repo_root / ".agents" / "agents"
+        self.strategist_path = root / "strategist" / "agent.md"
+        self.content_path = root / "content" / "agent.md"
+        self.legacy_strategist_evaluation_path = repo_root / "STRATEGIST_EVALUATION.md"
+        self.cmo_evaluation_path = repo_root / "CMO_EVALUATION.md"
+        self.content_evaluation_path = repo_root / "CONTENT_EVALUATION.md"
+        self.source_of_truth_path = repo_root / "SOURCE_OF_TRUTH.md"
+        self.architecture_path = repo_root / "ARCHITECTURE.md"
+        self.agent_protocol_path = repo_root / "AGENT_PROTOCOL.md"
+        self.security_model_path = repo_root / "SECURITY_MODEL.md"
+        self.ui_permission_model_path = repo_root / "UI_PERMISSION_MODEL.md"
+        self.roadmap_path = repo_root / "ROADMAP.md"
+        self.creative_engine_path = repo_root / "CREATIVE_ENGINE.md"
+        self.assertFalse(
+            self.strategist_path.exists(),
+            "strategist/agent.md must not exist after canonical Content migration",
         )
-        self.assertTrue(self.strat_md_path.exists(), "strategist/agent.md does not exist")
-        self.content = self.strat_md_path.read_text(encoding="utf-8")
+        self.assertTrue(self.content_path.exists(), "content/agent.md does not exist")
+        for required_path in (
+            self.legacy_strategist_evaluation_path,
+            self.cmo_evaluation_path,
+            self.content_evaluation_path,
+            self.source_of_truth_path,
+            self.architecture_path,
+            self.agent_protocol_path,
+            self.security_model_path,
+            self.ui_permission_model_path,
+            self.roadmap_path,
+            self.creative_engine_path,
+        ):
+            self.assertTrue(required_path.exists(), f"required canonical/migration document missing: {required_path.name}")
+        self.content = self.content_path.read_text(encoding="utf-8")
         self.frontmatter = parse_yaml_frontmatter(self.content)
 
-    def test_strategist_frontmatter_valid(self):
-        """Verify Strategist frontmatter has name 'strategist' and non-empty description."""
-        self.assertEqual(self.frontmatter.get("name"), "strategist")
-        self.assertIn("Strategy", self.frontmatter.get("description", ""))
+    def test_content_frontmatter_is_canonical(self):
+        self.assertEqual(self.frontmatter.get("name"), "content")
+        self.assertIn("Content Strategy", self.frontmatter.get("description", ""))
 
-    def test_strategist_identity_and_role_boundaries(self):
-        """Verify Strategist is defined as strategic choice architect and NOT primary executor of other domains."""
-        self.assertIn("Marketing Strategy & Growth Architect", self.content)
-        self.assertIn("converts verified market evidence and business goals into clear", self.content)
-        self.assertIn("WHERE SHOULD WE PLAY", self.content)
-        self.assertIn("WHO SHOULD WE SERVE", self.content)
-        self.assertIn("WHAT SHOULD WE NOT DO", self.content)
-        self.assertIn("primary researcher", self.content)
-        self.assertIn("final commercial decision-maker", self.content)
-        self.assertIn("primary copywriter", self.content)
-        self.assertIn("multimedia production director", self.content)
-        self.assertIn("performance measurement engine", self.content)
-        self.assertIn("publishing operator", self.content)
+    def test_content_identity_and_role_boundaries(self):
+        self.assertIn("Content ASI", self.content)
+        self.assertIn("five-agent AI Marketing Department", self.content)
+        self.assertIn("convert verified market evidence and CMO-approved strategy", self.content)
+        self.assertIn("You are **not** the CMO", self.content)
+        self.assertIn("You are **not** Intelligence", self.content)
+        self.assertIn("You are **not** Creative", self.content)
+        self.assertIn("You are **not** Performance", self.content)
 
-    def test_strategy_is_choice_and_tradeoffs(self):
-        """Verify strategy requires trade-offs and explicit non-pursuits (no target-everyone)."""
-        self.assertIn("Strategy is Choice: Trade-offs & Non-Pursuits", self.content)
-        self.assertIn("WHAT WE WILL DO", self.content)
-        self.assertIn("WHAT WE WILL NOT DO", self.content)
-        self.assertIn("reject it as a generic wishlist", self.content)
+    def test_content_owns_semantic_layer(self):
+        for capability in (
+            "CONTENT_STRATEGY",
+            "MESSAGE_ARCHITECTURE",
+            "COPY_AND_SCRIPT",
+            "EDITORIAL_PLANNING",
+            "SEO_CONTENT_BRIEFING",
+            "CHANNEL_CONTENT_ADAPTATION",
+            "CONTENT_EXPERIMENT_HYPOTHESES",
+        ):
+            self.assertIn(capability, self.content)
 
-    def test_evidence_dependency_and_input_contract(self):
-        """Verify evidence classification (EVIDENCE-SUPPORTED, ASSUMPTION-DEPENDENT, EXPERIMENTAL) and input contract."""
-        self.assertIn("Evidence Dependency & Epistemic Classification", self.content)
-        self.assertIn("EVIDENCE-SUPPORTED", self.content)
-        self.assertIn("ASSUMPTION-DEPENDENT", self.content)
-        self.assertIn("EXPERIMENTAL", self.content)
-        self.assertIn("STRATEGIC INPUT AUDIT", self.content)
-        self.assertIn("BUSINESS_OBJECTIVE", self.content)
-        self.assertIn("BUSINESS_MODEL", self.content)
+    def test_content_preserves_epistemic_discipline(self):
+        for state in ("OBSERVED / VERIFIED", "INFERRED", "HYPOTHESIS", "UNKNOWN"):
+            self.assertIn(state, self.content)
+        self.assertIn("Never turn an inference into a fact", self.content)
+        self.assertIn("Do not fill the gap with plausible prose", self.content)
 
-    def test_business_model_strategy_adaptation(self):
-        """Patch 2B.3.1: Verify strategy adapts explicitly across SaaS, E-commerce, Affiliate, Lead Gen, and Services."""
-        self.assertIn("Business Model Strategy Adaptation", self.content)
-        self.assertIn("SAAS & SUBSCRIPTION", self.content)
-        self.assertIn("E-COMMERCE & PHYSICAL GOODS", self.content)
-        self.assertIn("AFFILIATE & PARTNERSHIP MARKETING", self.content)
-        self.assertIn("LEAD GENERATION (B2B / HIGH-TICKET)", self.content)
-        self.assertIn("CLIENT SERVICES & AGENCIES", self.content)
+    def test_content_message_copy_and_hook_system(self):
+        self.assertIn("Message Architecture", self.content)
+        self.assertIn("Copywriting System", self.content)
+        self.assertIn("Hook rules", self.content)
+        self.assertIn("AIDA", self.content)
+        self.assertIn("PAS", self.content)
+        self.assertIn("Hook–Value–Proof–CTA", self.content)
 
-    def test_contextual_economics_and_no_universal_thresholds(self):
-        """Patch 2B.3.1: Verify removal of universal 70% margin / 12-month payback rules in favor of contextual benchmarks."""
-        self.assertIn("Contextual Economics & Anti-Dogmatism", self.content)
-        self.assertIn("No Universal Margin Rules", self.content)
-        self.assertIn("No Universal Payback Rules", self.content)
-        self.assertIn("REFERENCE_BENCHMARK", self.content)
-        self.assertIn("WHY_IT_APPLIES", self.content)
-        self.assertIn("LIMITATIONS", self.content)
+    def test_content_handoffs_preserve_five_agent_boundaries(self):
+        self.assertIn("Market/customer/competitor research gaps -> **Intelligence**", self.content)
+        self.assertIn("Positioning, GTM choices, major offer strategy, budget trade-offs -> **CMO**", self.content)
+        self.assertIn("Visual concepts, storyboards, image/video production specs, multimedia generation -> **Creative**", self.content)
+        self.assertIn("Paid campaign execution, analytics, attribution, KPI verification -> **Performance**", self.content)
+        self.assertNotIn("Strategist ASI", self.content)
 
-    def test_bounded_strategic_loss_investment_policy(self):
-        """Patch 2B.3.1: Verify distinction between accidental loss and bounded strategic investment."""
-        self.assertIn("Strategic Loss & Bounded Investment Policy", self.content)
-        self.assertIn("Accidental Bad Economics", self.content)
-        self.assertIn("Intentional Strategic Investment", self.content)
-        self.assertIn("EXPECTED_LOSS", self.content)
-        self.assertIn("MAXIMUM_ACCEPTABLE_LOSS", self.content)
-        self.assertIn("TIME_HORIZON", self.content)
-        self.assertIn("STRATEGIC_REASON", self.content)
-        self.assertIn("EXPECTED_FUTURE_VALUE", self.content)
-        self.assertIn("STOP_CONDITION", self.content)
+    def test_legacy_strategist_evaluation_is_non_authoritative(self):
+        legacy = self.legacy_strategist_evaluation_path.read_text(encoding="utf-8")
+        self.assertIn("LEGACY / NON-AUTHORITATIVE", legacy)
+        self.assertIn("exactly five permanent ASIs", legacy)
+        self.assertIn("CONTENT_EVALUATION.md", legacy)
+        self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", legacy)
+        self.assertIn("must never recreate a sixth agent", legacy)
+        self.assertNotIn("The Strategist acts as the strategic engine", legacy)
 
-    def test_demand_creation_vs_demand_capture_balance(self):
-        """Patch 2B.3.1: Verify brand vs demand balance and measurable brand accountability."""
-        self.assertIn("Brand + Demand Balance: Demand Creation vs. Demand Capture", self.content)
-        self.assertIn("DEMAND CREATION (Brand & Mental Availability)", self.content)
-        self.assertIn("DEMAND CAPTURE (Direct Conversion & Activation)", self.content)
-        self.assertIn("Brand Activity Measurement Protocol", self.content)
-        self.assertIn("Branded search query volume", self.content)
-        self.assertIn("Direct organic domain traffic", self.content)
+    def test_legacy_benchmark_ownership_is_split_across_cmo_and_content(self):
+        cmo_eval = self.cmo_evaluation_path.read_text(encoding="utf-8")
+        content_eval = self.content_evaluation_path.read_text(encoding="utf-8")
 
-    def test_segmentation_and_targeting_depth(self):
-        """Verify multi-dimensional segmentation beyond demographics and value-based targeting."""
-        self.assertIn("Multi-Dimensional Segmentation", self.content)
-        self.assertIn("Job-to-Be-Done (JTBD)", self.content)
-        self.assertIn("Context & Trigger Event", self.content)
-        self.assertIn("Problem Severity", self.content)
-        self.assertIn("Target Selection Rule", self.content)
-        self.assertIn("largest segment is rarely the best segment", self.content)
+        self.assertIn("There is no permanent Strategist identity and no sixth agent", cmo_eval)
+        self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", cmo_eval)
+        self.assertNotIn("The Strategist acts as the strategic engine", cmo_eval)
+        self.assertNotIn("Strategist:", cmo_eval)
 
-    def test_positioning_integrity_and_category_framing(self):
-        """Verify positioning schema, 6-point quality test, and category reframing rules."""
-        self.assertIn("Positioning Architecture & Defensibility", self.content)
-        self.assertIn("6-Point Positioning Quality Test", self.content)
-        self.assertIn("RELEVANCE", self.content)
-        self.assertIn("CLARITY", self.content)
-        self.assertIn("CREDIBILITY", self.content)
-        self.assertIn("DISTINCTIVENESS", self.content)
-        self.assertIn("DEFENSIBILITY", self.content)
-        self.assertIn("Category & Market Framing", self.content)
-        self.assertIn("Never invent positioning claims", self.content)
+        cmo_owned_legacy_ids = tuple(i for i in range(1, 26) if i not in (8, 18))
+        for legacy_id in cmo_owned_legacy_ids:
+            self.assertIn(
+                f"### Legacy S{legacy_id} ",
+                cmo_eval,
+                f"CMO evaluation lost migrated executive-strategy coverage for legacy S{legacy_id}",
+            )
 
-    def test_value_prop_and_offer_architecture(self):
-        """Verify multi-tier value dimensions and offer packaging without fake urgency."""
-        self.assertIn("Value Proposition & Offer Architecture", self.content)
-        self.assertIn("Functional Value", self.content)
-        self.assertIn("Economic Value", self.content)
-        self.assertIn("Emotional Value", self.content)
-        self.assertIn("Risk Reversal & Guarantees", self.content)
-        self.assertIn("Truthful Urgency / Scarcity", self.content)
+        self.assertNotIn("### Legacy S8 ", cmo_eval)
+        self.assertNotIn("### Legacy S18 ", cmo_eval)
+        self.assertIn("### Legacy S8 ", content_eval)
+        self.assertIn("### Legacy S18 ", content_eval)
+        self.assertIn("exactly five permanent ASIs", content_eval)
+        self.assertIn("e932320f28badb52bbb2dd968036debcb6ad87e5", content_eval)
+        self.assertIn("Creative then owns visual concepts", content_eval)
 
-    def test_pricing_reasoning_and_unit_economics(self):
-        """Verify evidence-based pricing and unit economics."""
-        self.assertIn("Evidence-Based Pricing Reasoning", self.content)
-        self.assertIn("Willingness-to-Pay Evidence", self.content)
+    def test_authoritative_docs_define_only_canonical_five_agents(self):
+        source = self.source_of_truth_path.read_text(encoding="utf-8")
+        architecture = self.architecture_path.read_text(encoding="utf-8")
+        protocol = self.agent_protocol_path.read_text(encoding="utf-8")
 
-    def test_customer_journey_and_channel_strategy(self):
-        """Verify non-linear journey mapping, bottleneck diagnosis, and channel evaluation criteria."""
-        self.assertIn("Customer Journey & Non-Linear Funnel Design", self.content)
-        self.assertIn("NON-LINEAR CUSTOMER JOURNEY", self.content)
-        self.assertIn("Channel Strategy & Distribution Mix", self.content)
-        self.assertIn("Owned Media", self.content)
-        self.assertIn("Earned Media", self.content)
-        self.assertIn("Paid Distribution", self.content)
+        self.assertIn(
+            "`CMO`, `Intelligence`, `Content`, `Creative`, and `Performance`",
+            source,
+        )
+        self.assertIn("no permanent Strategist agent and no Agent 6", source)
+        self.assertIn("Final CMO reuses CMO", source)
+        self.assertIn("An empty fallback chain means no fallback", source)
+        self.assertIn("chronological implementation/evaluation history", source)
+        self.assertNotIn(
+            "`CMO`, `Intelligence`, `Strategist`, `Creative`, and `Performance`",
+            source,
+        )
 
-    def test_content_strategy_and_pillars(self):
-        """Verify content strategy functions and rejection of generic filler pillars."""
-        self.assertIn("Content Strategy & Decision-Driven Pillars", self.content)
-        self.assertIn("Prohibited Generic Pillars", self.content)
-        self.assertIn("Permitted Strategic Pillars", self.content)
-        self.assertIn("Discovery (Pattern Interruption)", self.content)
-        self.assertIn("Objection Handling (Friction Removal)", self.content)
+        self.assertIn("## 2. Exactly five permanent agents", architecture)
+        self.assertIn("Historical `STRATEGIST` / `STRATEGY` names are not permanent identities", architecture)
+        self.assertIn("3. CONTENT", architecture)
+        self.assertIn("6. CMO (final; same CMO identity)", architecture)
+        self.assertIn("An empty fallback chain grants no fallback authority", architecture)
+        self.assertNotIn("### 2.3 Strategist", architecture)
+        self.assertNotIn("3. STRATEGIST:", architecture)
 
-    def test_affiliate_and_growth_loops(self):
-        """Verify affiliate economics and causal growth loop blueprints."""
-        self.assertIn("Growth Strategy & Compounding Growth Loops", self.content)
-        self.assertIn("Content-to-Insight Loop", self.content)
-        self.assertIn("Customer Proof Loop", self.content)
-        self.assertIn("Never diagram a growth loop without a concrete", self.content)
+        self.assertIn("All permanent inter-agent communication is bounded to exactly five logical identities", protocol)
+        self.assertIn("CMO | INTELLIGENCE | CONTENT | CREATIVE | PERFORMANCE", protocol)
+        self.assertIn("INTELLIGENCE\n   ↓\nCONTENT", protocol)
+        self.assertIn("Final CMO is not Agent 6", protocol)
+        self.assertIn("An empty fallback chain means no fallback", protocol)
+        self.assertNotIn('"supporting_agents": ["STRATEGIST"]', protocol)
+        self.assertNotIn("Pass validated ResearchReport to STRATEGIST", protocol)
 
-    def test_falsifiable_hypothesis_and_experiment_portfolio(self):
-        """Verify structured hypothesis schema and multi-tier experiment portfolio."""
-        self.assertIn("Falsifiable Hypothesis Design & Experiment Portfolio", self.content)
-        self.assertIn("Structured Hypothesis Standard", self.content)
-        self.assertIn("PRIMARY KPI", self.content)
-        self.assertIn("GUARDRAIL METRICS", self.content)
-        self.assertIn("DECISION RULE", self.content)
+    def test_governance_docs_cannot_regrant_legacy_or_mode_based_authority(self):
+        security = self.security_model_path.read_text(encoding="utf-8")
+        ui_permissions = self.ui_permission_model_path.read_text(encoding="utf-8")
+        roadmap = self.roadmap_path.read_text(encoding="utf-8")
 
-    def test_anti_dogmatism_trend_and_copycat_rules(self):
-        """Verify anti-framework dogmatism, anti-trend-chasing, and anti-copycat principles."""
-        self.assertIn("Anti-Dogmatism & Anti-Copycat Principles", self.content)
-        self.assertIn("Anti-Framework Dogmatism", self.content)
-        self.assertIn("Anti-Trend-Chasing", self.content)
-        self.assertIn("Anti-Copycat Strategy", self.content)
+        self.assertIn("Exactly five permanent logical agents", security)
+        self.assertIn("Agent identity is not execution authority", security)
+        self.assertIn("## 5. Autonomy modes do not create authority", security)
+        self.assertIn("an empty chain means no fallback", security)
+        self.assertNotIn("| **STRATEGIST** |", security)
+        self.assertNotIn("Agents execute", security)
 
-    def test_strategic_risk_and_invalidation(self):
-        """Verify strategic risk auditing, What Must Be True, and Invalidation conditions."""
-        self.assertIn("Strategic Risk & Invalidation Conditions", self.content)
-        self.assertIn("WHAT MUST BE TRUE", self.content)
-        self.assertIn("WHAT WOULD INVALIDATE THE STRATEGY", self.content)
+        self.assertIn("There is no permanent Strategist or Agent 6", ui_permissions)
+        self.assertIn("does **not** create new permission", ui_permissions)
+        self.assertIn("an empty fallback chain means no fallback", ui_permissions)
+        self.assertNotIn("Pre-approved budgets & variants execute", ui_permissions)
 
-    def test_specialist_handoffs_and_brief_schemas(self):
-        """Verify structured Creative Strategy Brief, Experiment Spec, and CMO Proposal."""
-        self.assertIn("Specialist Handoffs & Standard Outputs", self.content)
-        self.assertIn("CREATIVE STRATEGY BRIEF", self.content)
-        self.assertIn("EXPERIMENT SPECIFICATION", self.content)
-        self.assertIn("Executive Strategy Proposal", self.content)
-        self.assertIn("Failure Protocol", self.content)
+        self.assertIn("LEGACY / NON-AUTHORITATIVE ROADMAP", roadmap)
+        self.assertIn("4f51ac5c0d7bba98751246afc54ceee1475e03de", roadmap)
+        self.assertIn("exactly five permanent logical agents", roadmap)
+        self.assertIn("an empty fallback chain means no fallback", roadmap)
+        self.assertNotIn("### PHASE 1 — Agent Core & Foundational Architecture (CURRENT)", roadmap)
 
-    def test_strategist_preflight_self_check_questions(self):
-        """Verify the 15 diagnostic self-check audit questions for Strategist."""
-        self.assertIn("Strategist Pre-Flight Self-Check (15 Diagnostic Questions)", self.content)
-        for i in range(1, 16):
-            self.assertIn(f"{i}.", self.content)
+    def test_creative_engine_preserves_content_semantics_and_media_boundary(self):
+        creative_engine = self.creative_engine_path.read_text(encoding="utf-8")
+
+        self.assertIn("The Creative Engine does **not** replace the Content ASI", creative_engine)
+        self.assertIn("**Content** — message architecture, hooks, copy, scripts, CTA wording", creative_engine)
+        self.assertIn("**Creative** — visual/multimedia concept, art direction, storyboard", creative_engine)
+        self.assertIn("The hook/script/CTA identifiers point back to Content-owned semantic artifacts", creative_engine)
+        self.assertIn("Producing a media file does not mean it was published", creative_engine)
+        self.assertIn("examples only", creative_engine)
+        self.assertNotIn("│ Hook Generation │", creative_engine)
+        self.assertNotIn("│ Scriptwriting   │", creative_engine)
+        self.assertNotIn("cryptographic metadata manifest", creative_engine)
 
 
 if __name__ == "__main__":

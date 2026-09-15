@@ -4,7 +4,7 @@ Guarantees:
 - Safe settings read without secret exposure (zero plaintext key returned).
 - Masked/encrypted secret persistence via SecureSecretStore (Windows DPAPI / safe vault).
 - Full custom OpenAI-compatible and Gemini Native provider management.
-- Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, STRATEGIST, CREATIVE, PERFORMANCE).
+- Exactly 5 permanent logical agent identities (CMO, INTELLIGENCE, CONTENT, CREATIVE, PERFORMANCE).
 - Strict rejection of FINAL_CMO or unknown agent overrides.
 - Deterministic fallback chain editing without duplicates.
 - Safe base URL validation (HTTPS remote, HTTP loopback only).
@@ -279,7 +279,7 @@ class TestProdModelSettings01(unittest.TestCase):
         safe_dict = self.settings_manager.get_safe_settings_dict()
         agents = safe_dict["allowed_agents"]
         self.assertEqual(len(agents), 5)
-        self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "STRATEGIST", "CREATIVE", "PERFORMANCE"})
+        self.assertEqual(set(agents), {"CMO", "INTELLIGENCE", "CONTENT", "CREATIVE", "PERFORMANCE"})
         self.assertNotIn("FINAL_CMO", agents)
 
     # =========================================================================
@@ -517,6 +517,11 @@ class TestProdModelSettings01(unittest.TestCase):
 
     def test_23_transient_test_connection_success(self):
         """Verify Test Connection executes against target without persisting or modifying policy."""
+        expected_global_target = (
+            self.gateway.model_policy.global_target.provider_id,
+            self.gateway.model_policy.global_target.model_id,
+        )
+
         # Mock adapter generate response
         with patch.object(OpenAICompatibleProviderAdapter, "generate") as mock_gen:
             mock_gen.return_value = ModelResponse(
@@ -541,7 +546,13 @@ class TestProdModelSettings01(unittest.TestCase):
             # Test connection must NOT have persisted the provider or secret
             self.assertNotIn("custom_test", self.settings_manager.get_settings().providers)
             self.assertIsNone(self.secret_store.get_secret("STORE:custom_test"))
-            self.assertEqual(self.gateway.model_policy.global_target.provider_id, "gemini")
+            self.assertEqual(
+                (
+                    self.gateway.model_policy.global_target.provider_id,
+                    self.gateway.model_policy.global_target.model_id,
+                ),
+                expected_global_target,
+            )
 
     def test_24_transient_test_connection_auth_failure_classified(self):
         """Verify Test Connection classifies 401 / unauthorized as AUTH_FAILED."""

@@ -4,7 +4,7 @@
   "title": "Chief Marketing Officer / Orchestrator",
   "role": "CMO",
   "version": "1.0.0",
-  "description": "Master orchestrator, strategy validator, brand guardian, and resource allocator.",
+  "description": "Master orchestrator, strategy owner and validator, brand guardian, and resource allocator.",
   "epistemic_discipline": {
     "strictly_enforce_four_tiers": true,
     "require_evidence_for_claims": true,
@@ -25,7 +25,7 @@
   ],
   "dependencies": [
     "intelligence",
-    "strategist",
+    "content",
     "creative",
     "performance"
   ]

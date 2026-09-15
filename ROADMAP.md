@@ -1,112 +1,53 @@
-# AI Marketing Department Strategic Roadmap (ROADMAP.md)
+# AI Marketing Department Roadmap — Historical V1 Notice
 
-## Master Implementation Phases
+> **LEGACY / NON-AUTHORITATIVE ROADMAP.** The former contents of this path described an early V1 phase plan and must not be interpreted as the current architecture, current implementation status, current provider configuration, or authorization policy.
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   PHASE 1    │ ──> │   PHASE 2    │ ──> │   PHASE 3    │ ──> │   PHASE 4    │
-│  Agent Core  │     │ Core Skills  │     │  Knowledge   │     │ Observation  │
-└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
-                                                                       │
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐             │
-│   PHASE 8    │ <── │   PHASE 7    │ <── │   PHASE 6    │ <── ────────┘
-│ Auto Publish │     │ Platform API │     │  Analytics   │     ┌──────────────┐
-└──────────────┘     └──────────────┘     └──────────────┘     │   PHASE 5    │
-       │                                                       │   Creative   │
-       ▼                                                       │  Production  │
-┌──────────────┐     ┌──────────────┐                          └──────────────┘
-│   PHASE 9    │ ──> │   PHASE 10   │
-│   Learning   │     │  Standalone  │
-│  Evaluation  │     │ Application  │
-└──────────────┘     └──────────────┘
-```
+## Why this file is retained
 
----
+The original roadmap is useful forensic history, but several assumptions were superseded by later implementation/hardening, including:
 
-### PHASE 1 — Agent Core & Foundational Architecture (CURRENT)
-- [x] Initial directory topology and product workspace isolation.
-- [x] Architecture specification (`ARCHITECTURE.md`).
-- [x] Standard inter-agent communication envelope and epistemic protocol (`AGENT_PROTOCOL.md`).
-- [x] Typed domain data schemas in Pydantic / Python (`DATA_MODEL.md` + `schemas/`).
-- [x] Least-privilege security model & authorization gate specifications (`SECURITY_MODEL.md`).
-- [x] Modular Creative Engine and video editing pipeline specifications (`CREATIVE_ENGINE.md`).
-- [x] Dual-track continuous learning and memory model (`LEARNING_SYSTEM.md`).
-- [x] Provider-agnostic model router interfaces and foundational unit tests.
+- a permanent `Strategist` identity;
+- Creative owning primary copy/content responsibilities;
+- phase labels such as “Phase 1 (CURRENT)” long after those phases changed;
+- provider/tool examples being read as current defaults;
+- an “Autonomous” roadmap label being interpreted as direct permission to publish or mutate spend.
 
----
+Those assumptions must not override current code/tests or `SOURCE_OF_TRUTH.md`.
 
-### PHASE 2 — Core Marketing Skills Framework
-- Define high-leverage atomic skills for each specialist agent:
-  - **CMO**: Campaign orchestrator, budget allocator, brand compliance checker.
-  - **Intelligence**: Competitor ad breakdown, review scraper, persona extractor.
-  - **Strategist**: Value-prop matrix generator, hook strategy formulator, offer architect.
-  - **Creative**: Hook copywriter, short-form scriptwriter, storyboard compiler.
-  - **Performance**: UTM builder, ad variant matrix builder, metrics evaluator.
-- Enforce strict typed inputs and structured outputs across all skills.
+## Canonical current invariants
 
----
+The system currently has exactly five permanent logical agents:
 
-### PHASE 3 — Knowledge & Research Ingestion System
-- Populate Tier 1 Global Knowledge Base:
-  - Copywriting frameworks (AIDA, PAS, BAB, StoryBrand, Breakthrough Advertising).
-  - Consumer psychology principles (Cialdini's influence, loss aversion, status signaling).
-  - Platform algorithmic guidelines (TikTok, Reels, YouTube Shorts, Meta Feed).
-- Implement semantic vector index and BM25 hybrid search over product documentation and brand files.
+1. CMO
+2. Intelligence
+3. Content
+4. Creative
+5. Performance
 
----
+Final CMO reuses the same CMO identity. Historical `STRATEGIST` / `STRATEGY` values are compatibility/history only and do not create a sixth authority.
 
-### PHASE 4 — Social Observation Layer (SOL)
-- Build pluggable sensory adapters:
-  - **Web Search & Scrape Gateway**: Brave Search / Google Search / Serper.
-  - **Social Ad Library Scrapers**: Meta Ad Library, TikTok Creative Center.
-  - **Structured Social Connectors**: TikHub / Apify MCP connectors.
-  - **Browser Observation Fallback**: Headless Playwright/Puppeteer scraping sandbox.
-- Implement epistemic validator enforcing raw citation capture and separation of observations from inferences.
+Executive strategy and commercial sign-off belong to CMO. Content owns messaging/copy/editorial/channel semantics. Creative owns visual/multimedia production. Performance owns authoritative measurement/attribution and governed performance operations. Intelligence owns evidence/research.
 
----
+Consequential external actions remain behind current runtime/tool/policy/approval authority. A roadmap or autonomy label cannot grant publishing, spend, credential, or irreversible mutation permission.
 
-### PHASE 5 — Creative Production Engine
-- Implement modular generation adapters:
-  - Image generation: Midjourney / Flux / SDXL adapters.
-  - Video generation: Runway / Kling / Luma adapters.
-  - Voice synthesis: ElevenLabs / OpenAI TTS / Local Kokoro / Bark.
-  - Headless video assembly: Automated FFmpeg / MoviePy timeline renderer.
-- Implement automated caption styling (karaoke subtitle generator) and audio normalization (-14 LUFS).
-- Implement QA safe-zone validator for 9:16 vertical video formats.
+Provider/model behavior is defined by current executable model policy/registry/settings. Fallback is explicit; an empty fallback chain means no fallback.
 
----
+## Historical roadmap archive
 
-### PHASE 6 — Analytics & Experiment Engine
-- Build statistical attribution pipeline linking campaign performance to atomic creative tags.
-- Implement automated statistical significance calculator (Bayesian & Frequentist A/B testing).
-- Anomaly detection for ad fatigue, CTR decay, and CPC spikes.
+The complete pre-migration V1 roadmap remains recoverable from Git history at blob:
 
----
+`4f51ac5c0d7bba98751246afc54ceee1475e03de`
 
-### PHASE 7 — Platform API Gateway
-- Build secure, token-isolated connectors for advertising networks:
-  - Meta Marketing API (Campaigns, AdSets, Creatives).
-  - TikTok Ads API.
-  - Google Ads API.
-- Implement two-phase commit transaction manager (`Validate` -> `Hold` -> `Execute`).
+Use it only for roadmap archaeology and historical implementation context.
 
----
+## Where to determine current work
 
-### PHASE 8 — Controlled Auto-Publishing & Autonomy Engine
-- Implement the three-tier Autonomy Engine (`MANUAL`, `SUPERVISED`, `AUTONOMOUS`).
-- Build human-in-the-loop approval webhooks (Slack/Discord/Email notifications with one-click sign-off).
-- Enforce hard spending caps, automatic budget freeze on CPA anomalies, and rollback triggers.
+For current state and priorities, use this order:
 
----
+1. exact-head code and tests;
+2. `SOURCE_OF_TRUTH.md`;
+3. `ARCHITECTURE.md` and `AGENT_PROTOCOL.md`;
+4. current Draft PR description / exact-head CI evidence for the active integration workstream;
+5. `STATUS_MATRIX.md` as chronological phase evidence, interpreted with the supersession rules in `SOURCE_OF_TRUTH.md`.
 
-### PHASE 9 — Continuous Learning & Evaluation System
-- Implement automated distillation of campaign post-mortems into `Success Memory` and `Failure Memory`.
-- Automated decay tracking for marketing insights older than 90 days.
-- Knowledge promotion evaluation pipeline with Human/CMO sign-off gates.
-
----
-
-### PHASE 10 — Standalone Enterprise Application
-- Full-stack multi-brand dashboard (FastAPI backend + modern reactive frontend).
-- Visual campaign timeline builder, live creative previewer, and experiment visualizer.
-- Real-time agent collaboration chat and interactive Ask-Mentor cockpit.
+Do not infer a new production capability merely because it appeared in the historical V1 roadmap.

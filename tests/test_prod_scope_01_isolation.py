@@ -216,7 +216,7 @@ class TestProdScope01Isolation(unittest.TestCase):
             project_id=proj_b.project_id,
         )
         compiler = ContextCompiler(knowledge_repo=self.knowledge_repo)
-        pkg_b = compiler.compile_grounded_package("strategist", ctx_b)
+        pkg_b = compiler.compile_grounded_package("content", ctx_b)
         rendered_b = pkg_b.render_prompt_section()
 
         self.assertNotIn(sentinel_a, rendered_b)
@@ -1190,7 +1190,7 @@ class TestProdScope01Isolation(unittest.TestCase):
             project_id="PROJ_B",
         )
         compiler = ContextCompiler(knowledge_repo=self.knowledge_repo)
-        pkg = compiler.compile_grounded_package("strategist", ctx_b)
+        pkg = compiler.compile_grounded_package("content", ctx_b)
         rendered = pkg.render_prompt_section()
 
         self.assertIn("PUBLIC_PROJECT_B_KEYWORD_Y88", rendered)
