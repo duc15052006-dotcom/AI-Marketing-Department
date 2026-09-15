@@ -28,10 +28,12 @@ Write-Host "== Packaged backend full-workflow smoke ==" -ForegroundColor Cyan
 Write-Host "Starting loopback OpenAI-compatible provider on 127.0.0.1:$MockPort"
 
 $countFile = Join-Path ([System.IO.Path]::GetTempPath()) ("ai-marketing-full-workflow-count-{0}.txt" -f ([Guid]::NewGuid().ToString("N")))
+$connectionCountFile = Join-Path ([System.IO.Path]::GetTempPath()) ("ai-marketing-full-workflow-connections-{0}.txt" -f ([Guid]::NewGuid().ToString("N")))
 [System.IO.File]::WriteAllText($countFile, "0", [System.Text.Encoding]::ASCII)
+[System.IO.File]::WriteAllText($connectionCountFile, "0", [System.Text.Encoding]::ASCII)
 
-$mockJob = Start-Job -ArgumentList $MockPort, $countFile -ScriptBlock {
-    param([int]$Port, [string]$CountFile)
+$mockJob = Start-Job -ArgumentList $MockPort, $countFile, $connectionCountFile -ScriptBlock {
+    param([int]$Port, [string]$CountFile, [string]$ConnectionCountFile)
 
     $ErrorActionPreference = "Stop"
     Set-StrictMode -Version Latest
@@ -118,10 +120,13 @@ $mockJob = Start-Job -ArgumentList $MockPort, $countFile -ScriptBlock {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
     $listener.Start()
     $requestCount = 0
+    $connectionCount = 0
 
     try {
         while ($true) {
             $client = $listener.AcceptTcpClient()
+            $connectionCount += 1
+            [System.IO.File]::WriteAllText($ConnectionCountFile, [string]$connectionCount, [System.Text.Encoding]::ASCII)
             try {
                 $client.ReceiveTimeout = 30000
                 $client.SendTimeout = 30000
@@ -199,6 +204,7 @@ try {
     $settings = Invoke-RestMethod -Uri "$backend/api/settings/models" -Method Get -Headers $headers -TimeoutSec 20
     $providerId = "release-workflow-smoke"
     $modelId = "workflow-smoke-model"
+    $providerBaseUrl = "http://127.0.0.1:$MockPort/v1"
     $settingsPayload = @{
         expected_revision = [int]$settings.settings_revision
         free_only_mode = $true
@@ -213,7 +219,7 @@ try {
                 provider_id = $providerId
                 adapter_type = "OPENAI_COMPATIBLE"
                 display_name = "Release Workflow Smoke"
-                base_url = "http://127.0.0.1:$MockPort/v1"
+                base_url = $providerBaseUrl
                 enabled = $true
                 default_model = $modelId
                 chat_completions_path = "/chat/completions"
@@ -227,32 +233,59 @@ try {
     if ($saved.global_target.provider_id -ne $providerId -or $saved.global_target.model_id -ne $modelId) {
         throw "Packaged full-workflow smoke could not persist the loopback provider as global target."
     }
+    $savedProvider = @($saved.providers | Where-Object { $_.provider_id -eq $providerId } | Select-Object -First 1)
+    if ($savedProvider.Count -ne 1) {
+        throw "Packaged full-workflow smoke could not read back the persisted loopback provider."
+    }
+    if ([string]$savedProvider[0].base_url -ne $providerBaseUrl -or -not [bool]$savedProvider[0].enabled) {
+        throw "Persisted loopback provider did not match the expected enabled base URL."
+    }
+    Write-Host "      Saved workflow target: $providerId::$modelId -> $providerBaseUrl" -ForegroundColor DarkGray
 
     $campaignPayload = @{
         business_id = "BIZ_RELEASE_WORKFLOW_SMOKE"
         objective = "Create a synthetic planning-only marketing workflow for packaged release certification. Do not state product facts, observed metrics, rankings, comparative claims, or deployment claims."
     } | ConvertTo-Json -Compress
 
-    $result = Invoke-RestMethod -Uri "$backend/api/campaigns/execute_supervised" -Method Post -Headers $headers -ContentType "application/json" -Body $campaignPayload -TimeoutSec 180
-
-    $requestCount = [int]([System.IO.File]::ReadAllText($countFile, [System.Text.Encoding]::ASCII).Trim())
-    if ($requestCount -ne 7) {
-        throw "Canonical packaged workflow must issue exactly 7 model requests; observed $requestCount."
+    try {
+        $result = Invoke-RestMethod -Uri "$backend/api/campaigns/execute_supervised" -Method Post -Headers $headers -ContentType "application/json" -Body $campaignPayload -TimeoutSec 180
     }
-
-    $expectedStages = @("cmo_initial", "intelligence", "content", "creative", "performance", "final_cmo")
-    $actualStages = @($result.stages_completed)
-    if ($actualStages.Count -ne $expectedStages.Count) {
-        throw "Canonical packaged workflow must complete exactly 6 logical stages; observed $($actualStages.Count): $($actualStages -join ', ')."
-    }
-    for ($i = 0; $i -lt $expectedStages.Count; $i++) {
-        if ([string]$actualStages[$i] -ne $expectedStages[$i]) {
-            throw "Canonical stage order mismatch at index $i. expected='$($expectedStages[$i])' actual='$($actualStages[$i])'."
+    catch {
+        $connectionCount = [int]([System.IO.File]::ReadAllText($connectionCountFile, [System.Text.Encoding]::ASCII).Trim())
+        $requestCount = [int]([System.IO.File]::ReadAllText($countFile, [System.Text.Encoding]::ASCII).Trim())
+        $jobOutput = ""
+        if ($mockJob.State -in @('Failed', 'Stopped', 'Completed')) {
+            $jobOutput = (Receive-Job -Job $mockJob -ErrorAction SilentlyContinue 2>&1 | Out-String).Trim()
         }
+        throw "Packaged full-workflow endpoint request failed. connections=$connectionCount completed_requests=$requestCount mock_state=$($mockJob.State) error=$($_.Exception.Message) mock_output=$jobOutput"
+    }
+
+    $connectionCount = [int]([System.IO.File]::ReadAllText($connectionCountFile, [System.Text.Encoding]::ASCII).Trim())
+    $requestCount = [int]([System.IO.File]::ReadAllText($countFile, [System.Text.Encoding]::ASCII).Trim())
+    $actualStages = @($result.stages_completed)
+    Write-Host "      Workflow diagnostics: status=$($result.status) success=$($result.success) stages=[$($actualStages -join ', ')] tcp_connections=$connectionCount completed_requests=$requestCount mock_state=$($mockJob.State)" -ForegroundColor DarkGray
+
+    if ($mockJob.State -eq 'Failed') {
+        $jobOutput = (Receive-Job -Job $mockJob -ErrorAction SilentlyContinue 2>&1 | Out-String).Trim()
+        throw "Loopback full-workflow mock provider failed. connections=$connectionCount completed_requests=$requestCount output=$jobOutput"
     }
 
     if ($result.status -ne "COMPLETED" -or -not $result.success) {
-        throw "Packaged full-workflow smoke did not complete successfully. status=$($result.status) success=$($result.success)"
+        throw "Packaged full-workflow smoke did not complete successfully. status=$($result.status) success=$($result.success) stages=[$($actualStages -join ', ')] connections=$connectionCount completed_requests=$requestCount"
+    }
+
+    $expectedStages = @("cmo_initial", "intelligence", "content", "creative", "performance", "final_cmo")
+    if ($actualStages.Count -ne $expectedStages.Count) {
+        throw "Canonical packaged workflow must complete exactly 6 logical stages; observed $($actualStages.Count): $($actualStages -join ', '). connections=$connectionCount completed_requests=$requestCount"
+    }
+    for ($i = 0; $i -lt $expectedStages.Count; $i++) {
+        if ([string]$actualStages[$i] -ne $expectedStages[$i]) {
+            throw "Canonical stage order mismatch at index $i. expected='$($expectedStages[$i])' actual='$($actualStages[$i])'. connections=$connectionCount completed_requests=$requestCount"
+        }
+    }
+
+    if ($requestCount -ne 7) {
+        throw "Canonical packaged workflow must issue exactly 7 model requests; observed $requestCount completed requests across $connectionCount TCP connections."
     }
 
     Write-Host "PACKAGED_FULL_WORKFLOW_6_STAGE_7_CALL_OK" -ForegroundColor Green
@@ -263,4 +296,5 @@ finally {
     }
     Remove-Job -Job $mockJob -Force -ErrorAction SilentlyContinue
     Remove-Item -Force $countFile -ErrorAction SilentlyContinue
+    Remove-Item -Force $connectionCountFile -ErrorAction SilentlyContinue
 }
