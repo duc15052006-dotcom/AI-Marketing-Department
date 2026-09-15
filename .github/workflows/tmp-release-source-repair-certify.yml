@@ -35,51 +35,52 @@ jobs:
           main = Path("src-tauri/src/main.rs")
           text = main.read_text(encoding="utf-8")
           anchor = "mod tests {\n    use super::*;\n"
-          helper = r'''
-
-    fn drain_complete_http_request(stream: &mut std::net::TcpStream) {
-        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
-        let mut request = Vec::new();
-        let mut buf = [0u8; 1024];
-        let mut expected_total: Option<usize> = None;
-
-        loop {
-            match stream.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    request.extend_from_slice(&buf[..n]);
-                    if expected_total.is_none() {
-                        if let Some(idx) = request.windows(4).position(|w| w == b"\r\n\r\n") {
-                            let header_end = idx + 4;
-                            let headers = String::from_utf8_lossy(&request[..idx]);
-                            let content_length = headers
-                                .lines()
-                                .find_map(|line| {
-                                    let (name, value) = line.split_once(':')?;
-                                    if name.trim().eq_ignore_ascii_case("content-length") {
-                                        value.trim().parse::<usize>().ok()
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .unwrap_or(0);
-                            expected_total = Some(header_end + content_length);
-                        }
-                    }
-                    if expected_total.is_some_and(|expected| request.len() >= expected) {
-                        break;
-                    }
-                }
-                Err(err)
-                    if matches!(
-                        err.kind(),
-                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                    ) => break,
-                Err(_) => break,
-            }
-        }
-    }
-'''
+          helper = "\n".join([
+              "",
+              "",
+              "    fn drain_complete_http_request(stream: &mut std::net::TcpStream) {",
+              "        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));",
+              "        let mut request = Vec::new();",
+              "        let mut buf = [0u8; 1024];",
+              "        let mut expected_total: Option<usize> = None;",
+              "",
+              "        loop {",
+              "            match stream.read(&mut buf) {",
+              "                Ok(0) => break,",
+              "                Ok(n) => {",
+              "                    request.extend_from_slice(&buf[..n]);",
+              "                    if expected_total.is_none() {",
+              "                        if let Some(idx) = request.windows(4).position(|w| w == b\\\"\\r\\n\\r\\n\\\") {",
+              "                            let header_end = idx + 4;",
+              "                            let headers = String::from_utf8_lossy(&request[..idx]);",
+              "                            let content_length = headers",
+              "                                .lines()",
+              "                                .find_map(|line| {",
+              "                                    let (name, value) = line.split_once(':')?;",
+              "                                    if name.trim().eq_ignore_ascii_case(\\\"content-length\\\") {",
+              "                                        value.trim().parse::<usize>().ok()",
+              "                                    } else {",
+              "                                        None",
+              "                                    }",
+              "                                })",
+              "                                .unwrap_or(0);",
+              "                            expected_total = Some(header_end + content_length);",
+              "                        }",
+              "                    }",
+              "                    if expected_total.is_some_and(|expected| request.len() >= expected) {",
+              "                        break;",
+              "                    }",
+              "                }",
+              "                Err(err)",
+              "                    if matches!(",
+              "                        err.kind(),",
+              "                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut",
+              "                    ) => break,",
+              "                Err(_) => break,",
+              "            }",
+              "        }",
+              "    }",
+          ])
           if anchor not in text:
               raise SystemExit("Rust test module anchor not found")
           text = text.replace(anchor, anchor + helper, 1)
