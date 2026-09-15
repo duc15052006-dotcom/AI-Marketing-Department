@@ -1815,14 +1815,14 @@ mod tests {
                 Ok(n) => {
                     request.extend_from_slice(&buf[..n]);
                     if expected_total.is_none() {
-                        if let Some(idx) = request.windows(4).position(|w| w == b\"\r\n\r\n\") {
+                        if let Some(idx) = request.windows(4).position(|w| w == b"\r\n\r\n") {
                             let header_end = idx + 4;
                             let headers = String::from_utf8_lossy(&request[..idx]);
                             let content_length = headers
                                 .lines()
                                 .find_map(|line| {
                                     let (name, value) = line.split_once(':')?;
-                                    if name.trim().eq_ignore_ascii_case(\"content-length\") {
+                                    if name.trim().eq_ignore_ascii_case("content-length") {
                                         value.trim().parse::<usize>().ok()
                                     } else {
                                         None
