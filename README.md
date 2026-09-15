@@ -1,6 +1,6 @@
 # AI Marketing Department
 
-> A local-first, AI-assisted multi-agent marketing system built around five permanent specialist agents: **CMO, Intelligence, Strategist, Creative, and Performance**.
+> A local-first, AI-assisted multi-agent marketing system built around five permanent specialist agents: **CMO, Intelligence, Content, Creative, and Performance**.
 >
 > **I am learning by building.**
 
@@ -14,8 +14,8 @@ Thay vì để một chatbot duy nhất làm mọi việc, dự án chia công v
 
 - **CMO** — điều phối, quản trị chiến lược và phê duyệt.
 - **Intelligence** — nghiên cứu thị trường, khách hàng, sản phẩm và đối thủ.
-- **Strategist** — định vị, chiến lược, GTM và thiết kế thử nghiệm.
-- **Creative** — concept, copy, kịch bản, storyboard và định hướng sản xuất nội dung.
+- **Content** — kiến trúc thông điệp, copy, kịch bản, editorial/SEO, content experiments và thích ứng theo kênh.
+- **Creative** — concept hình ảnh/multimedia, storyboard, shotlist, media specification và định hướng sản xuất asset.
 - **Performance** — đo lường, tracking, KPI, media planning và tối ưu hiệu suất.
 
 Dự án được xây theo hướng **local-first**, ưu tiên khả năng kiểm soát dữ liệu, provider/model có thể thay đổi, bằng chứng có provenance, và các hành động quan trọng vẫn cần **Human Approval**.
@@ -32,8 +32,8 @@ The system has **exactly five permanent logical agents**:
 
 1. **CMO** — orchestration, governance, review, and final decision support.
 2. **Intelligence** — market, product, competitor, and customer research.
-3. **Strategist** — positioning, go-to-market strategy, growth planning, and experiments.
-4. **Creative** — concepts, copy, scripts, storyboards, and creative production planning.
+3. **Content** — evidence-grounded messaging, copy/scripts, editorial/SEO planning, content experiments, and channel adaptation.
+4. **Creative** — visual/multimedia concepts, storyboards, shotlists, media specifications, and asset-production planning.
 5. **Performance** — measurement, analytics, KPI design, media planning, and optimization.
 
 The project is designed around a **local-first application**, provider-agnostic model routing, evidence-aware workflows, scoped memory/knowledge, and human approval for consequential actions.
@@ -73,8 +73,8 @@ Các mục tiêu chính:
           │                  │                  │
           ▼                  ▼                  ▼
  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐
- │  INTELLIGENCE  │ │   STRATEGIST   │ │    CREATIVE    │
- │ Research       │ │ Strategy / GTM │ │ Content / Idea │
+ │  INTELLIGENCE  │ │    CONTENT     │ │    CREATIVE    │
+ │ Research       │ │ Messaging/Copy │ │ Visual / Media │
  └────────┬───────┘ └────────┬───────┘ └────────┬───────┘
           │                  │                  │
           └──────────────────┼──────────────────┘

@@ -557,6 +557,28 @@ fn find_project_root() -> PathBuf {
     primary
 }
 
+/// Resolve the release-packaged Python backend sidecar before falling back to
+/// a developer source checkout. Tauri resources preserve the configured
+/// `resources/backend` path on Windows, while the extra candidates keep local
+/// release smoke builds and future resource remaps compatible.
+pub fn find_packaged_backend_executable() -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var("AI_MARKETING_BACKEND_EXE") {
+        let candidate = PathBuf::from(explicit);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+    let candidates = [
+        exe_dir.join("resources").join("backend").join("ai-marketing-backend.exe"),
+        exe_dir.join("backend").join("ai-marketing-backend.exe"),
+        exe_dir.join("ai-marketing-backend.exe"),
+    ];
+    candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
 pub fn parse_bootstrap_line(line: &str) -> Result<(String, String, u16), &'static str> {
     let trimmed = line.trim();
     if !trimmed.starts_with("UIAUTH_BOOTSTRAP_V1:") {
@@ -584,8 +606,26 @@ pub fn parse_bootstrap_line(line: &str) -> Result<(String, String, u16), &'stati
 }
 
 fn spawn_backend_and_bootstrap() -> (Option<u32>, Option<usize>, Option<job_object::JobObjectHandle>, Option<String>, String, u16) {
-    let root_dir = find_project_root();
+    let packaged_backend = find_packaged_backend_executable();
+    let root_dir = if let Some(ref backend_exe) = packaged_backend {
+        // The packaged PyInstaller executable is self-contained. Its parent is
+        // guaranteed to exist and is a safe current directory for CreateProcess.
+        backend_exe
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(find_project_root)
+    } else {
+        find_project_root()
+    };
     let server_script = root_dir.join("app_api").join("server.py");
+
+    if let Some(ref backend_exe) = packaged_backend {
+        // Reuse the hardened Windows Job Object/bootstrap path without adding a
+        // second process-launch implementation. The frozen backend ignores the
+        // legacy source-script positional argument and honors --emit-bootstrap.
+        std::env::set_var("PYTHON_PATH", backend_exe);
+        println!("Using packaged backend sidecar: {:?}", backend_exe);
+    }
 
     let mut default_host = "127.0.0.1".to_string();
     let mut default_port = 8765u16;
