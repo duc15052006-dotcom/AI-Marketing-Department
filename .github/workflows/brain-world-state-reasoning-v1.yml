@@ -1,23 +1,21 @@
 name: Brain World State Reasoning V1
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/brain-world-state-reasoning-v1.yml"
-  workflow_dispatch:
+  push:
+    branches:
+      - integration/final-main-reconciliation-v1
 
 permissions:
   contents: write
 
 jobs:
   repair:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'integration/final-main-reconciliation-v1' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact PR head branch
+      - name: Checkout repair branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: integration/final-main-reconciliation-v1
           fetch-depth: 0
 
       - name: Apply exact stale-contract repair
@@ -48,4 +46,4 @@ jobs:
           git add tests/test_collaboration_integrity_audit.py .github/workflows/tmp-final-certification-contract-repair.yml
           git diff --cached --check
           git commit -m "test(collaboration): align canonical approval and Performance contracts"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:integration/final-main-reconciliation-v1
