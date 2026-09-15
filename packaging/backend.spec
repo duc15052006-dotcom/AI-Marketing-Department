@@ -9,7 +9,8 @@ a source checkout beside the desktop application.
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-ROOT = Path(SPECPATH).parent.parent.resolve()
+# SPECPATH is the directory containing packaging/backend.spec.
+ROOT = Path(SPECPATH).parent.resolve()
 
 # These are first-party packages used by the local API/runtime. Explicitly
 # collecting them makes dynamically-loaded modules deterministic in release
