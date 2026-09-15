@@ -25,18 +25,26 @@ jobs:
 
           path = Path("src-tauri/src/main.rs")
           text = path.read_text(encoding="utf-8")
-          old1 = 'b\\\\\"\\r\\n\\r\\n\\\\\"'
-          new1 = 'b\"\\r\\n\\r\\n\"'
-          old2 = 'eq_ignore_ascii_case(\\\\\"content-length\\\\\")'
-          new2 = 'eq_ignore_ascii_case(\"content-length\")'
+          old1 = r'b\"\r\n\r\n\"'
+          new1 = r'b"\r\n\r\n"'
+          old2 = r'eq_ignore_ascii_case(\"content-length\")'
+          new2 = r'eq_ignore_ascii_case("content-length")'
+
           if old1 not in text:
-              raise SystemExit("byte-string escape anchor not found")
+              pos = text.find("request.windows(4)")
+              nearby = text[pos:pos + 180] if pos >= 0 else "<anchor missing>"
+              raise SystemExit(f"byte-string escape anchor not found; nearby={nearby!r}")
           if old2 not in text:
               raise SystemExit("content-length escape anchor not found")
+
           text = text.replace(old1, new1, 1).replace(old2, new2, 1)
           path.write_text(text, encoding="utf-8", newline="\n")
           PY
           git diff --check
+
+      - name: Compile-check repaired Rust tests
+        shell: bash
+        run: cargo check --manifest-path src-tauri/Cargo.toml --tests
 
       - name: Commit Rust escape repair
         shell: bash
