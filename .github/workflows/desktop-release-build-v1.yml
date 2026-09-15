@@ -24,6 +24,7 @@ on:
       - "runtime/**"
       - "schemas/**"
       - "scripts/build_windows_release.ps1"
+      - "scripts/smoke_packaged_model_connection.ps1"
       - "scripts/smoke_installed_windows_release.ps1"
       - "src-tauri/**"
       - "tools/**"

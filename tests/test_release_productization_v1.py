@@ -31,6 +31,17 @@ class ReleaseProductizationV1Tests(unittest.TestCase):
         self.assertIn("@tauri-apps/cli@2.11.4", script)
         self.assertIn("cargo test", script)
 
+    def test_release_build_smokes_packaged_model_connection(self) -> None:
+        build_script = (ROOT / "scripts" / "build_windows_release.ps1").read_text(encoding="utf-8")
+        smoke_script = (ROOT / "scripts" / "smoke_packaged_model_connection.ps1").read_text(encoding="utf-8")
+        self.assertIn("smoke_packaged_model_connection.ps1", build_script)
+        self.assertIn("/api/settings/models/test", smoke_script)
+        self.assertIn("PACKAGED_MODEL_CONNECTION_TEST_OK", smoke_script)
+        self.assertIn("http://127.0.0.1:", smoke_script)
+        self.assertIn("OPENAI_COMPATIBLE", smoke_script)
+        self.assertNotIn("OPENAI_API_KEY", smoke_script)
+        self.assertNotIn("GEMINI_API_KEY", smoke_script)
+
     def test_model_settings_fallback_identity_is_canonical(self) -> None:
         ui = (ROOT / "frontend" / "src" / "components" / "ModelSettingsView.tsx").read_text(encoding="utf-8")
         self.assertIn("['CMO', 'INTELLIGENCE', 'CONTENT', 'CREATIVE', 'PERFORMANCE']", ui)

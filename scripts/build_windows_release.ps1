@@ -32,7 +32,7 @@ try {
     }
     Copy-Item -Force $BackendExe $BackendResourceExe
 
-    Write-Host "[4/7] Smoke-testing standalone backend bootstrap and health..." -ForegroundColor Yellow
+    Write-Host "[4/7] Smoke-testing standalone backend bootstrap, health, and model connection..." -ForegroundColor Yellow
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $BackendResourceExe
     $psi.Arguments = "--emit-bootstrap --port 18765"
@@ -60,11 +60,29 @@ try {
             throw "Standalone backend did not emit a bootstrap frame. stderr=$err"
         }
 
-        $health = Invoke-RestMethod -Uri "http://127.0.0.1:18765/api/health" -Method Get -TimeoutSec 10
+        $bootstrapJson = $bootstrap.Substring("UIAUTH_BOOTSTRAP_V1:".Length)
+        $bootstrapPayload = $bootstrapJson | ConvertFrom-Json
+        $bootstrapToken = [string]$bootstrapPayload.token
+        $bootstrapHost = [string]$bootstrapPayload.host
+        $bootstrapPort = [int]$bootstrapPayload.port
+        if ([string]::IsNullOrWhiteSpace($bootstrapToken)) {
+            throw "Standalone backend bootstrap frame did not include an auth token."
+        }
+        if ($bootstrapHost -ne "127.0.0.1") {
+            throw "Standalone backend bootstrap returned unexpected host '$bootstrapHost'."
+        }
+        if ($bootstrapPort -ne 18765) {
+            throw "Standalone backend bootstrap returned unexpected port '$bootstrapPort'."
+        }
+
+        $backendBaseUrl = "http://$bootstrapHost`:$bootstrapPort"
+        $health = Invoke-RestMethod -Uri "$backendBaseUrl/api/health" -Method Get -TimeoutSec 10
         if ($health.status -ne "ok") {
             throw "Standalone backend health endpoint returned unexpected status: $($health.status)"
         }
         Write-Host "      Backend bootstrap + health OK" -ForegroundColor Green
+
+        & (Join-Path $Root "scripts\smoke_packaged_model_connection.ps1") -BackendBaseUrl $backendBaseUrl -BearerToken $bootstrapToken
     } finally {
         if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
     }
