@@ -42,6 +42,15 @@ class ReleaseProductizationV1Tests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", smoke_script)
         self.assertNotIn("GEMINI_API_KEY", smoke_script)
 
+    def test_backend_spec_bundles_authoritative_agent_dna(self) -> None:
+        spec = (ROOT / "packaging" / "backend.spec").read_text(encoding="utf-8")
+        self.assertIn('AGENT_DNA_DIR = ROOT / ".agents"', spec)
+        self.assertIn('datas.append((str(AGENT_DNA_DIR), ".agents"))', spec)
+        for agent_id in ("cmo", "intelligence", "content", "creative", "performance"):
+            dna = ROOT / ".agents" / "agents" / agent_id / "agent.md"
+            self.assertTrue(dna.is_file(), f"Missing authoritative operating DNA for {agent_id}: {dna}")
+            self.assertTrue(dna.read_text(encoding="utf-8").strip(), f"Empty authoritative operating DNA for {agent_id}: {dna}")
+
     def test_model_settings_fallback_identity_is_canonical(self) -> None:
         ui = (ROOT / "frontend" / "src" / "components" / "ModelSettingsView.tsx").read_text(encoding="utf-8")
         self.assertIn("['CMO', 'INTELLIGENCE', 'CONTENT', 'CREATIVE', 'PERFORMANCE']", ui)
