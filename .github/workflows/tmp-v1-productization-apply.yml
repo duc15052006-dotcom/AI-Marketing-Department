@@ -1,0 +1,39 @@
+name: Temporary V1 Productization Apply
+
+on:
+  push:
+    branches:
+      - release/v1-productization-final
+
+permissions:
+  contents: write
+
+jobs:
+  apply-productization:
+    if: ${{ !contains(github.event.head_commit.message, '[productization-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/v1-productization-final
+          fetch-depth: 0
+
+      - name: Apply deterministic fixes
+        run: python scripts/apply_v1_productization_fixes.py
+
+      - name: Verify productization source contract
+        run: python -m unittest tests.test_release_productization_v1 -v
+
+      - name: Commit generated source fixes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No productization source changes were required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md frontend/src/components/ModelSettingsView.tsx src-tauri/src/main.rs
+          git commit -m "fix(release): complete standalone v1 productization [productization-applied]"
+          git push origin HEAD:release/v1-productization-final
