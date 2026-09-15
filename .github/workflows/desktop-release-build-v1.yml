@@ -24,6 +24,7 @@ on:
       - "runtime/**"
       - "schemas/**"
       - "scripts/build_windows_release.ps1"
+      - "scripts/smoke_installed_windows_release.ps1"
       - "src-tauri/**"
       - "tools/**"
       - "workspace/**"
@@ -77,6 +78,10 @@ jobs:
       - name: Build and certify standalone Windows release
         shell: pwsh
         run: ./scripts/build_windows_release.ps1
+
+      - name: Clean-install and launch installed desktop
+        shell: pwsh
+        run: ./scripts/smoke_installed_windows_release.ps1
 
       - name: Generate installer SHA-256 checksums
         shell: pwsh
