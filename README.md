@@ -180,31 +180,46 @@ Mục tiêu UI là giữ trải nghiệm giống một AI workspace đơn giản
 
 ---
 
-## Quick start — Windows
+## Quick start — Windows standalone v1.0
 
-### 1. Yêu cầu
+Bản Windows standalone được thiết kế cho người dùng cuối theo luồng:
 
-Bạn cần cài:
+**tải installer → cài đặt → mở app → nhập provider/model/API key → Test Connection → Save → sử dụng**.
 
-- Git
-- Python 3
-- Node.js + npm
-- PowerShell
+Người dùng bản standalone **không cần cài Python, Node.js, npm, Git, Rust và không cần clone source code**. Desktop shell tự khởi động backend `ai-marketing-backend.exe` đã được đóng gói cùng ứng dụng.
 
-Python 3.12 là phiên bản đang được dùng trong workflow regression chính của repo.
+### Cài đặt
 
-### 2. Clone repository
+1. Tải bộ cài Windows v1.0 đã được release certification tạo ra.
+2. Dùng **NSIS `.exe`** cho cài đặt thông thường, hoặc **MSI `.msi`** nếu môi trường của bạn ưu tiên Windows Installer.
+3. Cài ứng dụng và mở **AI Marketing Department**.
+4. Mở **Settings → AI Model & Provider Settings**.
+5. Chọn provider có sẵn hoặc thêm OpenAI-compatible provider tùy chỉnh.
+6. Nhập model ID và API key nếu provider yêu cầu.
+7. Chọn **Test Connection**; kết quả thành công phải là `CONNECTED`.
+8. Chọn **Save Provider**.
+9. Trong **Global Model Authority**, chọn provider/model muốn dùng cho các run mới rồi **Save Settings**.
+10. Quay lại workspace và bắt đầu workflow.
+
+Hướng dẫn standalone chi tiết: [`WINDOWS_STANDALONE_V1.md`](WINDOWS_STANDALONE_V1.md).
+
+> CI có thể chứng nhận installer, packaged backend và đường Test Connection bằng mock cục bộ, nhưng không thể giả vờ chứng nhận tài khoản cloud của người dùng. Live-provider E2E vẫn cần API key thật do người dùng tự nhập.
+
+### Development from source
+
+Các bước dưới đây chỉ dành cho người muốn phát triển/chạy source, **không phải yêu cầu của bản installer standalone**.
+
+Bạn cần Git, Python 3, Node.js + npm và PowerShell. Python 3.12 là phiên bản đang được dùng trong workflow regression chính của repo.
 
 ```powershell
 git clone https://github.com/duc15052006-dotcom/AI-Marketing-Department.git
 cd AI-Marketing-Department
-```
-
-### 3. Tạo Python virtual environment
-
-```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+npm --prefix frontend install
+.\run_app.ps1
 ```
 
 Nếu PowerShell chặn script trong session hiện tại:
@@ -214,32 +229,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
-### 4. Cài Python dependencies
-
-```powershell
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-### 5. Cài frontend dependencies
-
-```powershell
-npm --prefix frontend install
-```
-
-### 6. Chạy local app
-
-```powershell
-.\run_app.ps1
-```
-
-Launcher sẽ khởi động local Python API, Vite frontend và mở giao diện local trên máy.
-
-Dừng bằng:
-
-```text
-Ctrl + C
-```
+Dừng launcher development bằng `Ctrl + C`.
 
 ---
 
@@ -247,14 +237,15 @@ Ctrl + C
 
 Repository **không được thiết kế để đi kèm API key cá nhân của tác giả**.
 
-Sau khi chạy app:
+Sau khi mở app:
 
 1. Mở **Settings**.
 2. Chọn hoặc tạo provider.
-3. Nhập API key của bạn.
-4. Chọn model.
-5. Test connection.
-6. Save cấu hình.
+3. Nhập API key của bạn nếu provider yêu cầu.
+4. Nhập/chọn model.
+5. **Test Connection**.
+6. **Save Provider**.
+7. Chọn provider/model đó trong **Global Model Authority** và **Save Settings** nếu muốn dùng làm routing mặc định cho run mới.
 
 Credential nên được lưu ở local secure storage / environment phù hợp và **không commit vào Git**.
 
