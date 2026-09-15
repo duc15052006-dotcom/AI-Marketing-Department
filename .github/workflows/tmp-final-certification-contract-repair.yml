@@ -1,0 +1,94 @@
+name: Temporary Final Certification Contract Repair
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/tmp-final-certification-contract-repair.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'integration/final-main-reconciliation-v1'
+    runs-on: ubuntu-latest
+    env:
+      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      AI_MARKETING_MEMORY_EPHEMERAL: "1"
+      AI_MARKETING_LEARNING_EPHEMERAL: "1"
+    steps:
+      - name: Checkout exact PR head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Repair stale contracts and hermetic isolation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          tests = Path('tests/test_collaboration_integrity_audit.py')
+          text = tests.read_text(encoding='utf-8')
+
+          old_approval = '''        self.assertIn(final_out["approval_status"], ("APPROVED", "APPROVED_WITH_CONDITIONS"))
+        self.assertEqual(final_out["status"], "READY_FOR_DEPLOYMENT")'''
+          new_approval = '''        self.assertIn(final_out["approval_status"], ("APPROVED", "APPROVED_WITH_CONDITIONS"))
+        expected_status = (
+            "READY_FOR_DEPLOYMENT"
+            if final_out["approval_status"] == "APPROVED"
+            else "READY_FOR_HUMAN_APPROVAL"
+        )
+        self.assertEqual(final_out["status"], expected_status)'''
+          if text.count(old_approval) != 1:
+              raise SystemExit(f'expected one stale conditional-approval assertion, found {text.count(old_approval)}')
+          text = text.replace(old_approval, new_approval)
+
+          old_perf = '''        self.assertEqual(ctx.stage_outputs["performance"]["funnel_kpi"], replies["performance"])'''
+          new_perf = '''        perf = ctx.stage_outputs["performance"]
+        self.assertEqual(perf["measurement_attribution"], replies["performance"])
+        self.assertEqual(perf["experimentation_governance"], replies["performance"])
+        self.assertEqual(perf["field_origins"]["measurement_attribution"], "AGENT_DERIVED")
+        self.assertEqual(perf["field_origins"]["experimentation_governance"], "AGENT_DERIVED")
+        self.assertEqual(perf["field_origins"]["funnel_kpi"], "DETERMINISTIC_COMPUTED")
+        self.assertIn("## Pass 5A — Measurement & Attribution", perf["funnel_kpi"])
+        self.assertIn("## Pass 5B — Experimentation & Governance", perf["funnel_kpi"])
+        self.assertEqual(perf["funnel_kpi"].count(replies["performance"]), 2)'''
+          if text.count(old_perf) != 1:
+              raise SystemExit(f'expected one stale Performance raw-output assertion, found {text.count(old_perf)}')
+          tests.write_text(text.replace(old_perf, new_perf), encoding='utf-8')
+
+          world = Path('.github/workflows/brain-world-state-reasoning-v1.yml')
+          world_text = world.read_text(encoding='utf-8')
+          old_env = '''      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      PYTHONUTF8: "1"'''
+          new_env = '''      AI_MARKETING_KNOWLEDGE_EPHEMERAL: "1"
+      AI_MARKETING_MEMORY_EPHEMERAL: "1"
+      AI_MARKETING_LEARNING_EPHEMERAL: "1"
+      PYTHONUTF8: "1"'''
+          if world_text.count(old_env) != 1:
+              raise SystemExit(f'expected one incomplete World State hermetic env block, found {world_text.count(old_env)}')
+          world.write_text(world_text.replace(old_env, new_env), encoding='utf-8')
+
+          Path('.github/workflows/tmp-final-certification-contract-repair.yml').unlink()
+
+      - name: Verify repaired targeted contracts
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m unittest -v \
+            tests.test_collaboration_integrity_audit.TestFinalCmoApprovalGateSafety.test_05_creative_hypothesis_not_falsely_rejected_as_factual_claim \
+            tests.test_collaboration_integrity_audit.TestDataOriginIntegrity.test_11_agent_derived_values_preserved \
+            tests.test_prod_core_authority_01b.TestContextGlobalDeduplication.test_context_compiler_composes_inheritance_explicitly
+
+      - name: Commit smallest test and CI root-cause repair
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_collaboration_integrity_audit.py .github/workflows/brain-world-state-reasoning-v1.yml .github/workflows/tmp-final-certification-contract-repair.yml
+          git diff --cached --check
+          git commit -m "test(ci): align certification contracts with canonical runtime"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
