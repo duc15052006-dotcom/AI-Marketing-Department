@@ -1802,6 +1802,49 @@ fn main() {
 mod tests {
     use super::*;
 
+
+    fn drain_complete_http_request(stream: &mut std::net::TcpStream) {
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+        let mut request = Vec::new();
+        let mut buf = [0u8; 1024];
+        let mut expected_total: Option<usize> = None;
+
+        loop {
+            match stream.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    request.extend_from_slice(&buf[..n]);
+                    if expected_total.is_none() {
+                        if let Some(idx) = request.windows(4).position(|w| w == b\"\r\n\r\n\") {
+                            let header_end = idx + 4;
+                            let headers = String::from_utf8_lossy(&request[..idx]);
+                            let content_length = headers
+                                .lines()
+                                .find_map(|line| {
+                                    let (name, value) = line.split_once(':')?;
+                                    if name.trim().eq_ignore_ascii_case(\"content-length\") {
+                                        value.trim().parse::<usize>().ok()
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap_or(0);
+                            expected_total = Some(header_end + content_length);
+                        }
+                    }
+                    if expected_total.is_some_and(|expected| request.len() >= expected) {
+                        break;
+                    }
+                }
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) => break,
+                Err(_) => break,
+            }
+        }
+    }
     #[test]
     fn test_allowed_generic_routes() {
         assert!(is_allowed_generic_route("GET", "/api/health"));
@@ -2455,8 +2498,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
+                drain_complete_http_request(&mut stream);
                 let response = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nConnection: close\r\n\r\nevent: progress\r\ndata: {\"sequence\":1}\r\n\r\nevent: delta\r\ndata: {\"content\":\"Xin chao\"}\r\n\r\nevent: complete\r\ndata: {\"status\":\"COMPLETED\"}\r\n\r\n";
                 let _ = stream.write_all(response.as_bytes());
                 let _ = stream.flush();
@@ -2494,8 +2536,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_complete_http_request(&mut stream);
                 let response = "HTTP/1.0 401 Unauthorized\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"error\":\"UNAUTHORIZED\"}";
                 let _ = stream.write_all(response.as_bytes());
             }
@@ -2524,8 +2565,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_complete_http_request(&mut stream);
                 let response = "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}";
                 let _ = stream.write_all(response.as_bytes());
             }
@@ -2554,8 +2594,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_complete_http_request(&mut stream);
                 let response = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nConnection: close\r\n\r\nevent: delta\r\ndata: {\"content\":\"first\"}\r\n\r\nevent: delta\r\ndata: {\"content\":\"second\"}\r\n\r\n";
                 let _ = stream.write_all(response.as_bytes());
             }
@@ -2681,8 +2720,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_complete_http_request(&mut stream);
                 // Entire response sent in a single write/packet: headers + 2 SSE frames
                 let packet = "HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\nevent: progress\r\ndata: {\"step\":1}\r\n\r\nevent: complete\r\ndata: {\"status\":\"DONE\"}\r\n\r\n";
                 let _ = stream.write_all(packet.as_bytes());
@@ -2719,8 +2757,7 @@ mod tests {
 
         let server_thread = std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 512];
-                let _ = stream.read(&mut buf);
+                drain_complete_http_request(&mut stream);
                 let giant_header = "X-Padding: ".to_string() + &"a".repeat(20000) + "\r\n";
                 let response = format!("HTTP/1.0 200 OK\r\nContent-Type: text/event-stream\r\n{}\r\n\r\n", giant_header);
                 let _ = stream.write_all(response.as_bytes());
