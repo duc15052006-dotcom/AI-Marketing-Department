@@ -200,7 +200,7 @@ try {
     $providerId = "release-workflow-smoke"
     $modelId = "workflow-smoke-model"
     $settingsPayload = @{
-        revision = [int]$settings.settings_revision
+        expected_revision = [int]$settings.settings_revision
         free_only_mode = $true
         global_target = @{
             provider_id = $providerId
@@ -223,7 +223,7 @@ try {
         )
     } | ConvertTo-Json -Depth 10 -Compress
 
-    $saved = Invoke-RestMethod -Uri "$backend/api/settings/models" -Method Put -Headers $headers -ContentType "application/json" -Body $settingsPayload -TimeoutSec 20
+    $saved = Invoke-RestMethod -Uri "$backend/api/settings/models" -Method Post -Headers $headers -ContentType "application/json" -Body $settingsPayload -TimeoutSec 20
     if ($saved.global_target.provider_id -ne $providerId -or $saved.global_target.model_id -ne $modelId) {
         throw "Packaged full-workflow smoke could not persist the loopback provider as global target."
     }
