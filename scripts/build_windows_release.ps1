@@ -44,7 +44,10 @@ try {
     $psi.Arguments = "--emit-bootstrap --port 18765"
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
+    # Keep stderr attached to the CI console. This both exposes safe runtime
+    # diagnostics and prevents an undrained redirected stderr pipe from
+    # backpressuring the packaged backend during the full-workflow smoke.
+    $psi.RedirectStandardError = $false
     $psi.CreateNoWindow = $true
     $psi.EnvironmentVariables["AI_MARKETING_CONFIG_DIR"] = $releaseSmokeConfig
     $proc = [System.Diagnostics.Process]::Start($psi)
@@ -63,8 +66,7 @@ try {
             }
         }
         if (-not $bootstrap) {
-            $err = $proc.StandardError.ReadToEnd()
-            throw "Standalone backend did not emit a bootstrap frame. stderr=$err"
+            throw "Standalone backend did not emit a bootstrap frame. Backend stderr is emitted directly to the CI console above."
         }
 
         $bootstrapJson = $bootstrap.Substring("UIAUTH_BOOTSTRAP_V1:".Length)
