@@ -31,7 +31,7 @@ try {
     }
     Copy-Item -Force $BackendExe $BackendResourceExe
 
-    Write-Host "[4/7] Smoke-testing standalone backend bootstrap..." -ForegroundColor Yellow
+    Write-Host "[4/7] Smoke-testing standalone backend bootstrap and health..." -ForegroundColor Yellow
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $BackendResourceExe
     $psi.Arguments = "--emit-bootstrap --port 18765"
@@ -41,7 +41,7 @@ try {
     $psi.CreateNoWindow = $true
     $proc = [System.Diagnostics.Process]::Start($psi)
     try {
-        $deadline = [DateTime]::UtcNow.AddSeconds(20)
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
         $bootstrap = $null
         while ([DateTime]::UtcNow -lt $deadline -and -not $proc.HasExited) {
             if ($proc.StandardOutput.Peek() -ge 0) {
@@ -58,7 +58,12 @@ try {
             $err = $proc.StandardError.ReadToEnd()
             throw "Standalone backend did not emit a bootstrap frame. stderr=$err"
         }
-        Write-Host "      Backend bootstrap OK" -ForegroundColor Green
+
+        $health = Invoke-RestMethod -Uri "http://127.0.0.1:18765/api/health" -Method Get -TimeoutSec 10
+        if ($health.status -ne "ok") {
+            throw "Standalone backend health endpoint returned unexpected status: $($health.status)"
+        }
+        Write-Host "      Backend bootstrap + health OK" -ForegroundColor Green
     } finally {
         if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
     }
@@ -72,15 +77,21 @@ try {
     cargo test --manifest-path src-tauri/Cargo.toml
 
     Write-Host "[7/7] Building Windows MSI/NSIS bundles..." -ForegroundColor Yellow
-    Push-Location (Join-Path $Root "frontend")
-    try {
-        npx --yes "@tauri-apps/cli@2.11.4" build
-    } finally {
-        Pop-Location
+    # Run from repository root so Tauri resolves ./src-tauri deterministically.
+    npx --yes "@tauri-apps/cli@2.11.4" build
+
+    $BundleRoot = Join-Path $Root "src-tauri\target\release\bundle"
+    if (-not (Test-Path $BundleRoot -PathType Container)) {
+        throw "Tauri bundle directory was not produced at $BundleRoot"
+    }
+
+    $installers = Get-ChildItem -Path $BundleRoot -Recurse -File | Where-Object { $_.Extension -in @('.msi', '.exe') }
+    if (-not $installers -or $installers.Count -lt 1) {
+        throw "No Windows installer (.msi/.exe) was produced under $BundleRoot"
     }
 
     Write-Host "Release build completed." -ForegroundColor Green
-    Write-Host "Bundles: $Root\src-tauri\target\release\bundle"
+    Write-Host "Bundles: $BundleRoot"
 } finally {
     Pop-Location
 }
