@@ -41,6 +41,17 @@ for package in FIRST_PARTY_PACKAGES:
     hiddenimports += collect_submodules(package)
     datas += collect_data_files(package, include_py_files=False)
 
+# Runtime AgentLoader resolves authoritative operating DNA from
+# <bundle-root>/.agents/agents/<agent>/agent.md.  `.agents` is a repository-level
+# data directory rather than a Python package, so collect_data_files() above
+# cannot discover it.  Bundle the whole directory at the same relative root so
+# the frozen backend exercises the exact same fail-closed Agent DNA contract as
+# a source checkout.
+AGENT_DNA_DIR = ROOT / ".agents"
+if not AGENT_DNA_DIR.is_dir():
+    raise FileNotFoundError(f"Authoritative agent DNA directory missing: {AGENT_DNA_DIR}")
+datas.append((str(AGENT_DNA_DIR), ".agents"))
+
 analysis = Analysis(
     [str(ROOT / "app_api" / "server.py")],
     pathex=[str(ROOT)],
