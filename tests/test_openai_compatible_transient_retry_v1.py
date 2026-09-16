@@ -119,6 +119,10 @@ class OpenAICompatibleTransientRetryV1Tests(unittest.TestCase):
         self.assertEqual(1, response.metadata.get("transport_attempts"))
         sleep_mock.assert_not_called()
 
+    def test_retry_policy_preserves_one_logical_model_request(self) -> None:
+        self.assertEqual(3, OpenAICompatibleProviderAdapter._SYNC_MAX_TRANSPORT_ATTEMPTS)
+        self.assertEqual(2, len(OpenAICompatibleProviderAdapter._SYNC_RETRY_BACKOFF_SECONDS))
+
 
 if __name__ == "__main__":
     unittest.main()
