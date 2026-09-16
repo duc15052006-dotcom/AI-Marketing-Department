@@ -25,12 +25,15 @@ on:
       - "schemas/**"
       - "scripts/build_windows_release.ps1"
       - "scripts/smoke_packaged_model_connection.ps1"
+      - "scripts/smoke_packaged_full_workflow.ps1"
       - "scripts/smoke_installed_windows_release.ps1"
+      - "scripts/smoke_installed_transient_retry.ps1"
       - "src-tauri/**"
       - "tools/**"
       - "workspace/**"
       - "requirements.txt"
       - "tests/test_release_productization_v1.py"
+      - "tests/test_openai_compatible_real_http_retry_v1.py"
       - "README.md"
       - ".github/workflows/desktop-release-build-v1.yml"
   workflow_dispatch:
@@ -80,7 +83,7 @@ jobs:
         shell: pwsh
         run: ./scripts/build_windows_release.ps1
 
-      - name: Clean-install and launch installed desktop
+      - name: Clean-install, verify backend provenance, retry, and desktop launch
         shell: pwsh
         run: ./scripts/smoke_installed_windows_release.ps1
 
@@ -97,6 +100,10 @@ jobs:
           }
           $lines | Set-Content -Path "release-checksums.sha256" -Encoding utf8
           Get-Content "release-checksums.sha256"
+          if (-not (Test-Path "backend-checksum.sha256" -PathType Leaf)) {
+            throw "Installed-backend certification did not produce backend-checksum.sha256."
+          }
+          Get-Content "backend-checksum.sha256"
 
       - name: Upload certified Windows installers
         uses: actions/upload-artifact@v4
@@ -108,3 +115,4 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
             release-checksums.sha256
+            backend-checksum.sha256
