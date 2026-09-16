@@ -47,6 +47,9 @@ logger = logging.getLogger("openai_compatible_adapter")
 class OpenAICompatibleProviderAdapter(BaseModelAdapter):
     """Generic, configuration-driven adapter for any OpenAI-compatible API."""
 
+    _SYNC_MAX_TRANSPORT_ATTEMPTS = 3
+    _SYNC_RETRY_BACKOFF_SECONDS = (0.25, 0.5)
+
     def __init__(
         self,
         provider_id: str,
@@ -229,7 +232,7 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
         )
 
     def generate(self, request: ModelRequest) -> ModelResponse:
-        """Execute completion synchronously via OpenAI-compatible chat completions endpoint."""
+        """Execute completion synchronously with bounded transient transport retry."""
         start_time = time.perf_counter()
 
         try:
@@ -282,11 +285,38 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
 
         timeout = norm_req.timeout_seconds if norm_req.timeout_seconds else self._timeout_seconds
 
-        status_code, resp_headers, body_str = self._transport.post_json(
-            endpoint_path=self._chat_completions_path,
-            payload=payload,
-            timeout_seconds=timeout,
-        )
+        transport_attempts = 0
+        classified: Optional[Dict[str, Any]] = None
+        status_code = 0
+        resp_headers: Dict[str, Any] = {}
+        body_str = ""
+
+        while transport_attempts < self._SYNC_MAX_TRANSPORT_ATTEMPTS:
+            transport_attempts += 1
+            status_code, resp_headers, body_str = self._transport.post_json(
+                endpoint_path=self._chat_completions_path,
+                payload=payload,
+                timeout_seconds=timeout,
+            )
+
+            if 200 <= status_code < 300:
+                classified = None
+                break
+
+            classified = classify_transport_error(
+                status_code=status_code,
+                headers=resp_headers,
+                body_str=body_str,
+                provider_name=self.provider_name,
+                secret_to_redact=self._api_key,
+            )
+
+            if not classified["retryable"] or transport_attempts >= self._SYNC_MAX_TRANSPORT_ATTEMPTS:
+                break
+
+            backoff_index = transport_attempts - 1
+            backoff_seconds = self._SYNC_RETRY_BACKOFF_SECONDS[backoff_index - 1]
+            time.sleep(backoff_seconds)
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
 
@@ -392,15 +422,17 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
                 usage=usage,
                 latency_ms=latency_ms,
                 finish_reason=finish_reason,
+                metadata={"transport_attempts": transport_attempts},
             )
 
-        classified = classify_transport_error(
-            status_code=status_code,
-            headers=resp_headers,
-            body_str=body_str,
-            provider_name=self.provider_name,
-            secret_to_redact=self._api_key,
-        )
+        if classified is None:
+            classified = classify_transport_error(
+                status_code=status_code,
+                headers=resp_headers,
+                body_str=body_str,
+                provider_name=self.provider_name,
+                secret_to_redact=self._api_key,
+            )
 
         metadata = dict(classified.get("metadata", {}))
         metadata["error_code"] = classified["code"]
@@ -408,6 +440,10 @@ class OpenAICompatibleProviderAdapter(BaseModelAdapter):
         metadata["retryable"] = classified["retryable"]
         metadata["http_status"] = classified["http_status"]
         metadata["safe_message"] = classified["safe_message"]
+        metadata["transport_attempts"] = transport_attempts
+        metadata["retry_exhausted"] = bool(
+            classified["retryable"] and transport_attempts >= self._SYNC_MAX_TRANSPORT_ATTEMPTS
+        )
 
         return ModelResponse(
             request_id=norm_req.request_id,
