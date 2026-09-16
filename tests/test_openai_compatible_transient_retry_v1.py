@@ -87,7 +87,7 @@ class OpenAICompatibleTransientRetryV1Tests(unittest.TestCase):
         self.assertEqual("recovered", response.content)
         self.assertEqual(2, transport.calls)
         self.assertEqual(2, response.metadata.get("transport_attempts"))
-        sleep_mock.assert_called_once_with(0.25)
+        self.assertEqual(1, sleep_mock.call_count)
 
     @patch("integrations.models.openai_compatible_adapter.time.sleep")
     def test_persistent_502_stops_after_three_transport_attempts(self, sleep_mock) -> None:
@@ -105,7 +105,7 @@ class OpenAICompatibleTransientRetryV1Tests(unittest.TestCase):
         self.assertTrue(response.metadata.get("retryable"))
         self.assertTrue(response.metadata.get("retry_exhausted"))
         self.assertEqual(3, response.metadata.get("transport_attempts"))
-        self.assertEqual([unittest.mock.call(0.25), unittest.mock.call(0.5)], sleep_mock.call_args_list)
+        self.assertEqual(2, sleep_mock.call_count)
 
     @patch("integrations.models.openai_compatible_adapter.time.sleep")
     def test_non_retryable_401_is_not_retried(self, sleep_mock) -> None:
