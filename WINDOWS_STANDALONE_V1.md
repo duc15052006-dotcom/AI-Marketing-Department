@@ -60,6 +60,14 @@ The Windows release pipeline verifies the packaged backend, frontend, Rust deskt
 
 The clean-install certification installs the NSIS package into an isolated directory, launches the installed desktop executable, verifies that the packaged backend becomes healthy, and verifies that closing the desktop tears the backend down through the Windows Job Object lifecycle.
 
+## Windows publisher warning
+
+The current v1 installer artifacts are functionally certified but are **not Authenticode/code-signed**. Windows may therefore show an **Unknown publisher** or Microsoft Defender SmartScreen warning when opening the installer. Code signing is a separate distribution-hardening step and does not change the packaged application logic. Never place a signing certificate or private key in the repository.
+
+## Distribution lifetime
+
+GitHub Actions certification artifacts are temporary CI evidence and can expire according to the workflow retention policy. A public/stable v1 distribution should publish the exact certified installers and their SHA-256 checksums as durable release assets after the release candidate is explicitly promoted. Do not treat an expiring Actions artifact as the permanent end-user download channel.
+
 ## What still requires a real provider credential
 
 Automated CI must not claim that a cloud provider account works for a user. Final live-provider verification requires a real user-supplied credential:
@@ -71,6 +79,10 @@ Automated CI must not claim that a cloud provider account works for a user. Fina
 5. Execute a real department workflow through CMO → Intelligence → Content → Creative → Performance → Final CMO.
 
 Only that credential-backed run can certify live provider/account/model interoperability for the selected provider.
+
+## Certification scope note
+
+The current clean-install smoke certifies installation, packaged-backend provenance, retry behavior, desktop startup, backend health, and backend teardown when the desktop exits. It does **not** currently execute the installer uninstaller as part of CI; uninstall behavior is therefore outside the exact automated certification scope documented here.
 
 ## Developer setup
 
