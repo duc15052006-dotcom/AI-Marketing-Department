@@ -24,6 +24,8 @@ try {
 
     Write-Host "[2/7] Running deterministic Python productization tests..." -ForegroundColor Yellow
     python -m unittest tests.test_release_productization_v1 -v
+    Write-Host "      Running real-HTTP transient retry regression..." -ForegroundColor DarkGray
+    python -m unittest tests.test_openai_compatible_real_http_retry_v1 -v
 
     Write-Host "[3/7] Building standalone backend sidecar..." -ForegroundColor Yellow
     python -m PyInstaller --noconfirm --clean --distpath $BackendDist --workpath $BackendWork packaging/backend.spec
