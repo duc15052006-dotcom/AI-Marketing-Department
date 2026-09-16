@@ -2821,23 +2821,15 @@ class FiveAgentDepartmentRuntime:
         approved_for_deployment = authorization_status == "APPROVED"
         conditional_approval = authorization_status == "APPROVED_WITH_CONDITIONS"
         if not approved_for_deployment and not conditional_approval:
-            context.status = RuntimeStatus.FAILED
             joined_reasons = "; ".join(audit_res.blocking_reasons)[:400]
             context.risk_flags.append(f"FINAL_CMO_NOT_AUTHORIZED: {joined_reasons}")
-            if emitter:
-                emitter.emit(
-                    ProgressEventType.RUN_FAILED,
-                    stage="FINAL_CMO",
-                    agent="CMO",
-                    message=f"Giai đoạn Final CMO không được phê duyệt: {joined_reasons}",
-                    metadata={"authorization_status": audit_res.authorization_status},
-                )
 
         output = {
             "stage": "FINAL_CMO",
             "agent": "cmo",
             "status": "READY_FOR_DEPLOYMENT" if approved_for_deployment else ("READY_FOR_HUMAN_APPROVAL" if conditional_approval else "NOT_READY"),
             "approval_status": audit_res.authorization_status,
+            "approved_for_deployment": approved_for_deployment,
             "reason": "" if approved_for_deployment else ("CONDITIONS_REMAIN_UNRESOLVED" if conditional_approval else "; ".join(audit_res.blocking_reasons)[:300]),
             "claim_audit": audit_res.model_dump(),
             "master_gtm_plan": {
@@ -2850,12 +2842,16 @@ class FiveAgentDepartmentRuntime:
             "master_gtm_plan_markdown": clean_llm_report,
         }
         output, _payload, _parse_status = self._finalize_stage_handoff(context, "final_cmo", "cmo", raw_llm_report, output)
-        if emitter and approved_for_deployment:
+        if emitter:
             emitter.emit(
                 ProgressEventType.STAGE_COMPLETED,
                 stage="FINAL_CMO",
                 agent="CMO",
-                message="Hoàn tất giai đoạn Final CMO và được phê duyệt triển khai",
+                message=(
+                    "Hoàn tất giai đoạn Final CMO và được phê duyệt triển khai"
+                    if approved_for_deployment
+                    else "Hoàn tất giai đoạn Final CMO; triển khai chưa được phê duyệt"
+                ),
                 metadata={"authorization_status": audit_res.authorization_status},
             )
         context.stage_outputs["final_cmo"] = output
@@ -3211,7 +3207,16 @@ class FiveAgentDepartmentRuntime:
                         metadata={"error": str(exc)},
                     )
 
-        if context.status not in (RuntimeStatus.FAILED, RuntimeStatus.CANCELLED) and cmo_final.get("status") in ("READY_FOR_DEPLOYMENT", "APPROVED", "COMPLETED"):
+        if (
+            context.status not in (RuntimeStatus.FAILED, RuntimeStatus.CANCELLED)
+            and cmo_final.get("status") in (
+                "READY_FOR_DEPLOYMENT",
+                "READY_FOR_HUMAN_APPROVAL",
+                "NOT_READY",
+                "APPROVED",
+                "COMPLETED",
+            )
+        ):
             if emitter and not any(e.event_type in (ProgressEventType.RUN_COMPLETED, ProgressEventType.RUN_FAILED) for e in emitter.events):
                 emitter.emit(
                     ProgressEventType.RUN_COMPLETED,
